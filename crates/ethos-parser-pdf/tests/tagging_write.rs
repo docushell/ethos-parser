@@ -1431,6 +1431,17 @@ fn both_writers(bytes: &[u8]) -> [(&'static str, Result<Vec<u8>, EngineError>); 
     ]
 }
 
+/// **A document showing text through a form XObject is refused** (`docs/30-FORM-XOBJECTS-SCOPE.md`
+/// §8). The writer marks text by wrapping the page's own text operators, and a form's text is
+/// shown by the form's stream; wrapping the page's `Do` would bind every run of the form to one
+/// element, whichever blocks the cut put them in.
+#[test]
+fn a_document_drawing_text_through_a_form_is_refused() {
+    let e = tag(&engine_fixture("form-xobject-text-drawn")).expect_err("the form's text");
+    assert_eq!(e.code(), "unsupported", "{e}");
+    assert!(e.to_string().contains("through a form XObject"), "{e}");
+}
+
 /// **A document the empty user password opened is refused by both writers, as encrypted.**
 /// `lopdf` decrypts such a document at load and removes `/Encrypt`, so a rewrite writes it back
 /// in the clear with its permissions gone: `overlay` did, exit 0, and `tag` refused only in its

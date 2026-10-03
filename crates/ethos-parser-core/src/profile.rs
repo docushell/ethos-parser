@@ -182,7 +182,8 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 ///
 /// What is part of it, and therefore what a change to it must move this string for:
 ///
-/// - which `Do` calls become nodes — `/Subtype /Image` only, never `/Form`, never inline `BI`
+/// - which `Do` calls become nodes — `/Subtype /Image` only, never inline `BI`; and, since v3,
+///   which forms are run as page content
 /// - how a painted rectangle is derived — the CTM applied to the unit square, axis-aligned or
 ///   typed-absent, never the bitmap's pixel dimensions
 /// - what the digest covers — the stream's stored bytes, still encoded
@@ -195,7 +196,14 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 ///
 /// v2 (0.63.0): an image drawn from `/Resources` a page inherits from `/Pages` is a node, where v1
 /// counted it an unresolved `Do` (review 2026-09-26 N43). What the rule observes is v1's.
-pub const OBSERVATION_RULE_V2: &str = "page-observations-v2";
+///
+/// v3 (0.64.0, decision #37): a `Do` naming a `/Form` runs the form's content stream where it
+/// stands, under its `/Matrix` and its own resources, to a depth of eight and never into itself
+/// (`docs/30-FORM-XOBJECTS-SCOPE.md`). Its text runs and images are the page's, its rectangles and
+/// lines are not table evidence; a run drawn inside one names its font by the resource path that
+/// reaches it (`Xf1/F1`); an `/MCID` it opens binds nothing. Through v2 a form was counted and not
+/// read.
+pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
 ///
@@ -1553,7 +1561,7 @@ pub struct Profile {
     pub text_code_rule: String,
     /// Version id of the image and text-finding rule in force. New at v1-S6.
     ///
-    /// See [`OBSERVATION_RULE_V2`]. On the profile because it decides which `Do` calls become
+    /// See [`OBSERVATION_RULE_V3`]. On the profile because it decides which `Do` calls become
     /// nodes, how a painted rectangle is derived, and what counts as invisible or off-page —
     /// every one of which changes what an artifact says the document contains.
     pub observation_rule: String,
@@ -1592,7 +1600,7 @@ impl Default for Profile {
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
             text_code_rule: TEXT_CODE_RULE_V2.to_string(),
-            observation_rule: OBSERVATION_RULE_V2.to_string(),
+            observation_rule: OBSERVATION_RULE_V3.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -2690,7 +2698,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v2","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3683,11 +3691,15 @@ mod tests {
              `cmap_data_version` `annex-d-encodings-2` -> `-3`, for `MacRomanEncoding` read \
              above ASCII; and `markdown_rule` `markdown-blocks-v11` -> `-v12` with `html_rule` \
              `html-blocks-v11` -> `-v12`, for four joins that broke a word mid-line. No other \
-             rule id, no capability and no knob moves."
+             rule id, no capability and no knob moves.\n\n\
+             Moved for form XObjects (decision #37), `sha256:83425c1f…` -> \
+             `sha256:99339096…`: `observation_rule` `page-observations-v2` -> `-v3`, because a \
+             `Do` naming a `/Form` now runs it as page content \
+             (`docs/30-FORM-XOBJECTS-SCOPE.md`). Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:83425c1fdbd1c85b6c1976fb1f08fa95a63151727e232e06d10403788d80b2a1"
+            "sha256:99339096c95c224cf5941a41762a539a6a92d2e7650485094ea3b677a95ba165"
         );
     }
 

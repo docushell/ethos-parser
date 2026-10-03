@@ -134,6 +134,10 @@ widening `ethos.grounding.v1` is a change to the *verifier's* contract, not an a
 
 ### Form XObject descent — measured 2026-09-22, and the verdict split
 
+**Built 2026-10-03, decision #37** ([`30-FORM-XOBJECTS-SCOPE.md`](30-FORM-XOBJECTS-SCOPE.md)): the
+reopening condition below was met by ParseBench, a redistributable corpus of the blank-artifact
+shape. This section is the record of why it waited.
+
 PageIndex descends into a `/Form` XObject's content stream. This engine counts the `Do` and does not,
 and **nothing here refuses it**: the limitation exists because the work was not done. So it was
 measured before being proposed, and the answer was not the one expected.

@@ -46,7 +46,8 @@ pub const BACKEND_XREF_STRICT_20_BYTE: &str = "backend-xref-strict-20-byte";
 /// naming one is refused.
 pub const PREDEFINED_CMAPS_NOT_VENDORED: &str = "predefined-cmaps-not-vendored";
 
-/// Text drawn inside a form XObject is not descended into.
+/// What form XObject descent does not reach (`docs/30-FORM-XOBJECTS-SCOPE.md`): until 0.64.0, every
+/// form; since, its edges. The code is kept because consumers match on it.
 pub const FORM_XOBJECT_TEXT_NOT_DESCENDED: &str = "form-xobject-text-not-descended";
 
 /// A font supplied no usable widths, so advances are absent rather than guessed.
@@ -194,10 +195,16 @@ pub fn extract_limitations() -> Vec<Limitation> {
 
     out.push(Limitation::profile(
         FORM_XOBJECT_TEXT_NOT_DESCENDED,
-        "Text drawn inside a form XObject (via `Do`) is not descended into. The operator is \
-         acknowledged rather than skipped silently, but a document relying on form XObjects for \
-         its text will under-report runs. Declared here so a short run list is read as a \
-         declared gap rather than as a sparse page.",
+        "A form XObject a page draws with `Do` is read as content the page draws: its text runs \
+         are the page's, placed under the form's `/Matrix` (`docs/30-FORM-XOBJECTS-SCOPE.md`). \
+         Four edges are not reached. A form that draws itself, directly or through another, \
+         one nested deeper than eight, and one whose `/Matrix` is not six numbers are not \
+         entered, and where that happens the document counts it as \
+         `form-xobjects-not-descended`. A form's `/BBox` is not applied as a clip, as no clip \
+         path is applied to a page's own text. An `/MCID` opened inside a form binds \
+         nothing, counted where it occurs as `form-xobject-mcids-not-bound`. And the rectangles \
+         and lines a form paints are not offered to the table rules: a table whose rules a \
+         form draws is not detected from them.",
     ));
 
     // The block cut's limits (0.55.0's `TextRunAttributes::block`). The wording is taken from
@@ -744,13 +751,31 @@ pub fn form_xobjects_not_descended(count: u32) -> Limitation {
     Limitation::document(
         ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED,
         format!(
-            "{count} form XObject(s) were drawn on this document with `Do` and NOT descended \
-             into, so any text they draw is absent from this artifact. The count is the point: a \
-             page whose entire content is `q /Xf1 Do Q` — the shape a page-slicing tool produces \
-             — otherwise emits zero nodes while `pages_failed` reads 0, and nothing tells a \
-             consumer whether the page was blank or unread. **A short run list on this document \
-             is a declared gap, not a sparse page.** The profile's \
-             `form-xobject-text-not-descended` states the policy; this states what it cost here."
+            "{count} XObject(s) were drawn on this document with `Do` and NOT entered, so any \
+             text they draw is absent from this artifact: a form that draws itself, directly or \
+             through another, one nested deeper than eight, one whose `/Matrix` is not six \
+             numbers, or an XObject that reads as neither an image nor a form this reader can \
+             open. Every other form is read as the page's own content. The count is the point: a \
+             page whose only drawing is such a `Do` otherwise emits zero nodes while \
+             `pages_failed` reads 0. **A short run list on this document is a declared gap, not a \
+             sparse page.** The profile's `form-xobject-text-not-descended` states the policy; \
+             this states what it cost here."
+        ),
+    )
+}
+
+/// Marked-content ids opened inside form XObjects on THIS document, which bind nothing
+/// (`docs/30-FORM-XOBJECTS-SCOPE.md` §7).
+pub fn form_xobject_mcids_not_bound(sequences: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::FORM_XOBJECT_MCIDS_NOT_BOUND,
+        format!(
+            "{sequences} marked-content sequence(s) opened inside a form XObject carry an \
+             `/MCID`. Such an id indexes the form's own `/StructParents` (PDF 32000-1 §14.7.4), \
+             which this profile does not open, so the runs inside carry no marked-content id and \
+             no role path: read as the page's id, it would bind the form's text to whatever \
+             element the page's id names. Those runs are present and complete, with exact \
+             origins; only their structural address is missing."
         ),
     )
 }
@@ -763,9 +788,9 @@ pub fn form_xobjects_not_descended_on_page(page: u32, count: u32) -> Limitation 
         page,
         ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED,
         format!(
-            "{count} form XObject(s) drawn on this page with `Do` were NOT descended into, so any \
-             text they draw is absent from this page's runs. A short or empty run list on this \
-             page is a declared gap, not a sparse page."
+            "{count} XObject(s) drawn on this page with `Do` were NOT entered, so any text they \
+             draw is absent from this page's runs. A short or empty run list on this page is a \
+             declared gap, not a sparse page."
         ),
     )
 }

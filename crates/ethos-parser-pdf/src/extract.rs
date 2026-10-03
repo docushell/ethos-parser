@@ -167,6 +167,34 @@ fn declare(count: u32, more: u32) -> u32 {
     count.saturating_add(more)
 }
 
+/// What `fonts` lack, declared once each: a composite font counted, absent widths, an assumed
+/// encoding. A font whose encoding this profile does not read refuses the page where it is drawn
+/// with (tracker I8), so until then it is described by nothing here.
+fn describe_fonts<'f>(
+    fonts: impl Iterator<Item = &'f std::sync::Arc<crate::fonts::Font>>,
+    composite_fonts: &mut u32,
+    font_limitations: &mut Vec<ethos_parser_core::Limitation>,
+) {
+    for font in fonts.filter(|f| f.refusal().is_none()) {
+        if font.kind == crate::fonts::FontKind::Composite {
+            *composite_fonts = declare(*composite_fonts, 1);
+        }
+        let mut declare_once = |entry: ethos_parser_core::Limitation| {
+            if !font_limitations.contains(&entry) {
+                font_limitations.push(entry);
+            }
+        };
+        if let WidthSource::Absent { reason } = &font.widths {
+            declare_once(lim::font_widths_absent(reason));
+        }
+        // v2.2-S6. `StandardEncoding` was applied to a font the specification does not give it
+        // to. The characters still travel; the artifact now says they may be wrong.
+        if let Some(detail) = &font.builtin_encoding_assumed {
+            declare_once(lim::symbolic_font_builtin_encoding_assumed(detail));
+        }
+    }
+}
+
 /// The same ceiling for a count that arrives as a `usize`.
 ///
 /// An `as u32` cast on an input-driven count is worse than a plain `+=`, because it wraps in debug
@@ -383,6 +411,10 @@ struct PageYield {
     inline_images: u32,
     unresolved_xobjects: u32,
     undescended_xobjects: u32,
+    /// `/MCID`s opened inside forms, which bind nothing (`docs/30-FORM-XOBJECTS-SCOPE.md` §7).
+    form_mcids: u32,
+    /// Runs drawn inside forms, which the tag writer cannot mark (§8).
+    form_runs: u32,
     composite_fonts: u32,
     findings_seen: std::collections::BTreeMap<&'static str, u32>,
     /// Document-scoped limitations a font on this page declared. Deduped by the fold.
@@ -434,6 +466,8 @@ fn extract_page(
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
     let mut undescended_xobjects: u32 = 0;
+    let mut form_mcids: u32 = 0;
+    let mut form_runs: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
     let mut composite_fonts: u32 = 0;
@@ -469,34 +503,7 @@ fn extract_page(
         // the runs end up in. Computed once per page rather than per run.
         let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc, page_dict)?;
-        // A font whose encoding this profile does not read refuses the page where it is drawn
-        // with (tracker I8), so until then it is described by nothing below.
-        let readable = || fonts.values().filter(|f| f.refusal().is_none());
-
-        composite_fonts = declare(
-            composite_fonts,
-            declared_len(
-                readable()
-                    .filter(|f| f.kind == crate::fonts::FontKind::Composite)
-                    .count(),
-            ),
-        );
-
-        for font in readable() {
-            let mut declare_once = |entry: ethos_parser_core::Limitation| {
-                if !font_limitations.contains(&entry) {
-                    font_limitations.push(entry);
-                }
-            };
-            if let WidthSource::Absent { reason } = &font.widths {
-                declare_once(lim::font_widths_absent(reason));
-            }
-            // v2.2-S6. `StandardEncoding` was applied to a font the specification does not give
-            // it to. The characters still travel; the artifact now says they may be wrong.
-            if let Some(detail) = &font.builtin_encoding_assumed {
-                declare_once(lim::symbolic_font_builtin_encoding_assumed(detail));
-            }
-        }
+        describe_fonts(fonts.values(), &mut composite_fonts, &mut font_limitations);
 
         let Some(operations) = page_operations(doc.inner(), page_number, page_id, content, limit)?
         else {
@@ -507,8 +514,29 @@ fn extract_page(
         // interpreter still never holds a `Document` — it gets names and ids, and extraction
         // sorts `/Image` from `/Form` where the document is already in scope.
         let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
-        let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
-        interp.run(&operations)?;
+        // `docs/30-FORM-XOBJECTS-SCOPE.md` §5. The forms the page draws, resolved as it draws
+        // them, within what is left of its operation allowance; a page they push past it is read
+        // again alone, and refused there under the page ceiling.
+        let allowance = limit.saturating_sub(operations.len());
+        let forms =
+            crate::form_xobjects::PageForms::new(doc, page_dict, page_number, content, allowance);
+        let resolve = |id| forms.resolve(id);
+        let mut interp = Interpreter::new(&fonts)
+            .with_xobjects(xobjects)
+            .with_forms(&resolve, allowance);
+        match interp.run(&operations) {
+            Err(_) if interp.form_ops_exhausted => return Ok(None),
+            outcome => outcome?,
+        }
+        content.charge(0, interp.form_ops_run)?;
+        for form in forms.drawn() {
+            describe_fonts(
+                form.fonts.values(),
+                &mut composite_fonts,
+                &mut font_limitations,
+            );
+        }
+        form_mcids = declare(form_mcids, interp.form_mcids);
         inline_images = inline_images.saturating_add(interp.inline_images);
         unresolved_xobjects = unresolved_xobjects.saturating_add(interp.unresolved_xobjects);
 
@@ -535,6 +563,7 @@ fn extract_page(
                 continue;
             }
             op_indices.push(shown.op_index);
+            form_runs = declare(form_runs, u32::from(shown.in_form));
             // A matrix with no vertical scale, or an em too large to quantize, is unmeasurable
             // rather than an error: the heading rule reads it as absent, never as zero.
             ems.push(
@@ -542,7 +571,7 @@ fn extract_page(
                     .ok()
                     .filter(|em| *em > 0),
             );
-            let font = fonts.get(&shown.font_id);
+            let font = Some(&shown.font);
 
             let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
             let origin_x = quantize(ox_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
@@ -1098,11 +1127,11 @@ fn extract_page(
             }
         }
 
-        // v1-S6. One node per `Do`, in the order the page painted them. A `/Form` yields
-        // nothing here — this profile does not descend into form XObjects, which stays declared
-        // as `form-xobject-text-not-descended` — and neither does an XObject with no readable
-        // `/Subtype`: emitting a node for an unlabelled stream would put a picture on the wire
-        // the document never called one.
+        // v1-S6. One node per `Do`, in the order the page painted them. A `/Form` the
+        // interpreter ran is not here at all — its text and images are — and one it did not enter
+        // yields no node (`docs/30-FORM-XOBJECTS-SCOPE.md` §7), nor does an XObject with no
+        // readable `/Subtype`: emitting a node for an unlabelled stream would put a picture on the
+        // wire the document never called one.
         let mut images = Vec::new();
         for placement in &interp.images {
             let Some(attributes) = crate::images::image_attributes(doc.inner(), placement.object)
@@ -1207,6 +1236,8 @@ fn extract_page(
         inline_images,
         unresolved_xobjects,
         undescended_xobjects,
+        form_mcids,
+        form_runs,
         composite_fonts,
         findings_seen,
         font_limitations,
@@ -1236,6 +1267,9 @@ pub(crate) struct PageTrace {
     pub(crate) op_indices: Vec<usize>,
     /// The page's counters as `extract_page` returned them.
     pub(crate) counters: PageCounters,
+    /// Runs drawn inside a form XObject: no operator of the page's shows them, so the writer has
+    /// nothing to mark (`docs/30-FORM-XOBJECTS-SCOPE.md` §8).
+    pub(crate) form_runs: u32,
 }
 
 /// The per-page counters docs/23-AUTO-TAGGING-SCOPE.md §3.7 names, taken from `PageYield` before
@@ -1404,6 +1438,7 @@ fn extract_counted(
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
     let mut undescended_xobjects: u32 = 0;
+    let mut form_mcids: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
     // v1-S6.1. Composite fonts whose code width came from `/ToUnicode` rather than from the
@@ -1678,6 +1713,7 @@ fn extract_counted(
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
+        form_mcids = declare(form_mcids, y.form_mcids);
         if y.undescended_xobjects > 0 {
             limitations.push(lim::form_xobjects_not_descended_on_page(
                 page_number,
@@ -1707,6 +1743,7 @@ fn extract_counted(
                     props_by_name: y.props_by_name,
                     encoding_dropped_runs: y.encoding_dropped_runs,
                 },
+                form_runs: y.form_runs,
             },
         );
         pages.push(y.page);
@@ -1874,6 +1911,9 @@ fn extract_counted(
     if undescended_xobjects > 0 {
         limitations.push(lim::form_xobjects_not_descended(undescended_xobjects));
     }
+    if form_mcids > 0 {
+        limitations.push(lim::form_xobject_mcids_not_bound(form_mcids));
+    }
     if composite_fonts > 0 {
         limitations.push(lim::composite_font_codes_from_tounicode(composite_fonts));
     }
@@ -2002,8 +2042,20 @@ pub(crate) fn per_page_table_diagnostics(
         let fonts = load_page_fonts(doc, page_dict)?;
         let operations = page_operations_whole(doc.inner(), page_number, page_id, &content)?;
         let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
-        let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
-        interp.run(&operations)?;
+        // The forms the page draws, as `extract_page` runs them.
+        let allowance = crate::budget::MAX_PAGE_OPERATIONS.saturating_sub(operations.len());
+        let forms =
+            crate::form_xobjects::PageForms::new(doc, page_dict, page_number, &content, allowance);
+        let resolve = |id| forms.resolve(id);
+        let mut interp = Interpreter::new(&fonts)
+            .with_xobjects(xobjects)
+            .with_forms(&resolve, allowance);
+        match interp.run(&operations) {
+            Err(_) if interp.form_ops_exhausted => {
+                return Err(crate::budget::page_operations_past_ceiling(page_number))
+            }
+            outcome => outcome?,
+        }
 
         // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
         // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
@@ -2256,17 +2308,40 @@ pub(crate) fn page_operations(
     budget: &crate::budget::ContentBudget,
     limit: usize,
 ) -> Result<Option<Vec<lopdf::content::Operation>>, EngineError> {
+    budget.refusal()?;
+    let label = format!("page {page_number}");
+    let Some((operations, bytes)) =
+        content_operations(doc, &label, doc.get_page_contents(page_id), limit)?
+    else {
+        return Ok(None);
+    };
+    budget.charge(bytes, operations.len())?;
+    Ok(Some(operations))
+}
+
+/// The operations of `streams` joined, as [`page_operations`] reads a page's `/Contents`, beside
+/// the bytes they decoded to, or `Ok(None)` past `limit` operations. `label` names them in a
+/// refusal — `page 3`, or `page 3, form 12 0 R` (`docs/30-FORM-XOBJECTS-SCOPE.md` §5) — and
+/// nothing is charged: the caller charges.
+///
+/// # Errors
+///
+/// As [`page_operations`].
+pub(crate) fn content_operations(
+    doc: &lopdf::Document,
+    label: &str,
+    streams: Vec<lopdf::ObjectId>,
+    limit: usize,
+) -> Result<Option<(Vec<lopdf::content::Operation>, usize)>, EngineError> {
     use crate::budget::{NotDecoded, MAX_DECODED_BYTES};
     use crate::tagging::Inflation;
-    budget.refusal()?;
-    let past_ceiling =
-        || crate::budget::stream_past_ceiling(format!("page {page_number}'s content streams"));
+    let past_ceiling = || crate::budget::stream_past_ceiling(format!("{label}'s content streams"));
     // The page's decoded bytes, the `\n` after each stream aside.
     let mut decoded_bytes = 0usize;
     let mut content = Vec::new();
     // The offset of the `\n` after each stream, where a token may not continue.
     let mut ends = Vec::new();
-    for id in doc.get_page_contents(page_id) {
+    for id in streams {
         let stream = match doc.get_object(id) {
             Ok(lopdf::Object::Stream(stream)) => stream,
             // No in-use cross-reference entry: an undefined object, which PDF 32000-1 §7.3.10
@@ -2280,7 +2355,7 @@ pub(crate) fn page_operations(
                 return Err(EngineError::Malformed {
                     what: "content stream".into(),
                     detail: format!(
-                        "page {page_number}: /Contents names {} {} R, which the cross-reference \
+                        "{label}: /Contents names {} {} R, which the cross-reference \
                          table lists but which did not load as a stream",
                         id.0, id.1
                     ),
@@ -2289,7 +2364,7 @@ pub(crate) fn page_operations(
         };
         let refuse_filter = |detail: String| EngineError::Unsupported {
             what: "content stream filter".into(),
-            detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
+            detail: format!("{label}, stream {} {}: {detail}", id.0, id.1),
         };
         let remaining = MAX_DECODED_BYTES - decoded_bytes;
         let filters = if stream.dict.get(b"Filter").is_ok() {
@@ -2324,7 +2399,7 @@ pub(crate) fn page_operations(
                 crate::tagging::deflate_reaches_its_end(input, remaining).map_err(|detail| {
                     EngineError::Malformed {
                         what: "content stream".into(),
-                        detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
+                        detail: format!("{label}, stream {} {}: {detail}", id.0, id.1),
                     }
                 })?;
             if reach == Inflation::PastLimit {
@@ -2365,7 +2440,7 @@ pub(crate) fn page_operations(
     let on_page = |e: EngineError| match e {
         EngineError::Unsupported { what, detail } => EngineError::Unsupported {
             what,
-            detail: format!("page {page_number}: {detail}"),
+            detail: format!("{label}: {detail}"),
         },
         other => other,
     };
@@ -2375,17 +2450,16 @@ pub(crate) fn page_operations(
     crate::tagging::read_as_rendered(&content, &tokens, &ends).map_err(|detail| {
         EngineError::Malformed {
             what: "content stream".into(),
-            detail: format!("page {page_number}: {detail}"),
+            detail: format!("{label}: {detail}"),
         }
     })?;
     let decoded =
         lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {
             what: "content stream".into(),
-            detail: format!("page {page_number}: {e}"),
+            detail: format!("{label}: {e}"),
         })?;
     crate::tagging::agrees_with_lopdf(&tokens, &decoded.operations).map_err(on_page)?;
-    budget.charge(decoded_bytes, decoded.operations.len())?;
-    Ok(Some(decoded.operations))
+    Ok(Some((decoded.operations, decoded_bytes)))
 }
 
 /// [`page_operations`] for a caller reading one page at a time: every page is read, up to

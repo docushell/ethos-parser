@@ -14,7 +14,7 @@
 
 //! Image XObjects: where one was painted, and which bytes it is (v1-S6).
 //!
-//! Part of [`ethos_parser_core::OBSERVATION_RULE_V2`].
+//! Part of [`ethos_parser_core::OBSERVATION_RULE_V3`].
 //!
 //! # What this module refuses to do
 //!
@@ -45,10 +45,18 @@ pub fn page_xobjects(
     doc: &lopdf::Document,
     page_dict: &lopdf::Dictionary,
 ) -> BTreeMap<String, lopdf::ObjectId> {
+    crate::extract::page_resources(doc, page_dict)
+        .map(|resources| resource_xobjects(doc, &resources))
+        .unwrap_or_default()
+}
+
+/// The `/XObject` names one resource dictionary declares: a page's, or a form XObject's own
+/// (`docs/30-FORM-XOBJECTS-SCOPE.md` §4).
+pub(crate) fn resource_xobjects(
+    doc: &lopdf::Document,
+    resources: &lopdf::Dictionary,
+) -> BTreeMap<String, lopdf::ObjectId> {
     let mut out = BTreeMap::new();
-    let Some(resources) = crate::extract::page_resources(doc, page_dict) else {
-        return out;
-    };
     let Some(xobjects) = crate::fonts::resolve_dict(doc, resources.get(b"XObject").ok()) else {
         return out;
     };
@@ -65,8 +73,8 @@ pub fn page_xobjects(
 
 /// Whether an XObject is an image, and its facts, or `None` when it is not one.
 ///
-/// A `/Form` returns `None` — this profile does not descend into form XObjects, and
-/// `form-xobject-text-not-descended` is where that has been declared since M4. Anything with no
+/// A `/Form` returns `None`: the interpreter runs the forms it can
+/// (`docs/30-FORM-XOBJECTS-SCOPE.md`), and one it does not enter is counted. Anything with no
 /// readable `/Subtype` also returns `None`: guessing that an unlabelled stream is a picture would
 /// put a node on the wire for something the document did not call an image.
 pub fn image_attributes(doc: &lopdf::Document, id: lopdf::ObjectId) -> Option<ImageAttributes> {

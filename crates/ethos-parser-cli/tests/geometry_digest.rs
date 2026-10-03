@@ -244,9 +244,11 @@ const PINNED: &[(&str, &str)] = &[
         "engine/form-xfa-stub/document.pdf",
         "sha256:70a0dd2db9980624fa756687a73db0013b66821e90af4e8e65b7626f19cfd9dd",
     ),
+    // Decision #37: the form's run, "Drawn inside the form", is read and boxed at (40, 46) in
+    // user space under the page's `cm`; the page's own run did not move.
     (
         "engine/form-xobject-text-drawn/document.pdf",
-        "sha256:90fe6d81cc1d2b270ce8d4c3db17774107dbd66107d05f5640082d757df795aa",
+        "sha256:ca11ae50d0cbbcc5e219fc247cfcfe6abaeb7ccbbf22e6950e626fd94638498c",
     ),
     (
         "engine/heading-display-line-tagged/document.pdf",

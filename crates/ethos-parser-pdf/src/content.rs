@@ -29,7 +29,10 @@
 
 use ethos_parser_core::EngineError;
 
+use std::sync::Arc;
+
 use crate::fonts::Font;
+use crate::form_xobjects::{Form, FormResolver, Lookup, MAX_FORM_DEPTH};
 use crate::ops::Operator;
 use crate::text_state::{GraphicsState, Matrix, TextState};
 
@@ -100,7 +103,7 @@ pub struct ShownText {
     /// computed here and summing them away is lossy, and a sub-run box cannot be recovered
     /// afterwards from the total.
     pub code_advances: Option<Vec<f64>>,
-    /// Font resource name.
+    /// Font resource name, or for a run drawn inside a form the resource path to it (`Xf1/F1`).
     pub font_id: String,
     /// Font size in text space — the raw `Tf` operand, as the document states it.
     ///
@@ -143,7 +146,16 @@ pub struct ShownText {
     /// and never on the wire — `TextRun` does not carry it and `ExtractArtifact` does not change
     /// (docs/23-AUTO-TAGGING-SCOPE.md §6); it leaves this crate only through
     /// `extract::extract_with_positions`.
+    ///
+    /// A run drawn inside a form XObject carries the index of the page's `Do` that drew the form.
     pub(crate) op_index: usize,
+    /// The font that drew it. A run drawn inside a form XObject is named by the resource path that
+    /// reaches its font (`Xf1/F1`), which the page's fonts do not hold; this is the font itself
+    /// (`docs/30-FORM-XOBJECTS-SCOPE.md` §5).
+    pub(crate) font: Arc<Font>,
+    /// Whether it was drawn inside a form XObject, where the tag writer has no operator of the
+    /// page's to mark (`docs/30-FORM-XOBJECTS-SCOPE.md` §8).
+    pub(crate) in_form: bool,
 }
 
 /// One image XObject a page painted with `Do`, in **user space** (v1-S6).
@@ -349,6 +361,25 @@ pub struct Interpreter<'a> {
     /// four text-showing arms reach `show` through two helpers and the index is a fact about the
     /// loop, not about any operand.
     op_index: usize,
+    /// Resolves the object a `Do` names to the form it draws (`docs/30-FORM-XOBJECTS-SCOPE.md`).
+    /// `None` when the caller supplied none, and then no form is entered.
+    forms: Option<&'a FormResolver<'a>>,
+    /// The forms being drawn, innermost last: each one's object id, the form, and the resource path
+    /// its fonts are named by (`Xf1`, then `Xf1/Xf2`).
+    form_stack: Vec<(lopdf::ObjectId, Arc<Form>, String)>,
+    /// Operations forms may still run on this page: what is left of the page's allowance.
+    form_ops_left: usize,
+    /// Whether a form passed that allowance, so the page is read again alone or refused.
+    pub(crate) form_ops_exhausted: bool,
+    /// Operations run inside forms, a form drawn twice counted twice, for the document's budget.
+    pub(crate) form_ops_run: usize,
+    /// `/MCID`s on marked-content sequences opened inside a form, which bind nothing (§7).
+    pub(crate) form_mcids: u32,
+    /// The index in [`Self::shown`] of the last run this content stream showed: the page's, or the
+    /// form's being drawn. A `TJ` gap is written onto it and never onto a run another stream showed
+    /// (`docs/30-FORM-XOBJECTS-SCOPE.md`): a form's dropped run would otherwise lend its gaps to the
+    /// page's last run, and on the page it is `shown.last()` exactly as before forms were entered.
+    last_run: Option<usize>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -377,6 +408,13 @@ impl<'a> Interpreter<'a> {
             inline_images: 0,
             xobjects: None,
             op_index: 0,
+            forms: None,
+            form_stack: Vec::new(),
+            form_ops_left: 0,
+            form_ops_exhausted: false,
+            form_ops_run: 0,
+            form_mcids: 0,
+            last_run: None,
         }
     }
 
@@ -390,6 +428,14 @@ impl<'a> Interpreter<'a> {
         xobjects: std::collections::BTreeMap<String, lopdf::ObjectId>,
     ) -> Self {
         self.xobjects = Some(xobjects);
+        self
+    }
+
+    /// Supply what resolves the forms a page draws, and how many operations they may run between
+    /// them (`docs/30-FORM-XOBJECTS-SCOPE.md` §5). Without it no form is entered.
+    pub(crate) fn with_forms(mut self, forms: &'a FormResolver<'a>, ops_left: usize) -> Self {
+        self.forms = Some(forms);
+        self.form_ops_left = ops_left;
         self
     }
 
@@ -447,24 +493,29 @@ impl<'a> Interpreter<'a> {
     fn run_inner(&mut self, ops: &[lopdf::content::Operation]) -> Result<(), EngineError> {
         for (index, op) in ops.iter().enumerate() {
             self.op_index = index;
-            let token = op.operator.as_str();
-            let operator = Operator::of(token)?;
-            // Too few is refused where an operand is read; too many only here, because reading
-            // the first of them is where this reader and a renderer part (review 2026-09-26 N48).
-            if let Some(n) = operator.operands_read().filter(|&n| op.operands.len() > n) {
-                return Err(EngineError::Malformed {
-                    what: "content stream".into(),
-                    detail: format!(
-                        "`{token}` takes {n} operand(s) in PDF 32000-1 Table A.1 and was given {}: \
-                         a renderer reads the last {n} and this reader the first, so it refuses \
-                         rather than place text where no renderer draws it",
-                        op.operands.len()
-                    ),
-                });
-            }
-            self.dispatch(operator, &op.operands)?;
+            self.step(op)?;
         }
         Ok(())
+    }
+
+    /// One operation: refused outside Table A.1 or given too many operands, dispatched otherwise.
+    fn step(&mut self, op: &lopdf::content::Operation) -> Result<(), EngineError> {
+        let token = op.operator.as_str();
+        let operator = Operator::of(token)?;
+        // Too few is refused where an operand is read; too many only here, because reading
+        // the first of them is where this reader and a renderer part (review 2026-09-26 N48).
+        if let Some(n) = operator.operands_read().filter(|&n| op.operands.len() > n) {
+            return Err(EngineError::Malformed {
+                what: "content stream".into(),
+                detail: format!(
+                    "`{token}` takes {n} operand(s) in PDF 32000-1 Table A.1 and was given {}: \
+                     a renderer reads the last {n} and this reader the first, so it refuses \
+                     rather than place text where no renderer draws it",
+                    op.operands.len()
+                ),
+            });
+        }
+        self.dispatch(operator, &op.operands)
     }
 
     /// Whether the current CTM maps axis-aligned rectangles to axis-aligned rectangles.
@@ -625,10 +676,14 @@ impl<'a> Interpreter<'a> {
                 if carries_alternate_text(operands) {
                     self.alternate_texts = self.alternate_texts.saturating_add(1);
                 }
-                self.mc_stack.push(MarkedContent {
-                    artifact,
-                    mcid: mcid_from_props(operands),
-                });
+                // `docs/30-FORM-XOBJECTS-SCOPE.md` §7: an `/MCID` opened inside a form indexes
+                // the form's own `/StructParents`, which this reader does not open. Read as the
+                // page's, it would bind the form's text to whatever element the page's id names.
+                let mut mcid = mcid_from_props(operands);
+                if !self.form_stack.is_empty() && mcid.take().is_some() {
+                    self.form_mcids = self.form_mcids.saturating_add(1);
+                }
+                self.mc_stack.push(MarkedContent { artifact, mcid });
             }
             BeginMarkedContent => {
                 self.mc_stack.push(MarkedContent {
@@ -729,8 +784,9 @@ impl<'a> Interpreter<'a> {
                 self.pending_segments.clear();
             }
             // v1-S6. `Do` names an XObject in the page's resources. An `/Image` is a placement
-            // this profile records; a `/Form` is content this profile still does not descend
-            // into, and `form-xobject-text-not-descended` is where that stays declared.
+            // this profile records; a `/Form` is content the page draws, run where the `Do`
+            // stands (`docs/30-FORM-XOBJECTS-SCOPE.md`), and one not entered is placed and
+            // counted.
             //
             // **Fail-closed still applies to the OPERATOR, not to the operand.** An unrecognised
             // operator stops the parse, as it always has. A `Do` naming a resource that does not
@@ -738,7 +794,7 @@ impl<'a> Interpreter<'a> {
             // page drew something this reader cannot describe, and refusing the whole document
             // over it would turn files that parse today into failures. It is counted, and the
             // count is declared.
-            XObject => self.draw_xobject(operands),
+            XObject => self.draw_xobject(operands)?,
             Shading => {}
             // Inline images carry their samples in the content stream itself, so there is no
             // object to address and no separate stream to digest. Counted, and declared — an
@@ -768,9 +824,15 @@ impl<'a> Interpreter<'a> {
                 detail: "text shown before any Tf selected a font".into(),
             });
         };
-        let Some(font) = self.fonts.get(&font_id) else {
+        // A form's own fonts while one is drawn, and the name a run reports is the resource path
+        // that reaches it (`docs/30-FORM-XOBJECTS-SCOPE.md` §5).
+        let (fonts, reported) = match self.form_stack.last() {
+            Some((_, form, path)) => (&form.fonts, format!("{path}/{font_id}")),
+            None => (self.fonts, font_id.clone()),
+        };
+        let Some(font) = fonts.get(&font_id).cloned() else {
             return Err(EngineError::MissingPart {
-                part: format!("font resource /{font_id} referenced by Tf"),
+                part: format!("font resource /{reported} referenced by Tf"),
             });
         };
 
@@ -877,6 +939,7 @@ impl<'a> Interpreter<'a> {
         }
 
         let scale = self.gs.ctm.x_scale();
+        self.last_run = Some(self.shown.len());
         self.shown.push(ShownText {
             text,
             codes: kept_codes,
@@ -887,7 +950,7 @@ impl<'a> Interpreter<'a> {
             glyph_up: (trm.c, trm.d),
             code_advances: advance_known
                 .then(|| per_code.iter().map(|d| d * scale).collect::<Vec<_>>()),
-            font_id,
+            font_id: reported,
             font_size: self.ts.font_size,
             em_scale_pt: trm.y_scale(),
             mcid: self.current_mcid(),
@@ -897,12 +960,15 @@ impl<'a> Interpreter<'a> {
             // either way — this is an observation about the run, never a reason to withhold it.
             render_mode: self.ts.render_mode,
             op_index: self.op_index,
+            font,
+            in_form: !self.form_stack.is_empty(),
         });
 
         Ok(())
     }
 
-    /// `Do` — record an image placement, or count a name that did not resolve (v1-S6).
+    /// `Do` — run the form it names, record an image placement, or count a name that did not
+    /// resolve (v1-S6; forms `docs/30-FORM-XOBJECTS-SCOPE.md`).
     ///
     /// # The unit square is the whole trick
     ///
@@ -924,20 +990,37 @@ impl<'a> Interpreter<'a> {
     /// interpreter never held a `Document` and giving it one to look up a subtype would hand the
     /// content-stream reader the whole object graph. Extraction sorts `/Image` from `/Form`,
     /// where the document is already in scope.
-    fn draw_xobject(&mut self, operands: &[lopdf::Object]) {
+    fn draw_xobject(&mut self, operands: &[lopdf::Object]) -> Result<(), EngineError> {
         let name = match operands.first() {
             Some(lopdf::Object::Name(n)) => String::from_utf8_lossy(n).into_owned(),
             // `Do` with no operand, or an operand that is not a name. The document is malformed;
             // nothing here can say what it meant to draw.
             _ => {
                 self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
-                return;
+                return Ok(());
             }
         };
-        let Some(object) = self.xobjects.as_ref().and_then(|x| x.get(&name)).copied() else {
-            self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
-            return;
+        // Inside a form, the name is the form's own resource.
+        let names = match self.form_stack.last() {
+            Some((_, form, _)) => Some(&form.xobjects),
+            None => self.xobjects.as_ref(),
         };
+        let Some(object) = names.and_then(|x| x.get(&name)).copied() else {
+            self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
+            return Ok(());
+        };
+        // `docs/30-FORM-XOBJECTS-SCOPE.md` §7. A form that draws itself, directly or through
+        // another, has no finite reading, and nesting has a bound; either `Do` is not entered, and
+        // its placement is counted below with every other form this reader did not run.
+        let enterable = self.form_stack.len() < MAX_FORM_DEPTH
+            && !self.form_stack.iter().any(|(id, ..)| *id == object);
+        if let (Some(resolve), true) = (self.forms, enterable) {
+            match resolve(object)? {
+                Lookup::Form(form) => return self.draw_form(object, form, &name),
+                Lookup::PastLimit => return Err(self.past_form_allowance()),
+                Lookup::NotRun => {}
+            }
+        }
         let m = self.gs.ctm;
         self.images.push(ImagePlacement {
             object,
@@ -948,6 +1031,85 @@ impl<'a> Interpreter<'a> {
                 m.apply(0.0, 1.0),
             ],
         });
+        Ok(())
+    }
+
+    /// Run `form` where a `Do` draws it, as PDF 32000-1 §8.10.1 paints one: the graphics state
+    /// saved, `/Matrix` concatenated to the CTM, the form's own resources in scope, and the state
+    /// restored after (`docs/30-FORM-XOBJECTS-SCOPE.md` §4).
+    ///
+    /// **Everything the page's own operators read is restored**: the text state, the open
+    /// marked-content sequences, the path being built, and whether text was drawn since the pen
+    /// was placed. So the page's own runs come out as they did before forms were entered, whatever
+    /// the form does — a `Tf` inside it, a `Q` it never matched, an `EMC` too many.
+    ///
+    /// **The rectangles and lines a form paints are not kept** (§8). The ruled rule builds one
+    /// lattice from every rectangle on a page, and forms commonly paint page furniture: on
+    /// opendataloader-bench a header tab drawn by a form broke the 13 x 4 and 10 x 4 tables two
+    /// pages drew themselves, TEDS 0.1728 -> 0.1343, while no table on ParseBench's 503 table
+    /// pages was found through a form's ink. Its text and images are the page's.
+    fn draw_form(
+        &mut self,
+        id: lopdf::ObjectId,
+        form: Arc<Form>,
+        name: &str,
+    ) -> Result<(), EngineError> {
+        let path = match self.form_stack.last() {
+            Some((_, _, outer)) => format!("{outer}/{name}"),
+            None => name.to_owned(),
+        };
+        let painted = (self.rects.len(), self.segments.len());
+        let saved = (
+            self.gs,
+            self.gs_stack.clone(),
+            self.ts.clone(),
+            self.mc_stack.clone(),
+            self.text_drawn_since_placement,
+            self.last_run.take(),
+            std::mem::take(&mut self.subpath),
+            std::mem::take(&mut self.pending),
+            std::mem::take(&mut self.pending_segments),
+        );
+        self.gs.ctm = form.matrix.then(self.gs.ctm);
+        self.form_stack.push((id, Arc::clone(&form), path));
+        let mut outcome = Ok(());
+        for op in &form.operations {
+            if self.form_ops_left == 0 {
+                outcome = Err(self.past_form_allowance());
+                break;
+            }
+            self.form_ops_left -= 1;
+            self.form_ops_run = self.form_ops_run.saturating_add(1);
+            outcome = self.step(op);
+            if outcome.is_err() {
+                break;
+            }
+        }
+        self.form_stack.pop();
+        self.rects.truncate(painted.0);
+        self.segments.truncate(painted.1);
+        (
+            self.gs,
+            self.gs_stack,
+            self.ts,
+            self.mc_stack,
+            self.text_drawn_since_placement,
+            self.last_run,
+            self.subpath,
+            self.pending,
+            self.pending_segments,
+        ) = saved;
+        outcome
+    }
+
+    /// The page's forms ran past its operation allowance: recorded, so the page is read again alone
+    /// or refused under the page ceiling (`crate::budget`).
+    fn past_form_allowance(&mut self) -> EngineError {
+        self.form_ops_exhausted = true;
+        EngineError::ResourceLimit {
+            limit: "content operations a page runs through its form XObjects".into(),
+            configured: crate::budget::MAX_PAGE_OPERATIONS.to_string(),
+        }
     }
 
     /// `TJ` — strings interleaved with positioning adjustments.
@@ -975,7 +1137,7 @@ impl<'a> Interpreter<'a> {
                         // sits with the character rather than being reconstructed later. Only
                         // when text was drawn since the pen was placed: otherwise this number
                         // opens a gap from the new origin, not after that run.
-                        if let Some(last) = self.shown.last_mut() {
+                        if let Some(last) = self.last_run.and_then(|i| self.shown.get_mut(i)) {
                             let idx = last.text.chars().count() as u32;
                             last.text.push(' ');
                             last.synthesized_indices.push(idx);
@@ -1036,7 +1198,7 @@ fn distinct(values: impl Iterator<Item = f64>) -> Vec<f64> {
     out
 }
 
-fn matrix_operands(operands: &[lopdf::Object]) -> Result<Matrix, EngineError> {
+pub(crate) fn matrix_operands(operands: &[lopdf::Object]) -> Result<Matrix, EngineError> {
     if operands.len() < 6 {
         return Err(EngineError::Malformed {
             what: "matrix operands".into(),

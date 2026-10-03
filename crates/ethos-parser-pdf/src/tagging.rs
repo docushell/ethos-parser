@@ -2574,6 +2574,19 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
 
     let (artifact, traces) = crate::extract::extract_with_positions(doc, profile)?;
 
+    // `docs/30-FORM-XOBJECTS-SCOPE.md` §8. A run drawn inside a form XObject is shown by an
+    // operator of the form's stream, not the page's, so there is no operator here to wrap; wrapping
+    // the page's `Do` would bind every run of the form to one element, whichever blocks the cut
+    // put them in.
+    if let Some((page, trace)) = traces.iter().find(|(_, t)| t.form_runs > 0) {
+        return Err(unsupported(format!(
+            "page {page} shows {} text run(s) through a form XObject. The writer marks text by \
+             wrapping the page's own text operators, and these are shown by the form's stream, \
+             which it does not rewrite (docs/30-FORM-XOBJECTS-SCOPE.md §8)",
+            trace.form_runs
+        )));
+    }
+
     if let Some(state) = artifact
         .assurance
         .page_states

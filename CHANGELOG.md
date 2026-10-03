@@ -95,6 +95,37 @@ build is not comparable with a 0.63.0 one**.
   nothing decodes is still refused, and so is one drawing with a predefined CJK CMap, whose code
   widths this profile cannot read.
 
+### Form XObjects are read as page content (decision #37)
+
+`observation_rule` `page-observations-v2` -> `-v3`, so an artifact from this build is not comparable
+with one from before it. [`docs/30-FORM-XOBJECTS-SCOPE.md`](docs/30-FORM-XOBJECTS-SCOPE.md) is the
+scope, and its §13 the measurements.
+
+- **A `Do` naming a `/Form` runs the form's content stream where it stands**, under its `/Matrix`,
+  with its own `/Resources` (the page's where it has none), each time it is drawn, nested to a depth
+  of eight and never into itself. Its text runs and images are the page's. Through 0.63.0 a form was
+  counted and not read, and a page whose whole content was one form emitted no text.
+- **Everything the page's own operators read is restored after a form**, so the page's own runs are
+  what they were: over 2,308 documents no run was lost and no document newly refused, while 566
+  gained 82,285 runs. ParseBench content faithfulness 0.6478 -> 0.6612.
+- **A run drawn inside a form names its font by the resource path that reaches it**: `font_id`
+  `Xf1/F1` is font `/F1` of the form the page names `/Xf1`.
+- **`form-xobjects-not-descended` now counts only the forms not entered** — one drawing itself,
+  one nested past eight, one whose `/Matrix` is not six numbers — and `form-xobject-text-not-descended`
+  says what descent does not reach. **New:** `form-xobject-mcids-not-bound` counts the `/MCID`s
+  forms open, which index a `/StructParents` this reader does not open and bind nothing.
+- **A form's rectangles and lines are not offered to the table rules.** Offered, a header tab drawn
+  by a form broke two tables on opendataloader-bench (TEDS 0.1728 -> 0.1343) and ParseBench's table
+  score did not move; withheld, both corpora score as before.
+- **`classify` counts the text a page draws through a form**, so a page whose whole content is one
+  form is no longer `no-text`, and a form's images count toward `image_count`.
+- **`tag` refuses a document showing text through a form**: the writer wraps the page's own text
+  operators and does not rewrite a form's stream. It tagged six such documents of 271 before,
+  covering their page text only.
+- **Not met:** the scope's bar that opendataloader-bench NID not fall. It moved 0.8849 -> 0.8847, the
+  net of 24 documents rising and one falling 0.31, where a chart's labels drawn by a form stop the
+  gutter cut dividing two columns.
+
 ---
 
 ## [0.63.0] — what reading may cost is bounded, and PDFDocEncoding read where three decoders agree

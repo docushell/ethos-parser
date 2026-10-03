@@ -1,5 +1,13 @@
 # Form XObject descent — measured, and the answer splits
 
+**Reopened and built 2026-10-03** (decision #37,
+[`30-FORM-XOBJECTS-SCOPE.md`](../../30-FORM-XOBJECTS-SCOPE.md)). §6's first condition was met by
+ParseBench, a redistributable corpus holding the blank-artifact shape, measured with
+[`parsebench_forms.py`](parsebench_forms.py): 533 of its documents draw text through a form, 8 of
+its 506 text documents show no text in their pages' own streams, and the broad case below is not
+refuted there — charts and slide exports draw their labels through forms. The scope's §13 holds what
+the build measured. **What follows is the 2026-09-22 record, unchanged.**
+
 **Measured 2026-09-22.** Task G3 in `.plans/PRIORITIES.md`, proposed by the PageIndex review
 (`.plans/PAGEINDEX-REVIEW.md` §3.3) as *"the largest pure-recall item the review found"*.
 

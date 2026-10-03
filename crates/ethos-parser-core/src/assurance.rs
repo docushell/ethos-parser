@@ -250,6 +250,14 @@ pub mod codes {
     /// `q /Xf1 Do Q` emits zero nodes with `pages_failed: 0`, and nothing distinguishes it from a
     /// blank page.
     pub const FORM_XOBJECTS_NOT_DESCENDED: &str = "form-xobjects-not-descended";
+    /// Marked-content ids opened inside form XObjects bind nothing
+    /// (`docs/30-FORM-XOBJECTS-SCOPE.md` §7).
+    ///
+    /// Document-scoped and conditional. Such an id indexes the form's own `/StructParents`, which
+    /// this reader does not open; read as the page's id it would bind the form's text to whatever
+    /// element the page's id names, so the runs inside carry no id instead, and this says how many
+    /// sequences that was.
+    pub const FORM_XOBJECT_MCIDS_NOT_BOUND: &str = "form-xobject-mcids-not-bound";
     /// Low-contrast text is not detected, at any threshold (v1-S6).
     ///
     /// The leftover beside the two findings that did ship. Nothing in this profile reads colour:
@@ -717,8 +725,8 @@ impl Capabilities {
                  evidence. The digest covers the ENCODED bytes, so a consumer decoding them needs \
                  the `/Filter` chain named beside it; where those bytes are not a standalone file \
                  the media type says so rather than guessing one. Two further gaps are counted \
-                 separately where they occur: images drawn inside form XObjects are not seen, and \
-                 inline images are counted rather than emitted.",
+                 separately where they occur: images drawn inside a form XObject this reader does \
+                 not enter are not seen, and inline images are counted rather than emitted.",
             ));
         } else {
             out.push(Limitation::profile(

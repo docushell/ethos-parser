@@ -3583,103 +3583,406 @@ fn an_image_is_a_node_with_a_placement_and_a_digest() {
     );
 }
 
-/// **A form XObject is counted on the document, not only refused in the profile** (v2.2-S2).
+/// **A form XObject the page draws is read as the page draws it** (`docs/30-FORM-XOBJECTS-SCOPE.md`).
 ///
-/// The third member of the `Do` family, and the one the pair above did not cover. `image-xobject-
-/// drawn` and `image-declared-not-drawn` differ in whether the `Do` is written; this fixture
-/// writes the same `Do` and changes the `/Subtype` to `/Form`. The result is neither an image node
-/// (this profile emits nodes for `/Image`) nor a text node (this profile does not descend), so the
-/// only thing on the artifact that can say the form's text existed is a count — and until v2.2-S2
-/// there was none. The `else` arm incremented nothing and the placement was discarded in silence.
-///
-/// **The two limitations are both here on purpose, and their scopes are the test.** The
-/// profile-scoped one rides on every artifact this engine writes, including artifacts for
-/// documents containing no XObject at all; asserting only that would pass on a blank page.
+/// Through 0.63.0 this fixture's form was counted and not read: its sentence was absent, and
+/// `form-xobjects-not-descended` said so on the document and on the page (v2.2-S2). The form draws
+/// through the same font object as the page, under a `cm` the page sets, so what is tested is where
+/// its text lands, what its font is named by, and that nothing still says it went unread.
 #[test]
-fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
+fn a_drawn_form_xobject_is_read_as_the_page_draws_it() {
     let a = extract_ok(engine_fx("form-xobject-text-drawn"));
 
-    // The page's own sentence is a node. The form's is not — and the fixture draws both through
-    // the SAME font object, so "the form was unreadable" is not available as an explanation.
-    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    // The form's `1 0 0 1 0 6 Tm` under the page's `1 0 0 1 40 40 cm` is (40, 46) in user space,
+    // and 98 points down a 144-point page.
+    let placed: Vec<(&str, i64, i64, &str)> = runs(&a)
+        .iter()
+        .map(|r| {
+            let l = &r.locator;
+            (r.text.as_str(), l.origin_x, l.origin_y, r.font_id.as_str())
+        })
+        .collect();
     assert_eq!(
-        texts,
-        vec!["Drawn by the page"],
-        "the page's text is read and the form's is not; a reader that descended would show both, \
-         and a reader that lost the page's would show neither"
+        placed,
+        vec![
+            ("Drawn by the page", 4000, 4400, "F1"),
+            ("Drawn inside the form", 4000, 9800, "Xf1/F1"),
+        ],
+        "the form's run is named by the resource path that reaches its font, because `/F1` in \
+         the page's resources is a different dictionary entry, even where it names the same font"
     );
     assert_eq!(
         a.pages.iter().map(|p| p.images.len()).sum::<usize>(),
         0,
-        "a `/Form` is not a picture: emitting an image node for it would put something on the \
-         wire the document never called one"
+        "a `/Form` is not a picture"
     );
-
-    let declared = |scope| {
-        a.assurance.limitations.iter().find(|l| {
-            l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED && l.scope == scope
-        })
-    };
-    let doc_scoped = declared(ethos_parser_core::LimitationScope::Document)
-        .expect("the `Do` happened HERE, and the artifact has to say so");
     assert!(
-        doc_scoped.detail.starts_with("1 form XObject(s)"),
-        "the COUNT is the whole content of this limitation, not its prose: {}",
-        doc_scoped.detail
-    );
-
-    // And on the page it cost (review 2026-09-26 N20), which is what the binding API reads: a
-    // search that finds nothing on page 1 has not observed that page 1 says nothing.
-    let page_scoped = declared(ethos_parser_core::LimitationScope::Page(1))
-        .expect("the page that drew the form says so too");
-    assert!(
-        page_scoped.detail.starts_with("1 form XObject(s)"),
-        "{}",
-        page_scoped.detail
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED),
+        "every form here was entered, so nothing may say one was not"
     );
     assert_eq!(
         a.assurance.page_binding_status(1),
-        ethos_parser_core::PageBindingResult::CapabilityLimited {
-            limitation_code: ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED.into()
-        }
+        ethos_parser_core::PageBindingResult::Ok,
+        "a search over page 1 now observes the form's text too"
     );
-
-    // Present alongside, and different. Losing the distinction is how this defect survived.
     assert!(
         a.assurance.limitations.iter().any(|l| l.code
             == ethos_parser_pdf::limitations::FORM_XOBJECT_TEXT_NOT_DESCENDED
             && l.scope == ethos_parser_core::LimitationScope::Profile),
-        "the profile-scoped statement of policy stays where it was"
+        "the profile still says which forms descent does not reach"
     );
+}
 
-    // **The negative half, which is what makes the positive one mean anything.** A document-scoped
-    // code that appeared on every document would be the profile-scoped one under a second name.
-    for name in [
-        "image-xobject-drawn",
-        "image-declared-not-drawn",
-        "markdown-two-blocks",
-    ] {
-        let other = extract_ok(engine_fx(name));
-        assert!(
-            !other
-                .assurance
-                .limitations
-                .iter()
-                .any(|l| l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED),
-            "{name} draws no form XObject and must not carry the count. \
-             `image-xobject-drawn` is the sharp case: it writes the same `Do`, and the only \
-             difference is the `/Subtype`"
-        );
-        assert!(
-            other
-                .assurance
-                .limitations
-                .iter()
-                .any(|l| l.code == ethos_parser_pdf::limitations::FORM_XOBJECT_TEXT_NOT_DESCENDED),
-            "{name} still carries the PROFILE-scoped one, which is exactly why it could not \
-             stand in for the document-scoped one"
-        );
+/// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
+/// draws `page` (object 5). Each of `forms` is a form XObject from object 6 on: its extra dictionary
+/// entries, and its content.
+fn form_document(page_xobjects: &str, page: &[u8], forms: &[(&str, &[u8])]) -> Vec<u8> {
+    let stream = |extra: &str, data: &[u8]| {
+        [
+            format!("<< {extra} /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let mut objects = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 4 0 \
+             R >> /XObject << {page_xobjects} >> >> /Contents 5 0 R >>"
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        stream("", page),
+    ];
+    for (dict, data) in forms {
+        objects.push(stream(
+            &format!("/Type /XObject /Subtype /Form /BBox [0 0 300 200] {dict}"),
+            data,
+        ));
     }
+    pdf_from_objects(&objects)
+}
+
+/// Every run as (text, origin x, origin y, font id), sorted, so a test reads where text landed and
+/// not which order the reading-order cut put it in.
+fn placed(a: &ExtractArtifact) -> Vec<(String, i64, i64, String)> {
+    let mut out: Vec<_> = runs(a)
+        .iter()
+        .map(|r| {
+            let l = &r.locator;
+            (r.text.clone(), l.origin_x, l.origin_y, r.font_id.clone())
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+fn limitation_detail(a: &ExtractArtifact, code: &str) -> Option<String> {
+    a.assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == code && l.scope == ethos_parser_core::LimitationScope::Document)
+        .map(|l| l.detail.clone())
+}
+
+/// **A form runs under its `/Matrix`, nested forms under both, and each draw shows its text
+/// where it draws it** (`docs/30-FORM-XOBJECTS-SCOPE.md` §4). `/Fm1` is drawn twice, 50 points
+/// apart, and draws `/Fm2`; four runs, each placed by the page's `cm`, `/Fm1`'s matrix and its own
+/// text matrix, each font named by the resource path that reaches it.
+#[test]
+fn a_form_runs_under_its_matrix_and_each_draw_shows_its_text() {
+    let bytes = form_document(
+        "/Fm1 6 0 R",
+        b"q 1 0 0 1 10 10 cm /Fm1 Do Q q 1 0 0 1 10 60 cm /Fm1 Do Q",
+        &[
+            (
+                "/Matrix [1 0 0 1 5 0] /Resources << /Font << /F1 4 0 R >> /XObject << /Fm2 7 0 R \
+                 >> >>",
+                b"BT /F1 10 Tf 0 0 Td (One) Tj ET /Fm2 Do",
+            ),
+            (
+                "/Resources << /Font << /F1 4 0 R >> >>",
+                b"BT /F1 10 Tf 0 20 Td (Two) Tj ET",
+            ),
+        ],
+    );
+    let a = extracted(&bytes).expect("reads");
+    let at = |t: &str, y: i64, font: &str| (t.to_string(), 1500, y, font.to_string());
+    assert_eq!(
+        placed(&a),
+        vec![
+            at("One", 14000, "Fm1/F1"),
+            at("One", 19000, "Fm1/F1"),
+            at("Two", 12000, "Fm1/Fm2/F1"),
+            at("Two", 17000, "Fm1/Fm2/F1"),
+        ]
+    );
+    assert_eq!(
+        limitation_detail(&a, ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED),
+        None
+    );
+}
+
+/// **A form that draws itself, and one nested past eight, is not entered and is counted** (§7).
+/// The first has no finite reading; the second is the bound. The text of every form entered is
+/// read, once each.
+#[test]
+fn a_form_drawing_itself_or_nested_past_eight_is_counted_not_entered() {
+    let itself = form_document(
+        "/Fm1 6 0 R",
+        b"/Fm1 Do",
+        &[(
+            "/Resources << /Font << /F1 4 0 R >> /XObject << /Fm1 6 0 R >> >>",
+            b"BT /F1 10 Tf 20 20 Td (Self) Tj ET /Fm1 Do",
+        )],
+    );
+    let a = extracted(&itself).expect("reads, and ends");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Self"]
+    );
+    let detail = limitation_detail(&a, ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED)
+        .expect("the inner `Do` was not entered, and the document says so");
+    assert!(detail.starts_with("1 XObject(s)"), "{detail}");
+
+    // Ten forms, each drawing the next: eight are entered, and the ninth's `Do` is counted.
+    let names: Vec<String> = (1..=10).map(|k| format!("/L{k} {} 0 R", 5 + k)).collect();
+    let contents: Vec<Vec<u8>> = (1..=10)
+        .map(|k| format!("BT /F1 10 Tf 10 {} Td (L{k}) Tj ET /L{} Do", 10 * k, k + 1).into_bytes())
+        .collect();
+    let dicts: Vec<String> = (1..=10)
+        .map(|k| {
+            let next = names.get(k).cloned().unwrap_or_default();
+            format!("/Resources << /Font << /F1 4 0 R >> /XObject << {next} >> >>")
+        })
+        .collect();
+    let forms: Vec<(&str, &[u8])> = dicts
+        .iter()
+        .zip(&contents)
+        .map(|(d, c)| (d.as_str(), c.as_slice()))
+        .collect();
+    let deep = form_document(&names[0], b"/L1 Do", &forms);
+    let a = extracted(&deep).expect("reads");
+    let mut texts: Vec<String> = runs(&a).iter().map(|r| r.text.clone()).collect();
+    texts.sort();
+    assert_eq!(texts, ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"]);
+    let detail = limitation_detail(&a, ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED)
+        .expect("the ninth form was not entered");
+    assert!(detail.starts_with("1 XObject(s)"), "{detail}");
+}
+
+/// **What a form does to the state stays inside it** (§4). This form selects a font the page does
+/// not have, pops two graphics states it never pushed and opens an `/Artifact` it never closes.
+/// The page's next run is drawn in the page's own font and is not an artifact; without the
+/// restoration it would name a font the page cannot resolve and the page would be refused.
+#[test]
+fn the_page_state_survives_a_form() {
+    let bytes = form_document(
+        "/Fm1 6 0 R",
+        b"BT /F1 12 Tf ET q /Fm1 Do Q BT 10 80 Td (After) Tj ET",
+        &[(
+            "/Resources << /Font << /G1 4 0 R >> >>",
+            b"BT /G1 8 Tf 10 120 Td (Inside) Tj ET Q Q /Artifact BMC",
+        )],
+    );
+    let a = extracted(&bytes).expect("reads");
+    let after = runs(&a)
+        .into_iter()
+        .find(|r| r.text == "After")
+        .expect("the page's run");
+    assert_eq!(after.font_id, "F1");
+    assert_eq!(after.structural, None, "not inside the form's `/Artifact`");
+    let inside = runs(&a)
+        .into_iter()
+        .find(|r| r.text == "Inside")
+        .expect("the form's run");
+    assert_eq!(inside.font_id, "Fm1/G1");
+}
+
+/// **A form's `TJ` gaps stay in the form** (ParseBench `annual-report_fy2024_ja_p10`). A gap after
+/// a run this reader drops is written onto the last run kept, so two words do not fuse across lost
+/// text — but the last run kept in the page's stream is not the form's to write on. That page's
+/// `N` came out as `N` and six spaces, the gaps of a form whose glyphs this profile could not name.
+#[test]
+fn a_forms_tj_gaps_are_never_written_onto_the_pages_runs() {
+    let stream = |extra: &str, data: &[u8]| {
+        [
+            format!("<< {extra} /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 4 0 R >> \
+           /XObject << /Fm1 6 0 R >> >> /Contents 5 0 R >>"
+            .to_vec(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        stream("", b"BT /F1 10 Tf 10 100 Td (Page) Tj ET /Fm1 Do"),
+        stream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 300 200] /Resources << /Font << /G1 7 0 R >> \
+             >>",
+            b"BT /G1 10 Tf 10 80 Td [(A) -300 (A) -300 (A)] TJ ET",
+        ),
+        // A font whose `/Differences` names a glyph this profile cannot map: its runs are dropped,
+        // and their gaps have no run of the form's to go on.
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << /Differences \
+           [65 /afii57636] >> >>"
+            .to_vec(),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Page"],
+        "the page's run is the page's, and the form's dropped glyphs lend it nothing"
+    );
+}
+
+/// **A form drawn inside one of the page's marked-content sequences takes its id; an id the form
+/// opens itself binds nothing** (§7). The form's own id indexes its `/StructParents`, which this
+/// reader does not open, so its run carries none, and the document counts the sequence.
+#[test]
+fn a_form_takes_the_pages_mcid_and_its_own_binds_nothing() {
+    let bytes = form_document(
+        "/Fm1 6 0 R",
+        b"/P << /MCID 0 >> BDC q /Fm1 Do Q EMC",
+        &[(
+            "/Resources << /Font << /F1 4 0 R >> >>",
+            b"BT /F1 10 Tf 10 100 Td (Outer) Tj ET /Span << /MCID 7 >> BDC BT /F1 10 Tf 10 80 Td \
+              (Inner) Tj ET EMC",
+        )],
+    );
+    let a = extracted(&bytes).expect("reads");
+    let structural = |t: &str| {
+        runs(&a)
+            .into_iter()
+            .find(|r| r.text == t)
+            .map(|r| r.structural.clone())
+            .expect("the run")
+    };
+    assert_eq!(
+        structural("Outer"),
+        Some(ethos_parser_core::StructuralLocator::PdfMcid(0))
+    );
+    assert_eq!(structural("Inner"), None);
+    let detail = limitation_detail(&a, ethos_parser_core::codes::FORM_XOBJECT_MCIDS_NOT_BOUND)
+        .expect("the form's own id is counted");
+    assert!(
+        detail.starts_with("1 marked-content sequence(s)"),
+        "{detail}"
+    );
+}
+
+/// **A form whose stream does not decode refuses the page, as the page's own stream would**
+/// (§7): a page read without what it draws is a read nobody made. And a form with no
+/// `/Resources` draws with the page's (PDF 32000-1 §7.8.3).
+#[test]
+fn an_undecodable_form_refuses_the_page_and_a_resourceless_form_uses_the_pages() {
+    let broken = form_document(
+        "/Fm1 6 0 R",
+        b"/Fm1 Do",
+        &[(
+            "/Filter /FlateDecode /Resources << /Font << /F1 4 0 R >> >>",
+            b"not a deflate stream",
+        )],
+    );
+    let e = extracted(&broken).expect_err("refused");
+    assert!(e.to_string().contains("page 1, form 6 0 R"), "{e}");
+
+    let borrowed = form_document(
+        "/Fm1 6 0 R",
+        b"/Fm1 Do",
+        &[("", b"BT /F1 10 Tf 10 100 Td (Borrowed) Tj ET")],
+    );
+    let a = extracted(&borrowed).expect("reads");
+    assert_eq!(
+        placed(&a)
+            .into_iter()
+            .map(|(t, .., f)| (t, f))
+            .collect::<Vec<_>>(),
+        [("Borrowed".to_string(), "Fm1/F1".to_string())]
+    );
+}
+
+/// **The operations a page runs through its forms count toward its ceiling** (decision #34).
+/// Each `/Fk` draws the next ten times, so one page `Do` runs about 111,000 operations: past what
+/// a page read in parallel holds, so it is read again alone and reads whole. Twenty draws pass the
+/// page ceiling itself, and are refused naming the page.
+#[test]
+fn forms_count_toward_the_page_operation_ceiling() {
+    let leaf: Vec<u8> = [
+        b"BT /F1 10 Tf 10 10 Td (Leaf) Tj ET ".to_vec(),
+        b"0 g ".repeat(100),
+    ]
+    .concat();
+    let ten = |next: &str| format!("/{next} Do ").repeat(10).into_bytes();
+    let resources = |next: &str| {
+        format!(
+            "/Resources << /Font << /F1 4 0 R >> /XObject << /{next} {} 0 R >> >>",
+            {
+                match next {
+                    "F2" => 7,
+                    "F3" => 8,
+                    _ => 9,
+                }
+            }
+        )
+    };
+    let (r1, r2, r3) = (resources("F2"), resources("F3"), resources("F4"));
+    let (c1, c2, c3) = (ten("F2"), ten("F3"), ten("F4"));
+    let forms = |page: &[u8]| {
+        form_document(
+            "/F1 6 0 R",
+            page,
+            &[
+                (r1.as_str(), c1.as_slice()),
+                (r2.as_str(), c2.as_slice()),
+                (r3.as_str(), c3.as_slice()),
+                ("/Resources << /Font << /F1 4 0 R >> >>", leaf.as_slice()),
+            ],
+        )
+    };
+    let a = extracted(&forms(b"/F1 Do")).expect("read again alone, and whole");
+    assert_eq!(runs(&a).len(), 1000);
+
+    let e = extracted(&forms("/F1 Do ".repeat(20).as_bytes())).expect_err("past the ceiling");
+    assert!(
+        e.to_string().contains("content operations on page 1"),
+        "{e}"
+    );
+}
+
+/// **`classify` counts what a page draws through a form** (§6): a page whose whole content is one
+/// form is not `no-text`, as `extract` now reads its text.
+#[test]
+fn classify_counts_the_text_a_page_draws_through_a_form() {
+    let bytes = form_document(
+        "/Fm1 6 0 R",
+        b"q /Fm1 Do Q",
+        &[(
+            "/Resources << /Font << /F1 4 0 R >> >>",
+            b"BT /F1 10 Tf 10 100 Td (Inside) Tj ET",
+        )],
+    );
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+    let c = ethos_parser_pdf::classify(&doc, &profile).expect("classifies");
+    assert_eq!(c.pages_with_text, 1);
+    assert_eq!(c.pages[0].text_operators, 1);
+    assert!(
+        !c.pages[0]
+            .ocr_reasons
+            .contains(&ethos_parser_pdf::OcrNeedReason::NoText),
+        "{:?}",
+        c.pages[0].ocr_reasons
+    );
 }
 
 /// **An image that did not load as a stream is counted unresolved, not called a form** (tracker
@@ -3758,7 +4061,7 @@ fn an_image_that_did_not_load_as_a_stream_is_counted_unresolved_not_as_a_form() 
     let form = extracted(&document("Form", 2)).expect("reads");
     assert_eq!(declared(&form, unresolved, document_scope), None);
     let detail = declared(&form, forms, page_one).expect("counted on its page");
-    assert!(detail.starts_with("1 form XObject(s)"), "{detail}");
+    assert!(detail.starts_with("1 XObject(s)"), "{detail}");
 }
 
 /// **A composite font's widths come from its descendant, and the CID is the key** (v2.2-S3).

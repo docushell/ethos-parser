@@ -549,11 +549,24 @@ pub fn load_page_fonts(
     doc: &crate::document::Document,
     page_dict: &lopdf::Dictionary,
 ) -> Result<BTreeMap<String, Arc<Font>>, EngineError> {
+    match crate::extract::page_resources(doc.inner(), page_dict) {
+        Some(resources) => load_fonts(doc, &resources),
+        None => Ok(BTreeMap::new()),
+    }
+}
+
+/// Resolve every font in one resource dictionary: a page's, or a form XObject's own
+/// (`docs/30-FORM-XOBJECTS-SCOPE.md` §4).
+///
+/// # Errors
+///
+/// As [`load_page_fonts`].
+pub(crate) fn load_fonts(
+    doc: &crate::document::Document,
+    resources: &lopdf::Dictionary,
+) -> Result<BTreeMap<String, Arc<Font>>, EngineError> {
     let mut out = BTreeMap::new();
 
-    let Some(resources) = crate::extract::page_resources(doc.inner(), page_dict) else {
-        return Ok(out);
-    };
     let Some(fonts) = resolve_dict(doc.inner(), resources.get(b"Font").ok()) else {
         return Ok(out);
     };

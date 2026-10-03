@@ -66,6 +66,7 @@ pub(crate) mod document;
 pub(crate) mod encoding;
 pub(crate) mod extract;
 pub(crate) mod fonts;
+pub(crate) mod form_xobjects;
 pub(crate) mod forms;
 pub(crate) mod freed;
 pub(crate) mod headings;

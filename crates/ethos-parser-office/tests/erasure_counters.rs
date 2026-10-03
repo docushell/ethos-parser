@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 16] = [
+const PDF_COUNTERS: [&str; 18] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -120,6 +120,11 @@ const PDF_COUNTERS: [&str; 16] = [
     // Review 2026-09-26 N39. The field values and annotation `/Contents` that will not decode, the
     // count `form-annotation-text-undecodable` names.
     "undecodable_object_texts",
+    // Decision #37 (`docs/30-FORM-XOBJECTS-SCOPE.md`). The `/MCID`s forms open, the count
+    // `form-xobject-mcids-not-bound` names, and the runs drawn through a form, which the tag writer
+    // refuses on. Caught the same way, by the targeted run that included this file.
+    "form_mcids",
+    "form_runs",
 ];
 
 /// An accumulation that cannot wrap: the crate's saturating fold, or `saturating_add` itself.

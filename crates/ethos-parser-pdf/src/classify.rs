@@ -79,9 +79,10 @@ pub struct PageClassification {
     /// so this over-counts for CJK. It is used only for the presence and sparseness signals,
     /// never presented as a character count.
     pub text_bytes: u32,
-    /// Text-showing operators seen.
+    /// Text-showing operators seen, a form's each time the page draws it
+    /// (`docs/30-FORM-XOBJECTS-SCOPE.md` §6).
     pub text_operators: u32,
-    /// Image XObjects referenced by this page's resources.
+    /// Image XObjects referenced by this page's resources, and by those of each form it draws.
     pub image_count: u32,
     /// Path construction and painting operators.
     pub path_operators: u32,
@@ -350,11 +351,49 @@ fn tally_page(
 
     let operations =
         crate::extract::page_operations_whole(doc.inner(), page_number, page_id, content)?;
-    for op in &operations {
+    tally_operations(&mut t, &operations)?;
+
+    if let Ok(dict) = doc.inner().get_dictionary(page_id) {
+        t.annotations = dict
+            .get(b"Annots")
+            .ok()
+            .and_then(|o| o.as_array().ok())
+            .map(|a| a.len() as u32)
+            .unwrap_or(0);
+
+        t.image_count = crate::extract::page_resources(doc.inner(), dict)
+            .map_or(0, |resources| count_image_xobjects(doc, &resources));
+
+        // `docs/30-FORM-XOBJECTS-SCOPE.md` §6. What a page draws through a form is the page's, as
+        // `extract` reads it: a page whose whole content is one form is not `no-text`, and a scan
+        // drawn inside one is imagery.
+        let mut forms = FormTally {
+            doc,
+            page_dict: dict,
+            page_number,
+            content,
+            left: crate::budget::MAX_PAGE_OPERATIONS.saturating_sub(operations.len()),
+            drawing: Vec::new(),
+            seen: std::collections::BTreeSet::new(),
+        };
+        let names = crate::images::page_xobjects(doc.inner(), dict);
+        forms.walk(&operations, &names, &mut t)?;
+    }
+
+    Ok(t)
+}
+
+/// Count one stream's operations into `t`.
+///
+/// Counting interprets nothing, and still refuses what extract refuses (review 2026-09-26 N41):
+/// an operator Table A.1 does not list is contract §8's hard error, and the v0 scope names it as
+/// classify's exit-2 example.
+fn tally_operations(
+    t: &mut PageTally,
+    operations: &[lopdf::content::Operation],
+) -> Result<(), EngineError> {
+    for op in operations {
         let name = op.operator.as_str();
-        // Counting interprets nothing, and still refuses what extract refuses (review 2026-09-26
-        // N41): an operator Table A.1 does not list is contract §8's hard error, and the v0 scope
-        // names it as classify's exit-2 example.
         crate::ops::Operator::of(name)?;
         if th::TEXT_SHOWING_OPERATORS.contains(&name) {
             t.text_operators += 1;
@@ -369,19 +408,73 @@ fn tally_page(
             t.rectangles += 1;
         }
     }
+    Ok(())
+}
 
-    if let Ok(dict) = doc.inner().get_dictionary(page_id) {
-        t.annotations = dict
-            .get(b"Annots")
-            .ok()
-            .and_then(|o| o.as_array().ok())
-            .map(|a| a.len() as u32)
-            .unwrap_or(0);
+/// The forms one page draws, counted each time a `Do` draws one, within the page's operation
+/// ceiling and to the depth `extract` enters (`docs/30-FORM-XOBJECTS-SCOPE.md` §7).
+struct FormTally<'d> {
+    doc: &'d Document,
+    page_dict: &'d lopdf::Dictionary,
+    page_number: u32,
+    content: &'d crate::budget::ContentBudget,
+    /// What is left of the page's operation ceiling.
+    left: usize,
+    /// The forms being counted, innermost last: a form drawing itself is not counted again.
+    drawing: Vec<lopdf::ObjectId>,
+    /// The forms whose resources' images are counted, once each as a page's are.
+    seen: std::collections::BTreeSet<lopdf::ObjectId>,
+}
 
-        t.image_count = count_image_xobjects(doc, dict);
+impl FormTally<'_> {
+    fn walk(
+        &mut self,
+        operations: &[lopdf::content::Operation],
+        names: &std::collections::BTreeMap<String, lopdf::ObjectId>,
+        t: &mut PageTally,
+    ) -> Result<(), EngineError> {
+        let doc = self.doc.inner();
+        for op in operations.iter().filter(|op| op.operator == "Do") {
+            let Some(id) = op
+                .operands
+                .first()
+                .and_then(|o| o.as_name().ok())
+                .and_then(|n| names.get(String::from_utf8_lossy(n).as_ref()))
+                .copied()
+            else {
+                continue;
+            };
+            if self.drawing.len() >= crate::form_xobjects::MAX_FORM_DEPTH
+                || self.drawing.contains(&id)
+            {
+                continue;
+            }
+            let Some((stream, _)) = crate::form_xobjects::form_stream(doc, id) else {
+                continue;
+            };
+            let label = format!("page {}, form {} {} R", self.page_number, id.0, id.1);
+            let (form_operations, bytes) =
+                crate::extract::content_operations(doc, &label, vec![id], self.left)?
+                    .ok_or_else(|| crate::budget::page_operations_past_ceiling(self.page_number))?;
+            self.left -= form_operations.len();
+            self.content.charge(bytes, form_operations.len())?;
+            tally_operations(t, &form_operations)?;
+            let resources = crate::form_xobjects::form_resources(doc, &stream.dict, self.page_dict);
+            let first = self.seen.insert(id);
+            let inner = resources.map_or_else(Default::default, |r| {
+                if first {
+                    t.image_count = t
+                        .image_count
+                        .saturating_add(count_image_xobjects(self.doc, &r));
+                }
+                crate::images::resource_xobjects(doc, &r)
+            });
+            self.drawing.push(id);
+            self.walk(&form_operations, &inner, t)?;
+            self.drawing.pop();
+        }
+        Ok(())
     }
-
-    Ok(t)
 }
 
 /// Total bytes of string operands, including strings nested in a `TJ` array.
@@ -402,11 +495,8 @@ fn operand_text_bytes(operands: &[lopdf::Object]) -> u32 {
     total
 }
 
-/// Count image XObjects reachable from a page's resource dictionary.
-fn count_image_xobjects(doc: &Document, page_dict: &lopdf::Dictionary) -> u32 {
-    let Some(resources) = crate::extract::page_resources(doc.inner(), page_dict) else {
-        return 0;
-    };
+/// Count the image XObjects one resource dictionary names: a page's, or a drawn form's own.
+fn count_image_xobjects(doc: &Document, resources: &lopdf::Dictionary) -> u32 {
     let Ok(xobjects) = resources.get(b"XObject") else {
         return 0;
     };

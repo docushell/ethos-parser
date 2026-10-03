@@ -294,7 +294,7 @@ const CORE: &[&str] = &[
     "QUANTUM_PER_POINT",
     "QuantizeError",
     "RasterDpi",
-    "OBSERVATION_RULE_V2",
+    "OBSERVATION_RULE_V3",
     "READING_ORDER_RULE_V0",
     "READING_ORDER_RULE_V1",
     "READING_ORDER_RULE_V2",

@@ -1503,7 +1503,9 @@ pub struct TextRunAttributes {
     pub scalar_code_mismatch: bool,
     /// Characters this reader inserted, by index into `text`. Empty for verbatim text.
     pub synthesized: Vec<SynthesizedAt>,
-    /// Font resource name, as the document names it.
+    /// Font resource name, as the document names it. A run drawn inside a form XObject is named by the
+    /// resource names that reach its font, joined by `/`: `Xf1/F1` is font `/F1` of the form the page
+    /// names `/Xf1` (`docs/30-FORM-XOBJECTS-SCOPE.md`).
     pub font_id: String,
     /// Font size in integer centipoints. **Never used as a box height.**
     pub font_size: i64,
