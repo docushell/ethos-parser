@@ -139,22 +139,22 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V11` documents — an ODT
+/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V12` documents — an ODT
 /// or ODP `<text:h>` now projects as `<h1>`..`<h6>` at the level it declared, where before it
 /// projected `<p>`. Both ids move together for the reason `-v3` gives: the change went through
 /// `heading_level`, which both projections call. A level past six projects `<p>`, because
 /// `<h300>` is not an element. **The same id also carries the erasure declaration**, folded for
-/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V11` gives: a declared heading that comes out
+/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V12` gives: a declared heading that comes out
 /// `<p>` is counted, at the same value its sibling counts, because both projections commit the
 /// same flattening. Not one character of the HTML changes; the census does.
 ///
-/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V11` documents. Both ids
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V12` documents. Both ids
 /// move together because both projections call `ink_sequenced`.
 ///
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
-/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V11`.
-pub const HTML_RULE_BLOCKS_V11: &str = "html-blocks-v11";
+/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`.
+pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -333,7 +333,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v11`
+/// # The rule, in full — `html-blocks-v12`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
@@ -448,7 +448,7 @@ pub fn to_html(
                 emitted_tables[t] = true;
                 flush_block(&mut e, &mut open_block);
                 list.close_to(&mut e, 0);
-                emit_table(&mut e, &plans[t]);
+                emit_table(&mut e, &plans[t], &pitch);
                 open_item = None;
             }
             open_group = None;
@@ -506,7 +506,14 @@ pub fn to_html(
                 if !matches!(open_item, Some((_, true))) {
                     *erasures.entry(GFM_LIST_ITEM_RUN_JOINS).or_insert(0) += 1;
                 }
-                e.syntax(" ");
+                // `-v12`: no space between two fragments of one word, as in a table cell.
+                let abuts = i
+                    .checked_sub(1)
+                    .and_then(|at| payload.nodes.get(at))
+                    .is_some_and(|prev| crate::markdown::cell_runs_abut(prev, node, &pitch));
+                if !abuts {
+                    e.syntax(" ");
+                }
             } else {
                 list.open_item(&mut e, role.depth);
             }
@@ -532,7 +539,7 @@ pub fn to_html(
                 let broke_a_line = crate::markdown::on_different_lines(prev, node);
                 if drew_space || broke_a_line {
                     Some(true)
-                } else if crate::markdown::ink_contiguous(prev, node) {
+                } else if crate::markdown::ink_contiguous(prev, node, &pitch) {
                     Some(false)
                 } else {
                     None
@@ -635,7 +642,7 @@ pub fn to_html(
     // wrote in it.
     for (t, plan) in plans.iter().enumerate() {
         if plan.projected && !emitted_tables[t] {
-            emit_table(&mut e, plan);
+            emit_table(&mut e, plan, &pitch);
         }
     }
 
@@ -675,7 +682,7 @@ pub fn to_html(
 /// **A hole is still a cell.** A slot no cell originates in and no merge reaches comes out as
 /// `<td></td>`: the document drew that position and wrote nothing in it, and truncating it to
 /// tidy the row is the competitor erasure A14 names.
-fn emit_table(e: &mut Emit, plan: &TablePlan) {
+fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &crate::markdown::PitchReference) {
     e.syntax("<table>\n");
     for row in 0..plan.rows {
         e.syntax("<tr>\n");
@@ -703,12 +710,16 @@ fn emit_table(e: &mut Emit, plan: &TablePlan) {
             e.syntax(">");
 
             let mut first = true;
+            let mut prev: Option<&crate::Node> = None;
             for node in &plan.slots[index] {
                 let text = normalize(&node.text);
+                let abuts =
+                    prev.is_some_and(|prev| crate::markdown::cell_runs_abut(prev, node, pitch));
+                prev = Some(node);
                 if text.is_empty() {
                     continue;
                 }
-                if !first {
+                if !first && !abuts {
                     // Two runs in one cell. The detector concatenates their raw text with nothing
                     // between; the space is this exporter's, and saying so is why it is syntax.
                     e.syntax(" ");

@@ -59,6 +59,35 @@ of it. No LangChain tool wraps `markdown`; that reopens on a named host.
 **The README says how to install a release.** It said there was no published binary, which has
 been false since 0.55.0; it now gives the download, the digest check and the Claude Code line.
 
+### ParseBench, run as a diagnostic (2026-10-03)
+
+ParseBench's 2,078 pages were run through `markdown --source` to find defects, not to publish a
+comparison. Content faithfulness on its 506 text documents moved 0.2346 -> 0.6447; on
+opendataloader-bench, NID moved 0.8810 -> 0.8849. Three rule ids move, so **an artifact from this
+build is not comparable with a 0.63.0 one**.
+
+- **A cross-reference row in use at offset 0 is read as null.** Byte 0 is `%PDF-`, so the row
+  names no object (PDF 32000-1 §7.3.10), and qpdf reads it so. Quartz PDFContext writes such rows
+  for objects it numbered and never wrote; the open-time check refused 256 of the 506 documents on
+  them, and a `/Contents` entry naming one refused its page.
+- **`MacRomanEncoding` is read above ASCII** (`cmap_data_version` `annex-d-encodings-3`), at the
+  113 codes where pdf.js 5.7.284 and Ghostscript 10.06.0 give one glyph name. The fifteen they
+  dispute stay refused. Its 0x27 and 0x60 are `quotesingle` and `grave`, where the reader gave
+  `StandardEncoding`'s curly quotes. A run holding such a code was omitted and counted under
+  `broken-font-encoding`; every `’`, `à` and `œ` of a Quartz-made document dropped its run.
+- **Four joins that broke a word mid-line** (`markdown-blocks-v12`, `html-blocks-v12`):
+  - two runs of one marked-content sequence join across a gap narrower than a word gap in their
+    font — 22,116 pairs on 102 of the 506 documents opened a block mid-word;
+  - the reach cap is twice the font's median glyph, where it was the median plus one glyph of
+    slack — 1,468 abutting pairs on 134 documents;
+  - a font that draws no space alone takes a quarter of its median glyph for a word gap, where
+    it had none and joined only inside the 12-centipoint epsilon;
+  - two abutting runs of one table cell, or of one list item, join with no space, where a cell
+    read `M I S S I O N`.
+
+  The last two constants are this engine's, measured on two corpora, where 0.47.0 refused a tuned
+  gap epsilon; `MARKDOWN_RULE_BLOCKS_V12`'s doc says where each number comes from.
+
 ---
 
 ## [0.63.0] — what reading may cost is bounded, and PDFDocEncoding read where three decoders agree

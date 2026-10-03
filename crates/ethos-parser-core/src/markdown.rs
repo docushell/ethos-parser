@@ -142,6 +142,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
 /// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared, and one that cannot is counted |
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
+/// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -196,7 +197,15 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// `null-characters-not-projected-v1`. A document whose text holds no U+0000 projects byte for
 /// byte what `-v10` projected, and none of the 2,163 documents measured holds one. Both ids move,
 /// because `crate::html` writes through the same writer.
-pub const MARKDOWN_RULE_BLOCKS_V11: &str = "markdown-blocks-v11";
+///
+/// `-v12` (ParseBench, 2026-10-03): four joins that broke a word mid-line. A declared pair joins
+/// across a gap narrower than a word gap in its font ([`ink_contiguous`]); the reach cap is twice
+/// the median glyph ([`ink_reach`]); a font that draws no space alone takes a quarter of its
+/// median glyph for a word gap ([`FontMeasure::word_gap`]); and two abutting runs of one table
+/// cell or one list item join with no space ([`cell_runs_abut`]). Content faithfulness on that
+/// corpus's 506 text documents 0.5833 -> 0.6447, and opendataloader-bench NID 0.8810 -> 0.8849.
+/// Both ids move.
+pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -1196,6 +1205,18 @@ pub(crate) struct FontMeasure {
     pub(crate) space: Option<i64>,
 }
 
+impl FontMeasure {
+    /// The narrowest gap that may be a word gap in this font: the space the page draws, or,
+    /// where the font draws its spaces inside runs and none alone, a quarter of its median glyph
+    /// (`-v12`). ParseBench's `text_simple__endnote` kerns by position at 13 to 21 centipoints
+    /// in a font whose median glyph is 351 and whose every space is inside a run, and projected
+    /// one fragment per block. A word space is rarely under a quarter of an em, and a median
+    /// glyph is about half of one.
+    pub(crate) fn word_gap(self) -> i64 {
+        self.space.unwrap_or(self.pitch / 4)
+    }
+}
+
 pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
     let mut per_font: std::collections::HashMap<(String, i64), Vec<i64>> =
         std::collections::HashMap::new();
@@ -1271,7 +1292,14 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
 /// and turned a true 8-centipoint gap into a computed 29 — `coordi` and `nation` came out as two
 /// blocks, and the whole page projected one word per block.
 ///
-/// The multiplier is still 1 everywhere it appears — one glyph's width per glyph, one glyph of
+/// **`-v12`: the cap is twice the median per glyph.** A median is narrower than half the runs it
+/// is taken over, and a run of wide glyphs passes it by more than one glyph of slack: `onom`
+/// advances 549 a glyph on ParseBench's `text_multilang__turkish2`, and `ekonom` and `ik` came
+/// out as two blocks. Over that corpus's 506 text documents the cap broke 1 468 abutting pairs
+/// on 134 documents, at a median of 1.58 times the reference. The `AC` run is still refused by a
+/// factor of nine.
+///
+/// Before `-v12`: the multiplier is still 1 everywhere it appears — one glyph's width per glyph, one glyph of
 /// tolerance above, one glyph of permitted overlap below. The `AC` cell-pitch run above is
 /// refused by a factor of eighteen and is nowhere near the widened bound.
 pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i64, FontMeasure)> {
@@ -1289,7 +1317,7 @@ pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i
     }
     let measure = *pitch.get(&(a.font_id.clone(), a.font_size))?;
     Some((
-        loc.origin_x + advance.min((glyphs + 1) * measure.pitch),
+        loc.origin_x + advance.min((glyphs + 1) * 2 * measure.pitch),
         measure,
     ))
 }
@@ -1383,9 +1411,7 @@ pub(crate) fn ink_sequenced(
         //    reaches the text the way the page drew it.
         && (y.origin_x - a_end <= INK_EPSILON_CENTIPOINTS
             || reader_inserted_trailing_space(a)
-            || a_measure
-                .space
-                .is_some_and(|space| y.origin_x - a_end < space))
+            || y.origin_x - a_end < a_measure.word_gap())
         // 3. Overlapping by at most one of `a`'s own glyphs. Negative tracking is ordinary — CJK
         //    medians sit near -42 centipoints — but an overlap deeper than a glyph means the two
         //    runs are stacked rather than sequenced.
@@ -1416,7 +1442,13 @@ pub(crate) const INK_EPSILON_CENTIPOINTS: i64 = 12;
 /// which was drawn first. Inside a marked-content group the producer's declaration supplies both,
 /// which is why v2.2-S1 needed no more. [`ink_sequenced`] is the two-sided form the undeclared
 /// fallback needs.
-pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
+///
+/// **`-v12`: or a gap narrower than the space this font draws**, [`ink_sequenced`]'s third clause
+/// reaching the declared path. A producer that kerns by position leaves a few dozen centipoints
+/// between two runs of one word — 24 on ParseBench's `text_simple__minutes`, in a font whose
+/// space is 243 — and every such pair opened a block mid-word: 22 116 pairs on 102 of that
+/// corpus's 506 text documents.
+pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node, pitch: &PitchReference) -> bool {
     let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
         (&a.native_locator, &b.native_locator)
     else {
@@ -1425,7 +1457,11 @@ pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
     let Some(advance) = x.advance else {
         return false;
     };
-    y.origin_x - (x.origin_x + advance) <= INK_EPSILON_CENTIPOINTS
+    let gap = y.origin_x - (x.origin_x + advance);
+    gap <= INK_EPSILON_CENTIPOINTS
+        || text_run_attributes(a)
+            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .is_some_and(|measure| gap < measure.word_gap())
 }
 
 /// Whether two runs sit on different baselines — the test for "broken across a line".
@@ -1829,7 +1865,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v11`
+/// # The rule, in full — `markdown-blocks-v12`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -1952,7 +1988,7 @@ pub fn to_markdown(
             if !emitted_tables[t] {
                 emitted_tables[t] = true;
                 separate(&mut e, &mut last, Block::Standalone);
-                emit_table(&mut e, &plans[t]);
+                emit_table(&mut e, &plans[t], &pitch);
                 open_item = None;
             }
             // v2.2-S1. A table's runs are consumed by `emit_table`, so the block around them is
@@ -2008,7 +2044,14 @@ pub fn to_markdown(
                 if !matches!(open_item, Some((_, true))) {
                     *erasures.entry(GFM_LIST_ITEM_RUN_JOINS).or_insert(0) += 1;
                 }
-                e.syntax(" ");
+                // `-v12`: no space between two fragments of one word, as in a table cell.
+                let abuts = i
+                    .checked_sub(1)
+                    .and_then(|at| payload.nodes.get(at))
+                    .is_some_and(|prev| cell_runs_abut(prev, node, &pitch));
+                if !abuts {
+                    e.syntax(" ");
+                }
             } else {
                 separate(&mut e, &mut last, Block::ListItem(role.depth));
                 // Two spaces per level, which is what GFM reads as a sub-list. `syntax`, like
@@ -2070,7 +2113,7 @@ pub fn to_markdown(
                 let broke_a_line = on_different_lines(prev, node);
                 if drew_space || broke_a_line {
                     Some(true)
-                } else if ink_contiguous(prev, node) {
+                } else if ink_contiguous(prev, node, &pitch) {
                     // 3. Same baseline, no gap the page drew: two fragments of one word.
                     Some(false)
                 } else {
@@ -2190,7 +2233,7 @@ pub fn to_markdown(
     for (t, plan) in plans.iter().enumerate() {
         if plan.projected && !emitted_tables[t] {
             separate(&mut e, &mut last, Block::Standalone);
-            emit_table(&mut e, plan);
+            emit_table(&mut e, plan, &pitch);
         }
     }
 
@@ -2522,7 +2565,28 @@ pub(crate) fn plan_tables<'a>(
 /// lifted out of a cell inverts to the runs it came from, and a quote that picked up the table
 /// chrome around it does not — which is the right answer, because the document drew a ruling
 /// line there and not a `|`.
-fn emit_table(e: &mut Emit, plan: &TablePlan) {
+/// Whether two consecutive runs of one cell are fragments of one word (`-v12`): neither draws
+/// whitespace at the seam, and the second is the next ink along the first's baseline with no gap
+/// the page drew ([`ink_contiguous`]). A producer that draws a glyph a run otherwise projects a
+/// cell as `M I S S I O N`, which the page draws nowhere.
+pub(crate) fn cell_runs_abut(
+    prev: &crate::Node,
+    node: &crate::Node,
+    pitch: &PitchReference,
+) -> bool {
+    let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
+        (&prev.native_locator, &node.native_locator)
+    else {
+        return false;
+    };
+    y.origin_x > x.origin_x
+        && !prev.text.ends_with(char::is_whitespace)
+        && !node.text.starts_with(char::is_whitespace)
+        && !on_different_lines(prev, node)
+        && ink_contiguous(prev, node, pitch)
+}
+
+fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference) {
     for row in 0..plan.rows {
         if row > 0 {
             e.syntax("\n");
@@ -2531,12 +2595,15 @@ fn emit_table(e: &mut Emit, plan: &TablePlan) {
         for column in 0..plan.columns {
             e.syntax(" ");
             let mut first = true;
+            let mut prev: Option<&crate::Node> = None;
             for node in &plan.slots[row * plan.columns + column] {
                 let text = normalize(&node.text);
+                let abuts = prev.is_some_and(|prev| cell_runs_abut(prev, node, pitch));
+                prev = Some(node);
                 if text.is_empty() {
                     continue;
                 }
-                if !first {
+                if !first && !abuts {
                     // Two runs in one cell. The detector concatenates their raw text with nothing
                     // between; a space here is this exporter's, and saying so is why it is
                     // syntax — a quote spanning the join does not invert, exactly like the blank
@@ -3064,6 +3131,18 @@ pub(crate) mod tests {
             .enumerate()
             .map(|(i, t)| text_node(&mut alloc, &page.id, i as u32 + 1, t, None))
             .collect();
+        repr_of_table(alloc, page, nodes, rows, columns, cells)
+    }
+
+    /// [`repr_with_table`] over runs the caller built, so a test can place them.
+    pub(crate) fn repr_of_table(
+        mut alloc: IdAllocator,
+        page: PageRecord,
+        nodes: Vec<Node>,
+        rows: u32,
+        columns: u32,
+        cells: &[Cell],
+    ) -> DocumentRepresentation {
         let table_id = alloc.next(IdKind::Table).unwrap();
         let records: Vec<crate::TableCellRecord> = cells
             .iter()
@@ -3077,7 +3156,7 @@ pub(crate) mod tests {
                     table_id: table_id.clone(),
                 },
                 geometry: crate::GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
-                text: c.runs.iter().map(|i| texts[*i]).collect(),
+                text: c.runs.iter().map(|i| nodes[*i].text.as_str()).collect(),
                 node_ids: c.runs.iter().map(|i| nodes[*i].id.clone()).collect(),
             })
             .collect();
@@ -4693,6 +4772,133 @@ pub(crate) mod tests {
             joined_block(&specs, "coordination"),
             "a run 1% over the median glyph lost its join to the cap"
         );
+    }
+
+    /// **A run of wide glyphs keeps its join** (`-v12`). ParseBench's `text_multilang__turkish2`
+    /// draws `onom` at 549 a glyph in a font whose median is under 439, so the one-glyph slack
+    /// put its reach short of `ik` and `ekonomik` came out as two blocks. The cap is twice the
+    /// median a glyph; the cell-pitch run below is still refused, at nine times it.
+    #[test]
+    fn a_run_of_wide_glyphs_still_joins() {
+        let mut specs = corroborating(6);
+        specs.push(("onom", None, 7200, 7200, Some(2196), None));
+        specs.push(("ik", None, 9380, 7200, Some(660), None));
+        assert!(
+            joined_block(&specs, "onomik"),
+            "a run 1.66 times the median glyph lost its join to the cap"
+        );
+    }
+
+    /// **A font that draws no space alone still joins across kerning, and not across a word
+    /// gap** (`-v12`). The corroborating font's median glyph is 330 and no run of it is
+    /// whitespace, so its word gap is a quarter of that, 82: ParseBench's `text_simple__endnote`
+    /// kerns by position at 13 to 21 centipoints and projected one fragment per block.
+    #[test]
+    fn a_font_with_no_lone_space_joins_across_kerning_only() {
+        let mut kerned = corroborating(6);
+        kerned.push(("sc", None, 7200, 7200, Some(660), None));
+        kerned.push(("arcity", None, 7881, 7200, Some(1980), None));
+        assert!(joined_block(&kerned, "scarcity"), "a 21-centipoint gap");
+
+        let mut spaced = corroborating(6);
+        spaced.push(("of", None, 7200, 7200, Some(660), None));
+        spaced.push(("antimony", None, 7942, 7200, Some(2640), None));
+        assert!(!joined_block(&spaced, "ofantimony"), "an 82-centipoint gap");
+    }
+
+    /// **Two runs of one marked-content sequence join across a kerning gap** (`-v12`).
+    /// ParseBench's `text_simple__minutes` leaves 24 centipoints between `th` and `e` inside one
+    /// `/P`, and the declared path, which read the 12-centipoint epsilon alone, opened a block
+    /// there: 22 116 such pairs on 102 of that corpus's 506 text documents. A gap as wide as a
+    /// word gap in the font, with no whitespace drawn, still breaks.
+    #[test]
+    fn a_declared_pair_joins_across_a_kerning_gap_and_not_a_word_gap() {
+        // Two glyphs in 400 is a median of 200, so a word gap of 50.
+        let kerned = project_runs(&[
+            ("th", tagged_at(3), 7200, Some(400), None),
+            ("em", tagged_at(3), 7624, Some(400), None),
+        ]);
+        assert_eq!(blocks_of(&kerned), vec!["them"]);
+
+        let spaced = project_runs(&[
+            ("th", tagged_at(3), 7200, Some(400), None),
+            ("em", tagged_at(3), 7650, Some(400), None),
+        ]);
+        assert_eq!(blocks_of(&spaced), vec!["th", "em"]);
+    }
+
+    /// **Abutting runs of one table cell, and of one list item, join with no space** (`-v12`).
+    /// A producer that draws a glyph a run projected a cell as `M I S S I O N` and a list item
+    /// as `re ga rding`, neither of which the page draws. A run across a word gap keeps the
+    /// space this exporter writes.
+    #[test]
+    fn abutting_runs_in_a_cell_and_in_a_list_item_join_without_a_space() {
+        let build = |locator: Option<StructuralLocator>| {
+            let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+            let page = PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index: 1,
+                width: 61200,
+                height: 79200,
+                rotation: 0,
+            };
+            // Median glyph 250, so a word gap of 62: `M` and `ission` abut, `ready` is 300 on.
+            let nodes: Vec<Node> = [
+                ("M", 7200, 300),
+                ("ission", 7500, 1500),
+                ("ready", 9300, 1000),
+            ]
+            .iter()
+            .enumerate()
+            .map(|(i, (t, x, a))| {
+                let ordinal = i as u32 + 1;
+                placed_run(
+                    &mut alloc,
+                    &page.id,
+                    ordinal,
+                    t,
+                    locator.clone(),
+                    *x,
+                    7200,
+                    Some(*a),
+                    None,
+                )
+            })
+            .collect();
+            (alloc, page, nodes)
+        };
+
+        let (alloc, page, nodes) = build(None);
+        let a = artifact_of(repr_of_table(
+            alloc,
+            page,
+            nodes,
+            1,
+            1,
+            &[cell(0, 0, &[0, 1, 2])],
+        ));
+        assert_eq!(a.markdown, "| Mission ready |\n| --- |\n");
+
+        let body = Some(StructuralLocator::PdfTagged(
+            PdfTaggedLocator {
+                mcid: 1,
+                role_path: ["Document", "L", "LI", "LBody"].map(String::from).to_vec(),
+                standard_role_path: None,
+                element_id: None,
+                derivation: DerivationClass::Extracted,
+            }
+            .into(),
+        ));
+        let (_, page, nodes) = build(body);
+        let geometry = nodes
+            .iter()
+            .map(|n| NodeGeometry {
+                node: n.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+            })
+            .collect();
+        let list = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+        assert_eq!(artifact_of(list).markdown, "- Mission ready\n");
     }
 
     /// **A run whose advance is the column pitch is not joined onto the next cell** — the test

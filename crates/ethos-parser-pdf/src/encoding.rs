@@ -61,7 +61,7 @@ pub enum BaseEncoding {
     Standard,
     /// `WinAnsiEncoding`, Annex D.2 — Windows-1252. Carried in full.
     WinAnsi,
-    /// `MacRomanEncoding`. **Not carried**; codes above ASCII fail closed.
+    /// `MacRomanEncoding`, Annex D.2. Carried where pdf.js and Ghostscript agree.
     MacRoman,
     /// The font's built-in encoding, with no base named in the document.
     ///
@@ -144,18 +144,16 @@ impl SimpleEncoding {
         let table = match self.base {
             BaseEncoding::WinAnsi => WIN_ANSI,
             BaseEncoding::Standard | BaseEncoding::Builtin => STANDARD,
+            // Annex D.2 gives MacRoman `quotesingle` and `grave` where Standard has the curly
+            // quotes, so its ASCII half is WinAnsi's.
+            BaseEncoding::MacRoman if code < 0x80 => WIN_ANSI,
             BaseEncoding::MacRoman => {
-                if code < 0x80 {
-                    STANDARD
-                } else {
-                    return Err(EngineError::Unsupported {
-                        what: "encoding".into(),
-                        detail: format!(
-                            "MacRomanEncoding code {code} is above ASCII, and that table is not \
-                             vendored in this profile"
-                        ),
-                    });
-                }
+                return mac_roman_high(code).ok_or_else(|| EngineError::Unsupported {
+                    what: "encoding".into(),
+                    detail: format!(
+                        "MacRomanEncoding code {code} has no mapping in this profile's tables"
+                    ),
+                });
             }
         };
 
@@ -167,6 +165,160 @@ impl SimpleEncoding {
             ),
         })
     }
+}
+
+/// `MacRomanEncoding` above ASCII, code to Adobe glyph name, `""` where the code is undefined.
+///
+/// The names pdf.js 5.7.284 (`MacRomanEncoding`) and Ghostscript 10.06.0 (`gs_mro_e.ps`) both
+/// give. The fifteen codes they dispute — pdf.js fills them from Mac OS Roman, Ghostscript and
+/// Annex D.2 leave them undefined — are `""` and stay refused.
+static MAC_ROMAN_HIGH: [&str; 128] = [
+    "Adieresis",
+    "Aring",
+    "Ccedilla",
+    "Eacute",
+    "Ntilde",
+    "Odieresis",
+    "Udieresis",
+    "aacute",
+    "agrave",
+    "acircumflex",
+    "adieresis",
+    "atilde",
+    "aring",
+    "ccedilla",
+    "eacute",
+    "egrave",
+    "ecircumflex",
+    "edieresis",
+    "iacute",
+    "igrave",
+    "icircumflex",
+    "idieresis",
+    "ntilde",
+    "oacute",
+    "ograve",
+    "ocircumflex",
+    "odieresis",
+    "otilde",
+    "uacute",
+    "ugrave",
+    "ucircumflex",
+    "udieresis",
+    "dagger",
+    "degree",
+    "cent",
+    "sterling",
+    "section",
+    "bullet",
+    "paragraph",
+    "germandbls",
+    "registered",
+    "copyright",
+    "trademark",
+    "acute",
+    "dieresis",
+    "",
+    "AE",
+    "Oslash",
+    "",
+    "plusminus",
+    "",
+    "",
+    "yen",
+    "mu",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "ordfeminine",
+    "ordmasculine",
+    "",
+    "ae",
+    "oslash",
+    "questiondown",
+    "exclamdown",
+    "logicalnot",
+    "",
+    "florin",
+    "",
+    "",
+    "guillemotleft",
+    "guillemotright",
+    "ellipsis",
+    "space",
+    "Agrave",
+    "Atilde",
+    "Otilde",
+    "OE",
+    "oe",
+    "endash",
+    "emdash",
+    "quotedblleft",
+    "quotedblright",
+    "quoteleft",
+    "quoteright",
+    "divide",
+    "",
+    "ydieresis",
+    "Ydieresis",
+    "fraction",
+    "currency",
+    "guilsinglleft",
+    "guilsinglright",
+    "fi",
+    "fl",
+    "daggerdbl",
+    "periodcentered",
+    "quotesinglbase",
+    "quotedblbase",
+    "perthousand",
+    "Acircumflex",
+    "Ecircumflex",
+    "Aacute",
+    "Edieresis",
+    "Egrave",
+    "Iacute",
+    "Icircumflex",
+    "Idieresis",
+    "Igrave",
+    "Oacute",
+    "Ocircumflex",
+    "",
+    "Ograve",
+    "Uacute",
+    "Ucircumflex",
+    "Ugrave",
+    "dotlessi",
+    "circumflex",
+    "tilde",
+    "macron",
+    "breve",
+    "dotaccent",
+    "ring",
+    "cedilla",
+    "hungarumlaut",
+    "ogonek",
+    "caron",
+];
+
+/// What `MacRomanEncoding` says a code at or above 0x80 means: its glyph name, read by
+/// [`named_glyph`]. A name that does not read stays refused.
+fn mac_roman_high(code: u8) -> Option<&'static str> {
+    named_glyph(MAC_ROMAN_HIGH.get(usize::from(code).checked_sub(0x80)?)?)
+}
+
+/// A glyph name read through this profile's glyph table, or through `WinAnsiEncoding`'s own
+/// name for the same glyph: `WIN_ANSI_NAMES` is derived from the Adobe Glyph List, so `/eacute`
+/// in a `/Differences` array is the character `WinAnsiEncoding` has at the code it names so.
+fn named_glyph(name: &str) -> Option<&'static str> {
+    glyph_name_to_str(name).or_else(|| {
+        let at = crate::winansi_names::WIN_ANSI_NAMES
+            .iter()
+            .position(|n| *n == Some(name))?;
+        WIN_ANSI[at]
+    })
 }
 
 /// `WinAnsiEncoding` — Windows-1252, built at compile time by `build_win_ansi` in this file.
@@ -515,6 +667,16 @@ pub(crate) fn glyph_name_to_str(name: &str) -> Option<&'static str> {
         "ff" => "ff",
         "ffi" => "ffi",
         "ffl" => "ffl",
+        // The eight `MacRomanEncoding` names `WinAnsiEncoding` has no code for, as the Adobe Glyph
+        // List gives them; `macroman_high_range_matches_mac_os_roman` holds each to Mac OS Roman.
+        "fraction" => "\u{2044}",
+        "dotlessi" => "\u{131}",
+        "breve" => "\u{2D8}",
+        "dotaccent" => "\u{2D9}",
+        "ring" => "\u{2DA}",
+        "hungarumlaut" => "\u{2DD}",
+        "ogonek" => "\u{2DB}",
+        "caron" => "\u{2C7}",
         n if n.len() == 1 && n.is_ascii() => {
             // Single-letter names are their own character: /a, /Z.
             return single_ascii(n.as_bytes()[0]);
@@ -646,12 +808,60 @@ mod tests {
     }
 
     #[test]
-    fn macroman_is_declared_rather_than_approximated() {
+    fn macroman_is_read_where_two_decoders_agree_and_refused_elsewhere() {
         let e = enc(BaseEncoding::MacRoman);
         assert_eq!(e.decode(b'A').unwrap(), "A", "ASCII is shared");
-        let err = e.decode(0xA5).unwrap_err();
+        assert_eq!(
+            e.decode(0x27).unwrap(),
+            "'",
+            "quotesingle, not Standard's quoteright"
+        );
+        assert_eq!(
+            e.decode(0x60).unwrap(),
+            "`",
+            "grave, not Standard's quoteleft"
+        );
+        assert_eq!(e.decode(0x88).unwrap(), "\u{E0}");
+        assert_eq!(e.decode(0xCF).unwrap(), "\u{153}");
+        assert_eq!(e.decode(0xD5).unwrap(), "\u{2019}");
+        assert_eq!(
+            e.decode(0xDB).unwrap(),
+            "\u{A4}",
+            "currency: Annex D.2 has no Euro"
+        );
+        // Mac OS Roman draws U+221E here; Annex D.2 leaves the code undefined.
+        let err = e.decode(0xB0).unwrap_err();
         assert_eq!(err.code(), "unsupported");
         assert!(err.to_string().contains("MacRoman"));
+    }
+
+    /// Every defined code decodes to the character Mac OS Roman has there, the Annex D.2 departures
+    /// and the two ligatures aside; the names this profile cannot read are listed, so a new one is seen.
+    #[test]
+    fn macroman_high_range_matches_mac_os_roman() {
+        // Mac OS Roman 0x80..=0xFF, from Python's `mac_roman` codec.
+        const MAC_OS_ROMAN: &str = "ÄÅÇÉÑÖÜáàâäãåçéèêëíìîïñóòôöõúùûü†°¢£§•¶ß®©™´¨≠ÆØ∞±≤≥¥µ∂∑∏π∫ªºΩæø\
+                                    ¿¡¬√ƒ≈∆«»…\u{A0}ÀÃÕŒœ–—“”‘’÷◊ÿŸ⁄€‹›ﬁﬂ‡·‚„‰ÂÊÁËÈÍÎÏÌÓÔ\u{F8FF}ÒÚÛÙıˆ˜¯˘˙˚¸˝˛ˇ";
+        let e = enc(BaseEncoding::MacRoman);
+        let mut refused = Vec::new();
+        for (code, want) in (0x80u8..=0xFF).zip(MAC_OS_ROMAN.chars()) {
+            match (code, e.decode(code)) {
+                (0xCA, got) => assert_eq!(got.unwrap(), " ", "space, not no-break space"),
+                (0xDB, got) => assert_eq!(got.unwrap(), "\u{A4}"),
+                (0xDE, got) => assert_eq!(got.unwrap(), "fi"),
+                (0xDF, got) => assert_eq!(got.unwrap(), "fl"),
+                (_, Ok(got)) => assert_eq!(got, want.to_string(), "{code:#04X}"),
+                (_, Err(_)) => refused.push(code),
+            }
+        }
+        assert_eq!(
+            refused,
+            [
+                0xAD, 0xB0, 0xB2, 0xB3, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBD, 0xC3, 0xC5, 0xC6, 0xD7,
+                0xF0
+            ],
+            "the fifteen codes Annex D.2 leaves undefined, and no other"
+        );
     }
 
     #[test]

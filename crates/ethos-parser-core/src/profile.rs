@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V11`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V12`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V11`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V12`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -627,7 +627,12 @@ pub const FORM_ANNOTATION_RULE_V2: &str = "form-annotations-v2";
 /// characters of an outline title, a field's value, an annotation's text and its labels change
 /// where they hold a code that table defines; page text, which no table here decodes through it,
 /// does not.
-pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-2";
+///
+/// `-3` (0.64.0): `MacRomanEncoding` is read above ASCII, at the 113 codes where pdf.js and
+/// Ghostscript give one glyph name, and its 0x27 and 0x60 are `quotesingle` and `grave` rather
+/// than `StandardEncoding`'s curly quotes. Page text changes wherever a simple font names that
+/// encoding: a run holding such a code was omitted and counted, and is now read.
+pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-3";
 
 /// Identity of the vendored **font metric** data — Adobe's Core-14 AFMs in `vendor/afm/`.
 ///
@@ -1491,7 +1496,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V11`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V12`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -1502,7 +1507,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V11`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V12`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -1579,9 +1584,9 @@ impl Default for Profile {
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V11.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V11.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V12.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V2.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
@@ -2685,7 +2690,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-2","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v11","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v11","observation_rule":"page-observations-v2","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v2","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3673,11 +3678,16 @@ mod tests {
              Moved once more right after the `v0.63.0` tag, `sha256:8b9d5f04…` -> \
              `sha256:f1ac730e…`: `parser_version` `0.63.0` -> `0.64.0-dev.1`, and nothing else \
              (`docs/RELEASING.md` §5.7, decision #33), so no build of `main` claims the version \
-             just released."
+             just released.\n\n\
+             Moved for ParseBench (2026-10-03), `sha256:f1ac730e…` -> `sha256:83425c1f…`: \
+             `cmap_data_version` `annex-d-encodings-2` -> `-3`, for `MacRomanEncoding` read \
+             above ASCII; and `markdown_rule` `markdown-blocks-v11` -> `-v12` with `html_rule` \
+             `html-blocks-v11` -> `-v12`, for four joins that broke a word mid-line. No other \
+             rule id, no capability and no knob moves."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:f1ac730e7c173948fc8e72a0adc9468f06ec8ddc098899ae0ccc90237d888612"
+            "sha256:83425c1fdbd1c85b6c1976fb1f08fa95a63151727e232e06d10403788d80b2a1"
         );
     }
 

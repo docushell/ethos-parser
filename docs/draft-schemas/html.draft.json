@@ -51,7 +51,7 @@
       "minLength": 1,
       "description": "Version id of the projection rule. `html-blocks-v4` (v2.2-S0) emits `<p>`, `<h1>`-`<h6>` from a PDF structure tree or an EPUB's own XHTML element name and from nowhere else — never from a font size, `<ul>`/`<li>` from a tagged `/L`, and `<table>` with the document's merges carried as `rowspan`/`colspan`. Every cell is a `<td>`: no detector reads `/TH`, so a header row would be invented. SEPARATE from `markdown_rule` and it moves independently — a change to how a `<td>` is spelled is not a change to how a GFM row is. Source bytes are ENTITY-ENCODED: `&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`, the whole entity sits inside the `source` segment because `&lt;` contains no `<` to label, and inverting a source segment therefore means HTML-unescaping it — a total, lossless transform. The census counts the CHARACTERS the document drew, not the bytes the entity took.",
       "examples": [
-        "html-blocks-v11"
+        "html-blocks-v12"
       ]
     },
     "html": {
@@ -242,7 +242,7 @@
         "structural_erasures": []
       },
       "html": "<p>Hello Ethos</p>\n",
-      "html_rule": "html-blocks-v11",
+      "html_rule": "html-blocks-v12",
       "parser_version": "0.63.0",
       "profile_sha256": "sha256:8b9d5f0479aa2d090e659465a8ef17447f078f125a70feb13f50ce130c221cac",
       "representation_sha256": "sha256:0359182dcfde607764f5917eaf9a56cd073adbc38f66a424be9039f34326a71c",
