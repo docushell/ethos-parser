@@ -37,6 +37,12 @@
 //! forms the lines — the runs sharing one page, band, `/Artifact` state and baseline, which is
 //! `markdown.rs`'s `LineKey` — and hands this module each line's runs by their type alone.
 //!
+//! **Since decision #38, one bit of position, and only for the bold clause.** `type-size-v3` adds
+//! a clause reading a bold line as a heading where it stands apart from its neighbours, which is
+//! what tells a bold heading from bold prose (`docs/measurements/headings/README.md` §7.1). The
+//! caller measures that from the leading-gap cut and hands it in as [`Line`]'s `isolated`; this
+//! file still names neither field, and the size clause still reads type alone.
+//!
 //! # The reference is the document's own — its largest common size (`type-size-v2`)
 //!
 //! A 14pt heading is display type in a 10pt document and body type in a 17pt one, so the cut is a
@@ -113,6 +119,8 @@ pub(crate) struct Typed {
     pub artifact: bool,
     /// A table the detector accepted owns this run.
     pub table_owned: bool,
+    /// The font that drew the run declares itself bold (decision #38) — `type-size-v3` reads it.
+    pub bold: bool,
 }
 
 /// The document's rendered ems, binned: the characters set at each size, and the lines whose
@@ -126,6 +134,8 @@ pub(crate) struct EmTally {
     chars: BTreeMap<i64, u64>,
     /// Lines per size bin, each line counted once at the size most of its characters are set in.
     lines: BTreeMap<i64, u64>,
+    /// Characters per size bin drawn in a bold face — [`EmTally::body_is_bold`]'s numerator.
+    bold: BTreeMap<i64, u64>,
 }
 
 impl EmTally {
@@ -137,6 +147,9 @@ impl EmTally {
         }
         if let Some(em) = run.em {
             *self.chars.entry(bin(em)).or_insert(0) += run.chars;
+            if run.bold {
+                *self.bold.entry(bin(em)).or_insert(0) += run.chars;
+            }
         }
     }
 
@@ -164,6 +177,19 @@ impl EmTally {
         for (em, lines) in &other.lines {
             *self.lines.entry(*em).or_insert(0) += lines;
         }
+        for (em, chars) in &other.bold {
+            *self.bold.entry(*em).or_insert(0) += chars;
+        }
+    }
+
+    /// Whether most characters set at `body_em` are bold: a deck or a form whose prose is bold,
+    /// where weight means nothing and `type-size-v3`'s bold clause withdraws rather than reading
+    /// every short line as a heading. The guard `docs/measurements/headings/README.md` §7 measured
+    /// beside the font-weight clause, kept.
+    pub(crate) fn body_is_bold(&self, body_em: i64) -> bool {
+        let all = self.chars.get(&body_em).copied().unwrap_or(0);
+        let bold = self.bold.get(&body_em).copied().unwrap_or(0);
+        2 * bold > all
     }
 
     /// The body em, in centipoints: **the larger of the most common size and the largest common
@@ -223,15 +249,37 @@ pub(crate) struct Line {
     has_text: bool,
     /// An `/Artifact`, or a table's (clauses 4 and 5).
     excluded: bool,
+    /// Every run with text is drawn in a bold face (`type-size-v3`).
+    all_bold: bool,
+    /// The line's characters that are not whitespace, and how many of them are letters.
+    chars: u64,
+    letters: u64,
+    /// The line starts with a lower-case letter or ends with a full stop: a sentence, or the
+    /// start or end of one, and not a label.
+    sentence: bool,
+    /// The one fact of position `type-size-v3` reads, measured by its caller (decision #38).
+    isolated: bool,
+    /// How deep the line's own section number goes: 2 for `2.1 Methods`, and 1 for a line with
+    /// no number or a number of one part. [`section_depth`].
+    depth: u8,
 }
 
 impl Line {
-    /// Reduce one line's runs. `runs` is every run of one line.
-    pub(crate) fn of(runs: &[Typed]) -> Line {
+    /// Reduce one line: `runs` is every run of it, `text` their text in order, and `isolated` its
+    /// caller's measurement: the leading-gap cut put the line in a block of its own, so whitespace
+    /// wider than its band's leading stands above it and below it.
+    pub(crate) fn of(runs: &[Typed], text: &str, isolated: bool) -> Line {
+        let text = text.trim();
         Line {
             min_em: runs.iter().filter_map(|run| run.em).min(),
             has_text: runs.iter().any(|run| !run.blank),
             excluded: runs.iter().any(|run| run.artifact || run.table_owned),
+            all_bold: runs.iter().filter(|run| !run.blank).all(|run| run.bold),
+            chars: text.chars().filter(|c| !c.is_whitespace()).count() as u64,
+            letters: text.chars().filter(|c| c.is_alphabetic()).count() as u64,
+            sentence: text.starts_with(char::is_lowercase) || text.ends_with('.'),
+            isolated,
+            depth: section_depth(text),
         }
     }
 
@@ -266,10 +314,125 @@ impl Line {
     }
 }
 
+/// How deep the section number opening `text` goes — the parts of a leading `2.1.3` or `2.1.`, a
+/// run of digits joined by full stops and followed by whitespace — and 1 where it opens with none.
+/// The author's own numbering, read as the depth it states: `type-size-v3` ranks two headings set
+/// in one size by it, so `2 Foundations` stands above `2.1 Databases`. Digits and full stops only,
+/// so it reads no language.
+fn section_depth(text: &str) -> u8 {
+    let Some((number, _)) = text.split_once(char::is_whitespace) else {
+        return 1;
+    };
+    let number = number.strip_suffix('.').unwrap_or(number);
+    let parts = number.split('.');
+    if number.is_empty()
+        || !parts
+            .clone()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return 1;
+    }
+    u8::try_from(parts.count()).unwrap_or(u8::MAX)
+}
+
+/// Most characters a bold line may hold and still be read as a heading (`type-size-v3`): a
+/// section heading is a label, and a longer bold line is a bold sentence. LiteParse's figure.
+pub(crate) const BOLD_HEADING_MAX_CHARS: u64 = 80;
+
+/// The deepest level a heading is given. Markdown and HTML both stop at six.
+pub(crate) const MAX_LEVEL: u8 = 6;
+
+/// `type-size-v3`'s verdict: a heading's level, from the sizes the document's headings are set in
+/// and the depth their own numbering states (decision #38, which gives decision #29's one level a
+/// rank and its size clause a sibling).
+///
+/// **The size clause is `type-size-v2`'s, unchanged** — [`Line::is_heading`] — so every line `-v2`
+/// read as a heading `-v3` reads as one, and only its level is new.
+///
+/// **The bold clause is new**, and it is the clause `docs/measurements/headings/README.md` §7
+/// built and refused on 2026-09-20 with the one thing that measurement said it lacked: a signal
+/// telling a bold heading from bold prose *within* a document. Bold prose runs on in its
+/// paragraph; a bold heading stands apart from it. So a line clears this clause when it is not
+/// already a heading by size and
+///
+/// 1. every run with text is bold, and the document's body is not ([`EmTally::body_is_bold`]);
+/// 2. it is set at least at the body em, so bold small print is not a heading;
+/// 3. its caller measured it as standing apart — `isolated`, the one fact of position this rule
+///    reads, and the reason decision #38 amends decision #29's rider;
+/// 4. it holds 2 to [`BOLD_HEADING_MAX_CHARS`] characters other than whitespace, at least half of
+///    them letters, so a row of bold numbers is not a heading;
+/// 5. it is not shaped as a sentence: it neither starts with a lower-case letter nor ends with a
+///    full stop.
+///
+/// **The rank** orders every heading of the document by the size it is set in, largest first,
+/// with a bold heading below every size; then, within one size, by the depth its section number
+/// states ([`section_depth`]). Each distinct place is a level, from 1 down to [`MAX_LEVEL`], and
+/// anything deeper shares the last.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Levels {
+    body_em: i64,
+    body_is_bold: bool,
+    /// Every heading's place in the document, highest first: its binned size — `i64::MIN` for a
+    /// bold heading — and its depth.
+    places: Vec<(i64, u8)>,
+}
+
+impl Levels {
+    /// The ranks for one document: every candidate `line` of it, and its `tally`. `None` where the
+    /// document has no measurable body text, which is an answer — the rule then fires nowhere.
+    pub(crate) fn new<'a>(
+        lines: impl IntoIterator<Item = &'a Line>,
+        tally: &EmTally,
+    ) -> Option<Levels> {
+        let body_em = tally.body_em()?;
+        let mut levels = Levels {
+            body_em,
+            body_is_bold: tally.body_is_bold(body_em),
+            places: Vec::new(),
+        };
+        let mut places: Vec<(i64, u8)> = lines
+            .into_iter()
+            .filter_map(|line| levels.place(*line))
+            .collect();
+        places.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        places.dedup();
+        levels.places = places;
+        Some(levels)
+    }
+
+    /// The body em the ranks were read against, in centipoints.
+    pub(crate) fn body_em(&self) -> i64 {
+        self.body_em
+    }
+
+    /// `line`'s heading level, or `None` where neither clause reads it as a heading.
+    pub(crate) fn of(&self, line: Line) -> Option<u8> {
+        let place = self.place(line)?;
+        let n = self.places.iter().position(|&p| p == place)?;
+        Some(u8::try_from(n + 1).map_or(MAX_LEVEL, |level| level.min(MAX_LEVEL)))
+    }
+
+    /// Where `line` ranks, or `None` where it is no heading.
+    fn place(&self, line: Line) -> Option<(i64, u8)> {
+        if line.is_heading(self.body_em) {
+            return Some((bin(line.min_em?), line.depth));
+        }
+        let bold = !self.body_is_bold
+            && line.is_candidate()
+            && line.all_bold
+            && line.min_em.is_some_and(|em| bin(em) >= self.body_em)
+            && line.isolated
+            && (2..=BOLD_HEADING_MAX_CHARS).contains(&line.chars)
+            && 2 * line.letters >= line.chars
+            && !line.sentence;
+        bold.then_some((i64::MIN, line.depth))
+    }
+}
+
 /// [`Line::of`] then [`Line::is_heading`], for a line whose runs are at hand.
 #[cfg(test)]
 fn is_heading(line: &[Typed], body_em: i64) -> bool {
-    Line::of(line).is_heading(body_em)
+    Line::of(line, "", false).is_heading(body_em)
 }
 
 #[cfg(test)]
@@ -283,6 +446,7 @@ mod tests {
             blank: text.trim().is_empty(),
             artifact: false,
             table_owned: false,
+            bold: false,
         }
     }
 
@@ -522,6 +686,180 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------------------
+    // The ranks and the bold clause (`type-size-v3`)
+    // ---------------------------------------------------------------------------------------
+
+    fn bold(em: i64, text: &str) -> Typed {
+        Typed {
+            bold: true,
+            ..run(Some(em), text)
+        }
+    }
+
+    /// One line of `runs`, reading `text`.
+    fn line(runs: &[Typed], text: &str, isolated: bool) -> Line {
+        Line::of(runs, text, isolated)
+    }
+
+    /// A document set in plain 10pt type, with `display` lines set large, ranked.
+    fn levels_over(display: &[Line]) -> Levels {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 50, 1000, 60);
+        Levels::new(display, &tally).expect("the body is measurable")
+    }
+
+    /// **The largest size is level 1**, the next level 2, and one size is one level wherever it
+    /// stands; body type is no level at all.
+    #[test]
+    fn heading_sizes_rank_into_levels_largest_first() {
+        let title = line(&[run(Some(2400), "Annual report")], "Annual report", false);
+        let chapter = line(&[run(Some(1800), "Results")], "Results", false);
+        let section = line(&[run(Some(1200), "Revenue")], "Revenue", false);
+        let levels = levels_over(&[section, chapter, title]);
+        assert_eq!(levels.of(title), Some(1));
+        assert_eq!(levels.of(chapter), Some(2));
+        assert_eq!(levels.of(section), Some(3));
+        let again = line(&[run(Some(1801), "Outlook")], "Outlook", false);
+        assert_eq!(levels.of(again), Some(2), "1801 bins with 1800");
+        let body = line(&[run(Some(1000), "Body text")], "Body text", false);
+        assert_eq!(levels.of(body), None);
+    }
+
+    /// Past six sizes every smaller one shares level 6, which is as deep as Markdown goes.
+    #[test]
+    fn a_seventh_size_shares_the_sixth_level() {
+        let lines: Vec<Line> = (0..7)
+            .map(|i| line(&[run(Some(3000 - 200 * i), "Heading")], "Heading", false))
+            .collect();
+        let levels = levels_over(&lines);
+        let got: Vec<Option<u8>> = lines.iter().map(|l| levels.of(*l)).collect();
+        assert_eq!(got, [1, 2, 3, 4, 5, 6, 6].map(Some));
+    }
+
+    /// **A bold line standing apart is a heading**, the level below the smallest heading size —
+    /// and level 1 in a document that sets nothing large.
+    #[test]
+    fn a_bold_line_that_stands_apart_is_the_level_below_the_sizes() {
+        let label = line(&[bold(1000, "Methods")], "Methods", true);
+        assert_eq!(levels_over(&[label]).of(label), Some(1));
+        let title = line(&[run(Some(2400), "Annual report")], "Annual report", false);
+        assert_eq!(levels_over(&[title, label]).of(label), Some(2));
+    }
+
+    /// **Bold prose is not a heading**: the same line, running on in its paragraph.
+    #[test]
+    fn bold_prose_is_not_a_heading() {
+        let prose = line(&[bold(1000, "Methods")], "Methods", false);
+        assert_eq!(levels_over(&[prose]).of(prose), None);
+    }
+
+    /// A bold line shaped as a sentence, too long to be a label, or mostly digits is not one.
+    #[test]
+    fn a_bold_sentence_a_long_line_and_a_row_of_numbers_are_not_headings() {
+        for text in [
+            "The results are shown below.",
+            "and the remaining costs",
+            "47.5 14.2 93.1",
+            "X",
+            &"Long bold label ".repeat(7),
+        ] {
+            let l = line(&[bold(1000, text)], text, true);
+            assert_eq!(levels_over(&[l]).of(l), None, "{text:?}");
+        }
+        let colon = line(
+            &[bold(1000, "Reference frameworks:")],
+            "Reference frameworks:",
+            true,
+        );
+        assert_eq!(
+            levels_over(&[colon]).of(colon),
+            Some(1),
+            "a colon ends a label, not a sentence"
+        );
+    }
+
+    /// Bold small print — a footnote's label, a figure's credit — is under the body em.
+    #[test]
+    fn bold_small_print_is_not_a_heading() {
+        let credit = line(&[bold(800, "Source")], "Source", true);
+        assert_eq!(levels_over(&[credit]).of(credit), None);
+    }
+
+    /// A line mixing bold and regular runs is a bold lead-in, not a bold line.
+    #[test]
+    fn a_line_mixing_bold_and_regular_runs_is_not_bold() {
+        let lead = line(
+            &[bold(1000, "Note:"), run(Some(1000), " see below")],
+            "Note: see below",
+            true,
+        );
+        assert_eq!(levels_over(&[lead]).of(lead), None);
+        let spaced = [bold(1000, "Key"), run(Some(1000), " "), bold(1000, "terms")];
+        let spaced = line(&spaced, "Key terms", true);
+        assert_eq!(
+            levels_over(&[spaced]).of(spaced),
+            Some(1),
+            "a plain space between bold words is no regular text"
+        );
+    }
+
+    /// **Where the body is bold, the bold clause withdraws**: weight means nothing there.
+    #[test]
+    fn where_the_body_is_bold_the_bold_clause_withdraws() {
+        let mut tally = EmTally::default();
+        for _ in 0..50 {
+            let body = [bold(1000, &"x".repeat(60))];
+            tally.add(&body[0]);
+            tally.add_line(&body);
+        }
+        let label = line(&[bold(1000, "Methods")], "Methods", true);
+        let levels = Levels::new(&[label], &tally).expect("the body is measurable");
+        assert_eq!(levels.of(label), None);
+    }
+
+    /// **The depth a section number states**: its parts, digits joined by full stops and followed
+    /// by whitespace. Anything else is depth 1, an unnumbered heading's.
+    #[test]
+    fn a_section_number_states_its_depth() {
+        for (text, depth) in [
+            ("2 Foundations", 1),
+            ("2.1 Databases", 2),
+            ("2.1.3. Scope", 3),
+            ("Methods", 1),
+            ("2.1", 1),
+            ("A.1 Annex", 1),
+            (".1 Stray", 1),
+            ("1..2 Broken", 1),
+            ("3.5 million readers", 2),
+        ] {
+            assert_eq!(section_depth(text), depth, "{text:?}");
+        }
+    }
+
+    /// **Within one size, the numbering ranks**: `2` above `2.1` above `2.1.1`, all below a
+    /// larger size and all above a bold heading.
+    #[test]
+    fn numbering_ranks_headings_set_in_one_size() {
+        let title = line(&[run(Some(2400), "Report")], "Report", false);
+        let two = line(&[run(Some(1400), "2 Foundations")], "2 Foundations", false);
+        let two_one = line(&[run(Some(1400), "2.1 Databases")], "2.1 Databases", false);
+        let deeper = line(&[run(Some(1400), "2.1.1 Keys")], "2.1.1 Keys", false);
+        let methods = line(&[run(Some(1400), "Methods")], "Methods", false);
+        let label = line(&[bold(1000, "Notes")], "Notes", true);
+        let levels = levels_over(&[deeper, two_one, two, title, methods, label]);
+        assert_eq!(levels.of(title), Some(1));
+        assert_eq!(levels.of(two), Some(2));
+        assert_eq!(
+            levels.of(methods),
+            Some(2),
+            "unnumbered is depth 1, as `2` is"
+        );
+        assert_eq!(levels.of(two_one), Some(3));
+        assert_eq!(levels.of(deeper), Some(4));
+        assert_eq!(levels.of(label), Some(5));
+    }
+
+    // ---------------------------------------------------------------------------------------
     // The guard
     // ---------------------------------------------------------------------------------------
 
@@ -538,7 +876,8 @@ mod tests {
     }
 
     /// **The rule reads type and not position**, which is decision #29's rider — asserted on the
-    /// source, the way `reading_order.rs` asserts it reads no font size.
+    /// source, the way `reading_order.rs` asserts it reads no font size. Decision #38 lets the
+    /// bold clause read one bit its caller measured, `isolated`; the fields stay out of this file.
     ///
     /// The two words are the reading-order cut's fields: the column band and the leading-gap
     /// index. A rule that could name them could decide *a heading is a short line above a gap*,

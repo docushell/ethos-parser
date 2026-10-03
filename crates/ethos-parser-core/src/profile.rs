@@ -579,11 +579,10 @@ pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 /// `/Artifact`, or a table's; and the rule runs **only on a document that declares no author
 /// structure**, so a declared heading and an inferred one can never both exist in one artifact.
 ///
-/// It reads **type, never position** — the rendered em, which is the vertical scale of the text
-/// rendering matrix and not the `Tf` operand, since a page may set `Tf /F 1` and draw its type in
-/// the matrix. One level only: every inferred heading is level 1. The profile's rule id is the
-/// switch, as [`READING_ORDER_RULE_V0`] is the cut's: a profile naming [`NOT_RUN`] runs no
-/// inference.
+/// It reads the **rendered em**, which is the vertical scale of the text rendering matrix and not
+/// the `Tf` operand, since a page may set `Tf /F 1` and draw its type in the matrix. The profile's
+/// rule id is the switch, as [`READING_ORDER_RULE_V0`] is the cut's: a profile naming [`NOT_RUN`]
+/// runs no inference.
 ///
 /// **`-v2` because `-v1` fabricated.** `type-size-v1` took the most common size by characters as
 /// the body, and on two of the eleven documents whose authors declare headings that is dense
@@ -591,7 +590,19 @@ pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 /// `-v1` was never pushed or released; the id moves anyway, because two builds in this
 /// repository's history producing different bytes under one id is the state a rule id exists to
 /// make impossible.
-pub const HEADING_INFERENCE_RULE_V2: &str = "type-size-v2";
+///
+/// **`-v3` (decision #38) ranks and adds; it removes nothing.** The size clause is `-v2`'s
+/// unchanged, so every line `-v2` read as a heading `-v3` reads as one. Two things are new. Its
+/// headings get **levels**: the sizes they are set in, largest first, are levels 1 to 6, carried as
+/// `TextRunAttributes::inferred_heading_level` — `-v2` gave every one level 1. And a **bold
+/// clause**: a line every run of which is bold, at the body em or larger, of 2 to 80 characters
+/// mostly letters, shaped as no sentence, in a document whose body is not bold, is a heading where
+/// it **stands apart** — where the leading-gap cut put the line in a block of its own. That one
+/// bit of position is what decision #38 amends decision
+/// #29's rider for: bold alone was built and refused on 2026-09-20, because nothing told a bold
+/// heading from bold prose (`docs/measurements/headings/README.md` §7). A bold heading is the
+/// level below the smallest heading size.
+pub const HEADING_INFERENCE_RULE_V3: &str = "type-size-v3";
 
 /// The forms-and-annotations rule v1-S4 ships.
 ///
@@ -1494,7 +1505,7 @@ pub struct Profile {
     pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V2`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V3`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -1592,7 +1603,7 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V3.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V12.to_string(),
@@ -2699,7 +2710,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3696,11 +3707,15 @@ mod tests {
              Moved for form XObjects (decision #37), `sha256:83425c1f…` -> \
              `sha256:99339096…`: `observation_rule` `page-observations-v2` -> `-v3`, because a \
              `Do` naming a `/Form` now runs it as page content \
-             (`docs/30-FORM-XOBJECTS-SCOPE.md`). Nothing else."
+             (`docs/30-FORM-XOBJECTS-SCOPE.md`). Nothing else.\n\n\
+             Moved for decision #38's headings, `sha256:99339096…` -> `sha256:76502460…`: \
+             `heading_inference_rule` `type-size-v2` -> `-v3`, which ranks the sizes inferred \
+             headings are set in into levels and reads a bold line standing apart as a heading. \
+             Every line `-v2` read as a heading `-v3` reads as one. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:99339096c95c224cf5941a41762a539a6a92d2e7650485094ea3b677a95ba165"
+            "sha256:765024600d674856ea518dfe4831494948441a43194c98832a680bdcfb47a6a1"
         );
     }
 

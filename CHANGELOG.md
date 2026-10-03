@@ -100,6 +100,31 @@ build is not comparable with a 0.63.0 one**.
   nothing decodes is still refused, and so is one drawing with a predefined CJK CMap, whose code
   widths this profile cannot read.
 
+### Headings get levels, and a bold line that stands apart is one (decision #38)
+
+`heading_inference_rule` `type-size-v2` -> `-v3`, so `profile_sha256` moves. Every line `-v2` read as
+a heading `-v3` reads as one.
+
+- **Levels.** Inferred headings are ranked by the size they are set in, largest first, and within one
+  size by the depth of their own section number (`2` above `2.1`), into levels 1 to 6.
+  `text_run.inferred_heading_level` carries a level past 1 and is absent at 1; Markdown writes `##`
+  to `######` and HTML `<h2>` to `<h6>` (`markdown-blocks-v12`, `html-blocks-v12`). A build that
+  denies unknown keys — 0.63.0 and earlier — refuses this build's extract of a document with one.
+- **A bold line that stands apart is a heading**: every run bold, at the body em or larger, 2 to 80
+  characters mostly letters, not starting lower-case or ending with a full stop, in a document whose
+  body is not bold, where the leading-gap cut gave the line a block of its own. It is the level below
+  the smallest heading size. This is the font-weight clause refused on 2026-09-20, with what that
+  measurement said it lacked; decision #38 amends decision #29's rider for its one bit of position.
+- **`headings-inferred-from-type` states both counts**, by size and by weight.
+- **Measured** on the eleven documents whose authors declare headings, tree stripped: right headings
+  106 -> 389, false 147 -> 256; the rate bound holds (0.00%..4.61%, worst `cfpb-home-loan-toolkit`,
+  unchanged) and the count bound fails only where it failed before, `nist-sp-800-218`'s title, 10
+  against 7. opendataloader-bench MHS 0.3779 -> 0.4703, NID and TEDS unchanged; 19 documents rose
+  and one fell (`01030000000121`, a bold label read as a heading), which breaches §7.5's bar 2 on
+  that document and is the owner's call.
+  ParseBench semantic formatting 0.3487 -> 0.3502 (title hierarchy 0.3123 -> 0.3173), visual
+  grounding 0.2200 -> 0.2224, content faithfulness 0.6622 -> 0.6619.
+
 ### Bold and italic, where the font declares them (decision #38)
 
 - **A run carries `bold` and `italic`** (`text_run.bold`, `text_run.italic`, absent where false)

@@ -234,6 +234,12 @@
           "const": true,
           "$comment": "Decision #29, as on the representation's text_run. Absent where false."
         },
+        "inferred_heading_level": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6,
+          "$comment": "Decision #38, as on the representation's text_run. Absent at level 1."
+        },
         "bold": {
           "const": true,
           "$comment": "Decision #38, as on the representation's text_run. Absent where false."

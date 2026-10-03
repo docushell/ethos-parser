@@ -756,7 +756,8 @@ pub fn normalize(s: &str) -> String {
 /// has been applied, which `crate::representation::PdfTaggedLocator` already carries as
 /// `standard_role_path`; an EPUB's own XHTML element name, which `crate::EpubBlockAttributes::element`
 /// carries verbatim (missing until v2.2-S0); and, since decision #29, a run the PDF reader read as
-/// a heading from its type, `crate::TextRunAttributes::inferred_heading`, which is always level 1.
+/// a heading from its type, `crate::TextRunAttributes::inferred_heading`, at the level
+/// `crate::TextRunAttributes::inferred_heading_level` gives it — level 1 where it gives none.
 ///
 /// **No font size is consulted here.** The first two sources are the document saying *heading,
 /// level one* in as many words — `<h1>` exactly as `/H1` — and both are `Extracted`. The third is an
@@ -819,9 +820,11 @@ pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     // Decision #29: the reader's measurement of type, last. A run under this engine's own `/Div`
     // reaches here too — its role path names no heading — which is what keeps an engine-tagged
     // document's projections equal to its untagged original's (docs/23 §4.3).
+    // Decision #38: at the level the rule ranked it, 1 where it states none, and never deeper
+    // than six, which is as deep as either projection writes.
     text_run_attributes(node)
-        .is_some_and(|a| a.inferred_heading)
-        .then_some(1)
+        .filter(|a| a.inferred_heading)
+        .map(|a| a.inferred_heading_level.unwrap_or(1).clamp(1, 6))
 }
 
 /// An ODF block's level: the one its own `<text:h>` stated, where that is a depth these two
@@ -3076,6 +3079,7 @@ pub(crate) mod tests {
                 region: None,
                 block: None,
                 inferred_heading: false,
+                inferred_heading_level: None,
                 bold: false,
                 italic: false,
             }),
@@ -4623,6 +4627,7 @@ pub(crate) mod tests {
                 region,
                 block: None,
                 inferred_heading: false,
+                inferred_heading_level: None,
                 bold: false,
                 italic: false,
             }),

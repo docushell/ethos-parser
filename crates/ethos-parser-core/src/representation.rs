@@ -1579,6 +1579,15 @@ pub struct TextRunAttributes {
     /// direction; stripping `derivation` would have laundered `Computed` into `Extracted`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inferred_heading: bool,
+    /// The level an inferred heading was given, where it is deeper than 1 (decision #38).
+    ///
+    /// `type-size-v3` ranks the sizes a document's inferred headings are set in, largest first,
+    /// and gives a bold line standing apart the level below them; see `headings-inferred-from-type`
+    /// for what it measured. `Computed`, as [`Self::inferred_heading`] is, and only beside it.
+    /// **Absent at level 1** and on every run that is no inferred heading, so a document whose
+    /// headings share one size serializes as it did under `type-size-v2`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inferred_heading_level: Option<u8>,
     /// The font that drew this run declares itself bold (decision #38): a `/FontWeight` of 600
     /// or more, the ForceBold flag, or a bold style word in its `/BaseFont`, under the profile's
     /// `observation_rule`. A statement about the typeface the document chose, read from its own
@@ -2989,6 +2998,7 @@ mod tests {
                 region: None,
                 block: None,
                 inferred_heading: false,
+                inferred_heading_level: None,
                 bold: false,
                 italic: false,
             }),

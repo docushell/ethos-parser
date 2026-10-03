@@ -270,6 +270,7 @@ pub fn to_representation(
                     // every page of uniform body text.
                     block: run.block,
                     inferred_heading: run.inferred_heading,
+                    inferred_heading_level: run.inferred_heading_level,
                     bold: run.bold,
                     italic: run.italic,
                     // v1-S6. Carried through unchanged. The node is here because the run is

@@ -3726,6 +3726,68 @@ fn a_runs_font_declares_bold_and_italic() {
     );
 }
 
+/// **A bold line alone in its block is an inferred heading; a bold line inside a paragraph is
+/// not** (decision #38, `type-size-v3`). Plain 10pt prose on a 12pt leading, a bold `Methods` with
+/// 30pt of whitespace above and below — wider than 1.6 leadings, so the leading-gap cut gives it a
+/// block of its own — and a bold `Bold lead line` set inside the next paragraph's leading.
+#[test]
+fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
+    let mut content = String::new();
+    let mut line = |font: &str, y: i32, text: &str| {
+        content.push_str(&format!("BT /{font} 10 Tf 20 {y} Td ({text}) Tj ET\n"));
+    };
+    for (i, y) in (0..8).map(|i| (i, 380 - 12 * i)) {
+        line(
+            "F1",
+            y,
+            &format!("Plain body text that runs across the page, line {i}"),
+        );
+    }
+    line("F2", 266, "Methods");
+    for (i, y) in (0..8).map(|i| (i, 236 - 12 * i)) {
+        if i == 3 {
+            line("F2", y, "Bold lead line");
+        } else {
+            line(
+                "F1",
+                y,
+                &format!("More plain body text across the page, line {i}"),
+            );
+        }
+    }
+    let stream = [
+        format!("<< /Length {} >>\nstream\n", content.len()).into_bytes(),
+        content.into_bytes(),
+        b"\nendstream".to_vec(),
+    ]
+    .concat();
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Resources << /Font << /F1 5 0 R \
+           /F2 6 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    let headings: Vec<&str> = runs(&a)
+        .iter()
+        .filter(|r| r.inferred_heading)
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(headings, ["Methods"]);
+    let lead = runs(&a)
+        .into_iter()
+        .find(|r| r.text == "Bold lead line")
+        .expect("the bold lead line is read");
+    assert!(
+        lead.bold && lead.block.is_some(),
+        "the premise: bold, and inside a block"
+    );
+}
+
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
 /// draws `page` (object 5). Each of `forms` is a form XObject from object 6 on: its extra dictionary
 /// entries, and its content.

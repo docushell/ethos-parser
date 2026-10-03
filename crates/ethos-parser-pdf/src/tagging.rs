@@ -5258,6 +5258,7 @@ mod tests {
             region,
             block,
             inferred_heading: false,
+            inferred_heading_level: None,
             bold: false,
             italic: false,
             mcid: None,

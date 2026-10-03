@@ -1037,7 +1037,11 @@ unexamined, and S4's instrument should bucket them rather than drop them.
 1. **A heading is what the document declared, or what this engine measured and said so.** Never one
    passing for the other, on any surface that can tell them apart.
 2. **A region and a block are where, never what** — P14, decision #19, and row 29's own rider. This
-   rule reads neither, and a test says so.
+   rule reads neither, and a test says so. *Amended 2026-10-03 by decision #38:* `type-size-v3`'s
+   bold clause reads one bit of position its caller derives from the leading-gap cut — whether a
+   line is the whole of its block — and the rule's file still names neither field. That bit makes
+   no role: it only lets a bold line that is already a heading candidate be read as one
+   ([`measurements/headings/README.md`](measurements/headings/README.md) §9).
 3. **P14 stands for every other role.** No paragraph, list, caption, section, figure or table is
    inferred from type. D1 is untouched.
 4. **No fixed multiplier presented as a measurement** —

@@ -382,3 +382,76 @@ what these untagged documents do not carry.
 
 The gap PI-C aimed at is therefore still open and still real, and §7.5's bars are why this is not
 shipped rather than an argument that the gap does not matter.
+
+## 9. `type-size-v3` — levels, and the bold clause with the signal §7.1 lacked (2026-10-03)
+
+**Decision #38.** The owner chose "headings from more signals: boldness, isolation and numbering as
+well as size". `type-size-v3` keeps `-v2`'s size clause unchanged, so every line `-v2` read as a
+heading it reads as one, and adds three things:
+
+- **Levels.** The sizes the headings are set in rank them, largest first; within one size, the depth
+  of the heading's own section number (`2` above `2.1` above `2.1.1`). Levels 1 to 6 travel as
+  `inferred_heading_level`, absent at level 1.
+- **The bold clause, with isolation.** A line every run of which is bold, at the body em or larger,
+  of 2 to 80 non-whitespace characters at least half of them letters, neither starting lower-case
+  nor ending with a full stop, in a document whose body is not bold, is a heading **where the
+  leading-gap cut put it in a block of its own**. That is §7.1's missing signal: bold prose runs on
+  in its paragraph, and a bold heading stands apart. Where the cut declined on a page, nothing there
+  stands apart.
+- A bold heading is the level below the smallest heading size.
+
+Same instrument, unchanged, over the same eleven documents; raw readings in
+[`falsepos-v3.json`](falsepos-v3.json).
+
+| document | declared | fired v2 → **v3** | right v2 → **v3** | false v2 → **v3** | FP rate **v3** | recall v2 → **v3** |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 *(counts only)* | 9 | 3 → **3** | 1 → **1** | 2 → **2** | 1.67% | 11.11% → **11.11%** |
+| irs-fw9 | 28 | 26 → **26** | 26 → **26** | 0 → **0** | 0.00% | 92.86% → **92.86%** |
+| nist-sp-800-218 *(counts only)* | 7 | 10 → **10** | 0 → **0** | 10 → **10** | 0.54% | 0.00% → **0.00%** |
+| nist-sp-800-207 | 57 | 5 → **18** | 0 → **6** | 5 → **12** | 0.64% | 0.00% → **10.53%** |
+| nist-sp-800-171r3 | 180 | 10 → **169** | 6 → **164** | 4 → **5** | 0.12% | 3.33% → **91.11%** |
+| nist-sp-800-37r2 | 957 | 38 → **47** | 16 → **16** | 22 → **31** | 0.39% | 1.67% → **1.67%** |
+| nist-sp-800-161r1 | 454 | 13 → **158** | 0 → **71** | 13 → **87** | 0.68% | 0.00% → **15.64%** |
+| nist-sp-800-53Ar5 | 61 | 43 → **68** | 9 → **25** | 34 → **43** | 0.05% | 14.75% → **40.98%** |
+| nist-sp-800-53r5 | 389 | 21 → **62** | 7 → **39** | 14 → **23** | 0.11% | 1.80% → **10.03%** |
+| cfpb-home-loan-toolkit | 83 | 61 → **65** | 19 → **19** | 42 → **42** | **4.61%** | 22.89% → **22.89%** |
+| irs-form-1040-2025 | 24 | 23 → **23** | 22 → **22** | 1 → **1** | 0.43% | 91.67% → **91.67%** |
+| **all eleven** | | **253 → 649** | **106 → 389** | **147 → 256** | | |
+
+**The rate bound: met**, 0.00%..4.61% over the nine, worst `cfpb-home-loan-toolkit`, as under `-v2`.
+**The count bound: breached where it was breached before and nowhere else** — `nist-sp-800-218`, 10
+false against 7 declared, its own title, which the owner accepted for `-v2` on 2026-09-18; `-v3`
+adds none there. Right headings rise 3.7×, false ones 1.7×, and precision against the authors' tags
+rises from 42% to 60%.
+
+**Why it holds where §7's clause did not.** The same documents that broke §7 are bounded here:
+`nist-sp-800-161r1` 1,297 false headings under §7, 87 now; `nist-sp-800-171r3` 203 under §7, 5 now,
+with 164 of its 180 declared headings found. Bold defined terms, bold table headers and bold inline
+emphasis are not lines of their own in a block of their own.
+
+**A looser isolation was measured and not taken**: a bold line whose block continues into another
+bold line — a heading wrapped onto two lines, or a caption. It found one more right heading on five
+documents and 66 more false ones, 56 of them on `nist-sp-800-161r1`, and on opendataloader-bench it
+read a two-line bold table caption as half a heading. Half of either as a heading is worse than none.
+
+**Numbering moves no verdict**, only levels, so it needs no row here; it is tested beside the rule.
+
+### 9.1 On the benches
+
+**opendataloader-bench, the harness's own evaluator** (`score.py`): MHS **0.3779 → 0.4703** over
+the 107 documents whose ground truth holds a heading, median 0.1630 → 0.4859, non-zero on 58 → 74;
+NID 0.8793 and TEDS 0.1728 unchanged. **19 documents rose and one fell, so §7.5's bar 2 — "MHS
+rises, and falls on no document" — is breached on one document**: `01030000000121`, 0.9527 →
+0.5742, where a bold `Restriction Enzyme Digest Prep (switch to the 1- 20-μL micropipette):` set
+in a block of its own is read as a heading its ground truth does not hold. A colon ends a label in
+ParseBench's ground truth (`Population:` is a title there), so no clause refusing a colon was built
+for one document. Whether that one fall is accepted is the owner's call, as §7.5 reserves.
+
+**ParseBench** (`docs/measurements/parsebench/`), at `4913f25` and with `type-size-v3`:
+semantic formatting **0.3487 → 0.3502** — title hierarchy 0.3123 → 0.3173, the `is_title` checks
+unchanged at 0.3638 — and visual grounding 0.2200 → 0.2224, where a bold heading now carries the
+label `Section-header`. Content faithfulness 0.6622 → 0.6619. Most hierarchy edges still failing
+on depth join two bold lines neither of which stands apart: 70 of 88, many on pages where the
+leading-gap cut declined and nothing can stand apart. A heading set on two lines is still two
+lines, which is what most of the remaining `is_title` misses are; that is the paragraph slice's,
+not this rule's.

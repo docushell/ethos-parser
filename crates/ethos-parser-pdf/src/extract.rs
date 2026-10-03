@@ -262,7 +262,9 @@ type HeadingLines = Vec<(Vec<usize>, crate::headings::Line)>;
 /// **The line is formed here and never in `headings.rs`.** A line is the runs sharing one band,
 /// one `/Artifact` state and one baseline — `markdown.rs`'s `LineKey`, read for equality only —
 /// and the rule's own file may not name the band: that is its guard, because it reads type and
-/// never position. So this groups, and the rule sees each line's runs by their type alone.
+/// never position. So this groups, and the rule sees each line's runs by their type alone — and,
+/// since decision #38, the line's text and one bit: whether the leading-gap cut made the line a
+/// block of its own.
 ///
 /// Only lines that could be headings against *some* body em are kept, so the fold holds one
 /// entry per display line rather than one per line of the document.
@@ -291,6 +293,7 @@ fn page_heading_lines(
                 Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
             ),
             table_owned: owned.contains(&i),
+            bold: run.bold,
         })
         .collect();
 
@@ -304,15 +307,31 @@ fn page_heading_lines(
             .or_default()
             .push(i);
     }
+    // Decision #38. The lines in reading order — `runs` is in its final order, so a line's first
+    // run places it — because `type-size-v3`'s bold clause reads whether a line stands apart, and
+    // the leading-gap cut is what measured that: a line stands apart where it is the whole of its
+    // block. A bold line wrapped onto two is not one — a caption as often as a heading, and half of
+    // either as a heading is worse than none. Where the cut declined nothing was measured, and no
+    // line stands apart.
+    let mut ordered: Vec<Vec<usize>> = by_line.into_values().collect();
+    ordered.sort_unstable_by_key(|indices| indices.first().copied());
+    let members: Vec<Vec<Typed>> = ordered
+        .iter()
+        .map(|indices| indices.iter().map(|&i| typed[i]).collect())
+        .collect();
+    let block_of = |n: usize| ordered[n].first().and_then(|&i| runs[i].block);
     // Every line counts toward the reference (`type-size-v2`'s body is the largest size that runs
     // on many lines); only a line that could be a heading is kept for the verdict.
     let mut lines = Vec::new();
-    for indices in by_line.into_values() {
-        let members: Vec<Typed> = indices.iter().map(|&i| typed[i]).collect();
-        tally.add_line(&members);
-        let line = Line::of(&members);
+    for (n, indices) in ordered.iter().enumerate() {
+        tally.add_line(&members[n]);
+        let opens = n == 0 || block_of(n - 1) != block_of(n);
+        let closes = n + 1 == ordered.len() || block_of(n + 1) != block_of(n);
+        let isolated = block_of(n).is_some() && opens && closes;
+        let text: String = indices.iter().map(|&i| runs[i].text.as_str()).collect();
+        let line = Line::of(&members[n], &text, isolated);
         if line.is_candidate() {
-            lines.push((indices, line));
+            lines.push((indices.clone(), line));
         }
     }
     (lines, tally)
@@ -484,7 +503,7 @@ fn extract_page(
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V2
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V3
         && no_author_structure(structure.as_ref());
     let mut heading_lines: HeadingLines = Vec::new();
     let mut em_tally = crate::headings::EmTally::default();
@@ -700,6 +719,7 @@ fn extract_page(
                 region: None,
                 block: None,
                 inferred_heading: false,
+                inferred_heading_level: None,
                 // Decision #38: the typeface the document chose, as its font dictionary says.
                 bold: shown.font.bold,
                 italic: shown.font.italic,
@@ -1806,23 +1826,34 @@ fn extract_counted(
     // Decision #29. The body em exists only now — it is a mode over every page — so this is where
     // each page's reduced lines are decided. Every page shares one gate, so a document the gate
     // closed returned no tally from any page, has no body em, and nothing below runs.
-    if let Some(body_em) = doc_em_tally.body_em() {
+    //
+    // Decision #38: `type-size-v3` ranks the sizes the headings are set in, so the ranks are read
+    // over every page's lines first, and only then is each line given its level.
+    let candidates = heading_lines_by_page.iter().flatten().map(|(_, line)| line);
+    if let Some(levels) = crate::headings::Levels::new(candidates, &doc_em_tally) {
         let mut fired: u32 = 0;
+        let mut bold_headings: u32 = 0;
         for (page, lines) in pages.iter_mut().zip(&heading_lines_by_page) {
             for (indices, line) in lines {
-                if line.is_heading(body_em) {
-                    fired = fired.saturating_add(1);
-                    for &i in indices {
-                        page.runs[i].inferred_heading = true;
-                    }
+                let Some(level) = levels.of(*line) else {
+                    continue;
+                };
+                fired = fired.saturating_add(1);
+                if !line.is_heading(levels.body_em()) {
+                    bold_headings = bold_headings.saturating_add(1);
+                }
+                for &i in indices {
+                    page.runs[i].inferred_heading = true;
+                    page.runs[i].inferred_heading_level = (level > 1).then_some(level);
                 }
             }
         }
         if fired > 0 {
             limitations.push(lim::headings_inferred_from_type(
                 fired,
+                bold_headings,
                 &profile.heading_inference_rule,
-                body_em,
+                levels.body_em(),
             ));
         }
     }
@@ -3066,6 +3097,7 @@ mod tests {
                 region: None,
                 block: None,
                 inferred_heading: false,
+                inferred_heading_level: None,
                 bold: false,
                 italic: false,
                 text: text.to_string(),
