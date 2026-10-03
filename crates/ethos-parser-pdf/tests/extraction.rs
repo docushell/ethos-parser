@@ -3788,6 +3788,60 @@ fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
     );
 }
 
+/// **A numbered bold line set tight over its text is a heading; the same line unnumbered is not**
+/// (decision #38, `type-size-v4`). Plain prose on a 12pt leading; 30 points of space; then a bold
+/// line and, a leading below it, the prose it heads. Numbered, it needs only the room above.
+#[test]
+fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
+    let page = |label: &str| {
+        let mut content = String::new();
+        let mut line = |font: &str, y: i32, text: &str| {
+            content.push_str(&format!("BT /{font} 10 Tf 20 {y} Td ({text}) Tj ET\n"));
+        };
+        for (i, y) in (0..8).map(|i| (i, 380 - 12 * i)) {
+            line(
+                "F1",
+                y,
+                &format!("Plain body text that runs across the page, line {i}"),
+            );
+        }
+        line("F2", 266, label);
+        for (i, y) in (0..8).map(|i| (i, 254 - 12 * i)) {
+            line(
+                "F1",
+                y,
+                &format!("More plain body text across the page, line {i}"),
+            );
+        }
+        let stream = [
+            format!("<< /Length {} >>\nstream\n", content.len()).into_bytes(),
+            content.into_bytes(),
+            b"\nendstream".to_vec(),
+        ]
+        .concat();
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Resources << /Font << /F1 5 0 R \
+               /F2 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream,
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
+        ])
+    };
+    let headings = |bytes: &[u8]| -> Vec<String> {
+        let a = extracted(bytes).expect("reads");
+        runs(&a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| r.text.clone())
+            .collect()
+    };
+    assert_eq!(headings(&page("3.1. Methods")), ["3.1. Methods"]);
+    assert!(headings(&page("Methods")).is_empty());
+}
+
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
 /// draws `page` (object 5). Each of `forms` is a form XObject from object 6 on: its extra dictionary
 /// entries, and its content.

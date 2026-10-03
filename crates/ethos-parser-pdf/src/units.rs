@@ -82,7 +82,7 @@ pub(crate) fn units(lines: &[UnitLine]) -> Vec<u32> {
 }
 
 /// Whether a line boxed `b` continues the unit boxed `unit`: clauses 1 and 2, in integers.
-fn continues(unit: Rect, b: Rect) -> bool {
+pub(crate) fn continues(unit: Rect, b: Rect) -> bool {
     let height = b.3 - b.1;
     let gap = b.1 - unit.3;
     let overlap = unit.2.min(b.2) - unit.0.max(b.0);

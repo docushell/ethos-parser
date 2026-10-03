@@ -314,15 +314,22 @@ impl Line {
     }
 }
 
-/// How deep the section number opening `text` goes — the parts of a leading `2.1.3` or `2.1.`, a
-/// run of digits joined by full stops and followed by whitespace — and 1 where it opens with none.
-/// The author's own numbering, read as the depth it states: `type-size-v3` ranks two headings set
-/// in one size by it, so `2 Foundations` stands above `2.1 Databases`. Digits and full stops only,
-/// so it reads no language.
-fn section_depth(text: &str) -> u8 {
-    let Some((number, _)) = text.split_once(char::is_whitespace) else {
-        return 1;
+/// The depth of the section number opening `text`, or `None` where it opens with none: the parts
+/// of a leading `2.1.3` or `2.1.` — digits joined by full stops — or 1 for a roman numeral closed
+/// by a full stop, `IV.` or `iv.`, each followed by whitespace. The author's own numbering, read as
+/// the depth it states: `type-size-v3` ranks two headings set in one size by it, so `2 Foundations`
+/// stands above `2.1 Databases`, and `type-size-v4` lets a numbered bold line stand with space above
+/// it alone. Digits, roman numerals and full stops only, so it reads no language.
+pub(crate) fn section_number(text: &str) -> Option<u8> {
+    let (number, _) = text.trim_start().split_once(char::is_whitespace)?;
+    let roman = |n: &str| {
+        !n.is_empty()
+            && (n.chars().all(|c| "IVXLCDM".contains(c))
+                || n.chars().all(|c| "ivxlcdm".contains(c)))
     };
+    if number.strip_suffix('.').is_some_and(roman) {
+        return Some(1);
+    }
     let number = number.strip_suffix('.').unwrap_or(number);
     let parts = number.split('.');
     if number.is_empty()
@@ -330,9 +337,14 @@ fn section_depth(text: &str) -> u8 {
             .clone()
             .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
     {
-        return 1;
+        return None;
     }
-    u8::try_from(parts.count()).unwrap_or(u8::MAX)
+    Some(u8::try_from(parts.count()).unwrap_or(u8::MAX))
+}
+
+/// [`section_number`]'s depth, and 1 where the text opens with no number.
+fn section_depth(text: &str) -> u8 {
+    section_number(text).unwrap_or(1)
 }
 
 /// Most characters a bold line may hold and still be read as a heading (`type-size-v3`): a
@@ -358,7 +370,8 @@ pub(crate) const MAX_LEVEL: u8 = 6;
 /// 1. every run with text is bold, and the document's body is not ([`EmTally::body_is_bold`]);
 /// 2. it is set at least at the body em, so bold small print is not a heading;
 /// 3. its caller measured it as standing apart — `isolated`, the one fact of position this rule
-///    reads, and the reason decision #38 amends decision #29's rider;
+///    reads, and the reason decision #38 amends decision #29's rider: a leading-gap block of its
+///    own, or, for a line opening with a section number, room above it (`type-size-v4`);
 /// 4. it holds 2 to [`BOLD_HEADING_MAX_CHARS`] characters other than whitespace, at least half of
 ///    them letters, so a row of bold numbers is not a heading;
 /// 5. it is not shaped as a sentence: it neither starts with a lower-case letter nor ends with a
@@ -833,6 +846,23 @@ mod tests {
             ("3.5 million readers", 2),
         ] {
             assert_eq!(section_depth(text), depth, "{text:?}");
+        }
+    }
+
+    /// **A section number is digits joined by full stops, or a roman numeral closed by one**, then
+    /// whitespace; anything else is no number, and a number is never read inside a word.
+    #[test]
+    fn a_section_number_is_digits_or_a_closed_roman_numeral() {
+        for (text, depth) in [
+            ("3.1. Status", Some(2)),
+            ("IV. Results", Some(1)),
+            ("iv. results", Some(1)),
+            ("7 Theory", Some(1)),
+        ] {
+            assert_eq!(section_number(text), depth, "{text:?}");
+        }
+        for text in ["Introduction", "I am", "IV Results", "Mix. word", "3.5", ""] {
+            assert_eq!(section_number(text), None, "{text:?}");
         }
     }
 

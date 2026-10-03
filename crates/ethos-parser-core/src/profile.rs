@@ -624,7 +624,15 @@ pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 /// #29's rider for: bold alone was built and refused on 2026-09-20, because nothing told a bold
 /// heading from bold prose (`docs/measurements/headings/README.md` §7). A bold heading is the
 /// level below the smallest heading size.
-pub const HEADING_INFERENCE_RULE_V3: &str = "type-size-v3";
+///
+/// **`-v4` adds the numbered bold line.** A bold line opening with a section number (`3.1.`,
+/// `IV.`) stands apart with room above it alone — more than half its height of space, or no overlap
+/// across, the layout-unit rule's own geometry — since a numbered heading is often set tight over
+/// its text, and `-v3` asked every bold line for a leading-gap block of its own. The size clause, the
+/// ranks and `-v3`'s bold clause are unchanged. Judging every bold line by the spacing was measured
+/// and refused: it took `nist-sp-800-171r3` from 5 false headings to 203, every `DISCUSSION` and
+/// `REFERENCES` label its producer tagged `/P` (`docs/measurements/headings/README.md` §10).
+pub const HEADING_INFERENCE_RULE_V4: &str = "type-size-v4";
 
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.
 ///
@@ -1551,7 +1559,7 @@ pub struct Profile {
     pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V3`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V4`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -1656,7 +1664,7 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V3.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V4.to_string(),
             layout_unit_rule: LAYOUT_UNIT_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
@@ -2797,7 +2805,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3810,11 +3818,15 @@ mod tests {
              Moved for decision #38's second table pass, `sha256:4abfc026…` -> \
              `sha256:c2798ffb…`: `table_detection.tracks` `whitespace-tracks-v1` -> `-v2`, which \
              reads two columns and two rows under their own guards and runs only where the \
-             document declares no author structure. Nothing else."
+             document declares no author structure. Nothing else.\n\n\
+             Moved for decision #38's numbered headings, `sha256:c2798ffb…` -> \
+             `sha256:f69d6c01…`: `heading_inference_rule` `type-size-v3` -> `-v4`, which lets a \
+             bold line opening with a section number stand apart with room above it alone. \
+             Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:c2798ffb88707f246351985e6304f9bccef3f7f02698cfe4c20727ff357b1bae"
+            "sha256:f69d6c01e528ee3322fcbc6dfa0acaeaf8094c02c21131ed1dcabc98a61d8c5c"
         );
     }
 

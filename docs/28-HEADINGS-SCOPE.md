@@ -1041,7 +1041,9 @@ unexamined, and S4's instrument should bucket them rather than drop them.
    bold clause reads one bit of position its caller derives from the leading-gap cut — whether a
    line is the whole of its block — and the rule's file still names neither field. That bit makes
    no role: it only lets a bold line that is already a heading candidate be read as one
-   ([`measurements/headings/README.md`](measurements/headings/README.md) §9).
+   ([`measurements/headings/README.md`](measurements/headings/README.md) §9). `type-size-v4` adds
+   one more bit of the same kind for a line opening with a section number — room above it, by the
+   layout-unit rule's geometry (§10 there).
 3. **P14 stands for every other role.** No paragraph, list, caption, section, figure or table is
    inferred from type. D1 is untouched.
 4. **No fixed multiplier presented as a measurement** —

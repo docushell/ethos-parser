@@ -455,3 +455,60 @@ on depth join two bold lines neither of which stands apart: 70 of 88, many on pa
 leading-gap cut declined and nothing can stand apart. A heading set on two lines is still two
 lines, which is what most of the remaining `is_title` misses are; that is the paragraph slice's,
 not this rule's.
+
+## 10. `type-size-v4` — the numbered bold line (2026-10-04)
+
+On opendataloader-bench, after `-v3`, 34 of the ground truth's 193 headings were bold lines `-v3`
+did not read, most of them numbered — `3.1. Status of Business Operations`, `7.1. Free Vortex` —
+and set a leading over their text, so no leading-gap block holds them alone; 16 more sit just under
+the 1.20× size cut and 31 run across two lines.
+
+**Judging every bold line by the spacing was measured first, and refused.** With "stands apart"
+read off the layout-unit rule's geometry — the nearest measured lines above and below do not
+continue it — right headings rose 389 → 833 but false ones 256 → 884, and both bounds broke:
+`nist-sp-800-171r3` 5 false headings → 203 (5.02%, and over its 180 declared), every `DISCUSSION`
+and `REFERENCES` label its producer tagged `/P`; `nist-sp-800-218` 10 → 18. Readers call those
+labels headings, as they do `-218`'s title, but the bound is the bound.
+
+**What ships adds only the numbered bold line**: one opening with a section number (`3.1.`,
+`IV.`) stands apart with room above it alone — more than half its height of space, or no overlap
+across. Every other bold line still needs a leading-gap block of its own. Raw readings in
+[`falsepos-v4.json`](falsepos-v4.json).
+
+| document | declared | right v3 → **v4** | false v3 → **v4** | FP rate **v4** | recall v3 → **v4** |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 | 9 | 1 → **1** | 2 → **2** | 1.67% | 11.11% → **11.11%** |
+| irs-fw9 | 28 | 26 → **26** | 0 → **0** | 0.00% | 92.86% → **92.86%** |
+| nist-sp-800-218 | 7 | 0 → **2** | 10 → **10** | 0.54% | 0.00% → **28.57%** |
+| nist-sp-800-207 | 57 | 6 → **7** | 12 → **12** | 0.64% | 10.53% → **12.28%** |
+| nist-sp-800-171r3 | 180 | 164 → **168** | 5 → **5** | 0.12% | 91.11% → **93.33%** |
+| nist-sp-800-37r2 | 957 | 16 → **35** | 31 → **32** | 0.40% | 1.67% → **3.66%** |
+| nist-sp-800-161r1 | 454 | 71 → **92** | 87 → **88** | 0.69% | 15.64% → **20.26%** |
+| nist-sp-800-53Ar5 | 61 | 25 → **40** | 43 → **43** | 0.05% | 40.98% → **65.57%** |
+| nist-sp-800-53r5 | 389 | 39 → **52** | 23 → **23** | 0.11% | 10.03% → **13.37%** |
+| cfpb-home-loan-toolkit | 83 | 19 → **19** | 42 → **42** | 4.61% | 22.89% → **22.89%** |
+| irs-form-1040-2025 | 24 | 22 → **22** | 1 → **1** | 0.43% | 91.67% → **91.67%** |
+
+**Both bounds stand where they stood**: the rate band over the nine is 0.00%..4.61%, worst
+`cfpb-home-loan-toolkit`, and the count bound is breached only by `nist-sp-800-218`'s title, 10
+against 7, as the owner accepted for `-v2`. Right headings **389 → 464**, false ones **256 → 258**.
+
+**The instrument's join changed with it.** `whitespace-tracks-v2` runs only where no structure is
+declared, so a tree-stripped copy may now infer a table its tagged original does not, and read the
+table's runs as one atom in reading order. `falsepos.py` therefore pairs the two extracts by where
+each run sits — page, origin, text, the n-th of any repeats — instead of by node order, and still
+refuses a pair it cannot complete. Line counts move by a fraction of a percent where a stripped
+copy's table moved a run's band; §9's `-v3` readings were taken under the old join.
+
+**opendataloader-bench**: MHS 0.4712 → **0.5398**, non-zero on 74 → 84 of 107, 12 documents rose and
+one fell — `01030000000037`, 0.6698 → 0.6050, where the new `3.1.` heading is right and a figure
+caption the size clause reads as a heading shares its hierarchy. NID 0.8849 → 0.8851, TEDS unchanged.
+§7.5's bar 2 is breached on that document, as on `01030000000121` under `-v3`; both are the owner's
+call.
+
+**ParseBench**: overall unchanged at 33.11. Visual grounding 0.4030 → 0.4034 and title hierarchy
+0.3173 → 0.3174, but content faithfulness 0.6627 → 0.6623 over six pages, each one where a section
+number and its title share a baseline (`2.3 Foreign currency translation`) and become `##` lines
+the content scorer marks down from the bold lines they were. The rule's gain is on the corpora whose
+ground truth names headings, not on this one.
+

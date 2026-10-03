@@ -129,6 +129,7 @@ def extract(pdf, work, tag):
             role = block_role(t.get("standard_role_path") or t["role_path"])
         rows.append({
             "text": node["text"],
+            "at": (loc["page"], loc["origin_x"], loc["origin_y"], node["text"]),
             "key": (loc["page"], attrs.get("region"), "pdf_artifact" in sl, loc["origin_y"]),
             "role": role,
             "mcid": (sl.get("pdf_tagged") or {}).get("mcid"),
@@ -144,22 +145,30 @@ def measure(pdf, work):
     verdicts, s_codes = extract(stripped, work, "stripped")
     stripped.unlink()
 
-    # The join is by position, so it must be the same runs in the same order, or it measures
-    # nothing. The tree changes locators and nothing about the runs.
-    if len(original) != len(verdicts):
-        raise SystemExit(f"{pdf.name}: {len(original)} nodes against {len(verdicts)} once stripped")
-    for i, (o, v) in enumerate(zip(original, verdicts)):
-        if (o is None) != (v is None) or (o and (o["text"] != v["text"] or o["key"][0] != v["key"][0])):
-            raise SystemExit(f"{pdf.name}: node {i} differs between the original and the stripped copy")
+    # The join is by where each run sits — page, origin and text, the n-th of any repeats — and it
+    # must pair every run, or it measures nothing. The tree changes locators and nothing about the
+    # runs; it can change their ORDER since `whitespace-tracks-v2`, which runs only where no
+    # structure is declared, so the stripped copy may infer a table the original does not and read
+    # its runs as one atom. Joined by node order until then.
+    def keyed(rows):
+        seen, out = {}, {}
+        for r in rows:
+            if r is None:
+                continue
+            n = seen[r["at"]] = seen.get(r["at"], 0) + 1
+            out[(r["at"], n)] = r
+        return out
+    by_at, at_v = keyed(original), keyed(verdicts)
+    if by_at.keys() != at_v.keys():
+        raise SystemExit(f"{pdf.name}: {len(by_at.keys() ^ at_v.keys())} run(s) differ between the original and the stripped copy")
+    pairs = [(by_at[k], at_v[k]) for k in at_v]
     if any(o and o["flag"] for o in original):
         raise SystemExit(f"{pdf.name}: the tagged original carries an inferred heading; the gate leaked")
     if "untagged-structure-tree-absent" not in s_codes:
         raise SystemExit(f"{pdf.name}: the stripped copy still reads as tagged")
 
     lines = {}
-    for o, v in zip(original, verdicts):
-        if o is None:
-            continue
+    for o, v in pairs:
         lines.setdefault(v["key"], []).append((o, v))
     labelled = declared = fired = tp = fp = fired_unlabelled = 0
     items = set()

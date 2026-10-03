@@ -470,8 +470,9 @@ pub fn headings_inferred_from_type(lines: u32, bold: u32, rule: &str, body_em: i
              largest common size, the largest rendered em holding a twentieth of its body \
              characters on ten or more lines — and are ranked by that size, the largest level 1. \
              {bold} are bold lines at the body em or larger that stand apart from their \
-             neighbours, where the leading-gap cut put the line in a block of its own, in a \
-             document whose body is not bold; they are the level \
+             neighbours, where the leading-gap cut put the line in a block of its own or, for a \
+             line opening with a section number, more than half a line of space stands above \
+             it, in a document whose body is not bold; they are the level \
              below the smallest size. A level deeper than 1 travels as `inferred_heading_level`. \
              The document declares no author structure — no `/StructTreeRoot`, or only one this \
              engine wrote — so EVERY heading in this artifact is this engine's measurement of type \

@@ -308,27 +308,51 @@ fn page_heading_lines(
             .push(i);
     }
     // Decision #38. The lines in reading order — `runs` is in its final order, so a line's first
-    // run places it — because `type-size-v3`'s bold clause reads whether a line stands apart, and
-    // the leading-gap cut is what measured that: a line stands apart where it is the whole of its
-    // block. A bold line wrapped onto two is not one — a caption as often as a heading, and half of
-    // either as a heading is worse than none. Where the cut declined nothing was measured, and no
-    // line stands apart.
+    // run places it — because the bold clause reads whether a line stands apart: where the
+    // leading-gap cut gave it a block of its own (`type-size-v3`; a bold line wrapped onto two is
+    // not one, a caption as often as a heading), or, opening with a section number, where the
+    // nearest measured line above it does not continue it by the layout-unit rule's own geometry
+    // (`-v4`): a numbered heading is often set tight over its text. A line with no measured box
+    // stands apart from nothing.
     let mut ordered: Vec<Vec<usize>> = by_line.into_values().collect();
     ordered.sort_unstable_by_key(|indices| indices.first().copied());
     let members: Vec<Vec<Typed>> = ordered
         .iter()
         .map(|indices| indices.iter().map(|&i| typed[i]).collect())
         .collect();
-    let block_of = |n: usize| ordered[n].first().and_then(|&i| runs[i].block);
+    let boxes: Vec<Option<(i64, i64, i64, i64)>> = ordered
+        .iter()
+        .map(|indices| {
+            indices
+                .iter()
+                .filter(|&&i| !runs[i].text.trim().is_empty())
+                .filter_map(|&i| runs[i].geometry.measured())
+                .map(|b| (b.x0(), b.y0(), b.x1(), b.y1()))
+                .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+        })
+        .collect();
+    let measured: Vec<usize> = (0..ordered.len()).filter(|&n| boxes[n].is_some()).collect();
+    let apart = |a: usize, b: usize| match (boxes[a], boxes[b]) {
+        (Some(a), Some(b)) => !crate::units::continues(a, b),
+        _ => false,
+    };
     // Every line counts toward the reference (`type-size-v2`'s body is the largest size that runs
     // on many lines); only a line that could be a heading is kept for the verdict.
     let mut lines = Vec::new();
     for (n, indices) in ordered.iter().enumerate() {
         tally.add_line(&members[n]);
-        let opens = n == 0 || block_of(n - 1) != block_of(n);
-        let closes = n + 1 == ordered.len() || block_of(n + 1) != block_of(n);
-        let isolated = block_of(n).is_some() && opens && closes;
         let text: String = indices.iter().map(|&i| runs[i].text.as_str()).collect();
+        let alone_in_block = {
+            let block_of = |k: usize| ordered[k].first().and_then(|&i| runs[i].block);
+            let opens = n == 0 || block_of(n - 1) != block_of(n);
+            let closes = n + 1 == ordered.len() || block_of(n + 1) != block_of(n);
+            block_of(n).is_some() && opens && closes
+        };
+        let numbered_with_room_above = crate::headings::section_number(&text).is_some()
+            && measured
+                .binary_search(&n)
+                .is_ok_and(|p| p.checked_sub(1).is_none_or(|q| apart(measured[q], n)));
+        let isolated = alone_in_block || numbered_with_room_above;
         let line = Line::of(&members[n], &text, isolated);
         if line.is_candidate() {
             lines.push((indices.clone(), line));
@@ -503,7 +527,7 @@ fn extract_page(
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V3
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V4
         && no_author_structure(structure.as_ref());
     let mut heading_lines: HeadingLines = Vec::new();
     let mut em_tally = crate::headings::EmTally::default();

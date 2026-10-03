@@ -144,8 +144,8 @@ and its §5 and §6 the measurements; `-v1`, three columns and three rows, was n
 
 ### Headings get levels, and a bold line that stands apart is one (decision #38)
 
-`heading_inference_rule` `type-size-v2` -> `-v3`, so `profile_sha256` moves. Every line `-v2` read as
-a heading `-v3` reads as one.
+`heading_inference_rule` `type-size-v2` -> `-v4` (`-v3`, without the numbered clause, was never
+pushed), so `profile_sha256` moves. Every line `-v2` read as a heading `-v4` reads as one.
 
 - **Levels.** Inferred headings are ranked by the size they are set in, largest first, and within one
   size by the depth of their own section number (`2` above `2.1`), into levels 1 to 6.
@@ -157,15 +157,19 @@ a heading `-v3` reads as one.
   body is not bold, where the leading-gap cut gave the line a block of its own. It is the level below
   the smallest heading size. This is the font-weight clause refused on 2026-09-20, with what that
   measurement said it lacked; decision #38 amends decision #29's rider for its one bit of position.
+- **A numbered bold line needs only room above it** (`-v4`): one opening with a section number
+  (`3.1.`, `IV.`) stands apart where more than half its height of space stands above it, since a
+  numbered heading is often set tight over its text. Judging every bold line by the spacing was
+  measured and refused: 203 false headings on `nist-sp-800-171r3`.
 - **`headings-inferred-from-type` states both counts**, by size and by weight.
 - **Measured** on the eleven documents whose authors declare headings, tree stripped: right headings
-  106 -> 389, false 147 -> 256; the rate bound holds (0.00%..4.61%, worst `cfpb-home-loan-toolkit`,
+  106 -> 464, false 147 -> 258; the rate bound holds (0.00%..4.61%, worst `cfpb-home-loan-toolkit`,
   unchanged) and the count bound fails only where it failed before, `nist-sp-800-218`'s title, 10
-  against 7. opendataloader-bench MHS 0.3779 -> 0.4703, NID and TEDS unchanged; 19 documents rose
-  and one fell (`01030000000121`, a bold label read as a heading), which breaches §7.5's bar 2 on
-  that document and is the owner's call.
-  ParseBench semantic formatting 0.3487 -> 0.3502 (title hierarchy 0.3123 -> 0.3173), visual
-  grounding 0.2200 -> 0.2224, content faithfulness 0.6622 -> 0.6619.
+  against 7. opendataloader-bench MHS 0.3779 -> 0.5398; two documents fell (`01030000000121`, a bold
+  label read as a heading; `01030000000037`, a figure caption read by size beside a right heading),
+  which breaches §7.5's bar 2 on each and is the owner's call.
+  ParseBench overall unchanged: content faithfulness 0.6627 -> 0.6623 on six pages where a numbered
+  title now projects as `##`, visual grounding 0.4030 -> 0.4034.
 
 ### Bold and italic, where the font declares them (decision #38)
 
