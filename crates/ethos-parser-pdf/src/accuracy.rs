@@ -1251,7 +1251,15 @@ mod tests {
             let artifact = crate::extract::extract(&doc, &profile).expect("extracts");
             let mut real: BTreeMap<(u32, String, u32, u32), u32> = BTreeMap::new();
             for p in &artifact.pages {
-                for t in &p.tables {
+                // The mirror is `tables::detect`'s three ink rules. Decision #38's tracks rule runs
+                // after it, on the runs those leave, and adds only tables that overlap none of
+                // theirs, so it cannot change what this compares; `docs/31-TABLE-TRACKS-SCOPE.md`
+                // §4 is where it is measured.
+                for t in p
+                    .tables
+                    .iter()
+                    .filter(|t| t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V1)
+                {
                     *real
                         .entry(key(p.index, &t.rule, t.rows, t.columns))
                         .or_default() += 1;

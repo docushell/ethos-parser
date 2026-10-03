@@ -870,6 +870,47 @@ fn extract_page(
         )?;
         let mut tables = detected.tables;
 
+        // Decision #38. Last, on the runs no table above holds: grids inferred from the whitespace
+        // across a table's rows (`docs/31-TABLE-TRACKS-SCOPE.md`). Here, before reading order,
+        // because the rule reads the order the content stream wrote the rows in. **Not on a page
+        // whose structure tree declares a `/Table`**: the author's declaration wins, as it does for
+        // headings, and an inferred table there would take the declared one's place in the pairing
+        // below.
+        let declares_tables = structure
+            .as_ref()
+            .is_some_and(|tree| tree.tables.iter().any(|t| t.page == Some(page_id)));
+        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V1
+            && !declares_tables
+        {
+            let track_runs: Vec<crate::tracks::TrackRun<'_>> = runs
+                .iter()
+                .zip(&ems)
+                .map(|(r, em)| {
+                    let (x, y) = (r.locator.origin_x, r.locator.origin_y);
+                    crate::tracks::TrackRun {
+                        x,
+                        y,
+                        em: *em,
+                        rect: r.geometry.measured().map(|b| crate::tables::QuantRect {
+                            x0: b.x0(),
+                            y0: b.y0(),
+                            x1: b.x1(),
+                            y1: b.y1(),
+                        }),
+                        text: r.text.as_str(),
+                        claimed: tables.iter().any(|t| {
+                            x >= t.rect.x0 && x < t.rect.x1 && y >= t.rect.y0 && y < t.rect.y1
+                        }),
+                    }
+                })
+                .collect();
+            for table in crate::tracks::detect(page_number, &track_runs, &mut alloc)? {
+                if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
+                    tables.push(table);
+                }
+            }
+        }
+
         // v1-S3: the document's own tags, compared against what the detectors found. The two
         // derivations meet here and nowhere else — the tree walk never saw a box, and no
         // detector ever saw a structure type.

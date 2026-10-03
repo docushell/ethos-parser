@@ -205,9 +205,10 @@
         "ruled",
         "unruled",
         "stroke_ruled",
-        "tagged"
+        "tagged",
+        "tracks"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8 and four since v2-S24: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24 and five since decision #38: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -224,6 +225,10 @@
         "tagged": {
           "type": "string",
           "description": "Version id of the rule that emits a table for each `/Table` the structure tree declares that no geometric detector matched (v2-S24). `tagged-tables-v1`. This one reads the document's own tags rather than ink, so its table is `Extracted` — the document's own statement — rather than `Computed`, and it carries no geometry: the tree names no coordinate, so the box is absent (`not_reported_by_structure_tree`) and none is invented. Its locator cross-check is not-applicable, and it is omitted from any `ethos.grounding.v1` projection."
+        },
+        "tracks": {
+          "type": "string",
+          "description": "Version id of the rule that infers grids from the whitespace across a table's rows (decision #38). `whitespace-tracks-v1`. A line splits into cells where its ink leaves a gap wider than one rendered em; a line of three or more cells opens a table whose tracks are those cells' extents, and lines below join it while their cells sit on the tracks by centre, left edge or right edge. At least three rows at a steady pitch, written row by row in the content stream. Runs last, on runs no other rule's table holds; a cell holds only its runs' text."
         }
       }
     },
@@ -465,6 +470,7 @@
         "ruled": "ruled-rects-v6",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",
+        "tracks": "whitespace-tracks-v1",
         "unruled": "unruled-align-v1"
       },
       "text_box_rule": "advance-over-font-envelope-v1",

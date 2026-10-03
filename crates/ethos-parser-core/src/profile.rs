@@ -485,6 +485,20 @@ pub const TABLE_DETECTION_STROKE_V1: &str = "stroke-ruled-v1";
 /// grids they draw.
 pub const TABLE_DETECTION_TAGGED_V1: &str = "tagged-tables-v1";
 
+/// The rule that infers a grid from the **whitespace a table leaves across its rows** (decision
+/// #38, `docs/31-TABLE-TRACKS-SCOPE.md`).
+///
+/// A line splits into cells wherever its ink leaves a gap wider than one rendered em; a line of
+/// three or more cells opens a table whose tracks are those cells' extents; lines below join while
+/// their cells sit on the tracks — by centre, left edge or right edge — as rows, sparse rows or
+/// wrapped lines of the row above. A table has at least three rows at a steady pitch, and the
+/// content stream wrote it row by row, which is what tells it from two columns of prose. It runs
+/// last, on runs no other rule's table holds, and a cell holds only its runs' text.
+///
+/// Its own field beside [`TABLE_DETECTION_UNRULED_V1`], whose evidence is every cell's origin on a
+/// shared column line: a right-aligned column has no such line, and this rule does not need one.
+pub const TABLE_DETECTION_TRACKS_V1: &str = "whitespace-tracks-v1";
+
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
 /// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
@@ -802,6 +816,13 @@ pub struct TableDetection {
     /// hash"* — and moving the hash is correct: two builds disagree about whether a NIST document's
     /// tables reach the artifact.
     pub tagged: String,
+    /// Version id of the rule that infers grids from the whitespace across a table's rows
+    /// (decision #38).
+    ///
+    /// See [`TABLE_DETECTION_TRACKS_V1`]. A fifth field for the reason there were four: its
+    /// evidence — whitespace shared down a column, not origins on a column line — is its own, and
+    /// a table on the wire names the rule that built it.
+    pub tracks: String,
 }
 
 impl Default for TableDetection {
@@ -812,6 +833,7 @@ impl Default for TableDetection {
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
+            tracks: TABLE_DETECTION_TRACKS_V1.to_string(),
         }
     }
 }
@@ -1687,6 +1709,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V2.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1758,6 +1781,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1823,6 +1847,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1892,6 +1917,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1948,6 +1974,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2010,6 +2037,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2071,6 +2099,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2135,6 +2164,7 @@ impl Profile {
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
+                tracks: NOT_RUN.into(),
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2313,6 +2343,7 @@ mod tests {
                 unruled,
                 stroke_ruled,
                 tagged,
+                tracks,
             })
         );
         assert_eq!(
@@ -2411,6 +2442,7 @@ mod tests {
                     unruled: _,
                     stroke_ruled: _,
                     tagged: _,
+                    tracks: _,
                 },
             struct_tree_rule: _,
             outline_rule: _,
@@ -2463,6 +2495,12 @@ mod tests {
                 // instance of exactly that.
                 "table_detection.tagged",
                 Box::new(|p: &mut Profile| p.table_detection.tagged = "other-tagged-v9".into()),
+            ),
+            (
+                // Decision #38. A run that reads the whitespace across a table's rows emits tables
+                // a run that did not could not have.
+                "table_detection.tracks",
+                Box::new(|p: &mut Profile| p.table_detection.tracks = "other-tracks-v9".into()),
             ),
             (
                 // v1-S4. Which form and annotation nodes exist at all.
@@ -2651,11 +2689,12 @@ mod tests {
         // since decision #29, which added `heading_inference_rule` the same way. Thirty-eight
         // since decision #35, which added `unicode_data_version` and `backend.components` the
         // same way: thirty-eight mutations now cover thirty-seven of the pattern's forty leaves.
+        // Thirty-nine since decision #38, which added `table_detection.tracks` the same way.
         assert_eq!(
             mutations.len(),
-            38,
-            "{} single-field mutation(s); thirty-eight is the number at decision #35, which added \
-             `unicode_data_version` and `backend.components` with their mutations",
+            39,
+            "{} single-field mutation(s); thirty-nine is the number at decision #38, which added \
+             `table_detection.tracks` with its mutation",
             mutations.len()
         );
 
@@ -2710,7 +2749,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3711,11 +3750,15 @@ mod tests {
              Moved for decision #38's headings, `sha256:99339096…` -> `sha256:76502460…`: \
              `heading_inference_rule` `type-size-v2` -> `-v3`, which ranks the sizes inferred \
              headings are set in into levels and reads a bold line standing apart as a heading. \
-             Every line `-v2` read as a heading `-v3` reads as one. Nothing else."
+             Every line `-v2` read as a heading `-v3` reads as one. Nothing else.\n\n\
+             Moved for decision #38's tables, `sha256:76502460…` -> `sha256:a8dbaa62…`: the \
+             fifth `table_detection` field, `tracks`, `whitespace-tracks-v1` — a grid inferred \
+             from the whitespace across a table's rows (`docs/31-TABLE-TRACKS-SCOPE.md`). The \
+             office profiles name it `not-run-for-this-format`. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:765024600d674856ea518dfe4831494948441a43194c98832a680bdcfb47a6a1"
+            "sha256:a8dbaa621dbe1ef0bd37e0dd85ffbe5d2555815c40d624d99a22e1921b321884"
         );
     }
 
@@ -3772,6 +3815,10 @@ mod tests {
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V6, TABLE_DETECTION_TRACKS_V1),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V1),
+            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V1),
+            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V1),
         ] {
             assert_ne!(
                 a, b,
@@ -3779,11 +3826,11 @@ mod tests {
             );
         }
 
-        // All four appear on the wire, under their own keys.
+        // All five appear on the wire, under their own keys.
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -3837,6 +3884,18 @@ mod tests {
              tables a run that read only ink could not have"
         );
 
+        // The fifth, decision #38's: whitespace across a table's rows is its own evidence.
+        let mut tracks_moved = base.clone();
+        tracks_moved.table_detection.tracks = "whitespace-tracks-v2".into();
+        assert_ne!(
+            hash(&base),
+            hash(&tracks_moved),
+            "and so is the tracks one — a run that reads the whitespace across rows emitted tables \
+             a run that did not could not have"
+        );
+        assert_ne!(hash(&tracks_moved), hash(&unruled_moved));
+        assert_ne!(hash(&tracks_moved), hash(&tagged_moved));
+
         // And no knob is another: moving one must not produce a second one's digest.
         assert_ne!(hash(&ruled_moved), hash(&unruled_moved));
         assert_ne!(hash(&ruled_moved), hash(&stroke_moved));
@@ -3879,7 +3938,14 @@ mod tests {
             "a pre-S24 profile must not silently acquire the tagged rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
+        // And once more: a profile from before decision #38 must not acquire the tracks rule.
+        let pre_tracks = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
+        assert!(
+            serde_json::from_str::<TableDetection>(pre_tracks).is_err(),
+            "a pre-#38 profile must not silently acquire the tracks rule"
+        );
+
+        let good = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()
