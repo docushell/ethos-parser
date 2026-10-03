@@ -6,9 +6,10 @@ Registers through parse_bench.extensions, so the upstream tree stays unmodified.
 A refusal (non-zero exit) is a ProviderPermanentError and scores zero, as the benchmark intends.
 
 Text dimensions read `markdown`. Visual Grounding reads the engine's own units with their boxes:
-each `ground` element (a geometric block), each table and each image, labelled only from what the
-record states — a tagged role path, an `inferred_heading` run, a detected table, a drawn image —
-and `Text` otherwise. Nothing here infers a role the engine did not.
+its `layout_unit`s (each `ground` element where a run carries none), each table and each image,
+labelled only from what the record states — a tagged role path, an `inferred_heading` run, a
+detected table, a drawn image — and `Text` otherwise. Nothing here infers a role or a unit the
+engine did not.
 """
 
 import json
@@ -64,24 +65,40 @@ def _layout(extract: dict, grounding: dict) -> dict:
                 return "Section-header"
         return "Text"
 
-    # The unit is the `ground` element: one geometric block, which on an untagged page is one
-    # baseline's ink. Grouping by the engine's leading-gap `block` instead was measured and scored
-    # lower (element pass 0.174 against 0.220): a block often holds several paragraphs and a
-    # heading, so attribution fails. The engine makes no paragraph on an untagged page, and this
-    # adapter does not make one for it.
+    # The unit is the engine's own `layout_unit` where its record carries one (decision #38): the
+    # `ground` elements whose runs share a page and a unit are one item, boxed by their union. Where
+    # a run carries none, the unit is the `ground` element itself — one geometric block, which on an
+    # untagged page is one baseline's ink. This adapter groups by what the record states and makes
+    # no unit of its own; grouping by the leading-gap `block` was measured and scored lower (element
+    # pass 0.174 against 0.220), since a block often holds several paragraphs and a heading.
     runs_of: dict[str, list[str]] = {}
     for span in grounding.get("spans", []):
         runs_of.setdefault(span["element"], []).append(span["id"])
-    items = []
+
+    def unit_of(run_ids: list[str]):
+        for rid in run_ids:
+            unit = ((nodes.get(rid) or {}).get("attributes", {}).get("text_run") or {}).get("layout_unit")
+            if unit is not None:
+                return unit
+        return None
+
+    groups: list[dict] = []
     for element in grounding.get("elements", []):
-        items.append(
-            {
-                "page": page_of.get(element["page"], 1),
-                "bbox": element["bbox"],
-                "label": label_of(runs_of.get(element["id"], [])),
-                "text": element.get("text", ""),
-            }
-        )
+        run_ids = runs_of.get(element["id"], [])
+        page, unit = page_of.get(element["page"], 1), unit_of(run_ids)
+        last = groups[-1] if groups else None
+        if unit is not None and last is not None and last["key"] == (page, unit):
+            x0, y0, x1, y1 = last["bbox"]
+            a, b, c, d = element["bbox"]
+            last["bbox"] = [min(x0, a), min(y0, b), max(x1, c), max(y1, d)]
+            last["text"] += " " + element.get("text", "")
+            last["runs"] += run_ids
+        else:
+            key = (page, unit) if unit is not None else None
+            groups.append({"key": key, "page": page, "bbox": list(element["bbox"]), "text": element.get("text", ""), "runs": list(run_ids)})
+    items = [
+        {"page": g["page"], "bbox": g["bbox"], "label": label_of(g["runs"]), "text": g["text"]} for g in groups
+    ]
     for table in rep.get("tables", []):
         geometry = table.get("geometry") or {}
         if geometry.get("state") == "measured":

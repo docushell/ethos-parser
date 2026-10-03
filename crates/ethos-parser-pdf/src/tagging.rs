@@ -5257,6 +5257,7 @@ mod tests {
             geometry: GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
             region,
             block,
+            layout_unit: None,
             inferred_heading: false,
             inferred_heading_level: None,
             bold: false,

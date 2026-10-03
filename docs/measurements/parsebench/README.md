@@ -32,15 +32,42 @@ tree is unmodified.
   `ProviderPermanentError` and scores zero, as the benchmark intends.
 - **Tables.** The table scorer reads only HTML `<table>` blocks, so pipe tables are converted with
   the benchmark's own LiteParse helper, as every local provider there does.
-- **Visual grounding.** It reports the engine's own units with their boxes: each `ground` element,
-  each table and each image. Labels come only from what the record states: a tagged role path, an
-  `inferred_heading` run, a detected table, a drawn image, and `Text` otherwise. The benchmark's
-  LiteParse layout adapter and label mapper are reused under the key `ethos`.
+- **Visual grounding.** It reports the engine's own units with their boxes: each `layout_unit`
+  (decision #38) — the `ground` elements whose runs share one, boxed by their union — or each
+  `ground` element where a run carries none; each table; and each image. Labels come only from what
+  the record states: a tagged role path, an `inferred_heading` run, a detected table, a drawn image,
+  and `Text` otherwise. The benchmark's LiteParse layout adapter and label mapper are reused under
+  the key `ethos`.
 
 **Measured and not used: the engine's blocks as layout units.** Grouping runs by
 `TextRunAttributes::block` scored lower than one baseline's ink (element pass rate 0.174 against
 0.220). A block often holds several paragraphs and a heading, so attribution fails. The ground
 truth is paragraphs, and the engine makes no paragraph on an untagged page.
+
+## Layout units, measured before the rule was written (2026-10-04)
+
+Visual grounding scores a ground-truth element only where one predicted item covers it, and the
+ground truth is paragraphs; a line item covers one line of one. So the rule was first measured as a
+merge of the adapter's line items in a copy of a finished run — `ground` elements merged while the
+next sits no more than a fraction of its own height below the merged box and overlaps it across —
+and then written into the engine as `line-units-v1` with the best variant's clauses:
+
+| merge | `layout_element_rule_pass_rate` |
+| --- | ---: |
+| none — one item per `ground` element | 0.2264 |
+| gap ≤ 0.8 line, list marker opens an item | 0.3947 |
+| gap ≤ 1.2 line | 0.3718 |
+| gap ≤ 0.3 line | 0.3933 |
+| gap ≤ 0.8 line, no list-marker clause | 0.3877 |
+| gap ≤ 0.5 line | 0.4061 |
+| gap ≤ 0.5 line, overlap ≥ 0.3 instead of 0.5 | 0.4066 |
+| **gap ≤ 0.5 line, heading lines of one level merged** | **0.4114** |
+
+The merge in the adapter was a measurement only. The adapter groups by the engine's
+`layout_unit` and makes no unit of its own. Written into
+the engine, `line-units-v1` scores **0.4028** — a little under the best merge, since its line is the
+heading rule's (one band, one baseline) rather than the `ground` element, and a table's runs join
+no unit.
 
 ## The engine's numbers
 

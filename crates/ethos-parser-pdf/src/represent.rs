@@ -269,6 +269,8 @@ pub fn to_representation(
                     // exactly as `region` is. Absent wherever the rule declined, which includes
                     // every page of uniform body text.
                     block: run.block,
+                    // Decision #38: set after headings, on an undeclared document's lines.
+                    layout_unit: run.layout_unit,
                     inferred_heading: run.inferred_heading,
                     inferred_heading_level: run.inferred_heading_level,
                     bold: run.bold,

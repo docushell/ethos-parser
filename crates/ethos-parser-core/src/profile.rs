@@ -618,6 +618,22 @@ pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 /// level below the smallest heading size.
 pub const HEADING_INFERENCE_RULE_V3: &str = "type-size-v3";
 
+/// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.
+///
+/// On a document that declares no author structure, each page's lines — the runs sharing one
+/// band, one `/Artifact` state and one baseline, the heading rule's own unit — are read in
+/// reading order, and a line joins the unit above it when its box sits no more than half its own
+/// height below that unit's (or half above it, for type set tight), overlaps it across at least
+/// half the narrower width, is the same kind — body text, or an inferred heading of the same
+/// level — and does not open with a list marker (a bullet, or a number or letter closed by `.` or
+/// `)`). The unit's ordinal, 1-based per page, travels as `TextRunAttributes::layout_unit`.
+///
+/// **Where, never what**: a unit says these lines read as one piece of text. It is not the
+/// author's paragraph, decision #19's rule that a block is never a role holds for it as for
+/// `region` and `block`, and a table's runs and an `/Artifact`'s get none. Measured before it
+/// shipped, on ParseBench's visual-grounding pages (`docs/measurements/parsebench/README.md`).
+pub const LAYOUT_UNIT_RULE_V1: &str = "line-units-v1";
+
 /// The forms-and-annotations rule v1-S4 ships.
 ///
 /// On the profile because it decides which nodes exist. Which flag bits are named, how a
@@ -1536,6 +1552,13 @@ pub struct Profile {
     /// **A profile JSON with no `heading_inference_rule` is refused, not defaulted**, the same
     /// posture every rule id here takes: a field defaulted in is a claim the run never made.
     pub heading_inference_rule: String,
+    /// Version id of the layout-unit rule in force (decision #38).
+    ///
+    /// See [`LAYOUT_UNIT_RULE_V1`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// only where the document declares no structure, so folding it into a rule that runs on every
+    /// document would make tagged artifacts non-comparable across a change to a rule that never
+    /// ran on them. Refused, not defaulted, when absent.
+    pub layout_unit_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
     /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V12`]. On the profile because it decides what
@@ -1626,6 +1649,7 @@ impl Default for Profile {
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V3.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V12.to_string(),
@@ -1716,6 +1740,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1788,6 +1813,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1854,6 +1880,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1924,6 +1951,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1981,6 +2009,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2044,6 +2073,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2106,6 +2136,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2171,6 +2202,7 @@ impl Profile {
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
+            layout_unit_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2292,6 +2324,7 @@ mod tests {
                 outline_rule,
                 text_box_rule,
                 heading_inference_rule,
+                layout_unit_rule,
                 markdown_rule,
                 html_rule,
                 locate_rule,
@@ -2448,6 +2481,7 @@ mod tests {
             outline_rule: _,
             text_box_rule: _,
             heading_inference_rule: _,
+            layout_unit_rule: _,
             markdown_rule: _,
             html_rule: _,
             locate_rule: _,
@@ -2525,6 +2559,11 @@ mod tests {
                 // Decision #29. Whether a line of an untagged document comes out a heading.
                 "heading_inference_rule",
                 Box::new(|p: &mut Profile| p.heading_inference_rule = "other-headings-v9".into()),
+            ),
+            (
+                // Decision #38. Which runs share a layout unit.
+                "layout_unit_rule",
+                Box::new(|p: &mut Profile| p.layout_unit_rule = "other-units-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -2689,12 +2728,13 @@ mod tests {
         // since decision #29, which added `heading_inference_rule` the same way. Thirty-eight
         // since decision #35, which added `unicode_data_version` and `backend.components` the
         // same way: thirty-eight mutations now cover thirty-seven of the pattern's forty leaves.
-        // Thirty-nine since decision #38, which added `table_detection.tracks` the same way.
+        // Thirty-nine since decision #38, which added `table_detection.tracks` the same way, and
+        // forty since its `layout_unit_rule`.
         assert_eq!(
             mutations.len(),
-            39,
-            "{} single-field mutation(s); thirty-nine is the number at decision #38, which added \
-             `table_detection.tracks` with its mutation",
+            40,
+            "{} single-field mutation(s); forty is the number at decision #38, which added \
+             `table_detection.tracks` and `layout_unit_rule` with their mutations",
             mutations.len()
         );
 
@@ -2749,7 +2789,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3754,11 +3794,15 @@ mod tests {
              Moved for decision #38's tables, `sha256:76502460…` -> `sha256:a8dbaa62…`: the \
              fifth `table_detection` field, `tracks`, `whitespace-tracks-v1` — a grid inferred \
              from the whitespace across a table's rows (`docs/31-TABLE-TRACKS-SCOPE.md`). The \
+             office profiles name it `not-run-for-this-format`. Nothing else.\n\n\
+             Moved for decision #38's layout units, `sha256:a8dbaa62…` -> `sha256:4abfc026…`: \
+             the new `layout_unit_rule`, `line-units-v1`, which joins an undeclared page's lines \
+             into units by their own spacing and carries each unit's ordinal on its runs. The \
              office profiles name it `not-run-for-this-format`. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a8dbaa621dbe1ef0bd37e0dd85ffbe5d2555815c40d624d99a22e1921b321884"
+            "sha256:4abfc02619c015a5422390b9e66531d42c85d1ba22d27f03cf2ae88b56b5f4ea"
         );
     }
 

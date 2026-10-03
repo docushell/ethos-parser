@@ -445,6 +445,7 @@ fn text_node(alloc: &mut IdAllocator, parent: &ethos_parser_core::NodeId) -> Nod
             font_size: 2400,
             region: None,
             block: None,
+            layout_unit: None,
             inferred_heading: false,
             inferred_heading_level: None,
             bold: false,

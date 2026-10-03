@@ -230,6 +230,11 @@
           "minimum": 1,
           "$comment": "The representation's text_run.block: which leading-gap block of its page this run is in. Null where the rule declined."
         },
+        "layout_unit": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "Decision #38, as on the representation's text_run. Absent where the rule gave the run no unit."
+        },
         "inferred_heading": {
           "const": true,
           "$comment": "Decision #29, as on the representation's text_run. Absent where false."

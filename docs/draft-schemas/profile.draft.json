@@ -28,6 +28,7 @@
     "outline_rule",
     "struct_tree_rule",
     "heading_inference_rule",
+    "layout_unit_rule",
     "form_annotation_rule",
     "observation_rule",
     "raster_dpi",
@@ -231,6 +232,14 @@
           "description": "Version id of the rule that infers grids from the whitespace across a table's rows (decision #38). `whitespace-tracks-v1`. A line splits into cells where its ink leaves a gap wider than one rendered em; a line of three or more cells opens a table whose tracks are those cells' extents, and lines below join it while their cells sit on the tracks by centre, left edge or right edge. At least three rows at a steady pitch, written row by row in the content stream. Runs last, on runs no other rule's table holds; a cell holds only its runs' text."
         }
       }
+    },
+    "layout_unit_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v1`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "examples": [
+        "line-units-v1"
+      ]
     },
     "markdown_rule": {
       "type": "string",
@@ -451,6 +460,7 @@
       "font_metrics_data_version": "core14-afm-2",
       "form_annotation_rule": "form-annotations-v2",
       "heading_inference_rule": "type-size-v3",
+      "layout_unit_rule": "line-units-v1",
       "html_rule": "html-blocks-v12",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v12",

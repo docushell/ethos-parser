@@ -90,6 +90,7 @@ pub(crate) mod tagging;
 pub(crate) mod text_state;
 pub(crate) mod thresholds;
 pub(crate) mod tracks;
+pub(crate) mod units;
 pub(crate) mod unruled;
 pub(crate) mod winansi_names;
 pub(crate) mod xref;

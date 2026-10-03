@@ -100,6 +100,24 @@ build is not comparable with a 0.63.0 one**.
   nothing decodes is still refused, and so is one drawing with a predefined CJK CMap, whose code
   widths this profile cannot read.
 
+### Layout units: lines joined by their own spacing (decision #38)
+
+A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles name it
+`not-run-for-this-format`), so `profile_sha256` moves.
+
+- **On a document that declares no author structure, every text run carries `layout_unit`**, the
+  1-based ordinal of the unit its line joined on its page: consecutive lines in reading order whose
+  boxes sit no more than half a line apart, overlap across at least half the narrower width, are of
+  one kind — body text, or an inferred heading of one level — and the next of which opens with no
+  list marker. A table's runs, an `/Artifact`'s and a whitespace line get none.
+- **A unit is where, never what**: it says lines read as one piece of text, not that the author
+  wrote a paragraph, and no role is read from it.
+- **The ParseBench adapter groups `ground` elements by it**, boxed by their union; where a run
+  carries none, an element stays its own item.
+- **Measured** on ParseBench, with the benchmark's own scorer: visual grounding 0.2267 -> 0.4028,
+  overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
+  opendataloader-bench, whose Markdown the units do not touch.
+
 ### Tables inferred from the whitespace across their rows (decision #38)
 
 A fifth table rule, `whitespace-tracks-v1`, in a fifth `table_detection` field, `tracks`, so

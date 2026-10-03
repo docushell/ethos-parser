@@ -118,6 +118,11 @@ pub struct TextRun {
     /// declined — which, unlike `region`, is common even on a single-column page, because a page
     /// of uniform body text has no gap wide enough to open a second block.
     pub block: Option<u32>,
+    /// Which layout unit of its page this run's line joined (decision #38) — as the
+    /// representation's `text_run.layout_unit`. Set after headings, which a unit never mixes with
+    /// body text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_unit: Option<u32>,
     /// This run's line was read as a heading from the type the page draws (decision #29).
     ///
     /// Set only on a document that declares no structure, by the rule the profile's
@@ -274,6 +279,7 @@ mod tests {
             id: alloc.next(IdKind::Span).unwrap(),
             region: None,
             block: None,
+            layout_unit: None,
             inferred_heading: false,
             inferred_heading_level: None,
             bold: false,

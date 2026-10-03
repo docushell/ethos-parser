@@ -718,6 +718,7 @@ fn extract_page(
                 // Filled in below, where `arrange_page` is called.
                 region: None,
                 block: None,
+                layout_unit: None,
                 inferred_heading: false,
                 inferred_heading_level: None,
                 // Decision #38: the typeface the document chose, as its font dictionary says.
@@ -1896,6 +1897,17 @@ fn extract_counted(
                 &profile.heading_inference_rule,
                 levels.body_em(),
             ));
+        }
+    }
+
+    // Decision #38. Layout units, after headings — a heading line never shares a unit with body
+    // text — and only where the document declares no author structure, whose own structure wins
+    // there as it does for headings.
+    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V1
+        && no_author_structure(structure.as_ref())
+    {
+        for page in pages.iter_mut() {
+            crate::units::assign(page);
         }
     }
 
@@ -3137,6 +3149,7 @@ mod tests {
                 id: alloc.next(IdKind::Span).expect("ids"),
                 region: None,
                 block: None,
+                layout_unit: None,
                 inferred_heading: false,
                 inferred_heading_level: None,
                 bold: false,

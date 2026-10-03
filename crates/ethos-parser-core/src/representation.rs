@@ -1564,6 +1564,16 @@ pub struct TextRunAttributes {
     /// of one artifact. A bare `Option` for the reason `region` is one: `docs/16-D4-SCOPE.md` §4.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block: Option<u32>,
+    /// Which layout unit of its page the profile's `layout_unit_rule` joined this run's line into,
+    /// 1-based in reading order (decision #38): consecutive lines set no more than half a line
+    /// apart, overlapping across, of one kind, the next opening no list marker.
+    ///
+    /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
+    /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a
+    /// document that declares author structure, on a table's runs and an `/Artifact`'s, on a
+    /// whitespace-only line, and under every other rule id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_unit: Option<u32>,
     /// Set where this profile's heading-inference rule read this run's type as a heading's, on a
     /// document that declares no structure (decision #29, `docs/28-HEADINGS-SCOPE.md` §5.1).
     ///
@@ -2997,6 +3007,7 @@ mod tests {
                 font_size: 2400,
                 region: None,
                 block: None,
+                layout_unit: None,
                 inferred_heading: false,
                 inferred_heading_level: None,
                 bold: false,
