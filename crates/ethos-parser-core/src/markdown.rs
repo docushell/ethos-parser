@@ -208,7 +208,9 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 ///
 /// `-v12` also writes bold and italic where a run's font declares them (decision #38, rule 9 of
 /// [`to_markdown`]), on ParseBench semantic formatting 0.0970 -> 0.3487. Folded into `-v12` rather
-/// than moved to `-v13` on `-v11`'s precedent: no release, tag or binary carries `-v12` yet.
+/// than moved to `-v13` on `-v11`'s precedent: no release, tag or binary carries `-v12` yet. So
+/// are the inferred heading's level (`##` past level 1) and the join of a layout unit's lines
+/// ([`LAYOUT_UNIT_LINE_JOINS`]), both decision #38, for the same reason.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -303,6 +305,13 @@ pub const BASELINE_RUN_JOINS_ABUTTED: &str = "baseline-run-joins-abutted-v1";
 /// which is a materially weaker claim than [`BASELINE_RUN_JOINS_ABUTTED`] and so is not pooled
 /// with it.
 pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
+
+/// Runs on two lines joined into one heading because the PDF reader set the lines in one layout unit
+/// of inferred headings (decision #38, [`crate::TextRunAttributes::layout_unit`]): a heading set on
+/// two lines, no more than half a line apart. The line break is rendered as one space, and the unit
+/// is this engine's measure, not the producer's word, so it is counted apart from both baseline
+/// joins. Body text keeps its lines; see [`unit_continues`].
+pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
 /// as a paragraph (v2.4).
@@ -1024,6 +1033,24 @@ pub(crate) fn hyphen_tail<'a>(
         return None;
     }
     Some((next, format!("{stem}{tail}")))
+}
+
+/// Whether `node` continues the heading unit the open block's last run `prev` belongs to (decision
+/// #38): both are inferred headings carrying one `layout_unit` on one page, and `node` opens a new
+/// line — a heading the reader set on two lines. **Body text keeps its lines**: joining a unit of
+/// prose into one block was measured and lost ParseBench content faithfulness on 170 pages, since
+/// a list set without markers reads as one paragraph once joined, and a bold title line read as a
+/// title only while it stood on a line of its own. Called by both projections.
+pub(crate) fn unit_continues(prev: &crate::Node, node: &crate::Node) -> bool {
+    let unit = |n: &crate::Node| {
+        text_run_attributes(n)
+            .filter(|a| a.inferred_heading)
+            .and_then(|a| a.layout_unit)
+    };
+    prev.parent == node.parent
+        && unit(prev).is_some()
+        && unit(prev) == unit(node)
+        && on_different_lines(prev, node)
 }
 
 /// Whether the content stream marked this run as page furniture rather than flow content.
@@ -2311,6 +2338,27 @@ pub fn to_markdown(
             _ => None,
         };
 
+        // Decision #38. A heading's next line, set in its layout unit, continues the heading line
+        // with one space for the line break. `hyphen_tail` never closes a word up in a heading,
+        // so there is no broken word to rejoin here.
+        if joining.is_none()
+            && key.is_none()
+            && open_group.is_none()
+            && open_prev.is_some_and(|prev| unit_continues(prev, node))
+        {
+            e.syntax(" ");
+            e.source(&text, node.id.as_str());
+            *erasures.entry(LAYOUT_UNIT_LINE_JOINS).or_insert(0) += 1;
+            pending_space = false;
+            open_prev = Some(node);
+            open_line = line_key(node);
+            line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+            if line_ink.is_none() {
+                open_line = None;
+            }
+            continue;
+        }
+
         match joining {
             Some(space) => {
                 let declared = key.is_some();
@@ -3168,6 +3216,20 @@ pub(crate) mod tests {
     /// baseline ([`on_different_lines`]), so it needs a representation whose lines actually
     /// differ, and a test that used `repr_of` would be asserting against a page whose runs the
     /// document drew side by side.
+    /// `repr` with each run's `layout_unit` set from `units`, one per node in order.
+    pub(crate) fn with_units(
+        repr: DocumentRepresentation,
+        units: &[Option<u32>],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for (node, unit) in payload.nodes.iter_mut().zip(units) {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.layout_unit = *unit;
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
     pub(crate) fn repr_of_lines(specs: &[&str]) -> DocumentRepresentation {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
@@ -4746,11 +4808,44 @@ pub(crate) mod tests {
             .collect()
     }
 
-    /// **A whitespace-only run between two joined runs is the space the page drew.**
-    ///
-    /// Kills the mutant that reads only the two joined runs' own bytes. `markdown.rs`'s empty-text
-    /// `continue` drops whitespace-only runs before any join state sees them, and on `irs-fw9`
-    /// that turns `...subject to backup` + ` ` + `withholding` into **`backupwithholding`** — 3 292
+    /// **Body lines keep their lines**, a unit or not (decision #38): a list set without markers,
+    /// joined, would read as one paragraph.
+    #[test]
+    fn body_lines_of_one_unit_keep_their_lines() {
+        let repr = with_units(
+            repr_of_lines(&["First line of", "the paragraph", "Next paragraph"]),
+            &[Some(1), Some(1), Some(2)],
+        );
+        let a = artifact_of(repr);
+        assert_eq!(
+            a.markdown,
+            "First line of\n\nthe paragraph\n\nNext paragraph\n"
+        );
+        assert!(!a
+            .coverage
+            .structural_erasures
+            .iter()
+            .any(|e| e.code == LAYOUT_UNIT_LINE_JOINS));
+    }
+
+    /// **A heading the reader set on two lines is one heading line**, never run into the text,
+    /// and the line break it erased is counted.
+    #[test]
+    fn a_heading_set_on_two_lines_is_one_heading_line() {
+        let repr =
+            with_inferred_headings(repr_of_lines(&["Annual", "Report", "Body text"]), &[0, 1]);
+        let repr = with_units(repr, &[Some(1), Some(1), Some(2)]);
+        let a = artifact_of(repr);
+        assert_eq!(a.markdown, "# Annual Report\n\nBody text\n");
+        let joins = a
+            .coverage
+            .structural_erasures
+            .iter()
+            .find(|e| e.code == LAYOUT_UNIT_LINE_JOINS)
+            .map_or(0, |e| e.count);
+        assert_eq!(joins, 1);
+    }
+
     /// **A run whose font declares itself bold or italic is emphasised, and a span covers the runs
     /// that share a style** (decision #38). The spaces between runs are this exporter's and sit
     /// outside a closing marker, where CommonMark reads it; every marker is `syntax`.
@@ -4795,6 +4890,11 @@ pub(crate) mod tests {
         assert_eq!(table.markdown, "| Total | due |\n| --- | --- |\n");
     }
 
+    /// **A whitespace-only run between two joined runs is the space the page drew.**
+    ///
+    /// Kills the mutant that reads only the two joined runs' own bytes. `markdown.rs`'s empty-text
+    /// `continue` drops whitespace-only runs before any join state sees them, and on `irs-fw9`
+    /// that turns `...subject to backup` + ` ` + `withholding` into **`backupwithholding`** — 3 292
     /// word-boundary welds on `nist-sp-800-207` alone.
     #[test]
     fn a_skipped_whitespace_run_is_the_space_the_page_drew() {

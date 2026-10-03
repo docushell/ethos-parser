@@ -153,7 +153,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 ///
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
-/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`.
+/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
+/// heading levels, a layout unit's lines as one element — this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -566,6 +567,28 @@ pub fn to_html(
             _ => None,
         };
 
+        // Decision #38. `crate::markdown`'s heading-unit join, from the same predicate, so a heading
+        // set on two lines is one element here as it is one line there.
+        if joining.is_none()
+            && key.is_none()
+            && open_group.is_none()
+            && open_prev.is_some_and(|prev| crate::markdown::unit_continues(prev, node))
+        {
+            e.syntax(" ");
+            escaped_source(&mut e, &text, node.id.as_str());
+            *erasures
+                .entry(crate::markdown::LAYOUT_UNIT_LINE_JOINS)
+                .or_insert(0) += 1;
+            pending_space = false;
+            open_prev = Some(node);
+            open_line = crate::markdown::line_key(node);
+            line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+            if line_ink.is_none() {
+                open_line = None;
+            }
+            continue;
+        }
+
         if let Some(space) = joining {
             if space {
                 e.syntax(" ");
@@ -757,7 +780,7 @@ mod tests {
     use super::*;
     use crate::markdown::tests::{
         cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
-        spanning, styled_line, with_inferred_headings, with_styles,
+        spanning, styled_line, with_inferred_headings, with_styles, with_units,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -770,6 +793,26 @@ mod tests {
             &profile.html_rule,
         )
         .expect("projects")
+    }
+
+    /// **A heading set on two lines is one `<h1>`, and body lines keep their elements** (decision
+    /// #38) — `crate::markdown`'s join from the same predicate.
+    #[test]
+    fn a_heading_unit_is_one_element_and_body_lines_keep_theirs() {
+        let repr = with_units(
+            repr_of_lines(&["First line of", "the paragraph", "Next paragraph"]),
+            &[Some(1), Some(1), Some(2)],
+        );
+        assert_eq!(
+            artifact_of(repr).html,
+            "<p>First line of</p>\n<p>the paragraph</p>\n<p>Next paragraph</p>\n"
+        );
+        let heading = with_inferred_headings(repr_of_lines(&["Annual", "Report", "Body"]), &[0, 1]);
+        let heading = with_units(heading, &[Some(1), Some(1), Some(2)]);
+        assert_eq!(
+            artifact_of(heading).html,
+            "<h1>Annual Report</h1>\n<p>Body</p>\n"
+        );
     }
 
     /// **The same spans in HTML** (decision #38): `<strong>` and `<em>`, closed before the space

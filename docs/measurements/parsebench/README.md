@@ -85,6 +85,22 @@ At `05f0d17`, all 2,078 pages:
 in each run's `_errors.json`. At `0.63.0` content faithfulness was 0.2346, and 256 of the 326
 refusals then were one defect (`7cd02b8`).
 
+### After decision #38 (2026-10-04)
+
+With bold and italic, `type-size-v4` headings, `whitespace-tracks-v2` tables and layout units
+(heading units joined in Markdown), all 2,078 pages:
+
+| Dimension | Score | At `05f0d17` |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6624 |
+| Semantic formatting | 0.3623 | 0.0970 |
+| Tables | 0.2375 | 0.0212 |
+| Charts | 0.0020 | 0.0000 |
+| Visual grounding | 0.4034 | 0.2200 |
+
+Each step's measurement, and what was refused on the way, is in `CHANGELOG.md` under decision #38,
+`docs/31-TABLE-TRACKS-SCOPE.md` and `../headings/README.md` §9–§10.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

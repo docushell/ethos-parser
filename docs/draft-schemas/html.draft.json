@@ -183,7 +183,7 @@
               "code": {
                 "type": "string",
                 "minLength": 1,
-                "description": "`gfm-span-slots-unrepresentable-v1` — slots a merged cell covered that GFM cannot say it covered, `rowspan × colspan - 1` summed over the table's cells. `gfm-row-zero-separator-v1` — once per GFM table, because the delimiter row makes row 0 a header on every renderer and no detector reads `/TH`. `gfm-cell-run-claimed-twice-v1` — a run two cells both claimed, emitted under the first so that one node's characters are not counted twice. `gfm-cell-not-placed-v1` — a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs. `gfm-table-not-projected-v1` — a table with zero rows or columns. `gfm-list-item-run-joins-v1` — a body run appended to an already-open list item, which is the one boundary a role path cannot settle. `mcid-run-joins-v1` — two runs the document placed in one marked-content sequence, emitted as one block, so the boundary between them is gone. `baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1` — the same erasure with no declaration behind it: two runs drawn as the next ink along one baseline, joined on this engine's geometry rather than the producer's word. The two are counted apart because the abutted form asserts one word and the spaced form only reproduces a space the page drew.",
+                "description": "`gfm-span-slots-unrepresentable-v1` — slots a merged cell covered that GFM cannot say it covered, `rowspan × colspan - 1` summed over the table's cells. `gfm-row-zero-separator-v1` — once per GFM table, because the delimiter row makes row 0 a header on every renderer and no detector reads `/TH`. `gfm-cell-run-claimed-twice-v1` — a run two cells both claimed, emitted under the first so that one node's characters are not counted twice. `gfm-cell-not-placed-v1` — a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs. `gfm-table-not-projected-v1` — a table with zero rows or columns. `gfm-list-item-run-joins-v1` — a body run appended to an already-open list item, which is the one boundary a role path cannot settle. `mcid-run-joins-v1` — two runs the document placed in one marked-content sequence, emitted as one block, so the boundary between them is gone. `baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1` — the same erasure with no declaration behind it: two runs drawn as the next ink along one baseline, joined on this engine's geometry rather than the producer's word. The two are counted apart because the abutted form asserts one word and the spaced form only reproduces a space the page drew. `layout-unit-line-joins-v1` — two lines of one heading the PDF reader set in one layout unit (decision #38), joined with one space; the unit is this engine's measure, so it is counted apart from both.",
                 "examples": [
                   "gfm-span-slots-unrepresentable-v1",
                   "gfm-row-zero-separator-v1",
@@ -194,6 +194,7 @@
                   "mcid-run-joins-v1",
                   "baseline-run-joins-abutted-v1",
                   "baseline-run-joins-spaced-v1",
+                  "layout-unit-line-joins-v1",
                   "heading-level-unresolved-v1",
                   "heading-level-unrepresentable-v1"
                 ]

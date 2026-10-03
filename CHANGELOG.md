@@ -114,6 +114,14 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   wrote a paragraph, and no role is read from it.
 - **The ParseBench adapter groups `ground` elements by it**, boxed by their union; where a run
   carries none, an element stays its own item.
+- **Markdown and HTML join a heading unit's lines** (`markdown-blocks-v12`, `html-blocks-v12`): a
+  heading set on two lines is one heading line, its line break one space counted under the new
+  structural erasure `layout-unit-line-joins-v1`. Body text keeps its lines: joining every unit
+  was measured and cost ParseBench content faithfulness on 170 pages, since a list set without
+  markers reads as one paragraph once joined.
+  ParseBench semantic formatting 0.3502 -> 0.3623 (titles 0.3638 -> 0.3837, hierarchy 0.3174 ->
+  0.3357), content faithfulness 0.6623 -> 0.6633, overall 33.11 -> 33.37; opendataloader-bench MHS
+  0.5398 -> 0.5476.
 - **Measured** on ParseBench, with the benchmark's own scorer: visual grounding 0.2267 -> 0.4028,
   overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
   opendataloader-bench, whose Markdown the units do not touch.
