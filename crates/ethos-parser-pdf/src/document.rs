@@ -583,7 +583,8 @@ fn decrypt(
 }
 
 /// The first object the cross-reference table lists in use whose data `lopdf` did not load, and
-/// why. `/Encrypt` is the exception: `lopdf` removes it on purpose after decrypting.
+/// why. `/Encrypt` is the exception: `lopdf` removes it on purpose after decrypting. A row at
+/// offset 0 is the other: nothing was there to load.
 ///
 /// A stream whose `/Length` resolves read its data at load, an empty one included, so only one
 /// whose `/Length` does not resolve can have lost it that way.
@@ -602,6 +603,10 @@ fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, String)> {
         let why = match doc.objects.get(&id) {
             _ if Some(id) == encrypt => continue,
             None => match *entry {
+                // Byte 0 is `%PDF-`, so a row in use at offset 0 names no object and a reference
+                // to it is null (PDF 32000-1 §7.3.10), as qpdf and pdf.js read it. Quartz
+                // PDFContext writes such rows for objects it numbered and never wrote.
+                XrefEntry::Normal { offset: 0, .. } => continue,
                 // Only when the stream itself is gone: one that loaded without this object was
                 // decoded, so its size is not the cause.
                 XrefEntry::Compressed { container, .. }

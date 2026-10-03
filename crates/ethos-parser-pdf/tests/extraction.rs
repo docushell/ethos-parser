@@ -5095,6 +5095,46 @@ fn a_contents_entry_that_is_null_draws_nothing() {
     }
 }
 
+/// **A cross-reference row in use at offset 0 names no object, and a reference to it is null**
+/// (ParseBench 2026-10-03). Quartz PDFContext writes such rows for objects it numbered and never
+/// wrote; byte 0 is `%PDF-`, so nothing was lost, and qpdf and pdf.js read the reference as null.
+/// The check below refused 256 of ParseBench's 506 text documents on it.
+#[test]
+fn a_row_in_use_at_offset_zero_is_null() {
+    let mut bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font \
+          << /F1 6 0 R >> >> /Contents [4 0 R 5 0 R] >>"
+            .to_vec(),
+        [
+            format!("<< /Length {} >>\nstream\n", MEASURED.len()).as_bytes(),
+            MEASURED,
+            b"endstream",
+        ]
+        .concat(),
+        b"null".to_vec(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ]);
+    // Object 5's body stays in the file; its row no longer points at it.
+    let at = bytes
+        .windows(8)
+        .position(|w| w == b"5 0 obj\n")
+        .expect("object 5");
+    let row = format!("{at:010} 00000 n \n");
+    let row_at = bytes
+        .windows(row.len())
+        .position(|w| w == row.as_bytes())
+        .expect("object 5's row");
+    bytes[row_at..row_at + 10].copy_from_slice(b"0000000000");
+
+    let a = extracted(&bytes).expect("a row at offset 0 is null");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Measured"]
+    );
+}
+
 /// **An object `lopdf` did not load is refused at open, whatever would read it** (review
 /// 2026-09-26 N08). The check above guarded `/Contents` alone: an annotation or a `/ToUnicode` lost
 /// to one stray `)` vanished without a word, and an image whose `/Length` names no object loaded

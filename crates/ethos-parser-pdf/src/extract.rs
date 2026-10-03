@@ -2402,9 +2402,11 @@ pub(crate) fn page_operations_whole(
 }
 
 /// Whether the cross-reference table lists `id`, its generation included, as an object in use.
+/// A row at offset 0 lists none: byte 0 is `%PDF-` (`document.rs`, `unloaded_in_use`).
 fn in_use(doc: &lopdf::Document, id: lopdf::ObjectId) -> bool {
     use lopdf::xref::XrefEntry;
     match doc.reference_table.entries.get(&id.0) {
+        Some(XrefEntry::Normal { offset: 0, .. }) => false,
         Some(XrefEntry::Normal { generation, .. }) => *generation == id.1,
         Some(XrefEntry::Compressed { .. }) => id.1 == 0,
         _ => false,
