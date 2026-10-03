@@ -1579,6 +1579,18 @@ pub struct TextRunAttributes {
     /// direction; stripping `derivation` would have laundered `Computed` into `Extracted`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inferred_heading: bool,
+    /// The font that drew this run declares itself bold (decision #38): a `/FontWeight` of 600
+    /// or more, the ForceBold flag, or a bold style word in its `/BaseFont`, under the profile's
+    /// `observation_rule`. A statement about the typeface the document chose, read from its own
+    /// font dictionary; the Markdown and HTML projections render it as strong emphasis. PDF
+    /// only — the office readers do not set it yet. **Absent where false**, as
+    /// [`Self::inferred_heading`] is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+    /// The font that drew this run declares itself italic: the Italic flag, or `Italic` or
+    /// `Oblique` in its `/BaseFont`. As [`Self::bold`], rendered as emphasis.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub italic: bool,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -2977,6 +2989,8 @@ mod tests {
                 region: None,
                 block: None,
                 inferred_heading: false,
+                bold: false,
+                italic: false,
             }),
         }
     }

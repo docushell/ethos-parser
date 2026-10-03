@@ -1379,6 +1379,8 @@ mod tests {
                 },
                 builtin_encoding_assumed: None,
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
+                bold: false,
+                italic: false,
             }),
         );
         m
@@ -1406,6 +1408,8 @@ mod tests {
                 },
                 builtin_encoding_assumed: None,
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
+                bold: false,
+                italic: false,
             }),
         );
         m

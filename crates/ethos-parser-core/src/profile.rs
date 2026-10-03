@@ -202,7 +202,8 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 /// (`docs/30-FORM-XOBJECTS-SCOPE.md`). Its text runs and images are the page's, its rectangles and
 /// lines are not table evidence; a run drawn inside one names its font by the resource path that
 /// reaches it (`Xf1/F1`); an `/MCID` it opens binds nothing. Through v2 a form was counted and not
-/// read.
+/// read. Also v3 (decision #38): whether a run's font declares itself bold or italic — a
+/// `/FontWeight` of 600 or more, the ForceBold or Italic flag, or a style word in its `/BaseFont`.
 pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.

@@ -3667,6 +3667,65 @@ fn a_stream_of_only_comments_draws_nothing_and_the_page_is_read() {
     );
 }
 
+/// **A run's font declares bold and italic in its own dictionary** (decision #38): a bold style
+/// word in `/BaseFont`, a `/FontWeight` of 600 or more, the ForceBold flag, an italic style word.
+/// A plain face, and a weight of 500, declare neither.
+#[test]
+fn a_runs_font_declares_bold_and_italic() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let font = |base: &str, descriptor: &str| {
+        format!("<< /Type /Font /Subtype /Type1 /BaseFont /{base} {descriptor} >>").into_bytes()
+    };
+    let descriptor = |extra: &str| {
+        format!(
+            "/FontDescriptor << /Type /FontDescriptor /FontName /X /Flags 32 /Ascent 718 \
+             /Descent -207 /ItalicAngle 0 /StemV 80 /FontBBox [0 -200 1000 900] {extra} >>"
+        )
+    };
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 5 0 R \
+           /F2 6 0 R /F3 7 0 R /F4 8 0 R /F5 9 0 R /F6 10 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream(
+            b"BT /F1 10 Tf 10 180 Td (Plain) Tj ET BT /F2 10 Tf 10 160 Td (Named) Tj ET \
+              BT /F3 10 Tf 10 140 Td (Weighted) Tj ET BT /F4 10 Tf 10 120 Td (Forced) Tj ET \
+              BT /F5 10 Tf 10 100 Td (Slanted) Tj ET BT /F6 10 Tf 10 80 Td (Medium) Tj ET",
+        ),
+        font("Helvetica", ""),
+        font("ABCDEF+Arial-BoldMT", ""),
+        font("Custom", &descriptor("/FontWeight 700")),
+        font("Custom", &descriptor("/Flags 262176")),
+        font("Times-Italic", ""),
+        font("Custom", &descriptor("/FontWeight 500")),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    let mut styled: Vec<(&str, bool, bool)> = runs(&a)
+        .iter()
+        .map(|r| (r.text.as_str(), r.bold, r.italic))
+        .collect();
+    styled.sort();
+    assert_eq!(
+        styled,
+        [
+            ("Forced", true, false),
+            ("Medium", false, false),
+            ("Named", true, false),
+            ("Plain", false, false),
+            ("Slanted", false, true),
+            ("Weighted", true, false),
+        ]
+    );
+}
+
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
 /// draws `page` (object 5). Each of `forms` is a form XObject from object 6 on: its extra dictionary
 /// entries, and its content.

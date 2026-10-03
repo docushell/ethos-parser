@@ -1339,6 +1339,8 @@ mod schema_limit_tests {
                     region: None,
                     block: None,
                     inferred_heading: false,
+                    bold: false,
+                    italic: false,
                 }),
             };
             geometry.push(NodeGeometry {
@@ -1412,6 +1414,8 @@ mod schema_limit_tests {
                         region: None,
                         block: None,
                         inferred_heading: false,
+                        bold: false,
+                        italic: false,
                     }),
                 };
                 geometry.push(NodeGeometry {

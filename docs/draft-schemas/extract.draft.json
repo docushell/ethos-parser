@@ -234,6 +234,14 @@
           "const": true,
           "$comment": "Decision #29, as on the representation's text_run. Absent where false."
         },
+        "bold": {
+          "const": true,
+          "$comment": "Decision #38, as on the representation's text_run. Absent where false."
+        },
+        "italic": {
+          "const": true,
+          "$comment": "Decision #38, as on the representation's text_run. Absent where false."
+        },
         "mcid": {
           "type": "integer",
           "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."

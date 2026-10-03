@@ -198,6 +198,10 @@ pub struct Font {
     /// **measured** — from the embedded program, the descriptor, or a standard-14 AFM
     /// (decision #22) — or absent.
     pub ink: FontInk,
+    /// Whether the font declares itself bold, as [`font_style`] reads it.
+    pub bold: bool,
+    /// Whether the font declares itself italic, as [`font_style`] reads it.
+    pub italic: bool,
 }
 
 /// A font's ascent-to-descent envelope, measured or typed-absent.
@@ -741,6 +745,7 @@ fn load_font(
         _ => None,
     };
 
+    let (bold, italic) = font_style(doc, fd);
     Ok(Font {
         id: id.to_string(),
         kind: FontKind::from_subtype(&subtype),
@@ -748,7 +753,52 @@ fn load_font(
         widths,
         builtin_encoding_assumed,
         ink,
+        bold,
+        italic,
     })
+}
+
+/// Style words a `/BaseFont` uses for a bold weight, in the case font names write them.
+const BOLD_NAMES: [&str; 5] = ["Bold", "Black", "Heavy", "Semibold", "Demibold"];
+/// Style words a `/BaseFont` uses for a slanted face.
+const ITALIC_NAMES: [&str; 2] = ["Italic", "Oblique"];
+
+/// Whether a font declares itself bold and italic (`page-observations-v3`, decision #38).
+///
+/// Read from the font dictionary and nothing else: the descriptor's `/FontWeight` of 600 or more
+/// or its ForceBold flag (PDF 32000-1 Table 123, bit 19) for bold, its Italic flag (bit 7) for
+/// italic, and either one where the `/BaseFont` — the composite font's or its descendant's — holds
+/// a style word ([`BOLD_NAMES`], [`ITALIC_NAMES`]). Nothing is estimated from stem widths or glyph
+/// outlines. It is a statement about the typeface the document chose, and the projections render
+/// it as emphasis; it says nothing about why the author chose it.
+fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool) {
+    // Type 0 fonts hold their descriptor, and their real name, on the descendant.
+    let descendant = resolve_array(doc, fd.get(b"DescendantFonts").ok())
+        .and_then(|arr| arr.first().and_then(|o| resolve_dict(doc, Some(o))));
+    let holder = descendant.as_ref().unwrap_or(fd);
+    let descriptor = resolve_dict(doc, holder.get(b"FontDescriptor").ok());
+    let number = |key: &[u8]| {
+        descriptor
+            .as_ref()
+            .and_then(|d| d.get(key).ok())
+            .and_then(|o| match o {
+                lopdf::Object::Integer(i) => Some(*i as f64),
+                lopdf::Object::Real(r) => Some(f64::from(*r)),
+                _ => None,
+            })
+    };
+    let flags = number(b"Flags").map_or(0, |f| f as i64);
+    let names: Vec<String> = [Some(fd), descendant.as_ref()]
+        .into_iter()
+        .flatten()
+        .filter_map(base_font_name)
+        .collect();
+    let named = |words: &[&str]| names.iter().any(|n| words.iter().any(|w| n.contains(w)));
+    let bold = flags & (1 << 18) != 0
+        || number(b"FontWeight").is_some_and(|w| w >= 600.0)
+        || named(&BOLD_NAMES);
+    let italic = flags & (1 << 6) != 0 || named(&ITALIC_NAMES);
+    (bold, italic)
 }
 
 /// Whether the font's descriptor sets the Symbolic flag and not the Nonsymbolic one.
@@ -1132,6 +1182,8 @@ mod tests {
             widths,
             builtin_encoding_assumed: None,
             ink,
+            bold: false,
+            italic: false,
         }
     }
 

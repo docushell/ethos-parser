@@ -205,6 +205,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// cell or one list item join with no space ([`cell_runs_abut`]). Content faithfulness on that
 /// corpus's 506 text documents 0.5833 -> 0.6447, and opendataloader-bench NID 0.8810 -> 0.8849.
 /// Both ids move.
+///
+/// `-v12` also writes bold and italic where a run's font declares them (decision #38, rule 9 of
+/// [`to_markdown`]), on ParseBench semantic formatting 0.0970 -> 0.3487. Folded into `-v12` rather
+/// than moved to `-v13` on `-v11`'s precedent: no release, tag or binary carries `-v12` yet.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -1642,6 +1646,70 @@ pub(crate) struct Emit {
     pub(crate) segments: Vec<Segment>,
     /// Characters that landed in a `source` segment, which is `coverage.source_chars_emitted`.
     pub(crate) emitted_chars: usize,
+    /// Bold and italic, where a run's font declares them (decision #38). Inert — and every byte
+    /// what it was before — on a representation with no styled run.
+    emphasis: Emphasis,
+}
+
+/// Whether a run's font declares itself bold and italic (decision #38).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Style {
+    bold: bool,
+    italic: bool,
+}
+
+/// The markup a projection writes emphasis in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Markup {
+    /// `**bold**`, `*italic*`, `***both***`.
+    Markdown,
+    /// `<strong>`, `<em>`, both nested.
+    Html,
+}
+
+impl Style {
+    fn of(node: &crate::Node) -> Self {
+        match &node.attributes {
+            crate::NodeAttributes::TextRun(a) => Self {
+                bold: a.bold,
+                italic: a.italic,
+            },
+            _ => Self::default(),
+        }
+    }
+
+    /// The opening and closing markers, empty for unstyled text.
+    fn markers(self, markup: Markup) -> (&'static str, &'static str) {
+        match (markup, self.bold, self.italic) {
+            (_, false, false) => ("", ""),
+            (Markup::Markdown, true, true) => ("***", "***"),
+            (Markup::Markdown, true, false) => ("**", "**"),
+            (Markup::Markdown, false, true) => ("*", "*"),
+            (Markup::Html, true, true) => ("<strong><em>", "</em></strong>"),
+            (Markup::Html, true, false) => ("<strong>", "</strong>"),
+            (Markup::Html, false, true) => ("<em>", "</em>"),
+        }
+    }
+}
+
+/// The emphasis state an [`Emit`] keeps (decision #38).
+///
+/// A span opens where a run's style differs from the open span's and closes before the next
+/// run of another style, before any syntax that is not spaces, and so at every block boundary.
+/// Spaces the projection writes between runs are held until the next run, so a closing marker
+/// sits against the text it closes — `**bold** text`, never `**bold **text`, which CommonMark
+/// does not read as emphasis. No span opens inside a heading, which is marked already, or a
+/// table cell. Every marker is `syntax`: the document drew no such bytes.
+#[derive(Debug, Default)]
+struct Emphasis {
+    /// `None` where no run is styled, and then nothing below is consulted.
+    markup: Option<Markup>,
+    /// The styled runs, by node id.
+    styles: std::collections::BTreeMap<String, Style>,
+    open: Style,
+    held: String,
+    heading: bool,
+    table: bool,
 }
 
 impl Emit {
@@ -1650,7 +1718,79 @@ impl Emit {
             markdown: String::new(),
             segments: Vec::new(),
             emitted_chars: 0,
+            emphasis: Emphasis::default(),
         }
+    }
+
+    /// An emitter that writes the bold and italic `nodes`' fonts declare, in `markup`.
+    pub(crate) fn with_emphasis(nodes: &[crate::Node], markup: Markup) -> Self {
+        let styles: std::collections::BTreeMap<String, Style> = nodes
+            .iter()
+            .map(|n| (n.id.as_str().to_owned(), Style::of(n)))
+            .filter(|(_, style)| *style != Style::default())
+            .collect();
+        let mut e = Self::new();
+        if !styles.is_empty() {
+            e.emphasis = Emphasis {
+                markup: Some(markup),
+                styles,
+                ..Emphasis::default()
+            };
+        }
+        e
+    }
+
+    /// The block just opened is a heading: no span opens in it before the next line break.
+    pub(crate) fn heading(&mut self) {
+        self.emphasis.heading = true;
+    }
+
+    /// A table starts (`true`) or ends: no span opens in its cells.
+    pub(crate) fn table(&mut self, inside: bool) {
+        if inside {
+            self.close_emphasis();
+            self.flush_held();
+        }
+        self.emphasis.table = inside;
+    }
+
+    /// Close any open span and write any held spaces: the end of the projection.
+    pub(crate) fn finish(&mut self) {
+        self.close_emphasis();
+        self.flush_held();
+    }
+
+    fn close_emphasis(&mut self) {
+        if let Some(markup) = self.emphasis.markup {
+            let (_, close) = self.emphasis.open.markers(markup);
+            self.write_syntax(close);
+            self.emphasis.open = Style::default();
+        }
+    }
+
+    fn flush_held(&mut self) {
+        let held = std::mem::take(&mut self.emphasis.held);
+        self.write_syntax(&held);
+    }
+
+    /// Open, close or continue a span for the text `node` is about to write.
+    fn before_text(&mut self, node: &str) {
+        let Some(markup) = self.emphasis.markup else {
+            return;
+        };
+        let style = if self.emphasis.heading || self.emphasis.table {
+            Style::default()
+        } else {
+            self.emphasis.styles.get(node).copied().unwrap_or_default()
+        };
+        if style == self.emphasis.open {
+            self.flush_held();
+            return;
+        }
+        self.close_emphasis();
+        self.flush_held();
+        self.write_syntax(style.markers(markup).0);
+        self.emphasis.open = style;
     }
 
     /// Bytes this exporter invented. Coalesced with an immediately preceding syntax segment.
@@ -1660,6 +1800,21 @@ impl Emit {
     /// segments per empty cell. It can never merge across a `source` segment, because the match
     /// requires the previous segment to end where this one starts *and* to be syntax.
     pub(crate) fn syntax(&mut self, s: &str) {
+        if self.emphasis.markup.is_some() && !s.is_empty() {
+            if s.bytes().all(|b| b == b' ') {
+                self.emphasis.held.push_str(s);
+                return;
+            }
+            self.close_emphasis();
+            self.flush_held();
+            if s.contains('\n') {
+                self.emphasis.heading = false;
+            }
+        }
+        self.write_syntax(s);
+    }
+
+    fn write_syntax(&mut self, s: &str) {
         if s.is_empty() {
             return;
         }
@@ -1703,6 +1858,7 @@ impl Emit {
         if s.is_empty() {
             return;
         }
+        self.before_text(node);
         let start = self.markdown.len();
         match self.segments.last_mut() {
             Some(last) if last.kind == SegmentKind::Source && last.end == start => {
@@ -1743,6 +1899,7 @@ impl Emit {
         if s.is_empty() {
             return;
         }
+        self.before_text(node);
         let start = self.markdown.len();
         self.markdown.push_str(&s);
         self.segments.push(Segment {
@@ -1784,6 +1941,7 @@ impl Emit {
         if s.is_empty() {
             return;
         }
+        self.before_text(first);
         let start = self.markdown.len();
         self.markdown.push_str(&s);
         self.segments.push(Segment {
@@ -1892,6 +2050,10 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    strings are.
 /// 8. **U+0000 is not written.** Markdown cannot carry it; see [`NULL_CHARACTERS_NOT_PROJECTED`],
 ///    which counts it.
+/// 9. **Bold and italic where a run's font declares them** (decision #38,
+///    `TextRunAttributes::bold` and `italic`): `**…**`, `*…*`, `***…***`, one span over the runs
+///    that share a style, closed before the spaces this exporter writes and at every block
+///    boundary, and never inside a heading or a table cell. The markers are `syntax`.
 ///
 /// # Where the tables go
 ///
@@ -1913,7 +2075,7 @@ pub fn to_markdown(
 ) -> Result<MarkdownArtifact, EngineError> {
     let payload = repr.payload();
 
-    let mut e = Emit::new();
+    let mut e = Emit::with_emphasis(&payload.nodes, Markup::Markdown);
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
@@ -2199,6 +2361,7 @@ pub fn to_markdown(
         if let Some(level) = heading_level(node) {
             e.syntax(&"#".repeat(level as usize));
             e.syntax(" ");
+            e.heading();
         } else if let Some(code) = odf_heading_erasure(node) {
             // A block the document called a heading, coming out as body text. Counted here rather
             // than beside the predicate, for the reason the marker is emitted here: this is block
@@ -2243,6 +2406,7 @@ pub fn to_markdown(
         e.syntax("\n");
     }
 
+    e.finish();
     let emitted_chars = e.emitted_chars;
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let markdown = e.markdown;
@@ -2587,6 +2751,7 @@ pub(crate) fn cell_runs_abut(
 }
 
 fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference) {
+    e.table(true);
     for row in 0..plan.rows {
         if row > 0 {
             e.syntax("\n");
@@ -2623,6 +2788,7 @@ fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference) {
             }
         }
     }
+    e.table(false);
 }
 
 /// The digest of an artifact's canonical bytes, for callers that want to pin one.
@@ -2910,6 +3076,8 @@ pub(crate) mod tests {
                 region: None,
                 block: None,
                 inferred_heading: false,
+                bold: false,
+                italic: false,
             }),
         }
     }
@@ -2952,6 +3120,36 @@ pub(crate) mod tests {
             }
         }
         DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// `repr` with the runs at `bold` and `italic` styled as their fonts would declare it.
+    pub(crate) fn with_styles(
+        repr: DocumentRepresentation,
+        bold: &[usize],
+        italic: &[usize],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for (i, node) in payload.nodes.iter_mut().enumerate() {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.bold = bold.contains(&i);
+                a.italic = italic.contains(&i);
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// One line, one marked-content sequence: `Total revenue rose sharply`, each word and each
+    /// space a run of its own.
+    pub(crate) fn styled_line() -> DocumentRepresentation {
+        repr_of_placed(&[
+            ("Total", tagged_at(3), 7200, 7200, Some(1000), None),
+            (" ", tagged_at(3), 8200, 7200, Some(200), None),
+            ("revenue", tagged_at(3), 8400, 7200, Some(1400), None),
+            (" ", tagged_at(3), 9800, 7200, Some(200), None),
+            ("rose", tagged_at(3), 10000, 7200, Some(800), None),
+            (" ", tagged_at(3), 10800, 7200, Some(200), None),
+            ("sharply", tagged_at(3), 11000, 7200, Some(1400), None),
+        ])
     }
 
     pub(crate) fn simple_repr() -> DocumentRepresentation {
@@ -4425,6 +4623,8 @@ pub(crate) mod tests {
                 region,
                 block: None,
                 inferred_heading: false,
+                bold: false,
+                italic: false,
             }),
         }
     }
@@ -4544,6 +4744,50 @@ pub(crate) mod tests {
     /// Kills the mutant that reads only the two joined runs' own bytes. `markdown.rs`'s empty-text
     /// `continue` drops whitespace-only runs before any join state sees them, and on `irs-fw9`
     /// that turns `...subject to backup` + ` ` + `withholding` into **`backupwithholding`** — 3 292
+    /// **A run whose font declares itself bold or italic is emphasised, and a span covers the runs
+    /// that share a style** (decision #38). The spaces between runs are this exporter's and sit
+    /// outside a closing marker, where CommonMark reads it; every marker is `syntax`.
+    #[test]
+    fn bold_and_italic_runs_are_emphasised_in_spans() {
+        let a = artifact_of(with_styles(styled_line(), &[0, 2], &[6]));
+        assert_eq!(a.markdown, "**Total revenue** rose *sharply*\n");
+        let at = |needle: &str| a.markdown.find(needle).unwrap();
+        assert!(a.anchor_map.is_invertible(at("Total"), at("Total") + 5));
+        assert!(
+            !a.anchor_map.is_invertible(0, 2),
+            "the opening marker is syntax"
+        );
+        assert!(a.coverage.balances());
+
+        let both = artifact_of(with_styles(styled_line(), &[6], &[6]));
+        assert_eq!(both.markdown, "Total revenue rose ***sharply***\n");
+    }
+
+    /// **No emphasis inside a heading or a table cell, and none across a block.** A heading is
+    /// marked already, a cell is a grid slot, and a span that crossed a blank line would be read by
+    /// nobody.
+    #[test]
+    fn emphasis_stops_at_headings_cells_and_blocks() {
+        let heading = artifact_of(with_styles(
+            with_inferred_headings(repr_of_lines(&["Title", "Body"]), &[0]),
+            &[0, 1],
+            &[],
+        ));
+        assert_eq!(heading.markdown, "# Title\n\n**Body**\n");
+
+        let table = artifact_of(with_styles(
+            repr_with_table(
+                &["Total", "due"],
+                1,
+                2,
+                &[cell(0, 0, &[0]), cell(0, 1, &[1])],
+            ),
+            &[0, 1],
+            &[],
+        ));
+        assert_eq!(table.markdown, "| Total | due |\n| --- | --- |\n");
+    }
+
     /// word-boundary welds on `nist-sp-800-207` alone.
     #[test]
     fn a_skipped_whitespace_run_is_the_space_the_page_drew() {

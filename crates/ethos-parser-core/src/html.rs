@@ -339,6 +339,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
 /// 2. **`<h1>`–`<h6>` when the structure tree says so**, or `<h1>` where the reader read a line as a
 ///    heading from its type (decision #29, `TextRunAttributes::inferred_heading`); `<p>` otherwise.
+///    Inside a paragraph or a list item, `<strong>` and `<em>` where a run's font declares bold or
+///    italic (decision #38), as the Markdown projection's rule 9 places `**` and `*`.
 ///    No font size is read here: the reader measured the type, and this reads its flag.
 /// 3. **`<table>`** at the position of the first run one of its cells claims, with the merge
 ///    carried as `rowspan`/`colspan` and covered slots emitting nothing. Every cell is a `<td>`.
@@ -366,7 +368,7 @@ pub fn to_html(
 ) -> Result<HtmlArtifact, EngineError> {
     let payload = repr.payload();
 
-    let mut e = Emit::new();
+    let mut e = Emit::with_emphasis(&payload.nodes, crate::markdown::Markup::Html);
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     // **Only the two erasures GFM alone commits are dropped.** See this module's header: the other
@@ -599,7 +601,10 @@ pub fn to_html(
 
         let level = heading_level(node);
         match level {
-            Some(l) => e.syntax(&format!("<h{l}>")),
+            Some(l) => {
+                e.syntax(&format!("<h{l}>"));
+                e.heading();
+            }
             None => {
                 e.syntax("<p>");
                 // Kept, not dropped: this projection commits the same flattening at the same
@@ -646,6 +651,7 @@ pub fn to_html(
         }
     }
 
+    e.finish();
     let emitted_chars = e.emitted_chars;
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let html = e.markdown;
@@ -683,6 +689,7 @@ pub fn to_html(
 /// `<td></td>`: the document drew that position and wrote nothing in it, and truncating it to
 /// tidy the row is the competitor erasure A14 names.
 fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &crate::markdown::PitchReference) {
+    e.table(true);
     e.syntax("<table>\n");
     for row in 0..plan.rows {
         e.syntax("<tr>\n");
@@ -732,6 +739,7 @@ fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &crate::markdown::PitchRefe
         e.syntax("</tr>\n");
     }
     e.syntax("</table>\n");
+    e.table(false);
 }
 
 /// The digest of an artifact's canonical bytes, for callers that want to pin one.
@@ -749,7 +757,7 @@ mod tests {
     use super::*;
     use crate::markdown::tests::{
         cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
-        spanning, with_inferred_headings,
+        spanning, styled_line, with_inferred_headings, with_styles,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -762,6 +770,31 @@ mod tests {
             &profile.html_rule,
         )
         .expect("projects")
+    }
+
+    /// **The same spans in HTML** (decision #38): `<strong>` and `<em>`, closed before the space
+    /// and before the block's own closing tag, and never inside a heading.
+    #[test]
+    fn bold_and_italic_runs_are_strong_and_em() {
+        let a = artifact_of(with_styles(styled_line(), &[0, 2], &[6]));
+        assert!(
+            a.html
+                .contains("<p><strong>Total revenue</strong> rose <em>sharply</em></p>"),
+            "{}",
+            a.html
+        );
+        let heading = artifact_of(with_styles(
+            with_inferred_headings(repr_of_lines(&["Title", "Body"]), &[0]),
+            &[0, 1],
+            &[],
+        ));
+        assert!(
+            heading
+                .html
+                .contains("<h1>Title</h1>\n<p><strong>Body</strong></p>"),
+            "{}",
+            heading.html
+        );
     }
 
     /// Every byte of the string belongs to exactly one segment, and reconstructing them gives it

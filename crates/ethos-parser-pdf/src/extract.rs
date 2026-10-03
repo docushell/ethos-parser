@@ -700,6 +700,9 @@ fn extract_page(
                 region: None,
                 block: None,
                 inferred_heading: false,
+                // Decision #38: the typeface the document chose, as its font dictionary says.
+                bold: shown.font.bold,
+                italic: shown.font.italic,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -3063,6 +3066,8 @@ mod tests {
                 region: None,
                 block: None,
                 inferred_heading: false,
+                bold: false,
+                italic: false,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,

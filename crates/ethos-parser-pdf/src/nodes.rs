@@ -127,6 +127,13 @@ pub struct TextRun {
     /// existed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inferred_heading: bool,
+    /// The run's font declares itself bold (decision #38) — as the representation's
+    /// `text_run.bold`. Absent where false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+    /// The run's font declares itself italic — as the representation's `text_run.italic`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub italic: bool,
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
@@ -264,6 +271,8 @@ mod tests {
             region: None,
             block: None,
             inferred_heading: false,
+            bold: false,
+            italic: false,
             text: text.to_string(),
             char_codes: codes,
             scalar_code_mismatch: false,

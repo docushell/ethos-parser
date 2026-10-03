@@ -5258,6 +5258,8 @@ mod tests {
             region,
             block,
             inferred_heading: false,
+            bold: false,
+            italic: false,
             mcid: None,
             structural: artifact.then_some(ethos_parser_core::StructuralLocator::PdfArtifact(
                 PdfArtifactLocator { mcid: None },

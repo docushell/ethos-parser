@@ -100,6 +100,20 @@ build is not comparable with a 0.63.0 one**.
   nothing decodes is still refused, and so is one drawing with a predefined CJK CMap, whose code
   widths this profile cannot read.
 
+### Bold and italic, where the font declares them (decision #38)
+
+- **A run carries `bold` and `italic`** (`text_run.bold`, `text_run.italic`, absent where false)
+  where the font that drew it declares the style: a `/FontWeight` of 600 or more or the ForceBold
+  flag, the Italic flag, or a style word in its `/BaseFont` (`Bold`, `Black`, `Heavy`, `Semibold`,
+  `Demibold`; `Italic`, `Oblique`). Read under `page-observations-v3`. A build that denies unknown
+  keys — 0.63.0 and earlier — refuses this build's extract of a document with a bold or italic run.
+- **Markdown writes `**bold**`, `*italic*` and `***both***`, HTML `<strong>` and `<em>`**, one
+  span over the runs that share a style, never inside a heading or a table cell and never across a
+  block (`markdown-blocks-v12`, `html-blocks-v12`). The markers are `syntax` in the anchor map.
+- **Measured:** ParseBench semantic formatting 0.0970 -> 0.3487 (bold checks 3.5% -> 36.6%,
+  italic 0.7% -> 30.1%), content faithfulness unchanged. opendataloader-bench NID 0.8847 -> 0.8793,
+  because its scorer counts the markers as text and its ground truth marks bold once in 200 files.
+
 ### Form XObjects are read as page content (decision #37)
 
 `observation_rule` `page-observations-v2` -> `-v3`, so an artifact from this build is not comparable
