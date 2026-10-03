@@ -398,12 +398,16 @@ enum Outcome {
     Artifact { summary: String, artifact: Vec<u8> },
 }
 
-/// What a tool hands back for `structuredContent`.
+/// What a tool hands back beside its summary: an artifact for `structuredContent`, or — for
+/// `markdown` alone — a view.
 enum Artifact {
     /// Canonical bytes, written into the response verbatim and never parsed into a tree.
     Bytes(Vec<u8>),
     /// A value small enough that serializing it with the envelope costs nothing — one node.
     Value(Value),
+    /// **Not an artifact: text for the model to read**, sent as a second `content` block with no
+    /// `structuredContent` at all (decision #36, [`tool_markdown`]).
+    View(String),
 }
 
 /// One response line, before its newline.
@@ -615,6 +619,33 @@ fn tools() -> Value {
                     }
                 }
             }
+        },
+        {
+            "name": "markdown",
+            "description":
+                "Read a document as Markdown — text to read, not to cite. Give the source \
+                 document's `path` (PDF or office; the format is decided by its bytes) or a \
+                 `representation` `extract` returned, not both. Returns the Markdown text \
+                 `ethos-parser markdown` projects, without its anchor map, after a summary of \
+                 what the projection left out. To cite a passage, pass its exact text to \
+                 `locate`: text this projection added or joined — heading marks, table pipes, a \
+                 hyphenated word closed up — lies in no node, and `locate` finds none of it.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the source document. Give this or `representation`."
+                    },
+                    "representation": {
+                        "description":
+                            "The artifact `extract` returned — the object itself, or a path to \
+                             bytes this engine wrote. Give this or `path`.",
+                        "type": ["object", "string"]
+                    }
+                }
+            }
         }
     ])
 }
@@ -664,6 +695,7 @@ fn call_tool(mut params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, 
         "ground" => tool_ground(&mut args, ledger),
         "node_get" => tool_node_get(&mut args, ledger),
         "locate" => tool_locate(&mut args, ledger),
+        "markdown" => tool_markdown(&mut args, ledger),
         other => return Err(Failure::new(INVALID_PARAMS, format!("no tool `{other}`"))),
     };
 
@@ -674,6 +706,13 @@ fn call_tool(mut params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, 
         Ok((summary, Artifact::Value(artifact))) => Ok(Outcome::Value(json!({
             "content": [{ "type": "text", "text": summary }],
             "structuredContent": artifact,
+            "isError": false,
+        }))),
+        // **The view goes in `content`, and nothing goes in `structuredContent`.** Claude Code
+        // forwards `structuredContent` to the model in place of `content` text, so a view sent
+        // beside an artifact would reach the model as the artifact.
+        Ok((summary, Artifact::View(text))) => Ok(Outcome::Value(json!({
+            "content": view_content(summary, text),
             "isError": false,
         }))),
         // **A tool failure, not a protocol failure.** The call was well-formed and the answer is
@@ -892,6 +931,126 @@ fn locate_summary(found: &ethos_parser_core::Locations) -> String {
         ));
     }
     summary
+}
+
+/// A source document or a representation → the Markdown `ethos-parser markdown` projects, as text
+/// for the model to read (decision #36).
+///
+/// **A reading view, not an artifact.** `ethos.markdown.v1` is built whole, its anchor map
+/// constructed and checked exactly as the CLI builds it, and only its `markdown` field leaves here.
+/// Law 1 of `docs/history/10-V11-SCOPE.md` §4 still binds every artifact: what this returns is not
+/// one. A quote lifted from the text binds through `locate`, against the representation, never
+/// through Markdown offsets — and text the projection added or joined lies in no node, so `locate`
+/// answers it with an empty list rather than a guess.
+///
+/// The two inputs are the CLI's two: `path` is `markdown --source`, extracted under the default
+/// profile with no fingerprint to check, and `representation` is re-validated as every other tool
+/// re-validates it. Exactly one, because a call naming both would leave unsaid which one answered.
+fn tool_markdown(
+    args: &mut Value,
+    ledger: &mut ledger::Ledger,
+) -> Result<(String, Artifact), Failure> {
+    let has_path = args.get("path").is_some();
+    let has_representation = args.get("representation").is_some();
+    let repr = match (has_path, has_representation) {
+        (true, true) => {
+            return Err(Failure::new(
+                INVALID_PARAMS,
+                "give `path` or `representation`, not both",
+            ))
+        }
+        (false, false) => {
+            return Err(Failure::new(
+                INVALID_PARAMS,
+                "`path` or `representation` is required",
+            ))
+        }
+        (true, false) => {
+            let path = args
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| Failure::new(INVALID_PARAMS, "`path` must be a string"))?;
+            let head = read_supplied_file(path).map_err(|e| Failure::from(&e))?;
+            crate::representation_for_bytes(&head, &ethos_parser_core::Profile::default())
+                .map_err(|e| Failure::from(&e))?
+        }
+        (false, true) => representation_arg(args, ledger)?,
+    };
+
+    let profile = ethos_parser_core::Profile::default();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| Failure::new(INVALID_PARAMS, format!("profile will not hash: {e}")))?;
+    let artifact = ethos_parser_core::to_markdown(
+        &repr,
+        &profile.parser_version,
+        &profile_sha256,
+        &profile.markdown_rule,
+    )
+    .map_err(|e| Failure::from(&e))?;
+
+    let summary = markdown_summary(&artifact);
+    Ok((summary, Artifact::View(artifact.markdown)))
+}
+
+/// The words `markdown` reports: **counts, and the census's own names for what is missing.**
+///
+/// No digest, no rule id and no node id, for [`locate_summary`]'s reasons. The census is said by
+/// bucket because a model reading the text cannot otherwise know what is not in it:
+/// `form-field-values-not-projected-v1` with a count is a disclosure, and *"some content was
+/// omitted"* is not (`docs/history/10-V11-SCOPE.md` §4, law 4).
+///
+/// Exhaustive on [`ground_summary`]'s footing: a field added to either struct fails to compile here
+/// until this summary says whether it reports it.
+fn markdown_summary(artifact: &ethos_parser_core::MarkdownArtifact) -> String {
+    let ethos_parser_core::MarkdownArtifact {
+        // Identity, digests and the rule id are the artifact's, and no artifact leaves this tool.
+        identity: _,
+        source_sha256: _,
+        representation_sha256: _,
+        markdown_rule: _,
+        markdown,
+        // The map names node ids, and it stays behind with the artifact (decision #36).
+        anchor_map: _,
+        coverage,
+    } = artifact;
+    let ethos_parser_core::Coverage {
+        source_chars_in_representation,
+        source_chars_emitted,
+        source_chars_dropped,
+        dropped,
+        structural_erasures,
+    } = coverage;
+
+    let mut summary = format!(
+        "{} byte(s) of Markdown to read, not to cite: {source_chars_emitted} of \
+         {source_chars_in_representation} source character(s) projected, {source_chars_dropped} \
+         not.",
+        markdown.len()
+    );
+    for bucket in dropped {
+        summary.push_str(&format!(
+            " {}: {} character(s) in {} node(s).",
+            bucket.code, bucket.chars, bucket.nodes
+        ));
+    }
+    for erasure in structural_erasures {
+        summary.push_str(&format!(" {}: {}.", erasure.code, erasure.count));
+    }
+    summary.push_str(" To cite a passage, pass its exact text to `locate`.");
+    summary
+}
+
+/// A view's `content`: the summary, then the text — and no text block where there is no text.
+///
+/// The summary's byte count already says there is nothing to read, and the Anthropic Messages API
+/// refuses an empty text block.
+fn view_content(summary: String, text: String) -> Vec<Value> {
+    let mut content = vec![json!({ "type": "text", "text": summary })];
+    if !text.is_empty() {
+        content.push(json!({ "type": "text", "text": text }));
+    }
+    content
 }
 
 /// Read the `representation` argument and **re-validate it before anything reads it**.
@@ -1215,8 +1374,8 @@ mod tests {
         // Same floor, same reason: the banned-name loop below never runs if the list is empty.
         assert_eq!(
             tools.len(),
-            4,
-            "{} tool(s) advertised, not four",
+            5,
+            "{} tool(s) advertised, not five",
             tools.len()
         );
         let mut properties_checked = 0usize;
@@ -1254,13 +1413,13 @@ mod tests {
         let tools = tools();
         let tools = tools.as_array().expect("tools");
         // A per-tool property asserted over an empty list is a test that passes having checked
-        // nothing — the shape v2-S13.1 went looking for. Four tools are advertised: `extract`,
-        // `ground`, `node_get` and — since v2.3, decision #30 — `locate`. A fifth is a decision,
-        // and it arrives through this line.
+        // nothing — the shape v2-S13.1 went looking for. Five tools are advertised: `extract`,
+        // `ground`, `node_get`, `locate` since v2.3 (decision #30) and `markdown` since decision
+        // #36. A sixth is a decision, and it arrives through this line.
         assert_eq!(
             tools.len(),
-            4,
-            "{} tool(s) advertised; four is the number this server has argued for, and the \
+            5,
+            "{} tool(s) advertised; five is the number this server has argued for, and the \
              per-tool assertions below check nothing at all if the list is short",
             tools.len()
         );
@@ -2090,5 +2249,147 @@ mod tests {
              omitted, a string over the schema's byte limit. 5 table(s) withheld, over the \
              schema's limits: no tables."
         );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // `markdown`: a reading view, not an artifact (decision #36).
+    // ---------------------------------------------------------------------------------------
+
+    fn engine_fixture(name: &str) -> String {
+        format!(
+            "{}/../../fixtures/engine/{name}/document.pdf",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
+
+    /// The `markdown` field `ethos-parser markdown --source` prints for `pdf`: the same two library
+    /// calls the CLI makes, under the same default profile.
+    fn cli_markdown(pdf: &str) -> (DocumentRepresentation, String) {
+        let profile = ethos_parser_core::Profile::default();
+        let repr = crate::representation_for_bytes(&std::fs::read(pdf).expect("fixture"), &profile)
+            .expect("extracts");
+        let markdown = ethos_parser_core::to_markdown(
+            &repr,
+            &profile.parser_version,
+            &profile.profile_sha256().expect("hashes"),
+            &profile.markdown_rule,
+        )
+        .expect("projects")
+        .markdown;
+        (repr, markdown)
+    }
+
+    fn view_of(reply: &[u8]) -> Value {
+        serde_json::from_slice::<Value>(reply).expect("json")["result"].clone()
+    }
+
+    /// **The model gets the CLI's text, and no artifact.** The failure this catches: a view that
+    /// drifted from the projection the CLI prints, or a `structuredContent` that would reach a
+    /// Claude Code model in place of the text.
+    #[test]
+    fn markdown_hands_the_model_the_clis_text_and_no_artifact() {
+        let pdf = engine_fixture("measured-ink-box");
+        let result = view_of(&fresh("markdown", json!({ "path": pdf })));
+        assert_eq!(result["isError"], json!(false), "{result}");
+        assert!(
+            result.get("structuredContent").is_none(),
+            "a view carries no artifact: {result}"
+        );
+        let content = result["content"].as_array().expect("content");
+        assert_eq!(content.len(), 2, "a summary, then the text: {result}");
+
+        let (repr, markdown) = cli_markdown(&pdf);
+        assert!(!markdown.is_empty(), "the fixture projects some text");
+        assert_eq!(content[1]["text"], json!(markdown));
+
+        // Counts and the census's names, and nothing a model could hand back as a locator.
+        let summary = content[0]["text"].as_str().expect("summary");
+        let rule = ethos_parser_core::Profile::default().markdown_rule;
+        assert!(!summary.contains("sha256"), "a digest: {summary}");
+        assert!(!summary.contains(rule.as_str()), "the rule id: {summary}");
+        for node in &repr.payload().nodes {
+            assert!(
+                !summary
+                    .split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                    .any(|word| word == node.id.as_str()),
+                "node id `{}` in the summary: {summary}",
+                node.id.as_str()
+            );
+        }
+    }
+
+    /// **The census says what the text leaves out**, by its own name. The failure this catches: a
+    /// model reading `Applicant name:` with no way to learn that the value filled in beside it is
+    /// on the record and not in the text.
+    #[test]
+    fn the_markdown_summary_names_what_the_text_leaves_out() {
+        let result = view_of(&fresh(
+            "markdown",
+            json!({ "path": engine_fixture("form-field-value") }),
+        ));
+        let summary = result["content"][0]["text"].as_str().expect("summary");
+        assert!(
+            summary.contains("15 of 37 source character(s) projected, 22 not.")
+                && summary
+                    .contains("form-field-values-not-projected-v1: 22 character(s) in 1 node(s)."),
+            "{summary}"
+        );
+    }
+
+    /// **Both inputs answer alike, and a record is re-validated before it is read.** The failure
+    /// this catches: the `representation` arm projecting a record it never checked, or the two arms
+    /// projecting under different profiles.
+    #[test]
+    fn markdown_from_a_representation_is_the_text_from_its_source() {
+        let dir = scratch("markdown-inputs");
+        let bytes = artifact();
+        let good = dir.join("repr.json");
+        write(&good, &bytes);
+        let bad = dir.join("tampered.json");
+        write(&bad, &tampered(&bytes));
+
+        let from_source = view_of(&fresh(
+            "markdown",
+            json!({ "path": engine_fixture("measured-ink-box") }),
+        ));
+        assert_eq!(
+            view_of(&fresh("markdown", json!({ "representation": at(&good) }))),
+            from_source
+        );
+        let inline: Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(
+            view_of(&fresh("markdown", json!({ "representation": inline }))),
+            from_source
+        );
+        assert!(
+            is_error(&fresh("markdown", json!({ "representation": at(&bad) }))),
+            "a record that does not hash to its digest is refused, not projected"
+        );
+    }
+
+    /// **Exactly one input.** Both would leave unsaid which one answered; neither names anything.
+    #[test]
+    fn markdown_takes_exactly_one_input() {
+        let inline: Value = serde_json::from_slice(&artifact()).expect("json");
+        let pdf = engine_fixture("measured-ink-box");
+        for arguments in [
+            json!({ "path": pdf, "representation": inline }),
+            json!({}),
+            json!({ "path": 7 }),
+        ] {
+            assert!(
+                is_error(&fresh("markdown", arguments.clone())),
+                "{arguments} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_view_sends_the_summary_alone() {
+        assert_eq!(
+            view_content("0 byte(s)".into(), String::new()),
+            vec![json!({ "type": "text", "text": "0 byte(s)" })]
+        );
+        assert_eq!(view_content("s".into(), "t".into()).len(), 2);
     }
 }

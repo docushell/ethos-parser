@@ -159,7 +159,10 @@ fn the_server_completes_a_hosts_opening_handshake() {
         .iter()
         .map(|t| t["name"].as_str().expect("a name"))
         .collect();
-    assert_eq!(names, vec!["extract", "ground", "node_get", "locate"]);
+    assert_eq!(
+        names,
+        vec!["extract", "ground", "node_get", "locate", "markdown"]
+    );
 }
 
 /// **No tool argument names a coordinate**, read off the wire rather than off the source.
@@ -585,6 +588,43 @@ fn locate_refuses_a_representation_that_does_not_hash_to_its_digest() {
     assert!(
         message.contains("representation_c14n_sha256"),
         "the refusal names the digest that disagreed: {message:?}"
+    );
+}
+
+/// **`markdown` hands a host the text `ethos-parser markdown` prints, and no artifact**
+/// (decision #36). Checked against the binary's own output, because what a host gets is what is
+/// under test; the summary has to say what the text leaves out, which on this fixture is the value
+/// filled in beside its label.
+#[test]
+fn markdown_through_mcp_is_the_text_the_cli_prints() {
+    let pdf = repo_root().join("fixtures/engine/form-field-value/document.pdf");
+    let pdf = pdf.to_str().expect("utf-8");
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["markdown", "--source", pdf])
+        .output()
+        .expect("engine markdown runs");
+    assert_eq!(out.status.code(), Some(0), "markdown must succeed");
+    let cli: Value = serde_json::from_slice(&out.stdout).expect("canonical JSON");
+
+    let responses = session(&[call("markdown", json!({ "path": pdf }), 1)]);
+    let result = &responses[0]["result"];
+    assert_eq!(result["isError"], json!(false), "{result}");
+    assert!(
+        result.get("structuredContent").is_none(),
+        "no artifact reaches the host: {result}"
+    );
+    let content = result["content"].as_array().expect("content");
+    assert_eq!(content.len(), 2, "a summary, then the text: {result}");
+    assert_eq!(
+        content[1]["text"], cli["markdown"],
+        "the CLI's text, unchanged"
+    );
+    assert!(
+        content[0]["text"]
+            .as_str()
+            .expect("summary")
+            .contains("form-field-values-not-projected-v1"),
+        "the summary names what the text leaves out: {result}"
     );
 }
 

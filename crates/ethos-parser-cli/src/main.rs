@@ -109,7 +109,9 @@ enum Command {
     ///
     /// **Markdown and its Anchor Map, always together.** They are fields of one artifact, not two
     /// files, so there is no `--md-only` and no way for a caller to end up with a Markdown string
-    /// whose bytes cannot be inverted back to evidence. `docs/01-CONTRACT.md` §12 refused a
+    /// whose bytes cannot be inverted back to evidence. MCP's `markdown` tool is the one exception,
+    /// by decision #36: it hands a model the string alone, to read, and a quote taken from it binds
+    /// through `locate` instead. `docs/01-CONTRACT.md` §12 refused a
     /// Markdown projection for the whole of v1 on Workbench rule 8 — a projection between what a
     /// retriever ranks and what a citation binds is where a locator dies silently — and checklist
     /// O8 records that the rule prefers no projection at all to one without the map. This
@@ -170,9 +172,10 @@ enum Command {
     /// than a socket: no HTTP, no SSE, no TLS, no async runtime, and `deny.toml`'s network bans
     /// stay in force.
     ///
-    /// Four tools — `extract`, `ground`, `node_get` and `locate` — each calling the same library
-    /// entry point the matching subcommand calls, so an artifact returned here is the artifact
-    /// this CLI prints, byte for byte.
+    /// Five tools — `extract`, `ground`, `node_get`, `locate` and `markdown` — each calling the
+    /// same library entry point the matching subcommand calls, so an artifact returned here is the
+    /// artifact this CLI prints, byte for byte. `markdown` returns no artifact: only the text of
+    /// the one `markdown` prints, for a model to read (decision #36).
     ///
     /// **No tool accepts a locator.** The memo's §16.7 hazard is that MCP tools are
     /// model-controlled, so a tool taking a `page` or a `bbox` the engine then trusts makes the

@@ -30,6 +30,37 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [Unreleased] — a model reads a document over MCP
+
+**A MINOR when it ships, because the MCP server changed.** MCP gains a fifth tool, `markdown`. It
+takes a source document's `path` — what `markdown --source` takes — or a representation, and
+replies with a count of what the projection leaves out, then the text the `markdown` command
+prints. Until now a model behind MCP could not read a document: every tool put counts in `content`
+and its artifact in `structuredContent`, and Claude Code forwards `structuredContent` to the model
+in place of `content` text, so a projection sent as an artifact would reach the model as the
+artifact — its anchor map 3.7× to 25× the text on the gate documents.
+
+**The wire changes a 0.63.0 host sees:**
+
+- **`tools/list` advertises five tools**, `markdown` last. Its arguments are `path` and
+  `representation`, exactly one of them, and neither names a coordinate.
+- **Its reply carries no `structuredContent`.** `content` is a summary — bytes of Markdown, source
+  characters projected and not, each census bucket and structural erasure by its own code — then
+  the text, left out when there is none.
+- **Nothing else.** No artifact, rule id, schema version or profile field moves, and the other four
+  tools reply as before.
+
+**What it deliberately is not.** It is the one place the engine hands over Markdown without its
+anchor map, by decision #36, which amends v1.1's Law 1 and checklist O8 for this surface alone: an
+artifact never carries Markdown without its map. A passage the model wants to cite goes back
+through `locate`, and text the projection added or joined lies in no node, so `locate` finds none
+of it. No LangChain tool wraps `markdown`; that reopens on a named host.
+
+**The README says how to install a release.** It said there was no published binary, which has
+been false since 0.55.0; it now gives the download, the digest check and the Claude Code line.
+
+---
+
 ## [0.63.0] — what reading may cost is bounded, and PDFDocEncoding read where three decoders agree
 
 **A MINOR, because readers, both projections, the MCP server and the profile changed.** Most of

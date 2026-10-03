@@ -52,19 +52,41 @@ Notice what is missing from those last two: a page number. A `.docx` has no page
 you see on screen belong to whatever printed it. So `pages` comes back empty rather than filled
 with a guess.
 
-## Build it
+## Install
 
-There is no published binary yet. Build from source:
+Every release carries a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel),
+plus a `SHA256SUMS.txt`. A release is assembled only when all four binaries print byte-identical
+artifacts over the gate documents. On macOS or Linux, set `T` to your platform and run:
+
+```bash
+T=aarch64-apple-darwin   # or x86_64-apple-darwin, x86_64-unknown-linux-gnu
+curl -fLO https://github.com/docushell/ethos-parser/releases/latest/download/SHA256SUMS.txt
+A=$(grep -o "ethos-parser-[^ ]*-$T\.tar\.gz" SHA256SUMS.txt)
+curl -fLO "https://github.com/docushell/ethos-parser/releases/latest/download/$A"
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing   # Linux: sha256sum -c SHA256SUMS.txt --ignore-missing
+tar -xzf "$A"
+"./${A%.tar.gz}/ethos-parser" --version
+```
+
+`OK` beside your archive is the digest check passing; the one line it calls improperly formatted
+is the blank line in the file's header. On Windows, take the `x86_64-pc-windows-msvc` archive from
+the [releases page](https://github.com/docushell/ethos-parser/releases), compare `Get-FileHash`
+with `SHA256SUMS.txt`, extract it with `tar -xzf`, and run `ethos-parser.exe`. The macOS binaries
+are not notarized: `curl` leaves them runnable, but a copy downloaded through a browser is
+quarantined and killed on launch — once its digest checks out,
+`xattr -d com.apple.quarantine ethos-parser-*/ethos-parser` clears it.
+
+Or build from source, with the toolchain `rust-toolchain.toml` pins:
 
 ```bash
 cargo build --release --locked
 ```
 
-Then:
+Then, with the binary on your `PATH`:
 
 ```bash
-target/release/ethos-parser extract contract.pdf > repr.json
-target/release/ethos-parser ground repr.json > grounding.json
+ethos-parser extract contract.pdf > repr.json
+ethos-parser ground repr.json > grounding.json
 ```
 
 ## Commands
@@ -81,7 +103,7 @@ target/release/ethos-parser ground repr.json > grounding.json
 | `overlay` | An annotated copy of the PDF showing what was found — and what has no box | 0 / 2 |
 | `tag` | A copy of an untagged PDF with a structure tree written over it from the block cut — one `/Div` per block, marked as computed, so `extract` reads it back as this engine's own. Fills absence only: a PDF that already has a tree is refused ([`docs/23-AUTO-TAGGING-SCOPE.md`](docs/23-AUTO-TAGGING-SCOPE.md)) | 0 / 2 |
 | `locate` | Where a string lies in a representation — every occurrence, as node ids, character offsets and the record's own boxes. Never whether anything is true: a string that occurs nowhere is an empty answer, and there is no exit 1 ([`docs/26-LOCATE-SCOPE.md`](docs/26-LOCATE-SCOPE.md)) | 0 / 2 |
-| `mcp` | Serve `extract`, `ground`, `node_get` and `locate` to an agent over stdio | 0 / 2 |
+| `mcp` | Serve `extract`, `ground`, `node_get`, `locate` and `markdown` to an agent over stdio | 0 / 2 |
 
 Exit codes always mean the same thing: **0** it worked, **1** it ran and the answer is no, **2** it
 could not run at all. Add `--diagnostics` to any command for timing and host details on stderr;
@@ -110,8 +132,8 @@ would reopen it.
 
 ## Markdown you can still cite
 
-`markdown` never gives you a bare Markdown string. It gives you the string **and** an anchor map
-that says where every character came from:
+The `markdown` command never gives you a bare Markdown string. It gives you the string **and** an
+anchor map that says where every character came from:
 
 ```json
 {
@@ -136,8 +158,21 @@ emit `<td colspan="2">` and keep the merge the document drew.
 
 ## Using it from code
 
-**MCP** (`ethos-parser mcp`) serves four tools over a plain pipe — `extract`, `ground`,
-`node_get` and `locate`. No HTTP, no socket, no async runtime.
+**MCP** (`ethos-parser mcp`) serves five tools over a plain pipe — `extract`, `ground`,
+`node_get`, `locate` and `markdown`. No HTTP, no socket, no async runtime. To add it to Claude
+Code:
+
+```bash
+claude mcp add ethos-parser -- /absolute/path/to/ethos-parser mcp
+```
+
+Any other MCP host takes the same command, with `mcp` as its one argument.
+
+`markdown` is how a model reads a document: give it a file's `path`, and it returns the text the
+`markdown` command prints, after a count of what that text leaves out. It is the one place the
+engine hands over Markdown without its anchor map, on purpose (decision #36 in
+[`docs/00-NORTH-STAR.md`](docs/00-NORTH-STAR.md)): the text is for reading, and a passage the
+model wants to cite goes back through `locate`, which returns the locators the engine minted.
 
 The catch with MCP is that the model picks the arguments. A tool that accepted a page number or a
 bounding box would make the model the citation authority in one step, and the result would look
@@ -149,7 +184,8 @@ nodes parsed from *those* bytes. An
 id the engine did not mint is an error, never a nearest match.
 
 **Python and Node SDKs** ([`packages/python/`](packages/python/),
-[`packages/node/`](packages/node/)) are the same four functions. They spawn the CLI and parse its
+[`packages/node/`](packages/node/)) expose `extract`, `ground`, `node_get` and `locate` as
+functions. They spawn the CLI and parse its
 stdout — no native bindings, no runtime dependencies, so they cannot disagree with the binary about
 what a document says. LangChain tools ship with both, behind an optional install. Neither package is
 published yet.

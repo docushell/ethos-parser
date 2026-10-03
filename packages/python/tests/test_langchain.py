@@ -63,7 +63,10 @@ BANNED_ARGUMENT_NAMES = [
 #: would be a free-text string the model composes, decision #30 did not ask for a tool, and *"a
 #: tool that exists because it was cheap is a surface to keep honest forever"*. It reopens on a
 #: named host, and reopening it means deleting a line here.
-LANGCHAIN_REFUSED_TOOLS = {"locate"}
+#:
+#: `markdown`: `docs/00-NORTH-STAR.md` decision #36 gives MCP a reading view and asks for no
+#: LangChain tool. It reopens on a named host, as `locate` does.
+LANGCHAIN_REFUSED_TOOLS = {"locate", "markdown"}
 
 #: No tool result, summary or annotation may say this engine believes anything.
 #: `docs/07-VERIFY-BOUNDARY.md`: it validates structure and binding, and never verifies a claim.
