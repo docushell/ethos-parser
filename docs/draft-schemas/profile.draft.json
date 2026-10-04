@@ -237,9 +237,9 @@
     "layout_unit_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v1`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v2`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker; then each line is read as its pieces (its runs, cut wherever the gap between two is wider than the line's height), and the pieces of one unit that follow each other in reading order are cut before a piece when the piece before it ends more than ten of the piece's heights left of their widest piece's right edge. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
       "examples": [
-        "line-units-v1"
+        "line-units-v2"
       ]
     },
     "furniture_rule": {
@@ -470,7 +470,7 @@
       "form_annotation_rule": "form-annotations-v2",
       "furniture_rule": "margin-bands-v1",
       "heading_inference_rule": "type-size-v4",
-      "layout_unit_rule": "line-units-v1",
+      "layout_unit_rule": "line-units-v2",
       "html_rule": "html-blocks-v12",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v12",

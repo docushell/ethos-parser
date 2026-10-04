@@ -131,6 +131,16 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
 - **Measured** on ParseBench, with the benchmark's own scorer: visual grounding 0.2267 -> 0.4028,
   overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
   opendataloader-bench, whose Markdown the units do not touch.
+- **`line-units-v2`: a unit is cut where a piece of text ends short.** Each line is read as its
+  pieces — its runs, cut wherever the gap between two of them is wider than the line's height —
+  and the pieces of one unit that follow each other in reading order are cut before a piece when
+  the piece before it ends more than ten of the piece's heights left of their widest piece's right
+  edge: the last line of a paragraph set with no space after it, a list item set without a marker,
+  a label set apart from its value on one line. ParseBench visual grounding 0.4490 -> 0.4676, content
+  and formatting unchanged (0.6627, 0.4061 -> 0.4063); opendataloader-bench unchanged. Measured
+  first as a split of the adapter's items, where ten line heights scored above four, six, eight,
+  twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
+  line height between pieces scored above a half, seven tenths, one and a half and two.
 
 ### Page furniture: running heads and folios (decision #41)
 

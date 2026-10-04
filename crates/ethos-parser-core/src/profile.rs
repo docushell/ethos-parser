@@ -709,6 +709,24 @@ pub const HEADING_INFERENCE_RULE_V4: &str = "type-size-v4";
 /// shipped, on ParseBench's visual-grounding pages (`docs/measurements/parsebench/README.md`).
 pub const LAYOUT_UNIT_RULE_V1: &str = "line-units-v1";
 
+/// [`LAYOUT_UNIT_RULE_V1`] **cut where a piece of text ends short**.
+///
+/// **What `-v1` missed.** A unit joins lines by their spacing alone, so a paragraph set with no
+/// space after it ran on into the next, a list set without markers was one unit, and a label and
+/// its value on one line — a fact sheet's pairs, a form's fields — were one piece. ParseBench's
+/// visual grounding scored such a unit covering several of its elements as matching none.
+///
+/// **The change.** Each line is read as its pieces — its runs, cut wherever the gap between two
+/// of them is wider than the line's height — and the pieces of one unit that follow each other in
+/// reading order are cut before a piece when the piece before it ends more than ten of the piece's
+/// heights left of their widest piece's right edge: the last line of a paragraph, a list item, a
+/// label set apart from its value. Units stay where, never what.
+///
+/// **Measured** before it shipped, as a split of the adapter's items and then in the engine
+/// (`docs/measurements/parsebench/README.md`): visual grounding 0.4490 → 0.4676, content and
+/// formatting unchanged.
+pub const LAYOUT_UNIT_RULE_V2: &str = "line-units-v2";
+
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
 /// edges**.
 ///
@@ -1645,7 +1663,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the layout-unit rule in force (decision #38).
     ///
-    /// See [`LAYOUT_UNIT_RULE_V1`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// See [`LAYOUT_UNIT_RULE_V2`]. Its own field for `heading_inference_rule`'s reason: it runs
     /// only where the document declares no structure, so folding it into a rule that runs on every
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
@@ -1745,7 +1763,7 @@ impl Default for Profile {
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V4.to_string(),
-            layout_unit_rule: LAYOUT_UNIT_RULE_V1.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V2.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
@@ -2902,7 +2920,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3935,11 +3953,15 @@ mod tests {
              Moved for decision #41's page furniture, `sha256:41b2f9ea…` -> `sha256:8b44e441…`: \
              the new `furniture_rule`, `margin-bands-v1`, which reads an undeclared page's \
              first and last bands of lines, set apart inside its outer tenth, as its header and \
-             footer. The office profiles name it `not-run-for-this-format`. Nothing else."
+             footer. The office profiles name it `not-run-for-this-format`. Nothing else.\n\n\
+             Moved for decision #38's second layout-unit pass, `sha256:8b44e441…` -> \
+             `sha256:f16edf98…`: `layout_unit_rule` `line-units-v1` -> `-v2`, which reads each \
+             line as its pieces and cuts a unit where a piece follows one that ends short. \
+             Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8b44e4417578fff92cf7023aa457a3c7782743b1f2cab6f86c9984179612bfb9"
+            "sha256:f16edf98d9fd93cb26779c8088e197b8a44756500747a8ec4a5607e1d10bd9d5"
         );
     }
 

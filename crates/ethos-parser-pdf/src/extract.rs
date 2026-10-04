@@ -1971,7 +1971,7 @@ fn extract_counted(
     // Decision #38. Layout units, after headings — a heading line never shares a unit with body
     // text — and only where the document declares no author structure, whose own structure wins
     // there as it does for headings.
-    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V1
+    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V2
         && no_author_structure(structure.as_ref())
     {
         for page in pages.iter_mut() {

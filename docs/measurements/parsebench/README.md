@@ -200,6 +200,57 @@ their page's bag of words. Moving every Markdown block whose runs are all furnit
 fields still cost content faithfulness 0.6627 -> 0.6465, so the Markdown keeps its furniture, as
 the engine's rule is anyway.
 
+### After `line-units-v2` (2026-10-04)
+
+The ground truth's elements are paragraphs, list items and the separate pieces of a key-value line;
+a unit that covers several of them matches none, and 1,831 of the `Text` elements visual grounding
+failed under `line-units-v1` had a predicted item covering them that was more than five times
+their size. The cut was first measured as a split of the adapter's items in a copy of the adapter
+— each run of consecutive `ground` elements sharing a unit cut before an element when the element
+before it ends short of the run's widest one — and then written into the engine:
+
+| split (adapter) | `layout_element_rule_pass_rate` |
+| --- | ---: |
+| none | 0.4490 |
+| ending 2 / 4 / 6 / 8 line heights short | 0.4416 / 0.4664 / 0.4676 / 0.4697 |
+| **ending 10 line heights short** | **0.4711** |
+| ending 12 / 16 / 24 line heights short | 0.4698 / 0.4636 / 0.4589 |
+| ending 10% / 20% / 30% / 40% / 50% of the width short | 0.4309 / 0.4572 / 0.4637 / 0.4679 / 0.4680 |
+| a line indented a line height opening one, alone / with the 4-height cut | 0.4507 / 0.4628 |
+| 10 line heights, body units only | 0.4662 |
+| 10 line heights, cuts between lines only | 0.4603 |
+| 10 line heights, cuts between pieces of one line only | 0.4669 |
+| every piece of a line its own unit | 0.4554 |
+
+In the engine a line's pieces are its runs cut at a gap wider than the line's height, the stand-in
+for the adapter's `ground` elements, and the cut reads the pieces of one unit that follow each
+other in reading order — a unit whose lines cross a page's undivided columns is cut per column, as
+the adapter's grouping was. A piece gap of one line height scored 0.4676, above a half (0.4607),
+seven tenths (0.4656), one and a half (0.4652) and two (0.4639). Reading the unit's widest piece
+over the whole page instead of per stretch scored 0.4469: on a three-column page the cut never
+divided into regions, every line of the first column read as ending short of the third column's
+edge.
+
+All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6627 | 0.6627 |
+| Semantic formatting | 0.4063 | 0.4061 |
+| Tables | 0.3319 | 0.3319 |
+| Charts | 0.0031 | 0.0031 |
+| Visual grounding | 0.4676 | 0.4490 |
+
+**Measured and not used: a cell's extent at its last inked character.** A box spans its run's
+trailing whitespace, and a producer that draws a wide space after each value — SERFF rate tables
+from their third row on — carried `3 ` into the next column, so three cells read as one. Ending
+the tracks rule's cell extents where the trailing whitespace's advance begins moved tables 0.3319 ->
+0.3342 (eleven pages, eight up), but on the tree-stripped gate documents it read 403 more tables
+under `whitespace-tracks`, and still 51 more with a guard against a second column of running
+text: acronym lists and control mappings, and also tables of contents, bulleted and roman-numbered
+lists and the fragments of lines whose glyphs did not decode — bound 2 of
+[`31-TABLE-TRACKS-SCOPE.md`](../../31-TABLE-TRACKS-SCOPE.md) §4.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
