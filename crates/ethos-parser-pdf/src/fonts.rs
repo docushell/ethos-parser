@@ -202,6 +202,11 @@ pub struct Font {
     pub bold: bool,
     /// Whether the font declares itself italic, as [`font_style`] reads it.
     pub italic: bool,
+    /// What the font itself states for codes its decoder leaves unmapped (decision #43): its
+    /// declared encoding behind a `/ToUnicode`, its `/Differences` glyph names by rule, and an
+    /// embedded TrueType program's own tables — [`crate::font_fallback`]. Consulted only where the
+    /// decoder has no answer, so nothing the document declared is overridden.
+    pub fallback: Arc<BTreeMap<u32, String>>,
 }
 
 /// A font's ascent-to-descent envelope, measured or typed-absent.
@@ -746,6 +751,7 @@ fn load_font(
     };
 
     let (bold, italic) = font_style(doc, fd);
+    let fallback = Arc::new(fallback_map(doc, fd, &subtype));
     Ok(Font {
         id: id.to_string(),
         kind: FontKind::from_subtype(&subtype),
@@ -755,7 +761,69 @@ fn load_font(
         ink,
         bold,
         italic,
+        fallback,
     })
+}
+
+/// What the font itself states for codes (decision #43): a simple font's declared encoding, then
+/// its embedded TrueType program — a composite font's only under `/Identity-H` or `/Identity-V`,
+/// where the code is the CID, and a simple font's only where the program is TrueType. The encoding
+/// answers first where both do.
+fn fallback_map(
+    doc: &lopdf::Document,
+    fd: &lopdf::Dictionary,
+    subtype: &str,
+) -> BTreeMap<u32, String> {
+    use crate::font_fallback::{from_encoding, from_program, Glyphs};
+    let composite = FontKind::from_subtype(subtype) == FontKind::Composite;
+    let mut map = if composite {
+        BTreeMap::new()
+    } else {
+        load_simple_encoding(doc, fd)
+            .map(|enc| from_encoding(&enc))
+            .unwrap_or_default()
+    };
+    let holder = if composite {
+        match resolve_array(doc, fd.get(b"DescendantFonts").ok())
+            .and_then(|a| a.first().and_then(|o| resolve_dict(doc, Some(o))))
+        {
+            Some(d) => d,
+            None => return map,
+        }
+    } else {
+        fd.clone()
+    };
+    let Some(descriptor) = resolve_dict(doc, holder.get(b"FontDescriptor").ok()) else {
+        return map;
+    };
+    let Some(program) = resolve_stream(doc, descriptor.get(b"FontFile2").ok())
+        .or_else(|| resolve_stream(doc, descriptor.get(b"FontFile3").ok()))
+    else {
+        return map;
+    };
+    let Ok(bytes) = crate::budget::decoded(&program, crate::budget::MAX_DECODED_BYTES) else {
+        return map;
+    };
+    let cid_to_gid = resolve_stream(doc, holder.get(b"CIDToGIDMap").ok())
+        .and_then(|s| crate::budget::decoded(&s, crate::budget::MAX_DECODED_BYTES).ok());
+    let glyphs = if composite {
+        let identity = matches!(
+            fd.get(b"Encoding"),
+            Ok(lopdf::Object::Name(n)) if matches!(n.as_slice(), b"Identity-H" | b"Identity-V")
+        );
+        if !identity {
+            return map;
+        }
+        Glyphs::Cid(cid_to_gid.as_deref())
+    } else if subtype == "TrueType" {
+        Glyphs::Symbol
+    } else {
+        return map;
+    };
+    for (code, text) in from_program(&bytes, glyphs) {
+        map.entry(code).or_insert(text);
+    }
+    map
 }
 
 /// Style words a `/BaseFont` uses for a bold weight, in the case font names write them.
@@ -1184,6 +1252,7 @@ mod tests {
             ink,
             bold: false,
             italic: false,
+            fallback: Default::default(),
         }
     }
 

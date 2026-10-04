@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V8` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V9` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -77,7 +77,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V8` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V9` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -192,7 +192,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V8`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V9`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -717,8 +717,9 @@ fn touching_groups(rects: &[QuantRect], gap: i64) -> Vec<Vec<QuantRect>> {
 /// 1. **Not one of three or more grids sharing their column lines**: a table shaded in bands is
 ///    one table, and each band read alone would be a fragment of it. Two such grids can be two
 ///    tables, one above the other with a caption between.
-/// 2. **Not a grid with a ruled row whose cells each hold three or more lines on shared
-///    baselines**: those are rows the page did not rule, and the grid would fold them into one.
+/// 2. **Not a grid with a ruled row whose every cell holding text holds three or more lines on
+///    shared baselines**: those are rows the page did not rule, and the grid would fold them into
+///    one. A row whose long cells wrap beside a one-line label is one row.
 /// 3. **Not a grid with half its rows or more running on beside it on their own baselines**, in
 ///    text no other grid holds and within its width of its edge: it is part of a wider table.
 /// 4. **Not a grid with a column that holds no letter or digit in any row**: a split the text does
@@ -778,9 +779,10 @@ fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTa
                 .iter()
                 .filter(|c| c.position.row == r)
                 .map(baselines)
-                .filter(|l| l.len() >= 3)
+                .filter(|l| !l.is_empty())
                 .collect();
             lines.len() >= 2
+                && lines.iter().all(|l| l.len() >= 3)
                 && lines.windows(2).all(|w| {
                     let common = w[0]
                         .iter()
@@ -976,7 +978,7 @@ fn ruled_grid(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V8.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V9.to_string(),
         }],
         None,
     ))
@@ -1658,7 +1660,7 @@ mod tests {
         assert_eq!(tables.len(), 1);
         let t = &tables[0];
         assert_eq!((t.rows, t.columns), (2, 3));
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V8);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V9);
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
         assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
@@ -1707,6 +1709,25 @@ mod tests {
         }
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_row_whose_long_cells_wrap_beside_a_one_line_label_stands() {
+        let (mut rects, mut runs) = grid(100, 100, 2, 3, label);
+        rects.push(footer());
+        // The body row's second and third cells wrap onto three more lines each, level with each
+        // other; its first cell is one line.
+        for line in [10, 20, 30] {
+            for col in 1..3 {
+                runs.push(RunOrigin {
+                    x: pt(105 + 100 * col),
+                    y: pt(140 + line),
+                    text: "wrapped",
+                });
+            }
+        }
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
     }
 
     #[test]

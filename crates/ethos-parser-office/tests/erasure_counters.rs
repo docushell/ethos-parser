@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 19] = [
+const PDF_COUNTERS: [&str; 20] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -128,6 +128,10 @@ const PDF_COUNTERS: [&str; 19] = [
     // refuses on. Caught the same way, by the targeted run that included this file.
     "form_mcids",
     "form_runs",
+    // Decision #43 (`docs/33-UNMAPPED-CODES-SCOPE.md`). The runs read through what the font itself
+    // states, the count `unmapped-codes-read-from-font` names. Caught the same way, by the targeted
+    // run that included this file.
+    "font_read_runs",
 ];
 
 /// An accumulation that cannot wrap: the crate's saturating fold, or `saturating_add` itself.

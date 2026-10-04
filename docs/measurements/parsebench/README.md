@@ -304,15 +304,36 @@ of its own ([`31-TABLE-TRACKS-SCOPE.md`](../../31-TABLE-TRACKS-SCOPE.md) §13). 
 
 46 table pages rise and none falls.
 
+### After decision #43 (2026-10-05)
+
+`declared-font-codes-v3` reads a code the declared map leaves unmapped through what the font itself
+states; `Q` restores the text state; `ruled-rects-v9` narrows `-v8`'s unruled-rows clause
+([`33-UNMAPPED-CODES-SCOPE.md`](../../33-UNMAPPED-CODES-SCOPE.md)).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6627 |
+| Semantic formatting | 0.4080 | 0.4063 |
+| Tables | 0.4148 | 0.4092 |
+| Charts | 0.0984 | 0.0977 |
+| Visual grounding | 0.4695 | 0.4687 |
+
+Omitted runs across the 2,037 documents: 21,600 on 217 -> 10,895 on 143, and one table page refused
+whole before is read (GriTS 0 -> 0.1302). Table pages: 10 rise, 2 fall.
+Content pages: 22 rise, 11 fall, the largest the Farsi (-0.096) and Hindi (-0.059) pages, whose
+characters are now read and are in drawing order, which for those scripts is not reading order.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
   [`../opendataloader-bench/tables-why-zero.md`](../opendataloader-bench/tables-why-zero.md), the
   2026-10-03 amendment.
-- **Fonts with neither `/ToUnicode` nor a readable encoding.** `text_multilang__korean2`,
-  `text_multilang__mandarin4` and `text_simple__grayson` are refused because nothing decodes;
-  another reader recovers them through the embedded font program's own `cmap`, which this engine
-  does not read.
+- **Fonts that state no character.** `text_multilang__korean2`, `text_multilang__mandarin4` and
+  `text_simple__grayson` are still refused after decision #43 (2026-10-05), because none of their
+  fonts states one: korean2's is a CID-keyed CFF program under the `Adobe-Korea1` ordering with no
+  `/ToUnicode`, which only Adobe's published CID-to-Unicode table decodes and this profile does not
+  carry; mandarin4's and grayson's ship a `/ToUnicode` holding a codespace and no mapping, over a
+  Type 1C program whose glyph names are indices (`/G21`) and a two-glyph TrueType stub.
 - **Two streams `lopdf` does not load**, `text_ocr__mix` and `text_ocr__012-25`: a tab before
   `endstream` that qpdf reads. That is the `lopdf` boundary the 2026-09-25 review named as this
   engine's top risk, and it was left alone.

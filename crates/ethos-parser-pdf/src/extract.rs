@@ -480,6 +480,8 @@ struct PageYield {
     unruled_refusals: Vec<(u32, crate::unruled::Refusal)>,
     encoding_dropped_runs: u32,
     encoding_detail: String,
+    /// Runs holding a code their font's declared map left unmapped and the font stated (#43).
+    font_read_runs: u32,
     mcids_unbound: u32,
     unclaimed_tree_items: u32,
     /// Runs bound under an element this engine's own writer created (auto-tagging S1).
@@ -541,6 +543,7 @@ fn extract_page(
 ) -> Result<Option<PageYield>, EngineError> {
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut encoding_dropped_runs: u32 = 0;
+    let mut font_read_runs: u32 = 0;
     let mut encoding_detail = String::new();
     let mut unruled_refusals: Vec<(u32, crate::unruled::Refusal)> = Vec::new();
     let mut ruled_refusals: Vec<(u32, crate::tables::RuledRefusal)> = Vec::new();
@@ -637,6 +640,7 @@ fn extract_page(
         // v0.1: a font that cannot map a code drops its run rather than failing the document.
         // Accumulated across pages so the artifact declares one honest total.
         encoding_dropped_runs = encoding_dropped_runs.saturating_add(interp.dropped_runs);
+        font_read_runs = font_read_runs.saturating_add(interp.fallback_runs);
         if interp.dropped_runs > 0 {
             if let Some(first) = interp.undecodable.first() {
                 if encoding_detail.is_empty() {
@@ -1431,6 +1435,7 @@ fn extract_page(
         unruled_refusals,
         encoding_dropped_runs,
         encoding_detail,
+        font_read_runs,
         mcids_unbound,
         unclaimed_tree_items,
         computed_bound,
@@ -1594,6 +1599,7 @@ fn extract_counted(
     // Accumulated across pages: how much text is missing from this artifact because a font's
     // encoding could not map it, and the first failure's reason for the declaration's detail.
     let mut encoding_dropped_runs: u32 = 0;
+    let mut font_read_runs: u32 = 0;
     let mut encoding_detail = String::new();
     // v1-S2. Pages where the alignment rule built a candidate lattice and refused it, with the
     // precondition that failed. Collected rather than declared per page so the artifact carries
@@ -1911,6 +1917,7 @@ fn extract_counted(
             }
             encoding_dropped_runs = declare(encoding_dropped_runs, y.encoding_dropped_runs);
         }
+        font_read_runs = declare(font_read_runs, y.font_read_runs);
         mcids_unbound = declare(mcids_unbound, y.mcids_unbound);
         unclaimed_tree_items = declare(unclaimed_tree_items, y.unclaimed_tree_items);
         computed_bound = declare(computed_bound, y.computed_bound);
@@ -2185,6 +2192,10 @@ fn extract_counted(
             encoding_dropped_runs,
             &encoding_detail,
         ));
+    }
+    // Decision #43: runs read through what their font itself states, declared with their count.
+    if font_read_runs > 0 {
+        limitations.push(lim::unmapped_codes_read_from_font(font_read_runs));
     }
 
     // The document half of the outline declarations. `capabilities.outlines` says this profile

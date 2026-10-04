@@ -298,6 +298,10 @@ pub struct Interpreter<'a> {
     gs_stack: Vec<GraphicsState>,
     gs: GraphicsState,
     ts: TextState,
+    /// The text state each open `q` saved, beside [`Self::gs_stack`]: the text state is part of
+    /// the graphics state (32000-1 §9.3.1), so `Q` restores the font, size, spacing, scaling,
+    /// leading, rise and rendering mode as it restores the CTM.
+    ts_stack: Vec<TextState>,
     mc_stack: Vec<MarkedContent>,
     /// Runs collected so far.
     pub shown: Vec<ShownText>,
@@ -320,8 +324,10 @@ pub struct Interpreter<'a> {
     /// Only **painted** subpaths land here. A path built and then discarded with `n`, or used
     /// solely as a clip, drew no ink and is not a ruling line.
     pub rects: Vec<PathRect>,
-    /// The rectangles of [`Interpreter::rects`] a fill painted, each with its fill colour
-    /// (decision #42). A rectangle only stroked is not here: an outline is not a bar.
+    /// The rectangles a fill painted, each with its fill colour (decision #42). A rectangle only
+    /// stroked is not here: an outline is not a bar. A form's filled rectangles are kept, where
+    /// [`Interpreter::rects`] drops a form's ink: a chart is often drawn as a form, and its bars are
+    /// not the page furniture the ruled rule keeps out.
     pub filled: Vec<FilledRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
@@ -340,6 +346,9 @@ pub struct Interpreter<'a> {
     /// unmappable codes, and what a caller needs to know is how many pieces of text are
     /// **missing from the artifact**, not how many diagnostics were produced.
     pub dropped_runs: u32,
+    /// How many runs held a code their font's declared map left unmapped and the font itself
+    /// stated (decision #43, [`crate::font_fallback`]). Kept, and counted so the artifact says so.
+    pub fallback_runs: u32,
     /// How many `BDC` sequences supplied their property list **by name** (v1-S3).
     ///
     /// Those may carry an `/MCID` this profile did not resolve, so their content can look
@@ -406,6 +415,7 @@ impl<'a> Interpreter<'a> {
             gs_stack: Vec::new(),
             gs: GraphicsState::default(),
             ts: TextState::default(),
+            ts_stack: Vec::new(),
             mc_stack: Vec::new(),
             shown: Vec::new(),
             text_drawn_since_placement: false,
@@ -417,6 +427,7 @@ impl<'a> Interpreter<'a> {
             pending: Vec::new(),
             pending_segments: Vec::new(),
             dropped_runs: 0,
+            fallback_runs: 0,
             props_by_name: 0,
             alternate_texts: 0,
             partial_code_runs: 0,
@@ -590,7 +601,10 @@ impl<'a> Interpreter<'a> {
         use Operator::*;
         match op {
             // --- graphics state: affects glyph placement through the CTM ---
-            SaveState => self.gs_stack.push(self.gs),
+            SaveState => {
+                self.gs_stack.push(self.gs);
+                self.ts_stack.push(self.ts.clone());
+            }
             RestoreState => {
                 let restored = self.gs_stack.pop().unwrap_or_default();
                 // A CTM change moves where the next glyph lands (§9.4.4), so it places the pen.
@@ -599,6 +613,19 @@ impl<'a> Interpreter<'a> {
                     self.text_drawn_since_placement = false;
                 }
                 self.gs = restored;
+                // The text state `q` saved, without the text and line matrices: those belong to
+                // the text object, not the graphics state. Until 2026-10-05 `Q` left the text
+                // state as it stood, so a font a producer set inside `q … Q` for one space went
+                // on decoding every string after it — through that font's `ToUnicode`, which
+                // maps none of their codes — and the runs were omitted as undecodable. An
+                // unbalanced `Q` leaves the text state as it is.
+                if let Some(saved) = self.ts_stack.pop() {
+                    self.ts = TextState {
+                        text_matrix: self.ts.text_matrix,
+                        line_matrix: self.ts.line_matrix,
+                        ..saved
+                    };
+                }
             }
             ConcatMatrix => {
                 let m = matrix_operands(operands)?;
@@ -914,6 +941,7 @@ impl<'a> Interpreter<'a> {
         // §6; doc 22's amendments). Ghostscript 10.06 renders the run after a 12-point
         // undecodable glyph 12 points right of where this engine used to put it.
         let mut dropped = false;
+        let mut from_font = false;
 
         for code in codes {
             if !dropped {
@@ -921,6 +949,14 @@ impl<'a> Interpreter<'a> {
                     Ok(s) => {
                         text.push_str(s);
                         kept_codes.push(code);
+                    }
+                    // Decision #43: a code the declared map leaves unmapped, where the font itself
+                    // states its characters — its declared encoding, a glyph name by rule, or its
+                    // embedded program's own tables (`crate::font_fallback`).
+                    Err(_) if font.fallback.contains_key(&code) => {
+                        text.push_str(&font.fallback[&code]);
+                        kept_codes.push(code);
+                        from_font = true;
                     }
                     Err(e) => {
                         // **v0.1: drop this run, keep the page.** Through v0 this returned `Err`
@@ -966,6 +1002,9 @@ impl<'a> Interpreter<'a> {
         // The pen has travelled; the run itself is not evidence and is not pushed.
         if dropped {
             return Ok(());
+        }
+        if from_font {
+            self.fallback_runs = self.fallback_runs.saturating_add(1);
         }
 
         let scale = self.gs.ctm.x_scale();
@@ -1092,6 +1131,7 @@ impl<'a> Interpreter<'a> {
         let saved = (
             self.gs,
             self.gs_stack.clone(),
+            self.ts_stack.clone(),
             self.ts.clone(),
             self.mc_stack.clone(),
             self.text_drawn_since_placement,
@@ -1121,6 +1161,7 @@ impl<'a> Interpreter<'a> {
         (
             self.gs,
             self.gs_stack,
+            self.ts_stack,
             self.ts,
             self.mc_stack,
             self.text_drawn_since_placement,
@@ -1411,6 +1452,7 @@ mod tests {
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
                 bold: false,
                 italic: false,
+                fallback: Default::default(),
             }),
         );
         m
@@ -1440,6 +1482,7 @@ mod tests {
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
                 bold: false,
                 italic: false,
+                fallback: Default::default(),
             }),
         );
         m
@@ -1900,6 +1943,59 @@ mod tests {
             Matrix::IDENTITY,
             "Q must restore the matrix q saved"
         );
+    }
+
+    #[test]
+    fn q_and_q_restore_the_text_state() {
+        // A font and size set inside `q … Q` for one string do not carry past the `Q`.
+        let mut fonts = one_font();
+        let f2 = std::sync::Arc::new(Font {
+            id: "F2".into(),
+            ..(*fonts["F1"]).clone()
+        });
+        fonts.insert("F2".into(), f2);
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf 2 Tc ET q BT /F2 12 Tf 0 Tc (a) Tj ET Q BT 0 0 Td (b) Tj ET",
+        ))
+        .unwrap();
+        let shown: Vec<(&str, f64)> = i
+            .shown
+            .iter()
+            .map(|s| (s.font_id.as_str(), s.font_size))
+            .collect();
+        assert_eq!(shown, vec![("F2", 12.0), ("F1", 10.0)]);
+        assert!(
+            (i.ts.char_spacing - 2.0).abs() < 1e-9,
+            "Q restores Tc as well"
+        );
+    }
+
+    #[test]
+    fn a_code_the_declared_map_leaves_unmapped_is_read_through_what_the_font_states() {
+        use crate::encoding::{BaseEncoding, SimpleEncoding};
+        let mut fonts = one_font();
+        let mut differences = BTreeMap::new();
+        differences.insert(0x21u8, "uni0915".to_string());
+        let mut fallback = BTreeMap::new();
+        fallback.insert(0x21u32, "क".to_string());
+        let f1 = Font {
+            decoder: crate::fonts::Decoder::Simple(SimpleEncoding::new(
+                BaseEncoding::WinAnsi,
+                differences,
+            )),
+            fallback: std::sync::Arc::new(fallback),
+            ..(*fonts["F1"]).clone()
+        };
+        fonts.insert("F1".into(), std::sync::Arc::new(f1));
+        let mut i = Interpreter::new(&fonts);
+        // `!` is code 0x21, which /Differences names `uni0915`; 0x81 WinAnsi leaves undefined and
+        // the font states nothing for.
+        i.run(&ops("BT /F1 10 Tf (!A) Tj (\\201) Tj (B) Tj ET"))
+            .unwrap();
+        let texts: Vec<&str> = i.shown.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(texts, vec!["कA", "B"]);
+        assert_eq!((i.fallback_runs, i.dropped_runs), (1, 1));
     }
 
     #[test]

@@ -106,6 +106,12 @@ impl SimpleEncoding {
         self.base
     }
 
+    /// The glyph name `/Differences` gives a code, and nothing from the base: the one name in this
+    /// encoding that is the document's own statement about the glyph (decision #43).
+    pub(crate) fn difference(&self, code: u8) -> Option<&str> {
+        self.differences.get(&code).map(String::as_str)
+    }
+
     /// The glyph NAME this encoding gives a code, where this profile knows one.
     ///
     /// `/Differences` wins, exactly as it does for decoding — it is the document overriding its

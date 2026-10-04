@@ -215,7 +215,7 @@
       "properties": {
         "ruled": {
           "type": "string",
-          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v8`. A rectangle spanning the whole lattice is the table’s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn. Since v2-S20 a grid whose own structural cross-check rejects it — a slot two rectangles both claim — is refused rather than emitted, and the refusal is declared with its page and fault counts. Since `ruled-rects-v8`, where the page's rectangles as one lattice are refused, each group of them that touch (within 2pt) is a candidate of its own, its grid standing only where it is not one of three or more grids sharing their column lines, holds no ruled row whose cells each hold three or more lines on shared baselines, does not run on beside itself on its rows' baselines, and has no column without a letter or digit."
+          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v9`. A rectangle spanning the whole lattice is the table’s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn. Since v2-S20 a grid whose own structural cross-check rejects it — a slot two rectangles both claim — is refused rather than emitted, and the refusal is declared with its page and fault counts. Since `ruled-rects-v8`, where the page's rectangles as one lattice are refused, each group of them that touch (within 2pt) is a candidate of its own, its grid standing only where it is not one of three or more grids sharing their column lines, holds no ruled row whose cells each hold three or more lines on shared baselines, does not run on beside itself on its rows' baselines, and has no column without a letter or digit; since `ruled-rects-v9` the unruled-rows clause asks its three lines of every cell of the row that holds text."
         },
         "unruled": {
           "type": "string",
@@ -293,7 +293,7 @@
     "text_code_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES — this names how a string is divided before any table is consulted.",
+      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES — this names how a string is divided before any table is consulted. `declared-font-codes-v3` (decision #43): `Q` restores the text state `q` saved, and a code the declared map leaves unmapped is read through the font's `/Differences` glyph names by the Adobe Glyph List specification's rules that need no list, or an embedded TrueType program's Unicode cmap and glyph names — never the base encoding's table, never a control or private-use value — each such run declared under `unmapped-codes-read-from-font`.",
       "examples": [
         "declared-font-codes-v2"
       ]
@@ -493,14 +493,14 @@
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
         "charts": "bar-labels-v1",
-        "ruled": "ruled-rects-v8",
+        "ruled": "ruled-rects-v9",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",
         "tracks": "whitespace-tracks-v6",
         "unruled": "unruled-align-v1"
       },
       "text_box_rule": "advance-over-font-envelope-v1",
-      "text_code_rule": "declared-font-codes-v2",
+      "text_code_rule": "declared-font-codes-v3",
       "unicode_data_version": "std-unicode-16.0.0",
       "verifier": {
         "mode": "not_pinned"

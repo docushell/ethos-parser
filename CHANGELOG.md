@@ -142,6 +142,38 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Text a font's declared map leaves out, read through the font (decision #43)
+
+`text_code_rule` moves `declared-font-codes-v2` -> `declared-font-codes-v3` and
+`table_detection.ruled` `ruled-rects-v8` -> `ruled-rects-v9`, so `profile_sha256` moves.
+`docs/33-UNMAPPED-CODES-SCOPE.md` is the rule.
+
+- **`Q` restores the text state.** The font, size, spacing, scaling, leading, rise and rendering
+  mode are part of the graphics state (PDF 32000-1 §9.3.1), and `Q` left them as they stood: a font
+  a producer set inside `q … Q` for one space decoded every string after it, through a `/ToUnicode`
+  that maps none of their codes, and the runs were omitted. On the eight tree-stripped gate
+  documents 8,261 runs were omitted; now none is.
+- **A code the declared map leaves unmapped is read through what the font itself states**: its
+  `/Differences` glyph name by the Adobe Glyph List specification's rules that need no list
+  (`uniXXXX`, `uXXXX`, components joined by underscores, a suffix after a full stop dropped), or an
+  embedded TrueType program's Unicode cmap and glyph names — a composite font's CID through its
+  `/CIDToGIDMap` under an identity encoding, a symbolic simple font's code through its symbol cmap.
+  Never the base encoding's table, never a control or private-use value, and never for a code the
+  declared map answers. Each such run is declared under the new `unmapped-codes-read-from-font`.
+- **`ruled-rects-v9`**: `-v8`'s clause against rows the page did not rule asked any two cells of a
+  row; two cells of wrapped prose beside a one-line label share their baselines too, and once their
+  text was read a ruled table lost its grid. It now asks every cell of the row that holds text.
+- **Measured** on ParseBench, with the benchmark's own scorer: tables 0.4092 -> 0.4148, charts
+  0.0977 -> 0.0984, content 0.6627 -> 0.6633, formatting 0.4063 -> 0.4080, visual grounding 0.4687
+  -> 0.4695 (overall 40.89 -> 41.08). Omitted runs across its 2,037 documents 21,600 -> 10,895; 5,511
+  runs are read through the font, 2,656 of them on a table page refused whole before. opendataloader-bench NID 0.8819 -> 0.8825, TEDS 0.4283 -> 0.4322,
+  MHS 0.5458 -> 0.5467, no document falling. On the eight tree-stripped gate documents 18 tables
+  grow and 8 are new, rows a dropped run used to break; two are lost — `nist-sp-800-171r3` p110's
+  PM rows, a table before only of broken text, and `nist-sp-800-161r1` p239's questionnaire, whose
+  blank answer column holds no letter once its neighbour's glyphs are placed where the document
+  places them (`docs/33-UNMAPPED-CODES-SCOPE.md` §3). The Farsi and Hindi pages lose content score with their
+  characters now right: those scripts are drawn in visual order, and runs are read in drawing order.
+
 ### A grid read among the page's other ink (`ruled-rects-v8`)
 
 `table_detection.ruled` moves `ruled-rects-v7` -> `ruled-rects-v8`, so `profile_sha256` moves.

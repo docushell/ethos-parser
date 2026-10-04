@@ -82,6 +82,10 @@ pub const ENCRYPTED_EMPTY_USER_PASSWORD: &str = "encrypted-empty-user-password";
 /// text in the evidence that the document does not contain.
 pub const BROKEN_FONT_ENCODING: &str = "broken-font-encoding";
 
+/// Runs holding a code their font's declared map left unmapped, read through what the font itself
+/// states (decision #43).
+pub const UNMAPPED_CODES_READ_FROM_FONT: &str = "unmapped-codes-read-from-font";
+
 /// A symbolic font supplied no `/ToUnicode` and named no base encoding, so its codes were
 /// resolved through `StandardEncoding` anyway.
 ///
@@ -295,6 +299,26 @@ pub fn xref_entry_padded(entries_padded: u32) -> Limitation {
     )
 }
 
+/// Runs read through what their font itself states, where the map it declares has no answer
+/// (decision #43, `declared-font-codes-v3`).
+pub fn unmapped_codes_read_from_font(runs: u32) -> Limitation {
+    Limitation::document(
+        UNMAPPED_CODES_READ_FROM_FONT,
+        format!(
+            "{runs} text run(s) held character codes the font's declared map does not cover — no \
+             entry in its `/ToUnicode` CMap, a `/Differences` glyph name outside this profile's \
+             glyph table, or no map at all — and were read through what the font itself states: \
+             its declared encoding behind the `/ToUnicode`, a glyph name by the Adobe Glyph List \
+             specification's rules that need no list (`uniXXXX`, `uXXXX`, components joined by \
+             underscores, a suffix after a full stop dropped), or an embedded TrueType program's \
+             own cmap and glyph names. Only codes the declared map leaves unmapped are read this \
+             way, so nothing the document declared is overridden; no character is supplied that \
+             the font does not state, and a control or private-use value is refused. A run with a \
+             code none of these maps is still omitted and counted under `broken-font-encoding`."
+        ),
+    )
+}
+
 /// The document-scoped limitation for a font whose encoding could not map every code.
 ///
 /// The runs that could not be decoded are **absent from the artifact**, and their count is here.
@@ -367,7 +391,7 @@ pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) 
          grid-shaped was drawn here` and `a grid was implied and judged incoherent`, and only the \
          second one is reported below. Nothing was repaired or partially emitted: a candidate \
          either satisfies every precondition of `{}` or it produces no table.",
-        ethos_parser_core::TABLE_DETECTION_V8
+        ethos_parser_core::TABLE_DETECTION_V9
     );
     // **Grouped by precondition, so the reasoning is stated once.** The ruled rule refuses 481 of
     // `nist-sp-800-53r5`'s 492 pages; repeating a five-line explanation per page would put a
@@ -982,7 +1006,7 @@ mod tests {
     use ethos_parser_core::LimitationScope;
 
     /// Every code this module emits, in one place, so a rename is a visible event.
-    const PDF_CODES: [&str; 12] = [
+    const PDF_CODES: [&str; 13] = [
         CLASSIFY_SAMPLE_BOUND,
         BACKEND_XREF_STRICT_20_BYTE,
         PREDEFINED_CMAPS_NOT_VENDORED,
@@ -994,6 +1018,7 @@ mod tests {
         // two it omitted are wire spellings a caller matches on exactly like the other five.
         XREF_ENTRY_PADDED,
         BROKEN_FONT_ENCODING,
+        UNMAPPED_CODES_READ_FROM_FONT,
         ENCRYPTED_EMPTY_USER_PASSWORD,
         CLASSIFY_READS_NO_STRUCTURE_TREE,
         // Derived rather than declared: `undetected_reason_code` builds these from a reason name,
@@ -1019,10 +1044,10 @@ mod tests {
             .collect();
         assert_eq!(
             declared.len(),
-            10,
-            "this module declares {} `pub const` code(s): {declared:?}. Ten is the number at \
-             decision #31, which added `encrypted-empty-user-password` and \
-             `classify-reads-no-structure-tree`; a new one belongs in `PDF_CODES` too.",
+            11,
+            "this module declares {} `pub const` code(s): {declared:?}. Eleven is the number at \
+             decision #43, which added `unmapped-codes-read-from-font`; a new one belongs in \
+             `PDF_CODES` too.",
             declared.len()
         );
         for code in &declared {

@@ -238,6 +238,26 @@ pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 /// (N16). The id moves because the text it names moves.
 pub const TEXT_CODE_RULE_V2: &str = "declared-font-codes-v2";
 
+/// [`TEXT_CODE_RULE_V2`] **with the font a string is shown in restored by `Q`, and codes the
+/// declared map leaves unmapped read through the font itself** (decision #43).
+///
+/// **What `-v2` got wrong.** `Q` restored the CTM and left the text state as it stood, though the
+/// text state is part of the graphics state (32000-1 §9.3.1): a producer that set a font inside
+/// `q … Q` for one space decoded every string after it through that font's `/ToUnicode`, which maps
+/// none of their codes, and the runs were omitted — on ParseBench's table pages 6,048 runs, 5,893
+/// of them this. And a code the font's `/ToUnicode` did not map, or a `/Differences` glyph name
+/// outside this profile's table, omitted its run even where the font itself names the glyph.
+///
+/// **The change.** `Q` restores the font, size, spacing, scaling, leading, rise and rendering mode
+/// `q` saved. And a code the declared map leaves unmapped is read through what the font states: a
+/// `/Differences` glyph name by the Adobe Glyph List specification's rules that need no list
+/// (`uniXXXX`, `uXXXX`, components joined by underscores, a suffix dropped), or an embedded
+/// TrueType program's Unicode cmap and glyph names — a composite font's CID through its
+/// `/CIDToGIDMap` under an identity encoding, a symbolic simple font's code through its symbol
+/// cmap. Never the base encoding's table, never a control or private-use value; such runs are
+/// declared under `unmapped-codes-read-from-font`.
+pub const TEXT_CODE_RULE_V3: &str = "declared-font-codes-v3";
+
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `ethos-parser-pdf` because the profile is `ethos-parser-core`'s and a rule id is
@@ -484,6 +504,16 @@ pub const TABLE_DETECTION_V7: &str = "ruled-rects-v7";
 /// ParseBench tables 0.3667 -> 0.4092, 46 pages up and none down; opendataloader-bench NID, TEDS
 /// and MHS unchanged, no table on a document whose ground truth holds none.
 pub const TABLE_DETECTION_V8: &str = "ruled-rects-v8";
+
+/// [`TABLE_DETECTION_V8`] **with a ruled row whose long cells wrap beside a one-line label kept a
+/// row**.
+///
+/// `-v8`'s clause against rows the page did not rule refused a group's grid where any two cells of
+/// a row held three or more lines on shared baselines — and two cells of wrapped prose beside a
+/// one-line label share their baselines too. Once `declared-font-codes-v3` read the text a
+/// producer's `q … Q` had hidden, the European Medicines Agency's ruled research-needs table lost
+/// its grid that way. **The clause now asks it of every cell of the row that holds text.**
+pub const TABLE_DETECTION_V9: &str = "ruled-rects-v9";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
@@ -1034,7 +1064,7 @@ impl Default for TableDetection {
     /// All four rules, enabled — the two v1-S2 shipped, the one v1-S8 added, and the one v2-S24 did.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V8.to_string(),
+            ruled: TABLE_DETECTION_V9.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
@@ -1853,7 +1883,7 @@ impl Default for Profile {
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: TEXT_CODE_RULE_V2.to_string(),
+            text_code_rule: TEXT_CODE_RULE_V3.to_string(),
             observation_rule: OBSERVATION_RULE_V3.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
@@ -3016,7 +3046,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v8","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v9","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v3","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4069,11 +4099,16 @@ mod tests {
              Moved for the ruled rule's eighth pass, `sha256:26e2bfd4…` -> `sha256:5a0e859c…`: \
              `table_detection.ruled` `ruled-rects-v7` -> `-v8`, which, where a page's rectangles \
              as one lattice are refused, reads each group of them that touch as a candidate of \
-             its own. Nothing else."
+             its own. Nothing else.\n\n\
+             Moved for decision #43, `sha256:5a0e859c…` -> `sha256:9fcf39fb…`: `text_code_rule` \
+             `declared-font-codes-v2` -> `-v3`, which has `Q` restore the text state and reads a \
+             code the declared map leaves unmapped through the font's `/Differences` names and \
+             its TrueType program; and `table_detection.ruled` `ruled-rects-v8` -> `-v9`, which \
+             keeps a ruled row whose long cells wrap beside a one-line label a row. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:5a0e859c019f2eb6fc3bc0303d9ad00f1d8b81b4c0d4370cb8b79ad657820337"
+            "sha256:9fcf39fb0bdc0882ef098f7f2ee3d49425d5341b988611172e43cb5532ee1bbc"
         );
     }
 
@@ -4119,22 +4154,22 @@ mod tests {
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V8);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V9);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
         assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
         for (a, b) in [
-            (TABLE_DETECTION_V8, TABLE_DETECTION_UNRULED_V1),
-            (TABLE_DETECTION_V8, TABLE_DETECTION_STROKE_V1),
-            (TABLE_DETECTION_V8, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V9, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V9, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V9, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V8, TABLE_DETECTION_TRACKS_V6),
+            (TABLE_DETECTION_V9, TABLE_DETECTION_TRACKS_V6),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V6),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V6),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V6),
-            (TABLE_DETECTION_V8, TABLE_DETECTION_CHARTS_V1),
+            (TABLE_DETECTION_V9, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_CHARTS_V1),
@@ -4150,7 +4185,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v8","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v9","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4266,13 +4301,13 @@ mod tests {
         );
 
         // And a profile from before decision #42 must not acquire the chart rule.
-        let pre_charts = r#"{"ruled":"ruled-rects-v8","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6"}"#;
+        let pre_charts = r#"{"ruled":"ruled-rects-v9","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(pre_charts).is_err(),
             "a pre-#42 profile must not silently acquire the chart rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v8","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","charts":"bar-labels-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v9","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","charts":"bar-labels-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

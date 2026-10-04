@@ -503,3 +503,8 @@ truth holds none, and every cell its runs' text. On the eight tree-stripped gate
 `-v7` refused are read — `nist-sp-800-53Ar5`'s boxed assessment procedures, one per control, three
 of them replacing a smaller whitespace table over the same text; `nist-sp-800-207`'s acronym list,
 one table of 22 rows where the whitespace rule read two; two of `nist-sp-800-161r1`'s.
+
+**`ruled-rects-v9` (2026-10-05).** Clause 2 asked any two cells of a ruled row; once
+`declared-font-codes-v3` read the text a producer's `q … Q` had hidden, two cells of wrapped prose
+beside a one-line label shared their baselines and the EMA research table lost its grid. It now asks
+every cell of the row that holds text ([`33-UNMAPPED-CODES-SCOPE.md`](33-UNMAPPED-CODES-SCOPE.md) §4).

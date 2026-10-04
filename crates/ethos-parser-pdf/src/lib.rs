@@ -66,6 +66,7 @@ pub(crate) mod content;
 pub(crate) mod document;
 pub(crate) mod encoding;
 pub(crate) mod extract;
+pub(crate) mod font_fallback;
 pub(crate) mod fonts;
 pub(crate) mod form_xobjects;
 pub(crate) mod forms;
