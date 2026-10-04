@@ -270,3 +270,22 @@ Each of the three fixes was measured by taking it out of the three-column varian
 `ruled-rects-v7`, at 0.2898: without the currency join ParseBench tables fall 0.021, without growing
 tracks 0.006, without superscripts 0.002. Growing a track on sparse rows and wraps too added 0.0002
 and is not done.
+
+## 8. Two columns at three rows, measured under `-v3` (2026-10-04) — not shipped
+
+Decision #39 let two columns stand at three rows if a re-measurement under `-v3` kept fabrication at
+0 and bound 3. It did not, and the four-row floor stays.
+
+- **The floor at three rows alone** put a table on one opendataloader-bench document whose ground
+  truth holds none: `01030000000014`, a line of one column's prose over two footnotes, `51` and
+  `52`, read across the page's columns.
+- **With the two-row test's header clause** — a first row whose cells open with a letter or digit
+  that is no lower-case letter — fabrication is 0 again, TEDS 0.4254 → 0.4359, and
+  `unruled-near-miss` reads as the 3 × 2 table it shows, the alignment rule still refusing it by
+  name. ParseBench tables 0.3224 → 0.3263; content and formatting unchanged; **visual grounding
+  0.4046 → 0.4030**, two pages of one performance report falling 0.41 and 0.36: its key-value
+  fact boxes (`Investment Type: | Private Equity`, `Vintage: | 2015`) read as tables, and each
+  box's third row took the next box's label.
+
+That is bound 3, and 0.0039 of tables does not buy it back.
+
