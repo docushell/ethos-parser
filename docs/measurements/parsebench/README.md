@@ -149,6 +149,57 @@ The tracks rule runs again inside each of a page's columns where one is prose. A
 | Charts | 0.0031 | 0.0031 |
 | Visual grounding | 0.4045 | 0.4042 |
 
+### After decision #41 (2026-10-04)
+
+A line a page sets apart at its top or bottom edge carries `furniture` (`margin-bands-v1`), and the
+adapter labels its item `Page-header` or `Page-footer`. All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6627 | 0.6627 |
+| Semantic formatting | 0.4061 | 0.4061 |
+| Tables | 0.3319 | 0.3319 |
+| Charts | 0.0031 | 0.0031 |
+| Visual grounding | 0.4490 | 0.4045 |
+
+The ground truth labels 902 of the 14,986 visual-grounding elements `Page-header` or
+`Page-footer`; before the rule every one the engine found was labelled `Text`. Visual grounding
+is the mean over 500 pages, and the 46 the engine produces no output for — 42 images and four
+refused PDFs — count as zero: ParseBench's runner zero-pads a page with no output and skips only a
+page whose output holds no layout data.
+
+The rule was first measured as a relabelling of the adapter's items in a copy of the adapter —
+bands of items split wherever the gap is a given share of the page's median span height — and then
+written into the engine with the best variant's clauses:
+
+| variant | `layout_element_rule_pass_rate` |
+| --- | ---: |
+| none | 0.4045 |
+| margin 12%, gap 0.6 line, no line taller than 1.15 body lines, images block | 0.4329 |
+| the same, margin 8% / 10% / 15% | 0.4323 / 0.4337 / 0.4320 |
+| the same, gap 0.4 / 1.0 line | 0.4331 / 0.4324 |
+| the same, at most 2 / 3 lines in the band | 0.4205 / 0.4236 |
+| the same, no line taller than the body line | 0.4259 |
+| the same, no line taller than 1.5 body lines | 0.4394 |
+| the same, no size clause | 0.4415 |
+| margin 10%, gap 0.5 line, no size clause, images block | 0.4444 |
+| the same, margin 8% / 12% | 0.4434 / 0.4419 |
+| the same, the band at most 60 / 100 / 160 / 250 characters | 0.4305 / 0.4365 / 0.4407 / 0.4443 |
+| margin 10%, gap 0.5 line, no size clause, images in the band allowed | 0.4457 |
+| **margin 10%, gap 0.5 line, no size clause, images not counted at all** | **0.4491** |
+| that, and tables not counted either | 0.4480 |
+| that, and an `/Artifact` run inside the outer 15% is furniture | 0.4497 |
+
+Written into the engine, `margin-bands-v1` scores **0.4490**. The `/Artifact` clause was left
+out for +0.0006.
+
+**Measured and not used: furniture out of the Markdown body.** ParseBench reads a page's header
+and footer from structured fields where a provider fills them, and its content ground truth
+mostly leaves furniture out of the body — 53 of its 585 header and footer strings are mostly in
+their page's bag of words. Moving every Markdown block whose runs are all furniture into those
+fields still cost content faithfulness 0.6627 -> 0.6465, so the Markdown keeps its furniture, as
+the engine's rule is anyway.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

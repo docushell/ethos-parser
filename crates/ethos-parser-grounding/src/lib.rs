@@ -1344,6 +1344,7 @@ mod schema_limit_tests {
                     bold: false,
                     italic: false,
                     script: None,
+                    furniture: None,
                 }),
             };
             geometry.push(NodeGeometry {
@@ -1422,6 +1423,7 @@ mod schema_limit_tests {
                         bold: false,
                         italic: false,
                         script: None,
+                        furniture: None,
                     }),
                 };
                 geometry.push(NodeGeometry {

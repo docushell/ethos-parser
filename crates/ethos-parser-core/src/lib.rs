@@ -120,7 +120,7 @@ pub use outlines::OutlineRecord;
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, DOCX_READING_ORDER_RULE_V2, DOCX_TEXT_CODE_RULE_V3,
-    EPUB_READING_ORDER_RULE_V1, EPUB_TEXT_CODE_RULE_V2, FORM_ANNOTATION_RULE_V2,
+    EPUB_READING_ORDER_RULE_V1, EPUB_TEXT_CODE_RULE_V2, FORM_ANNOTATION_RULE_V2, FURNITURE_RULE_V1,
     HEADING_INFERENCE_RULE_V4, LAYOUT_UNIT_RULE_V1, NOT_RUN, OBSERVATION_RULE_V3,
     ODP_READING_ORDER_RULE_V1, ODP_TEXT_CODE_RULE_V2, ODS_READING_ORDER_RULE_V1,
     ODS_TEXT_CODE_RULE_V2, ODT_READING_ORDER_RULE_V1, ODT_TEXT_CODE_RULE_V2,
@@ -145,7 +145,7 @@ pub use verifier::{
 
 pub use representation::{
     AnnotationAttributes, AnnotationRect, CellTextSource, CellValueType, DocumentRepresentation,
-    DocxLocator, EpubBlockAttributes, EpubLocator, FieldValue, FormFieldAttributes,
+    DocxLocator, EpubBlockAttributes, EpubLocator, FieldValue, FormFieldAttributes, Furniture,
     ImageAttributes, ImageMediaType, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind,
     OdfBlockKind, OdfCellTextSource, OdfValueType, OdpLocator, OdsLocator, OdtLocator,
     OfficeCellAttributes, OfficeOdfCellAttributes, OfficeOdfShapeAttributes,

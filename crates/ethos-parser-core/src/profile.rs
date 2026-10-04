@@ -709,6 +709,22 @@ pub const HEADING_INFERENCE_RULE_V4: &str = "type-size-v4";
 /// shipped, on ParseBench's visual-grounding pages (`docs/measurements/parsebench/README.md`).
 pub const LAYOUT_UNIT_RULE_V1: &str = "line-units-v1";
 
+/// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
+/// edges**.
+///
+/// On a document that declares no author structure, each page's lines and tables are read top to
+/// bottom and grouped into bands wherever the gap from one band's lowest edge to the next box is
+/// under half the page's body line — the median height of its inked runs' measured boxes, counted
+/// by character. The page's first band is its header and its last its footer when the band lies
+/// wholly inside the page's outer tenth, holds no table, and is not the page's only band. Each
+/// such line's runs carry `TextRunAttributes::furniture`.
+///
+/// **Where, never what was meant**: a running head and a page title set apart at the top read
+/// alike to it, and nothing is dropped — the runs stay in the text and every projection. Measured
+/// before it shipped, on ParseBench's visual-grounding pages
+/// (`docs/measurements/parsebench/README.md`).
+pub const FURNITURE_RULE_V1: &str = "margin-bands-v1";
+
 /// The forms-and-annotations rule v1-S4 ships.
 ///
 /// On the profile because it decides which nodes exist. Which flag bits are named, how a
@@ -1634,6 +1650,11 @@ pub struct Profile {
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
     pub layout_unit_rule: String,
+    /// Version id of the page-furniture rule in force (decision #41).
+    ///
+    /// See [`FURNITURE_RULE_V1`]. Its own field for `layout_unit_rule`'s reason: it runs only
+    /// where the document declares no structure. Refused, not defaulted, when absent.
+    pub furniture_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
     /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V12`]. On the profile because it decides what
@@ -1725,6 +1746,7 @@ impl Default for Profile {
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V4.to_string(),
             layout_unit_rule: LAYOUT_UNIT_RULE_V1.to_string(),
+            furniture_rule: FURNITURE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V12.to_string(),
@@ -1816,6 +1838,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1889,6 +1912,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1956,6 +1980,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2027,6 +2052,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2085,6 +2111,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2149,6 +2176,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2212,6 +2240,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2278,6 +2307,7 @@ impl Profile {
             text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             layout_unit_rule: NOT_RUN.into(),
+            furniture_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2400,6 +2430,7 @@ mod tests {
                 text_box_rule,
                 heading_inference_rule,
                 layout_unit_rule,
+                furniture_rule,
                 markdown_rule,
                 html_rule,
                 locate_rule,
@@ -2557,6 +2588,7 @@ mod tests {
             text_box_rule: _,
             heading_inference_rule: _,
             layout_unit_rule: _,
+            furniture_rule: _,
             markdown_rule: _,
             html_rule: _,
             locate_rule: _,
@@ -2639,6 +2671,11 @@ mod tests {
                 // Decision #38. Which runs share a layout unit.
                 "layout_unit_rule",
                 Box::new(|p: &mut Profile| p.layout_unit_rule = "other-units-v9".into()),
+            ),
+            (
+                // Decision #41. Which lines come out page furniture.
+                "furniture_rule",
+                Box::new(|p: &mut Profile| p.furniture_rule = "other-furniture-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -2804,12 +2841,13 @@ mod tests {
         // since decision #35, which added `unicode_data_version` and `backend.components` the
         // same way: thirty-eight mutations now cover thirty-seven of the pattern's forty leaves.
         // Thirty-nine since decision #38, which added `table_detection.tracks` the same way, and
-        // forty since its `layout_unit_rule`.
+        // forty since its `layout_unit_rule`. Forty-one since decision #41, which added
+        // `furniture_rule` the same way.
         assert_eq!(
             mutations.len(),
-            40,
-            "{} single-field mutation(s); forty is the number at decision #38, which added \
-             `table_detection.tracks` and `layout_unit_rule` with their mutations",
+            41,
+            "{} single-field mutation(s); forty-one is the number at decision #41, which added \
+             `furniture_rule` with its mutation",
             mutations.len()
         );
 
@@ -2864,7 +2902,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3893,11 +3931,15 @@ mod tests {
              Moved for decision #38's fourth table pass, `sha256:ad238ab1…` -> `sha256:41b2f9ea…`: \
              `table_detection.tracks` `whitespace-tracks-v3` -> `-v4`, which runs the rule again \
              inside each of a page's columns where one is prose, and reads any single character \
-             as a list label. Nothing else."
+             as a list label. Nothing else.\n\n\
+             Moved for decision #41's page furniture, `sha256:41b2f9ea…` -> `sha256:8b44e441…`: \
+             the new `furniture_rule`, `margin-bands-v1`, which reads an undeclared page's \
+             first and last bands of lines, set apart inside its outer tenth, as its header and \
+             footer. The office profiles name it `not-run-for-this-format`. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:41b2f9ea3374db9fdbc489e649a2b163487d099635c90ae3f7e3542912ee53bc"
+            "sha256:8b44e4417578fff92cf7023aa457a3c7782743b1f2cab6f86c9984179612bfb9"
         );
     }
 

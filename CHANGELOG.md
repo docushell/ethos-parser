@@ -132,6 +132,33 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
   opendataloader-bench, whose Markdown the units do not touch.
 
+### Page furniture: running heads and folios (decision #41)
+
+A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles name it
+`not-run-for-this-format`), so `profile_sha256` moves.
+
+- **On a document that declares no author structure, a run whose line is page furniture carries
+  `furniture`** — `header` or `footer`. A page's lines and tables are grouped into bands wherever
+  half a body line or more separates them — the body line is the median height of the page's
+  inked runs' measured boxes, counted by character — and the first band is the page's header and
+  the last its footer when the band lies wholly inside the page's outer tenth, holds no table, and
+  is not the page's only band.
+- **Where, never what was meant**: a page title set apart at the top reads as a header too.
+  Nothing is dropped; the runs stay in the text, in reading order and in every projection, and no
+  projection changes.
+- **The ParseBench adapter labels a furniture run's item `Page-header` or `Page-footer`**, ahead
+  of any heading the type-size rule read in the same line.
+- **Measured** on ParseBench, with the benchmark's own scorer: visual grounding 0.4045 -> 0.4490
+  (overall 36.17 -> 37.06), content, formatting, tables and charts unchanged. On the eight
+  tree-stripped gate documents it flags 5,070 lines; 5,066 repeat page to page, and the other four
+  are a two-page form's running head and folio, a form's catalogue number and a cover's date.
+  **Measured and not taken**: a size clause (no line taller than the body's) 0.4329 against
+  0.4415 without; a cap on the band's length, 0.4305 to 0.4443 for caps of 60 to 250 characters
+  against 0.4444 without; counting painted images as boxes, 0.4444 against 0.4491 without; tables
+  left uncounted, 0.4480; an `/Artifact` clause, +0.0006; a margin of 8% or 12% of the page's
+  height instead of 10%; and lifting furniture out of the Markdown body into the benchmark's
+  page-header fields, which cost content faithfulness 0.6627 -> 0.6465.
+
 ### Superscripts and subscripts (decision #40)
 
 - **A run carries `script`** — `superscript` or `subscript` — where it is set short (six

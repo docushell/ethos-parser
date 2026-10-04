@@ -257,6 +257,10 @@
           "enum": ["superscript", "subscript"],
           "$comment": "Decision #40, as on the representation's text_run. Absent on a run set on its line."
         },
+        "furniture": {
+          "enum": ["header", "footer"],
+          "$comment": "Decision #41, as on the representation's text_run. Absent on every line that is not page furniture."
+        },
         "mcid": {
           "type": "integer",
           "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."

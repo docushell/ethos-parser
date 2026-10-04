@@ -69,6 +69,8 @@ pub(crate) mod fonts;
 pub(crate) mod form_xobjects;
 pub(crate) mod forms;
 pub(crate) mod freed;
+// Decision #41. Running heads and folios: what a page sets apart at its top and bottom edges.
+mod furniture;
 pub(crate) mod headings;
 pub(crate) mod images;
 pub(crate) mod magic;

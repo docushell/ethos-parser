@@ -7,8 +7,8 @@ A refusal (non-zero exit) is a ProviderPermanentError and scores zero, as the be
 
 Text dimensions read `markdown`. Visual Grounding reads the engine's own units with their boxes:
 its `layout_unit`s (each `ground` element where a run carries none), each table and each image,
-labelled only from what the record states — a tagged role path, an `inferred_heading` run, a
-detected table, a drawn image — and `Text` otherwise. Nothing here infers a role or a unit the
+labelled only from what the record states — a run's page `furniture`, a tagged role path, an
+`inferred_heading` run, a detected table, a drawn image — and `Text` otherwise. Nothing here infers a role or a unit the
 engine did not.
 """
 
@@ -39,6 +39,8 @@ from parse_bench.schemas.product import ProductType
 # A tagged role path's last element, as the author declared it, to the benchmark's label.
 _ROLE_LABEL = {"Title": "Title", "LI": "List-item", "LBody": "List-item", "Lbl": "List-item", "Caption": "Caption"}
 _ROLE_LABEL.update({f"H{n}": "Section-header" for n in range(1, 7)} | {"H": "Section-header"})
+# A run's page furniture, as the record states it (decision #41), to the benchmark's label.
+_FURNITURE_LABEL = {"header": "Page-header", "footer": "Page-footer"}
 
 
 def _run(binary: str, *args: str) -> str:
@@ -55,6 +57,12 @@ def _layout(extract: dict, grounding: dict) -> dict:
     page_of = {p["id"]: p["index"] for p in rep["pages"]}
 
     def label_of(run_ids: list[str]) -> str:
+        # Page furniture first (decision #41): a running head the heading rule also read stays the
+        # page's header, which is what the line is where it stands.
+        for rid in run_ids:
+            furniture = (nodes.get(rid, {}).get("attributes", {}).get("text_run") or {}).get("furniture")
+            if furniture:
+                return _FURNITURE_LABEL[furniture]
         for rid in run_ids:
             node = nodes.get(rid, {})
             tagged = (node.get("structural_locator") or {}).get("pdf_tagged") or {}

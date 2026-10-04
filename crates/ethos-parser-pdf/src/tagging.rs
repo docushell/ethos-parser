@@ -5263,6 +5263,7 @@ mod tests {
             bold: false,
             italic: false,
             script: None,
+            furniture: None,
             mcid: None,
             structural: artifact.then_some(ethos_parser_core::StructuralLocator::PdfArtifact(
                 PdfArtifactLocator { mcid: None },

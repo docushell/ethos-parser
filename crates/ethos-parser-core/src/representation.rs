@@ -1493,6 +1493,16 @@ pub enum Script {
     Subscript,
 }
 
+/// Which edge of its page a run's line stands apart at: see [`TextRunAttributes::furniture`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Furniture {
+    /// The top: a running head, a folio set above the text.
+    Header,
+    /// The bottom: a folio, a running foot.
+    Footer,
+}
+
 /// Format-specific facts about a node that do not fit the common fields.
 ///
 /// Kept as a typed struct rather than an open map: an open map is a place for a future field to
@@ -1628,6 +1638,16 @@ pub struct TextRunAttributes {
     /// and `<sub>`. PDF only. **Absent** on a run set on its line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<Script>,
+    /// The run's line is page furniture (decision #41): set apart from the rest of its page at the
+    /// top or the bottom edge, inside the page's outer tenth — a running head, a folio.
+    ///
+    /// **Where, never what was meant**: `Computed` from where the page's lines sit, under the
+    /// profile's `furniture_rule`. The run stays in the text, in reading order and in every
+    /// projection; furniture is flagged, never dropped, as an `/Artifact` is. Absent on a
+    /// document that declares author structure, on every other line, and under every other rule
+    /// id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub furniture: Option<Furniture>,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -3031,6 +3051,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                furniture: None,
             }),
         }
     }

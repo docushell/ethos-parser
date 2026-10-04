@@ -29,6 +29,7 @@
     "struct_tree_rule",
     "heading_inference_rule",
     "layout_unit_rule",
+    "furniture_rule",
     "form_annotation_rule",
     "observation_rule",
     "raster_dpi",
@@ -239,6 +240,14 @@
       "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v1`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
       "examples": [
         "line-units-v1"
+      ]
+    },
+    "furniture_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the page-furniture rule in force (decision #41). `margin-bands-v1`: on a document that declares no author structure, each page's lines and tables are read top to bottom and grouped into bands wherever the gap from one band's lowest edge to the next box is under half the page's body line (the median height of its inked runs' measured boxes, counted by character); the page's first band is its header and its last its footer when the band lies wholly inside the page's outer tenth, holds no table, and is not the page's only band. Each such line's runs carry text_run.furniture. Where, never what was meant: nothing is dropped. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "examples": [
+        "margin-bands-v1"
       ]
     },
     "markdown_rule": {
@@ -459,6 +468,7 @@
       },
       "font_metrics_data_version": "core14-afm-2",
       "form_annotation_rule": "form-annotations-v2",
+      "furniture_rule": "margin-bands-v1",
       "heading_inference_rule": "type-size-v4",
       "layout_unit_rule": "line-units-v1",
       "html_rule": "html-blocks-v12",

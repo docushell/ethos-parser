@@ -3165,6 +3165,7 @@ pub(crate) mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                furniture: None,
             }),
         }
     }
@@ -4743,6 +4744,7 @@ pub(crate) mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                furniture: None,
             }),
         }
     }

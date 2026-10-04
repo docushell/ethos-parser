@@ -749,6 +749,7 @@ fn extract_page(
                 bold: shown.font.bold,
                 italic: shown.font.italic,
                 script: None,
+                furniture: None,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -1975,6 +1976,16 @@ fn extract_counted(
     {
         for page in pages.iter_mut() {
             crate::units::assign(page);
+        }
+    }
+
+    // Decision #41. Page furniture, where the document declares no author structure, for the
+    // reason units run only there.
+    if profile.furniture_rule == ethos_parser_core::FURNITURE_RULE_V1
+        && no_author_structure(structure.as_ref())
+    {
+        for page in pages.iter_mut() {
+            crate::furniture::assign(page);
         }
     }
 
@@ -3222,6 +3233,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                furniture: None,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,
