@@ -147,27 +147,42 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v2`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v3`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5 and §6 the measurements; `-v1`, three columns and three rows, was never pushed.
+and its §5–§7 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
+table for row order, were never pushed.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
   two or more cells opens a table whose tracks are those cells' extents, and lines below join it
   while their cells sit on the tracks by centre, left edge or right edge — as rows, sparse rows
   with empty cells, or wrapped lines of the row above. A right-aligned column of numbers is a
   column, which `unruled-align-v1` could never find.
+- **A financial statement's column is one column**: a currency sign set alone joins the amount
+  after it, a footnote mark raised on a row joins that row's line, and each track grows to hold
+  every full row's cell — so a header centred over `$` and amount holds the next row's bare
+  amount.
 - **What makes it a table and not prose:** rows at a steady pitch, written row by row in the
-  content stream, which tells a table from two columns of prose; two rows only with no empty cell,
-  standing apart under a header-like first row; two columns only with four rows, and not beside a
-  column of list labels or of rising page numbers; no cell reaching a neighbouring track; upright
-  runs only, so a document number set up the margin is no column.
+  content stream, which tells a table from two columns of prose — waived for a grid of three rows
+  and three columns or more with a column of numbers and no column of running text, a third or
+  more of its cells opening lower-case, since a rate table exported cell by cell is written down
+  its columns — unless the columns divide into two groups each written row by row, a table beside
+  a column of text; two rows only with no empty cell, standing apart under a header-like first
+  row; two columns only with four rows, and not beside a column of list labels or of rising page
+  numbers; no cell reaching a neighbouring track; upright runs only, so a document number set up
+  the margin is no column.
 - **It runs last**, on runs no other rule's table holds, and **only where the document declares no
   author structure**: a tagged document says what is a table. A cell holds only its runs' text.
 - **Measured:** opendataloader-bench TEDS 0.1728 -> 0.3918 (15 documents rose, none fell), NID
   0.8793 -> 0.8849; no table on any of its 158 documents without one in ground truth, and none on
-  the tagged gate corpus. ParseBench tables 0.0212 -> 0.2375; content faithfulness and visual
-  grounding did not fall, so no inferred table took text out of the prose.
+  the tagged gate corpus. ParseBench tables 0.0212 -> 0.2375 under `-v2`, and -> 0.3224 under
+  `-v3` with `ruled-rects-v7` (0.2801 from that alone); content faithfulness and semantic formatting
+  unchanged with no page moving, visual grounding 0.4034 -> 0.4042, so no inferred table took text
+  out of the prose. ParseBench overall 33.37 -> 35.11. A waiver without its last guard reads
+  ParseBench tables 0.3304 and opendataloader-bench TEDS 0.4471, and drops visual grounding
+  0.0003; taking that is the owner's call (§7).
+- **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
+  holds is no longer an item of its own as well. The headline grounding score does not move.
 
 ### Headings get levels, and a bold line that stands apart is one (decision #38)
 

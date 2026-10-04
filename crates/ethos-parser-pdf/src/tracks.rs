@@ -18,9 +18,11 @@
 //! `crate::unruled` asks every cell's *origin* to sit on a shared column line, so a right-aligned
 //! or centred column of numbers opens a line per width and the candidate fails its gutter floor.
 //! This rule reads what such a table does share: **whitespace across its rows**. A line splits into
-//! cells wherever its ink leaves a gap wider than one rendered em; a line of two or more cells opens
-//! a table whose **tracks** are those cells' extents; and the lines below join it while their cells
-//! sit on the tracks — by centre, by left edge or by right edge.
+//! cells wherever its ink leaves a gap wider than one rendered em — except after a currency sign set
+//! alone, which is the sign of the amount after it; a line of two or more cells opens a table whose
+//! **tracks** are those cells' extents; and the lines below join it while their cells sit on the
+//! tracks — by centre, by left edge or by right edge — each track growing to hold the cell of
+//! every full row that joins it.
 //!
 //! # What it reads
 //!
@@ -29,6 +31,11 @@
 //! glyph of it on a row's baseline would otherwise be a column (`docs/31-TABLE-TRACKS-SCOPE.md`
 //! §5). Never a run another rule's table holds, and never on a document that declares author
 //! structure — the caller's gate, because a tagged document says what is a table.
+//!
+//! **A superscript is part of its line.** A line set smaller than the line below it, its baseline
+//! above that line's by less than half that line's em, is a footnote mark or an ordinal's letters
+//! raised on that line, and joins it — on a baseline of its own it would be a line of one short
+//! cell between two rows, and end the table there.
 //!
 //! # What makes it a table and not prose
 //!
@@ -43,7 +50,14 @@
 //! 3. **The content stream wrote it row by row** — `crate::unruled`'s rule 5, at row grain: every
 //!    run of row *r* is emitted before any run of row *r* + 1. Two columns of prose are written
 //!    down each column, and that is what tells them from a two-column table of the same shape.
-//!    Detection runs before reading order for exactly this reason.
+//!    Detection runs before reading order for exactly this reason. **The clause is waived for a
+//!    grid of three rows and three columns or more with a column of numbers and no column of
+//!    running text** — a third or more of its cells opening lower-case, as the lines of a
+//!    paragraph do. A rate table exported cell by cell is written down its columns or in no order
+//!    at all; so is a page set in columns — a directory, a schedule, a newspaper in a script with
+//!    no letter case — and the column of numbers is what a table of values has and those do not.
+//!    **Nor is it waived where the columns divide into two groups each written row by row**: a
+//!    table beside a column of text is two flows side by side, whatever the text's letters say.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -77,6 +91,27 @@ pub const MIN_ROWS: usize = 2;
 /// are as often prose fragments, a short list or a near miss as a table: the engine's gold negative
 /// `unruled-near-miss` is three rows of two columns, and it stays no table.
 pub const MIN_ROWS_OF_TWO_COLUMNS: usize = 4;
+
+/// The fewest rows a table the content stream did not write row by row may have.
+pub const MIN_ROWS_UNORDERED: usize = 3;
+
+/// The fewest columns a table the content stream did not write row by row may have: two columns
+/// written down the page are the very shape of two columns of prose.
+pub const MIN_COLUMNS_UNORDERED: usize = 3;
+
+/// A column is running text when at least one in this many of its cells opens with a lower-case
+/// letter, as a paragraph's continuation lines do. Measured, not chosen: on opendataloader-bench
+/// every column of prose this rule took for a table without the row-order clause opened two in
+/// five or more of its lines lower-case, and a fifth instead of a third cost ParseBench tables
+/// (`docs/31-TABLE-TRACKS-SCOPE.md` §7).
+pub const RUNNING_TEXT_ONE_IN: usize = 3;
+
+/// The signs a cell may hold alone and so join the amount after it.
+const CURRENCY_SIGNS: &str = "$¢£¥€₹₩₽";
+
+/// The marks a number is written with besides its digits and a currency sign: separators,
+/// percent, a negative's brackets or sign, ranges, ratios, times, a note's asterisk.
+const NUMBER_MARKS: &str = ".,%()+-–—/:*'";
 
 /// One run, as the rule reads it.
 #[derive(Debug, Clone, Copy)]
@@ -120,7 +155,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v1` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v3` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -179,10 +214,45 @@ fn lines(runs: &[TrackRun<'_>]) -> Vec<Line> {
             _ => grouped.push(vec![i]),
         }
     }
-    grouped
+    join_superscripts(runs, grouped)
         .into_iter()
         .map(|members| line(runs, &members))
         .collect()
+}
+
+/// The page's lines with each superscript joined to the line it is raised on: a line every inked
+/// run of which is set smaller than the line below it, its baseline above that line's by less
+/// than half that line's em. The line below keeps its own baseline, em and first run.
+fn join_superscripts(runs: &[TrackRun<'_>], grouped: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    let inked = |members: &[usize]| -> Vec<usize> {
+        members
+            .iter()
+            .copied()
+            .filter(|&i| !runs[i].text.trim().is_empty())
+            .collect()
+    };
+    let raised_on = |line: &[usize], below: &[usize]| -> bool {
+        let mut ems: Vec<i64> = inked(below).iter().filter_map(|&i| runs[i].em).collect();
+        ems.sort_unstable();
+        let Some(&em) = ems.get(ems.len() / 2) else {
+            return false;
+        };
+        let small = inked(line);
+        let raised = runs[below[0]].y - runs[line[0]].y;
+        !small.is_empty()
+            && small.iter().all(|&i| runs[i].em.is_some_and(|e| e < em))
+            && raised > 0
+            && 2 * raised < em
+    };
+    let mut out: Vec<Vec<usize>> = Vec::with_capacity(grouped.len());
+    let mut lines = grouped.into_iter().peekable();
+    while let Some(line) = lines.next() {
+        match lines.peek_mut() {
+            Some(below) if raised_on(&line, below) => below.extend(line),
+            _ => out.push(line),
+        }
+    }
+    out
 }
 
 /// One line's cells: its inked runs left to right, a new cell wherever the gap from one run's box to
@@ -234,6 +304,7 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
             }),
         }
     }
+    let mut cells = join_currency_signs(runs, cells);
     for &i in members.iter().filter(|&&i| runs[i].text.trim().is_empty()) {
         let x = runs[i].x;
         if let Some(cell) = cells.iter_mut().find(|c| c.x0 <= x && x <= c.x1) {
@@ -241,6 +312,32 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
         }
     }
     Line { y, em, cells }
+}
+
+/// A line's cells with each currency sign set alone joined to the cell after it: a financial
+/// statement sets its `$` flush left in the column and the amount flush right, further apart than
+/// an em, and the two are one value. A sign with no cell after it stays a cell of its own.
+fn join_currency_signs(runs: &[TrackRun<'_>], cells: Vec<Cell>) -> Vec<Cell> {
+    let mut out: Vec<Cell> = Vec::with_capacity(cells.len());
+    let mut sign: Option<Cell> = None;
+    for cell in cells {
+        let cell = match sign.take() {
+            Some(s) => Cell {
+                x0: s.x0,
+                x1: s.x1.max(cell.x1),
+                runs: s.runs.into_iter().chain(cell.runs).collect(),
+            },
+            None => cell,
+        };
+        let text = cell_text(&cell, runs);
+        let mut chars = text.trim().chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) if CURRENCY_SIGNS.contains(c) => sign = Some(cell),
+            _ => out.push(cell),
+        }
+    }
+    out.extend(sign);
+    out
 }
 
 /// Whether `cell` sits on `track`: its centre inside it, or its left or right edge on the track's,
@@ -299,7 +396,7 @@ fn grow(lines: &[Line], start: usize) -> Option<(Vec<Row>, usize)> {
     if first.cells.len() < MIN_COLUMNS {
         return None;
     }
-    let tracks: Vec<(i64, i64)> = first.cells.iter().map(|c| (c.x0, c.x1)).collect();
+    let mut tracks: Vec<(i64, i64)> = first.cells.iter().map(|c| (c.x0, c.x1)).collect();
     let mut rows = vec![Row {
         y: first.y,
         em: first.em,
@@ -331,6 +428,9 @@ fn grow(lines: &[Line], start: usize) -> Option<(Vec<Row>, usize)> {
                 .all(|(k, c)| clear_of_neighbours(c, k, &tracks));
             if off > 1 || !clear {
                 break;
+            }
+            for (track, cell) in tracks.iter_mut().zip(&line.cells) {
+                *track = (track.0.min(cell.x0), track.1.max(cell.x1));
             }
             rows.push(Row {
                 y: line.y,
@@ -406,13 +506,13 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
     // Two columns, the first nothing but list labels or the second nothing but rising page
     // numbers, are a list or a table of contents set in two columns, not a table. A list's labels
     // stand on the left; a right-hand column of small numbers is a column of values.
+    let column = |k: usize| -> Vec<String> {
+        rows.iter()
+            .map(|r| cell_text(&r.cells[k], runs))
+            .filter(|t| !t.trim().is_empty())
+            .collect()
+    };
     if columns == 2 {
-        let column = |k: usize| -> Vec<String> {
-            rows.iter()
-                .map(|r| cell_text(&r.cells[k], runs))
-                .filter(|t| !t.trim().is_empty())
-                .collect()
-        };
         let labels = |texts: &[String]| !texts.is_empty() && texts.iter().all(|t| is_label(t));
         if labels(&column(0)) || is_contents(&column(1)) {
             return false;
@@ -431,11 +531,30 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
     }
     // Every run of a row emitted before any run of the next: the rows, read in content order,
     // never go back up.
+    if written_row_by_row(rows, 0..columns) {
+        return true;
+    }
+    // A grid of three rows and three columns or more with a column of numbers and no column of
+    // running text needs no row order: the clause above tells prose from a table, and a table of
+    // values exported cell by cell is written down its columns. **Unless its columns divide into
+    // two groups each written row by row**: that is two flows side by side — a table beside a
+    // column of text — whatever the text's letters say.
+    rows.len() >= MIN_ROWS_UNORDERED
+        && columns >= MIN_COLUMNS_UNORDERED
+        && (0..columns).any(|k| numbers(&column(k)))
+        && (0..columns).all(|k| !running_text(&column(k)))
+        && !(1..columns)
+            .any(|k| written_row_by_row(rows, 0..k) && written_row_by_row(rows, k..columns))
+}
+
+/// Whether the content stream wrote the cells of `columns` row by row: every run of a row in them
+/// emitted before any run of the next.
+fn written_row_by_row(rows: &[Row], columns: std::ops::Range<usize>) -> bool {
     let mut by_run: Vec<(usize, usize)> = rows
         .iter()
         .enumerate()
         .flat_map(|(r, row)| {
-            row.cells
+            row.cells[columns.clone()]
                 .iter()
                 .flat_map(move |c| c.runs.iter().map(move |&i| (i, r)))
         })
@@ -477,6 +596,36 @@ fn pair_plausible(
             && !text.ends_with([',', ';'])
     });
     clear_above && clear_below && heads
+}
+
+/// Whether a column's non-empty cells, top to bottom, are a column of numbers: at least half of
+/// them hold a digit and nothing but digits, spaces, [`NUMBER_MARKS`] and [`CURRENCY_SIGNS`].
+fn numbers(texts: &[String]) -> bool {
+    let number = |t: &&String| {
+        t.chars().any(|c| c.is_ascii_digit())
+            && t.chars().all(|c| {
+                c.is_ascii_digit()
+                    || c.is_whitespace()
+                    || NUMBER_MARKS.contains(c)
+                    || CURRENCY_SIGNS.contains(c)
+            })
+    };
+    !texts.is_empty() && 2 * texts.iter().filter(number).count() >= texts.len()
+}
+
+/// Whether a column's non-empty cells, top to bottom, are running text: at least one in
+/// [`RUNNING_TEXT_ONE_IN`] of them opens with a lower-case letter.
+fn running_text(texts: &[String]) -> bool {
+    let lower = texts
+        .iter()
+        .filter(|t| {
+            t.trim_start()
+                .chars()
+                .next()
+                .is_some_and(char::is_lowercase)
+        })
+        .count();
+    !texts.is_empty() && RUNNING_TEXT_ONE_IN * lower >= texts.len()
 }
 
 /// A cell's text: its runs' text in content order.
@@ -614,7 +763,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V2.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V3.to_string(),
     }))
 }
 
@@ -696,17 +845,145 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V2);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V3);
     }
 
-    /// **The same shape written down each column is prose, not a table** — two columns of text
-    /// beside a footnote number are three cells a line, and the content stream says which it is.
+    /// **Written down each column, a grid with a column of numbers is still a table** — a rate
+    /// table exported cell by cell is — **and columns of text are not**: three columns of a
+    /// paragraph's lines, a page of names set in columns, or two columns of anything, written down
+    /// the page are the shape the row-order clause exists to refuse.
     #[test]
-    fn columns_written_down_the_page_are_not_a_table() {
+    fn columns_written_down_the_page_are_a_table_only_of_values() {
+        let column_major = |mut runs: Vec<TrackRun<'static>>| {
+            // Every run of the first column first, then the second, then the third.
+            runs.sort_by_key(|r| (r.x / 7000, r.y));
+            runs
+        };
+        let found = tables(&column_major(numbers()));
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
+
+        const PROSE: [[&str; 3]; 4] = [
+            ["The survey was", "Respondents came", "It is important"],
+            ["made available in", "from the member", "to note that the"],
+            ["four languages and", "states, and the", "sample is not"],
+            ["used one platform", "majority of them", "representative"],
+        ];
+        let prose: Vec<TrackRun<'static>> = PROSE
+            .iter()
+            .enumerate()
+            .flat_map(|(k, line)| {
+                let y = 100 + 16 * k as i64;
+                [
+                    run(100, y, 100, line[0]),
+                    run(230, y, 100, line[1]),
+                    run(360, y, 100, line[2]),
+                ]
+            })
+            .collect();
+        assert_eq!(
+            tables(&prose).len(),
+            1,
+            "the premise: written row by row, the same lines are a grid"
+        );
+        assert!(tables(&column_major(prose)).is_empty());
+        assert!(tables(&column_major(glossary(4))).is_empty());
+
+        // A page set in columns with no letter case to give its prose away — here a directory of
+        // names, roles and cities — has no column of numbers, and written down each column it is
+        // no table either.
+        const DIRECTORY: [[&str; 3]; 4] = [
+            ["Douglas Smith", "Chris Qualizza", "Kim Henricks"],
+            ["Regional Manager", "Sales Director", "Field Engineer"],
+            ["Silverdale", "Jackson", "Elmore"],
+            ["Washington", "Wisconsin", "Ohio"],
+        ];
+        let directory: Vec<TrackRun<'static>> = DIRECTORY
+            .iter()
+            .enumerate()
+            .flat_map(|(k, line)| {
+                let y = 100 + 16 * k as i64;
+                [
+                    run(100, y, 90, line[0]),
+                    run(230, y, 90, line[1]),
+                    run(360, y, 90, line[2]),
+                ]
+            })
+            .collect();
+        assert_eq!(
+            tables(&directory).len(),
+            1,
+            "the premise: written row by row, the directory is a grid"
+        );
+        assert!(tables(&column_major(directory)).is_empty());
+    }
+
+    /// **A table beside a column of text is two flows**, though the text gives itself away by no
+    /// lower-case line: written as the table's rows and then the column top to bottom, it is no
+    /// table, where the same cells written row by row are one of four columns.
+    #[test]
+    fn a_table_beside_a_column_of_text_is_two_flows() {
+        const NOTES: [&str; 4] = [
+            "Totals exclude",
+            "Figures in",
+            "Source: survey",
+            "Revised May",
+        ];
         let mut runs = numbers();
-        // Every run of the first column first, then the second, then the third.
-        runs.sort_by_key(|r| (r.x / 7000, r.y));
+        runs.extend(
+            NOTES
+                .iter()
+                .enumerate()
+                .map(|(k, &text)| run(420, 100 + 16 * k as i64, 80, text)),
+        );
         assert!(tables(&runs).is_empty());
+        let mut by_row = runs.clone();
+        by_row.sort_by_key(|r| (r.y, r.x));
+        assert_eq!(tables(&by_row)[0].columns, 4, "the premise");
+    }
+
+    /// **A currency sign set alone is its amount's sign**: a `$` flush left in the column and the
+    /// amount flush right are one cell, and the track grows to hold them both — so the next row's
+    /// amount, with no sign, still sits on the column its header is centred over.
+    #[test]
+    fn a_currency_sign_joins_its_amount_and_a_track_grows_to_hold_them() {
+        let runs = vec![
+            run(100, 100, 50, "(in millions)"),
+            run(235, 100, 25, "2025"),
+            run(343, 100, 25, "2024"),
+            run(100, 116, 80, "Normal costs"),
+            run(200, 116, 5, "$"),
+            run(265, 116, 25, "5,061"),
+            run(310, 116, 5, "$"),
+            run(375, 116, 25, "4,896"),
+            run(100, 132, 80, "Amortization"),
+            run(265, 132, 25, "3,122"),
+            run(375, 132, 25, "3,245"),
+        ];
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (3, 3));
+        assert_eq!(texts(&found[0])[1], ["Normal costs", "$5,061", "$4,896"]);
+        assert_eq!(texts(&found[0])[2], ["Amortization", "3,122", "3,245"]);
+    }
+
+    /// **A footnote mark raised on a row is part of that row** — set smaller and above its
+    /// baseline, it is no line of its own, which would end the table or join the row above.
+    #[test]
+    fn a_superscript_joins_the_line_it_is_raised_on() {
+        let mut runs = numbers();
+        let mut mark = run(140, 113, 3, "1");
+        mark.em = Some(650);
+        mark.rect = Some(QuantRect {
+            x0: 14000,
+            y0: 10800,
+            x1: 14300,
+            y1: 11400,
+        });
+        runs.insert(4, mark);
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["Region", "2023", "2024"]);
+        assert_eq!(texts(&found[0])[1], ["North1", "7.5", "112.0"]);
     }
 
     /// **Two rows stand only complete**: a header and one full row are a table, and the same pair

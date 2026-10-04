@@ -229,7 +229,7 @@
         },
         "tracks": {
           "type": "string",
-          "description": "Version id of the rule that infers grids from the whitespace across a table's rows (decision #38). `whitespace-tracks-v2`. A line splits into cells where its ink leaves a gap wider than one rendered em; a line of two or more cells opens a table whose tracks are those cells' extents, and lines below join it while their cells sit on the tracks by centre, left edge or right edge. Rows at a steady pitch, written row by row in the content stream; two rows only with no empty cell, standing apart from the lines around them under a header-like first row; two columns only with four rows and neither a first column of list labels nor a last column of rising page numbers. Runs last, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its runs' text."
+          "description": "Version id of the rule that infers grids from the whitespace across a table's rows (decision #38). `whitespace-tracks-v3`. A line splits into cells where its ink leaves a gap wider than one rendered em, except after a currency sign set alone, and a superscript joins the line it is raised on; a line of two or more cells opens a table whose tracks are those cells' extents, and lines below join it while their cells sit on the tracks by centre, left edge or right edge, each track growing to hold every full row's cell. Rows at a steady pitch, written row by row in the content stream unless the grid is three rows by three columns or more with a column of numbers and no column of running text (a third or more of its cells opening lower-case) whose columns do not divide into two groups each written row by row; two rows only with no empty cell, standing apart from the lines around them under a header-like first row; two columns only with four rows and neither a first column of list labels nor a last column of rising page numbers. Runs last, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its runs' text."
         }
       }
     },
@@ -480,7 +480,7 @@
         "ruled": "ruled-rects-v7",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",
-        "tracks": "whitespace-tracks-v2",
+        "tracks": "whitespace-tracks-v3",
         "unruled": "unruled-align-v1"
       },
       "text_box_rule": "advance-over-font-envelope-v1",

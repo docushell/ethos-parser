@@ -262,18 +262,22 @@ fn represent_bytes(bytes: &[u8], profile: &Profile) -> DocumentRepresentation {
     ethos_parser_pdf::to_representation(&extract, profile).expect("it represents")
 }
 
-/// Every text run's `(text, page, baseline, band)` — the facts the rule's line is built from.
-fn lines_of(repr: &DocumentRepresentation) -> Vec<(String, u32, i64, Option<u32>)> {
-    repr.payload()
+/// Every text run's `(page, origin x, baseline, text)`, sorted — where each run sits and what it
+/// says, which is what the instrument joins the two copies by.
+fn runs_at(repr: &DocumentRepresentation) -> Vec<(u32, i64, i64, String)> {
+    let mut at: Vec<(u32, i64, i64, String)> = repr
+        .payload()
         .nodes
         .iter()
         .filter_map(|n| match (&n.attributes, &n.native_locator) {
-            (NodeAttributes::TextRun(a), ethos_parser_core::NativeLocator::Pdf(loc)) => {
-                Some((n.text.clone(), loc.page, loc.origin_y, a.region))
+            (NodeAttributes::TextRun(_), ethos_parser_core::NativeLocator::Pdf(loc)) => {
+                Some((loc.page, loc.origin_x, loc.origin_y, n.text.clone()))
             }
             _ => None,
         })
-        .collect()
+        .collect();
+    at.sort();
+    at
 }
 
 /// **The tree-stripped twin** (`docs/28-HEADINGS-SCOPE.md` §7.3, S3): a gate document with its
@@ -284,9 +288,11 @@ fn lines_of(repr: &DocumentRepresentation) -> Vec<(String, u32, i64, Option<u32>
 /// document's tree — the gate keeps the verdict off a tagged document's wire. This test holds the
 /// two things that measurement stands on: **the shipped build fires on a gate document once its tree
 /// is gone**, so the instrument is measuring the rule and not an empty set; and **stripping the tree
-/// changes nothing the rule reads** — the same runs, in the same order, on the same baselines and in
-/// the same bands — so the instrument's node-by-node join of the original's labels to the stripped
-/// copy's verdicts is a join of one document to itself.
+/// changes no run** — the same text at the same page and origin — so the instrument's join of the
+/// original's labels to the stripped copy's verdicts, by where each run sits, is a join of one
+/// document to itself. Order and band may differ: the stripped copy declares no structure, so the
+/// table rule that reads whitespace runs there and may find a table the original's gate keeps
+/// closed, whose runs reading order then takes as one atom.
 #[test]
 fn a_gate_document_stripped_of_its_tree_is_where_the_rule_fires() {
     let profile = Profile::default();
@@ -313,10 +319,10 @@ fn a_gate_document_stripped_of_its_tree_is_where_the_rule_fires() {
     let twin = represent_bytes(&stripped, &profile);
 
     assert_eq!(
-        lines_of(&original),
-        lines_of(&twin),
-        "stripping the tree changed a run the rule reads, so a join by position would compare two \
-         different documents"
+        runs_at(&original),
+        runs_at(&twin),
+        "stripping the tree changed a run, so a join by position would compare two different \
+         documents"
     );
     assert!(
         inferred(&original).is_empty(),

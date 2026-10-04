@@ -38,6 +38,11 @@ tree is unmodified.
   the record states: a tagged role path, an `inferred_heading` run, a detected table, a drawn image,
   and `Text` otherwise. The benchmark's LiteParse layout adapter and label mapper are reused under
   the key `ethos`.
+- **A table is one item.** A `ground` element whose runs a reported table holds is not reported
+  again. Until 2026-10-04 it was, so every table found was counted twice — once as the table, once
+  as its cells' lines — and a page held 131.6 items on average against 33.0 in ground truth. Fixed,
+  it holds 53.9, text F1 goes 0.3168 -> 0.3400, and the headline element rule pass rate does not
+  move (0.4034 either way).
 
 **Measured and not used: the engine's blocks as layout units.** Grouping runs by
 `TextRunAttributes::block` scored lower than one baseline's ink (element pass rate 0.174 against
@@ -100,6 +105,22 @@ With bold and italic, `type-size-v4` headings, `whitespace-tracks-v2` tables and
 
 Each step's measurement, and what was refused on the way, is in `CHANGELOG.md` under decision #38,
 `docs/31-TABLE-TRACKS-SCOPE.md` and `../headings/README.md` §9–§10.
+
+### After `ruled-rects-v7` and `whitespace-tracks-v3` (2026-10-04)
+
+A ruled grid drawn in lines gets its cells, and the tracks rule reads a financial statement's columns
+and a table written down its columns (`docs/31-TABLE-TRACKS-SCOPE.md` §7); the adapter reports a
+table once. All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.3623 | 0.3623 |
+| Tables | 0.3224 | 0.2375 |
+| Charts | 0.0031 | 0.0020 |
+| Visual grounding | 0.4042 | 0.4034 |
+
+No content or formatting page moved; visual grounding moved on fourteen pages, four up.
 
 ## What it found that is not fixed
 

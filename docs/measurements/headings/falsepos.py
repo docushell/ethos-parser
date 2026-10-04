@@ -16,7 +16,8 @@ on that original's wire. So each document is measured twice from one file: **the
 `pdf_tagged` locators carry the author's labels, and **the same file with `/StructTreeRoot` removed
 from its catalog**, on which the gate opens and the shipped build writes its verdict. qpdf makes the
 copy (a JSON round trip of the catalog alone, which works inside object streams), and the two
-extracts are joined node by node after checking they hold the same runs in the same order.
+extracts are joined by where each run sits — page, origin and text — after checking they hold the
+same runs.
 
 # What a false positive is
 

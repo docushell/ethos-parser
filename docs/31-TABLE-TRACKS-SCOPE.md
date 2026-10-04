@@ -177,3 +177,94 @@ tables it gained under three rows were the ones the four-row floor now refuses. 
 gets no table from this rule. The two-column, three-row variant (ParseBench 0.2631) waits on the
 owner's word on `unruled-near-miss`.
 
+
+## 7. `whitespace-tracks-v3`: the amount's sign, the row's footnote mark, and row order only where prose could be (2026-10-04)
+
+Of the 158 ParseBench table pages where `-v2` scored zero and LiteParse did not, 23 held a ruled
+grid with no cell in it — a defect of the ruled rule, fixed on its own as `ruled-rects-v7`. On the
+rest a scratch build logged, for each candidate, the clause that ended it. **49 had a candidate of
+three rows or more refused by the row-order clause alone**; 12 a two-column candidate under four
+rows; and most of the others stopped within two rows, for three reasons that recur through financial
+statements:
+
+- **a `$` set flush left in its column** and the amount flush right are further apart than an em,
+  so the line had a cell more than the table had tracks;
+- **a footnote mark raised on a row** — `amortization¹` — stood on a baseline of its own between two
+  rows, a line of one short cell that ended the table or joined the row above;
+- **a header centred over a column of `$` and amount** held no track the next row's bare amount sat
+  on, by centre or by either edge, because a track kept its first line's extent.
+
+`-v3` joins a lone currency sign to the cell after it, joins a superscript to the line it is raised
+on — set smaller than that line, its baseline above it by less than half that line's em — and
+grows each track to hold every full row's cell.
+
+**The row-order clause** is what tells two columns of prose from a table, and what it refuses besides
+was measured by waiving it on the scratch build, before the three fixes:
+
+| row-order clause | opendataloader-bench documents with a table, ground truth has none | ParseBench tables |
+| --- | ---: | ---: |
+| always asked (`-v2`) | 0 | 0.2375 |
+| waived | 18 — two or three columns of prose, and a chart's labels | 0.2743 |
+| waived where every column's median cell is ≤ 20 characters | 1 — the chart's labels | 0.2559 |
+| … ≤ 30 characters | 1 | 0.2605 |
+| … ≤ 40 characters | 4 | 0.2669 |
+| waived where no column opens a third or more of its cells lower-case | 1 | 0.2700 |
+| … a fifth or more | 1 | 0.2687 |
+| … and the table has four rows or more | 0 | 0.2647 |
+
+The tables it found were rate tables exported cell by cell, written down their columns or in no
+order a reader would recognise, and tables whose multi-line cells interleave rows in the stream.
+Length is the weaker signal: prose set in narrow columns runs 31–40 characters a line. **A paragraph's
+continuation lines open lower-case**, and every prose column the waived clause took opened two in
+five of its lines lower-case or more. The chart's labels — `Company`, `A` and a raised `2` stacked
+under four bars — stopped being a table once a superscript joins its line: the pair left is two
+rows, and two rows keep row order. A brochure's panel of bullets beside its panel of headings, two
+columns written down each panel, is why the waiver asks for **three columns**: two columns written
+down the page are the very shape of two columns of prose.
+
+**Then the first full run of that build lost elsewhere.** Tables rose 0.2375 → 0.3322 with
+`ruled-rects-v7`, but content faithfulness fell 0.6633 → 0.6614, semantic formatting 0.3623 →
+0.3587 and visual grounding 0.4034 → 0.3911, every fallen page a page set in columns: a radio
+schedule, a directory of contact cards, a board's names set in four columns, a newspaper in
+traditional Chinese. Each column of such a page is its own text written top to bottom, which is
+exactly what a rate table exported down its columns looks like — and a script without letter case,
+or a column of names, gives no lower-case line away. On ParseBench's 966 text and layout pages the build emitted
+189 tables from this rule where `-v2` emitted 92. **What a table of values has and those pages do
+not is a column of numbers**, so the waiver asks for one: a column at least half of whose cells hold
+a digit and nothing but digits, spaces, a currency sign and the marks a number is written with.
+
+| on top of `ruled-rects-v7` and the three fixes | tables from this rule on text and layout pages (`-v2`: 92) | ParseBench tables | content | formatting | visual grounding | opendataloader-bench TEDS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| no waiver | — | 0.3025 | 0.6633 | — | 0.4053 | 0.4254 |
+| waiver, no column of running text | 189 | 0.3322 | 0.6614 | 0.3587 | 0.3911 | — |
+| … and a column of numbers | 121 | 0.3304 | 0.6633 | 0.3623 | 0.4031 | 0.4471 |
+| **… and no two groups of columns each written row by row** | **109** | **0.3224** | **0.6633** | **0.3623** | **0.4042** | **0.4254** |
+
+`-v2`'s own figures are 0.2375, 0.6633, 0.3623 and 0.4034 on ParseBench, and 0.4254 TEDS with
+`ruled-rects-v7`. **The numbers guard leaves content and formatting where `-v2` had them, but visual
+grounding still falls 0.0003** — fifteen pages down and six up, the fallen ones annual reports, an
+insurance illustration and a datasheet. That is bound 3 breached. The
+last guard refuses a grid whose columns divide into two groups each written row by row — a table
+beside a column of text, two flows side by side, whatever the text's letters say — and visual
+grounding returns above `-v2`'s, ten pages down and four up, with no content or formatting page
+moving: **the shipped rule**. What it costs is stated too. A table that writes its label column as one block
+before its values row by row has the same order, and is refused with the flows: on
+opendataloader-bench that is the whole of the waiver's gain there (TEDS 0.4471 back to 0.4254, one
+document from 0.16 to 0.86 among them). The variant without the last guard is measured above, and
+taking its bound-3 breach for those tables is the owner's call.
+
+Five of the documents that gained a table on text and layout pages under the numbers guard were read
+by hand. Under the shipped rule two lose theirs — a table of contents set in two pairs of columns,
+whose section numbers count as a column of numbers, and two tables set side by side read as one.
+Three keep theirs: real tables, though another such pair is still read as one; a chart's axis read
+with the table beside it; and a list of features beside a footnote, which the three fixes find
+without the waiver. They are named here; no measure moved for them.
+
+With their trees stripped, the gate documents gain two tables from `-v3`, both control matrices
+`nist-sp-800-161r1` declares, and nothing false; the table gate does not move. opendataloader-bench
+reads exactly as under `ruled-rects-v7` alone, with no table on a document without one.
+
+Each of the three fixes was measured by taking it out of the three-column variant before
+`ruled-rects-v7`, at 0.2898: without the currency join ParseBench tables fall 0.021, without growing
+tracks 0.006, without superscripts 0.002. Growing a track on sparse rows and wraps too added 0.0002
+and is not done.

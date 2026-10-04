@@ -82,9 +82,22 @@ def _layout(extract: dict, grounding: dict) -> dict:
                 return unit
         return None
 
+    # A table is one item, boxed by its own geometry, below; its runs are not items again. Each run a
+    # reported table holds would otherwise come back as a `Text` item of its own, so every table
+    # found was counted twice, once as the table and once as its cells' lines.
+    tabled = {
+        nid
+        for table in rep.get("tables", [])
+        if (table.get("geometry") or {}).get("state") == "measured"
+        for cell in table.get("cells", [])
+        for nid in cell.get("node_ids", [])
+    }
+
     groups: list[dict] = []
     for element in grounding.get("elements", []):
         run_ids = runs_of.get(element["id"], [])
+        if run_ids and all(rid in tabled for rid in run_ids):
+            continue
         page, unit = page_of.get(element["page"], 1), unit_of(run_ids)
         last = groups[-1] if groups else None
         if unit is not None and last is not None and last["key"] == (page, unit):
