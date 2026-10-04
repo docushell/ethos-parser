@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V7` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V8` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -51,6 +51,13 @@
 //! 5. **Text is assigned by origin**, never by ink-box intersection. A run's native locator is
 //!    exact; its ink box is measured or absent, and intersecting an absent box would be inventing
 //!    one. A run whose origin falls in no cell stays where it is — it is still an Extracted node.
+//! 6. **Where the page's rectangles as one lattice are refused, each group of them that touch is a
+//!    candidate of its own** (`ruled-rects-v8`, [`detect_ruled`]): a footer's rule or a logo's box
+//!    across the page no longer refuses a grid drawn whole. A group's grid stands only where it is
+//!    the table's: not one of three or more grids sharing their column lines (a table shaded in
+//!    bands), not a grid whose ruled rows each hold several rows of text (rows the page did not
+//!    rule), not one whose rows run on beside it on their own baselines (part of a wider table),
+//!    and not one with a column holding no letter or digit (a split the text does not make).
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -70,7 +77,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V7` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V8` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -185,7 +192,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V7`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V8`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -619,12 +626,208 @@ pub struct Detected {
     pub stroke_refusal: Option<crate::stroke_ruled::Refusal>,
 }
 
+/// Rectangles whose boxes lie this close, in centipoints, touch: two points. Measured on
+/// ParseBench's table pages — the score rises from no gap to a point and holds from two points to
+/// four, and falls at eight, where neighbouring tables start to join.
+pub const GROUP_GAP: i64 = 200;
+
+/// The most rectangles a page may hand the per-group pass: past this the page is a drawing, and
+/// the page-wide refusal stands.
+pub const MAX_GROUPED_RECTS: usize = 4096;
+
 /// Detect ruled tables on one page.
+///
+/// The page's rectangles as one lattice first, exactly as `ruled-rects-v7` read them. Only where
+/// that is refused, each group of rectangles that touch ([`GROUP_GAP`]) is a candidate of its own,
+/// and the grids that stand ([`standing`]) are the page's tables — numbered only once they stand,
+/// so a page where none does keeps every id it had. Where none stands, the page-wide refusal is
+/// the page's.
 ///
 /// # Errors
 ///
 /// [`EngineError::Malformed`] if a rectangle will not quantize into a well-formed box.
 pub fn detect_ruled(
+    page: u32,
+    rects: &[QuantRect],
+    runs: &[RunOrigin<'_>],
+    alloc: &mut IdAllocator,
+) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
+    let (tables, refusal) = ruled_grid(page, rects, runs, alloc)?;
+    if !tables.is_empty() || refusal.is_none() || rects.len() > MAX_GROUPED_RECTS {
+        return Ok((tables, refusal));
+    }
+    let mut trial = alloc.clone();
+    let mut grids = Vec::new();
+    let mut first = None;
+    for group in touching_groups(rects, GROUP_GAP) {
+        let (found, refused) = ruled_grid(page, &group, runs, &mut trial)?;
+        grids.extend(found);
+        first = first.or(refused);
+    }
+    let mut grids = standing(grids, runs);
+    if grids.is_empty() {
+        return Ok((grids, refusal));
+    }
+    for t in &mut grids {
+        t.id = alloc.next(IdKind::Table)?;
+        for c in &mut t.cells {
+            c.position.table_id = t.id.clone();
+        }
+    }
+    Ok((grids, first))
+}
+
+/// The page's rectangles in groups: two are in one group where their boxes, each grown by `gap`,
+/// overlap.
+fn touching_groups(rects: &[QuantRect], gap: i64) -> Vec<Vec<QuantRect>> {
+    let mut order: Vec<usize> = (0..rects.len()).collect();
+    order.sort_by_key(|&i| (rects[i].x0, i));
+    let mut parent: Vec<usize> = (0..rects.len()).collect();
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    for (k, &i) in order.iter().enumerate() {
+        let a = rects[i];
+        for &j in &order[k + 1..] {
+            let b = rects[j];
+            if b.x0 - gap > a.x1 {
+                break;
+            }
+            if a.y0 - gap <= b.y1 && b.y0 - gap <= a.y1 {
+                let (ri, rj) = (root(&mut parent, i), root(&mut parent, j));
+                parent[ri] = rj;
+            }
+        }
+    }
+    let mut groups: std::collections::BTreeMap<usize, Vec<QuantRect>> =
+        std::collections::BTreeMap::new();
+    for (i, &rect) in rects.iter().enumerate() {
+        let r = root(&mut parent, i);
+        groups.entry(r).or_default().push(rect);
+    }
+    groups.into_values().collect()
+}
+
+/// The groups' grids that are the page's tables, in the order found.
+///
+/// 1. **Not one of three or more grids sharing their column lines**: a table shaded in bands is
+///    one table, and each band read alone would be a fragment of it. Two such grids can be two
+///    tables, one above the other with a caption between.
+/// 2. **Not a grid with a ruled row whose cells each hold three or more lines on shared
+///    baselines**: those are rows the page did not rule, and the grid would fold them into one.
+/// 3. **Not a grid with half its rows or more running on beside it on their own baselines**, in
+///    text no other grid holds and within its width of its edge: it is part of a wider table.
+/// 4. **Not a grid with a column that holds no letter or digit in any row**: a split the text does
+///    not make, as when a row's shading is drawn piece by piece around a currency sign.
+fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTable> {
+    let columns = |t: &DetectedTable| -> Vec<(i64, i64)> {
+        (0..t.columns)
+            .filter_map(|k| {
+                t.cells
+                    .iter()
+                    .find(|c| c.position.column == k && c.position.colspan == 1)
+                    .map(|c| (c.rect.x0, c.rect.x1))
+            })
+            .collect()
+    };
+    let shared = |a: &DetectedTable, b: &DetectedTable| {
+        let (ca, cb) = (columns(a), columns(b));
+        a.columns == b.columns
+            && ca.len() == cb.len()
+            && ca
+                .iter()
+                .zip(&cb)
+                .all(|(p, q)| (p.0 - q.0).abs() <= GROUP_GAP && (p.1 - q.1).abs() <= GROUP_GAP)
+    };
+    let banded: Vec<bool> = grids
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            grids
+                .iter()
+                .enumerate()
+                .filter(|&(j, b)| i != j && shared(a, b))
+                .count()
+                >= 2
+        })
+        .collect();
+    let held: std::collections::BTreeSet<usize> = grids
+        .iter()
+        .flat_map(|t| t.cells.iter().flat_map(|c| c.run_indices.iter().copied()))
+        .collect();
+    let tol = crate::blocks::LINE_TOLERANCE;
+    let baselines = |c: &DetectedCell| -> Vec<i64> {
+        let mut ys: Vec<i64> = c
+            .run_indices
+            .iter()
+            .filter(|&&i| !runs[i].text.trim().is_empty())
+            .map(|&i| runs[i].y)
+            .collect();
+        ys.sort_unstable();
+        ys.dedup_by(|a, b| (*a - *b).abs() <= tol);
+        ys
+    };
+    let unruled_rows = |t: &DetectedTable| {
+        (0..t.rows).any(|r| {
+            let lines: Vec<Vec<i64>> = t
+                .cells
+                .iter()
+                .filter(|c| c.position.row == r)
+                .map(baselines)
+                .filter(|l| l.len() >= 3)
+                .collect();
+            lines.len() >= 2
+                && lines.windows(2).all(|w| {
+                    let common = w[0]
+                        .iter()
+                        .filter(|y| w[1].iter().any(|z| (*y - z).abs() <= tol))
+                        .count();
+                    5 * common >= 4 * w[0].len().min(w[1].len())
+                })
+        })
+    };
+    let wider = |t: &DetectedTable| {
+        let w = t.rect.x1 - t.rect.x0;
+        let beside = (0..t.rows)
+            .filter(|&r| {
+                let ys: Vec<i64> = t
+                    .cells
+                    .iter()
+                    .filter(|c| c.position.row == r)
+                    .flat_map(|c| c.run_indices.iter().map(|&i| runs[i].y))
+                    .collect();
+                runs.iter().enumerate().any(|(i, o)| {
+                    !held.contains(&i)
+                        && !o.text.trim().is_empty()
+                        && ys.iter().any(|y| (o.y - y).abs() <= tol)
+                        && ((o.x >= t.rect.x1 && o.x - t.rect.x1 <= w)
+                            || (o.x < t.rect.x0 && t.rect.x0 - o.x <= w))
+                })
+            })
+            .count();
+        2 * beside >= t.rows as usize
+    };
+    let split = |t: &DetectedTable| {
+        (0..t.columns).any(|k| {
+            !t.cells
+                .iter()
+                .any(|c| c.position.column == k && c.text.chars().any(char::is_alphanumeric))
+        })
+    };
+    grids
+        .into_iter()
+        .zip(banded)
+        .filter(|(t, banded)| !banded && !unruled_rows(t) && !wider(t) && !split(t))
+        .map(|(t, _)| t)
+        .collect()
+}
+
+/// The page's rectangles as one lattice: its table, or why it was refused.
+fn ruled_grid(
     page: u32,
     rects: &[QuantRect],
     runs: &[RunOrigin<'_>],
@@ -773,7 +976,7 @@ pub fn detect_ruled(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V7.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V8.to_string(),
         }],
         None,
     ))
@@ -1403,6 +1606,160 @@ mod tests {
     /// A point coordinate in centipoints, for tests that need to place a run inside a cell.
     fn pt(v: i64) -> i64 {
         v * i64::from(QUANTUM_PER_POINT)
+    }
+
+    /// A grid drawn as its rules, `rows` x `cols` cells of 100 x 40 points from `(x, y)` — each
+    /// line a rectangle a point thick across the whole grid — with a run in each cell holding
+    /// `text(row, column)`.
+    fn grid(
+        x: i64,
+        y: i64,
+        rows: i64,
+        cols: i64,
+        text: impl Fn(i64, i64) -> &'static str,
+    ) -> (Vec<QuantRect>, Vec<RunOrigin<'static>>) {
+        let (w, h) = (100 * cols, 40 * rows);
+        let mut rects: Vec<QuantRect> = (0..=cols)
+            .map(|c| r(x + 100 * c, y, x + 100 * c + 1, y + h))
+            .collect();
+        rects.extend((0..=rows).map(|row| r(x, y + 40 * row, x + w + 1, y + 40 * row + 1)));
+        let mut runs = Vec::new();
+        for row in 0..rows {
+            for col in 0..cols {
+                runs.push(RunOrigin {
+                    x: pt(x + 100 * col + 5),
+                    y: pt(y + 40 * row + 25),
+                    text: text(row, col),
+                });
+            }
+        }
+        (rects, runs)
+    }
+
+    /// A footer's rule across part of the page: ink that is no part of any grid.
+    fn footer() -> QuantRect {
+        r(100, 700, 250, 701)
+    }
+
+    fn label(row: i64, col: i64) -> &'static str {
+        ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"][(3 * row + col) as usize]
+    }
+
+    #[test]
+    fn a_grid_beside_other_ink_is_read_whole() {
+        let (mut rects, runs) = grid(100, 100, 2, 3, label);
+        rects.push(footer());
+        // The page's rectangles as one lattice take the footer's end as a column line nothing
+        // traces, and are refused.
+        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(whole.is_empty() && refused.is_some());
+        // The grid's own group stands.
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1);
+        let t = &tables[0];
+        assert_eq!((t.rows, t.columns), (2, 3));
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V8);
+        let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
+        assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
+    }
+
+    #[test]
+    fn three_grids_sharing_their_columns_are_one_table_in_bands() {
+        let mut rects = vec![footer()];
+        let mut runs = Vec::new();
+        for band in 0..3 {
+            let (g, t) = grid(100, 100 + 100 * band, 2, 2, label);
+            rects.extend(g);
+            runs.extend(t);
+        }
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+        assert!(refused.is_some(), "the page-wide refusal is the page's");
+    }
+
+    #[test]
+    fn two_grids_sharing_their_columns_are_two_tables() {
+        let mut rects = vec![footer()];
+        let mut runs = Vec::new();
+        for band in 0..2 {
+            let (g, t) = grid(100, 100 + 150 * band, 2, 2, label);
+            rects.extend(g);
+            runs.extend(t);
+        }
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 2);
+    }
+
+    #[test]
+    fn a_ruled_row_holding_rows_the_page_did_not_rule_does_not_stand() {
+        let (mut rects, mut runs) = grid(100, 100, 2, 2, label);
+        rects.push(footer());
+        // Three more lines in each body cell, level across the row.
+        for (k, line) in [10, 20, 30].into_iter().enumerate() {
+            for col in 0..2 {
+                runs.push(RunOrigin {
+                    x: pt(105 + 100 * col),
+                    y: pt(140 + line),
+                    text: ["x1", "x2", "x3"][k],
+                });
+            }
+        }
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_grid_whose_rows_run_on_beside_it_does_not_stand() {
+        let (mut rects, mut runs) = grid(100, 100, 2, 2, label);
+        rects.push(footer());
+        for row in 0..2 {
+            runs.push(RunOrigin {
+                x: pt(320),
+                y: pt(125 + 40 * row),
+                text: ["9.1", "9.2"][row as usize],
+            });
+        }
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_column_of_signs_alone_does_not_stand() {
+        let (mut rects, runs) = grid(
+            100,
+            100,
+            2,
+            3,
+            |row, col| {
+                if col == 1 {
+                    "$"
+                } else {
+                    label(row, col)
+                }
+            },
+        );
+        rects.push(footer());
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_page_where_no_group_stands_keeps_its_ids() {
+        let mut rects = vec![footer()];
+        let mut runs = Vec::new();
+        for band in 0..3 {
+            let (g, t) = grid(100, 100 + 100 * band, 2, 2, label);
+            rects.extend(g);
+            runs.extend(t);
+        }
+        let (mut a, mut b) = (alloc(), alloc());
+        detect_ruled(1, &rects, &runs, &mut a).unwrap();
+        ruled_grid(1, &rects, &runs, &mut b).unwrap();
+        assert_eq!(
+            a.next(IdKind::Table).unwrap(),
+            b.next(IdKind::Table).unwrap()
+        );
     }
 
     /// The difference-grid coherence scan agrees with its per-pair spec on every

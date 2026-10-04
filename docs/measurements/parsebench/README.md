@@ -289,6 +289,21 @@ do not are two errors in it — a value the chart prints as 3.6 named 4.5, a rul
 two panels it means — and three rules about another chart on the same page. No chart table on any
 table, text or layout page but the charts among them.
 
+### After `ruled-rects-v8` (2026-10-04)
+
+Where a page's rectangles as one lattice are refused, each group of them that touch is a candidate
+of its own ([`31-TABLE-TRACKS-SCOPE.md`](../../31-TABLE-TRACKS-SCOPE.md) §13). All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6627 | 0.6627 |
+| Semantic formatting | 0.4063 | 0.4063 |
+| Tables | 0.4092 | 0.3667 |
+| Charts | 0.0977 | 0.0942 |
+| Visual grounding | 0.4687 | 0.4680 |
+
+46 table pages rise and none falls.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

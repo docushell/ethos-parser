@@ -459,6 +459,32 @@ pub const TABLE_DETECTION_V6: &str = "ruled-rects-v6";
 /// measures.
 pub const TABLE_DETECTION_V7: &str = "ruled-rects-v7";
 
+/// [`TABLE_DETECTION_V7`] **with a grid read among the page's other ink**.
+///
+/// # What `-v7` got wrong
+///
+/// **It read every rectangle a page painted as one lattice.** A footer's rule, a logo's box or a
+/// second table anywhere on the page put its edges into the grid's lines, and a grid drawn whole —
+/// every line traced, every joint filled — was refused because a line from that other ink was not
+/// traced across it: *"column boundary 1 of 7 is not traced end to end"*. On ParseBench's table
+/// pages 75 of those the engine scored zero carried such a refusal.
+///
+/// # The change
+///
+/// **Where the page-wide lattice is refused, each group of rectangles that touch** (within 2pt)
+/// **is a candidate of its own**, built and accepted exactly as a page's was. A group's grid stands
+/// only where it is the table's: not one of three or more grids sharing their column lines (a
+/// table shaded in bands), not one with a ruled row whose cells each hold three or more lines on
+/// shared baselines (rows the page did not rule), not one whose rows mostly run on beside it on
+/// their own baselines (part of a wider table), and not one with a column holding no letter or
+/// digit. Where the page-wide lattice stands, nothing changes.
+///
+/// # Measured
+///
+/// ParseBench tables 0.3667 -> 0.4092, 46 pages up and none down; opendataloader-bench NID, TEDS
+/// and MHS unchanged, no table on a document whose ground truth holds none.
+pub const TABLE_DETECTION_V8: &str = "ruled-rects-v8";
+
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
 /// A separate id from [`TABLE_DETECTION_V1`], not a bump of it. The two answer different
@@ -1008,7 +1034,7 @@ impl Default for TableDetection {
     /// All four rules, enabled — the two v1-S2 shipped, the one v1-S8 added, and the one v2-S24 did.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V7.to_string(),
+            ruled: TABLE_DETECTION_V8.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
@@ -2990,7 +3016,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v8","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4039,11 +4065,15 @@ mod tests {
              Moved for decision #42's chart tables, `sha256:2c2d51aa…` -> `sha256:26e2bfd4…`: \
              the new `table_detection.charts`, `bar-labels-v1`, which reads a bar chart's \
              printed labels back as its table. The office profiles name it \
-             `not-run-for-this-format`. Nothing else."
+             `not-run-for-this-format`. Nothing else.\n\n\
+             Moved for the ruled rule's eighth pass, `sha256:26e2bfd4…` -> `sha256:5a0e859c…`: \
+             `table_detection.ruled` `ruled-rects-v7` -> `-v8`, which, where a page's rectangles \
+             as one lattice are refused, reads each group of them that touch as a candidate of \
+             its own. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:26e2bfd4b91d715989bbf6ebce5462734c016c1f7d87d1d5e2c05a7969ae9525"
+            "sha256:5a0e859c019f2eb6fc3bc0303d9ad00f1d8b81b4c0d4370cb8b79ad657820337"
         );
     }
 
@@ -4089,22 +4119,22 @@ mod tests {
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V7);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V8);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
         assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
         for (a, b) in [
-            (TABLE_DETECTION_V7, TABLE_DETECTION_UNRULED_V1),
-            (TABLE_DETECTION_V7, TABLE_DETECTION_STROKE_V1),
-            (TABLE_DETECTION_V7, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V8, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V8, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V8, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V7, TABLE_DETECTION_TRACKS_V6),
+            (TABLE_DETECTION_V8, TABLE_DETECTION_TRACKS_V6),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V6),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V6),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V6),
-            (TABLE_DETECTION_V7, TABLE_DETECTION_CHARTS_V1),
+            (TABLE_DETECTION_V8, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_CHARTS_V1),
@@ -4120,7 +4150,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v8","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4236,13 +4266,13 @@ mod tests {
         );
 
         // And a profile from before decision #42 must not acquire the chart rule.
-        let pre_charts = r#"{"ruled":"ruled-rects-v7","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6"}"#;
+        let pre_charts = r#"{"ruled":"ruled-rects-v8","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(pre_charts).is_err(),
             "a pre-#42 profile must not silently acquire the chart rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v7","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","charts":"bar-labels-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v8","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","charts":"bar-labels-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

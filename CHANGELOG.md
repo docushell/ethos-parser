@@ -142,6 +142,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A grid read among the page's other ink (`ruled-rects-v8`)
+
+`table_detection.ruled` moves `ruled-rects-v7` -> `ruled-rects-v8`, so `profile_sha256` moves.
+
+- **Where a page's rectangles as one lattice are refused, each group of them that touch (within
+  2pt) is a candidate of its own.** `-v7` read every rectangle a page painted as one lattice, so a
+  footer's rule, a logo's box or a second table put a line into the grid that nothing traced across
+  it, and a grid drawn whole was refused — *"column boundary 1 of 7 is not traced end to end"*. On
+  ParseBench's table pages 75 the engine scored zero carried that refusal.
+- **A group's grid stands only where it is the table's**: not one of three or more grids sharing
+  their column lines (a table shaded in bands — two such grids can be two tables with a caption
+  between), not one with a ruled row whose cells each hold three or more lines on shared baselines
+  (rows the page did not rule), not one whose rows mostly run on beside it on their own baselines in
+  text no other grid holds (part of a wider table), and not one with a column holding no letter or
+  digit (shading drawn piece by piece around a currency sign). Ids are given only to grids that
+  stand, so a page where none does keeps every id it had; where the page-wide lattice stands,
+  nothing changes.
+- **Measured** on ParseBench, with the benchmark's own scorer: tables 0.3667 -> 0.4092, 46 pages up
+  and none down; charts 0.0942 -> 0.0977 and visual grounding 0.4680 -> 0.4687, content and
+  formatting unchanged (overall 39.96 -> 40.89). opendataloader-bench unchanged on all three
+  measures, no table on a document whose ground truth holds none. On the eight tree-stripped gate
+  documents every table `-v7` accepted is unchanged; 60 grids it refused are read — the boxed
+  assessment procedures of `nist-sp-800-53Ar5`, one per control, three of which replace a smaller
+  whitespace table over the same text, and `nist-sp-800-207`'s acronym list, one table where the
+  whitespace rule read two.
+
 ### A bar chart's printed labels, read as its table (decision #42)
 
 A new profile field, `table_detection.charts`, `bar-labels-v1` (the office profiles name it

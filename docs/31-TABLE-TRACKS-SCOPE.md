@@ -453,3 +453,53 @@ any of its 158 documents without one. On the tree-stripped gate documents no tab
 the tables that change are rows folded together under `-v5` standing apart: `MA-5(4)` and `MA-6`,
 `AC-17` and `AC-17(6)`, `PT-04`'s consent rows.
 
+
+## 13. `ruled-rects-v8`: a grid read among the page's other ink (2026-10-04)
+
+**What the census found.** Of the table pages the engine still scored zero, 75 carried a
+`ruled-table-candidate-refused` — and on most the grid was drawn whole. `ruled-rects-v7` reads every
+rectangle a page painted as one lattice, so a footer's rule, a logo's box or a second table puts a
+line into the grid that nothing traces across it: the European Medicines Agency's research-needs
+tables (`203924…`, twelve pages) are ruled in full, every joint filled, and were refused for
+*"column boundary 1 of 7 is not traced end to end"* — the boundary at the end of the page's footer
+rule.
+
+**The change.** Where the page-wide lattice is refused, each group of rectangles that touch
+(within 2pt) is a candidate of its own, built and accepted exactly as a page's was. Where the
+page-wide lattice stands, nothing changes, so every table `-v7` accepted is untouched. A group's
+grid stands only where it is the table's, each clause measured before it was written:
+
+1. **Not one of three or more grids sharing their column lines.** A table shaded in bands
+   (opendataloader-bench `01030000000078`) is one table, and each band read alone is a fragment:
+   TEDS on that document fell 0.87 -> 0.40 without this. Two such grids are allowed — two small
+   tables one above the other with a caption between (`AZ LIC Rate Tables` p89, p93).
+2. **Not a grid with a ruled row whose cells each hold three or more lines on shared baselines.**
+   A table ruled only round its outside and between its columns is one header row and one body row
+   to the lattice, and sixty rows of rates folded into one: `FBLB-134215544` p19 and p84 fell 1.0 ->
+   0.02 without this.
+3. **Not a grid whose rows mostly run on beside it on their own baselines**, in text no other grid
+   holds and within its width of its edge: the grid is part of a wider table. Text another grid
+   holds is that grid's — two tables side by side are two tables.
+4. **Not a grid with a column that holds no letter or digit in any row**: a row's shading drawn
+   piece by piece around a currency sign splits `$` from its amount (`Home Depot 10-k` p33, p58,
+   p71).
+
+Ids are given only to grids that stand, so a page where none does keeps every id it had.
+
+**Measured** — the gap swept on ParseBench's table pages: 0.3989 at no gap, 0.4061 at 1pt, 0.4066
+from 2pt to 4pt, 0.3998 at 8pt, where neighbouring tables start to join. With the four clauses,
+at 2pt:
+
+| | `-v7` | `-v8` |
+|---|---:|---:|
+| ParseBench tables | 0.3667 | 0.4092 |
+| ParseBench charts | 0.0942 | 0.0977 |
+| ParseBench visual grounding | 0.4680 | 0.4687 |
+| ParseBench content, formatting | unchanged | unchanged |
+| opendataloader-bench NID, TEDS, MHS | 0.8819, 0.4283, 0.5458 | unchanged |
+
+46 table pages rise and none falls; no table on an opendataloader-bench document whose ground
+truth holds none, and every cell its runs' text. On the eight tree-stripped gate documents 60 grids
+`-v7` refused are read — `nist-sp-800-53Ar5`'s boxed assessment procedures, one per control, three
+of them replacing a smaller whitespace table over the same text; `nist-sp-800-207`'s acronym list,
+one table of 22 rows where the whitespace rule read two; two of `nist-sp-800-161r1`'s.
