@@ -289,3 +289,49 @@ Decision #39 let two columns stand at three rows if a re-measurement under `-v3`
 
 That is bound 3, and 0.0039 of tables does not buy it back.
 
+
+## 9. `whitespace-tracks-v4`: tables inside a page's columns (2026-10-04)
+
+Of the 107 ParseBench table pages where `-v3` scored zero and LiteParse did not, 53 have a
+vertical gutter down the page that two or fewer line fragments cross, and 25 are divided by the
+reading-order rule's own column cut. On those the page's lines interleave: a table in one column
+shares no baseline with the other column's prose, so its rows alternate with prose lines, and the
+candidate either breaks at the first prose line or takes the prose in as a column — which the
+row-order clause then rightly refuses. Six pages of one 10-K scored zero for that alone.
+
+**`-v4` runs the rule again inside each of the page's columns, where one of them is prose.** The
+columns are the reading-order rule's first vertical cut (`crate::reading_order::columns`): the
+gutter every run left free by a table leaves clear, between bands that sit beside each other —
+the cut alone, never its recursion, which would go on to cut a table's own columns apart. A column
+is **prose** with three lines or more, at least half of them thirty characters or more. The test
+is what keeps a page that is one wide table from being cut at the gutter between its labels and
+its values: neither side of that gutter is prose, so the page stays the page-wide pass's.
+
+Measured on a scratch build: nine of the 107 pages gained a table — the six 10-K pages and three
+others — and on ParseBench tables rose 0.3224 → 0.3319, eleven pages up and none down; content
+and formatting did not move, visual grounding 0.4042 → 0.4043, three pages down and five up.
+opendataloader-bench did not move at all. Of the thirteen tables it added on ParseBench's text and
+layout pages, most are tables those pages hold; the false ones were a company-facts block read
+as one column of the shareholder table beside it, a row of key-figure tiles, and a list of icon
+bullets — the icon font mapping its bullet to `Ȟ`, which the two-column label clause did not take
+for a label because it accepted a single letter only from ASCII.
+
+**So any single character is a list label.** An icon font's bullet can map to any letter, and a
+first column of single characters beside running text is a list whatever the characters are.
+That took the bullet list out (visual grounding 0.4043 → 0.4045) and changed nothing else
+measured.
+
+With their trees stripped, the gate documents gain three tables from `-v4`: a 4 × 4
+security-impact grid and a questionnaire `nist-sp-800-161r1` declares, and a reference list on
+`nist-sp-800-37r2`; `nist-sp-800-53Ar5` gains 110 more of the two-column objective lists it
+already yields 262 of without the cut, which its tree declares as lists and which this rule never
+reads on the tagged original. The gate corpus itself declares its structure, so the rule emits
+nothing there and the table gate does not move.
+
+Measured with the shipped build, all 2,078 pages: ParseBench tables **0.3224 → 0.3319**, eleven
+pages up and none down; visual grounding 0.4042 → 0.4045, two pages down and five up; semantic
+formatting unchanged; content faithfulness unchanged at 0.6613, one page 0.0006 lower — the page
+whose table sits in the middle of two columns, now read as a table. Overall 35.94 → 36.14.
+opendataloader-bench unchanged on all three measures, no table on any of its 158 documents
+without one.
+

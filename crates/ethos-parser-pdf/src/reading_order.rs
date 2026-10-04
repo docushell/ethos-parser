@@ -379,6 +379,32 @@ struct Atom {
 // Entry point
 // -------------------------------------------------------------------------------------------
 
+/// **The page's columns, and nothing finer** (decision #38, `whitespace-tracks-v4`): the bands
+/// this rule's first vertical cut makes of `runs`, with no table as an atom, as run indices — or
+/// `None` where that cut finds no gutter its guard accepts.
+///
+/// Only the first cut. The recursion would go on to cut a table's own columns apart, which is
+/// exactly what a caller looking for tables inside a page's columns must not be handed; the first
+/// cut is a gutter every run of the page leaves clear, between bands that sit beside each other.
+pub(crate) fn columns(runs: &[RunGeometry]) -> Option<Vec<Vec<usize>>> {
+    if runs.len() < 2 {
+        return None;
+    }
+    let atoms = atomize(runs, &[]);
+    let all: Vec<usize> = (0..atoms.len()).collect();
+    let bands = vertical_cut(&atoms, &all)?;
+    Some(
+        bands
+            .into_iter()
+            .map(|band| {
+                band.into_iter()
+                    .flat_map(|a| atoms[a].members.clone())
+                    .collect()
+            })
+            .collect(),
+    )
+}
+
 /// The reading order of one page, as a permutation of its stream-order run indices.
 ///
 /// `runs` is the page's runs in content-stream order. `tables` is the boxes of the tables the
@@ -814,6 +840,22 @@ mod tests {
     /// **The claim S1 exists to make.** Every ordering assertion in this module calls [`order`],
     /// and [`order`] is now [`arrange_page`] with the regions dropped — so the tests above are
     /// evidence about the new code path rather than about a retired one.
+    /// **`columns` is the first cut alone** (`whitespace-tracks-v4`): two columns side by side
+    /// are two bands, and a line across the gutter leaves none.
+    #[test]
+    fn columns_are_the_first_cut_and_nothing_finer() {
+        let mut page = Vec::new();
+        for k in 0..6 {
+            page.push(wide(5000, 10000 + 1400 * k, 20000));
+            page.push(wide(30000, 10000 + 1400 * k, 20000));
+        }
+        let bands = columns(&page).expect("a gutter divides the page");
+        assert_eq!(bands.len(), 2);
+        assert!(bands[0].iter().all(|&i| page[i].x == 5000));
+        page.push(wide(5000, 20000, 45000));
+        assert_eq!(columns(&page), None, "a full-width line bridges the gutter");
+    }
+
     #[test]
     fn keeping_the_regions_did_not_move_the_order() {
         let cases: Vec<(Vec<RunGeometry>, Vec<QuantRect>)> = vec![

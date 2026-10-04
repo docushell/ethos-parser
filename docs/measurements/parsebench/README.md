@@ -137,6 +137,18 @@ Superscripts and subscripts written `<sup>` and `<sub>`. All 2,078 pages:
 219 of 317 superscript checks pass. Content falls because the benchmark's content scorer deletes
 `<sup>` text where its ground truth keeps the same marks inline; the owner took that trade.
 
+### After `whitespace-tracks-v4` (2026-10-04)
+
+The tracks rule runs again inside each of a page's columns where one is prose. All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6613 | 0.6613 |
+| Semantic formatting | 0.4060 | 0.4060 |
+| Tables | 0.3319 | 0.3224 |
+| Charts | 0.0031 | 0.0031 |
+| Visual grounding | 0.4045 | 0.4042 |
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

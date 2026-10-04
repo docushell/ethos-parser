@@ -1258,7 +1258,7 @@ mod tests {
                 for t in p
                     .tables
                     .iter()
-                    .filter(|t| t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V3)
+                    .filter(|t| t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V4)
                 {
                     *real
                         .entry(key(p.index, &t.rule, t.rows, t.columns))

@@ -902,7 +902,7 @@ fn extract_page(
         // document declares no author structure**: a tagged document says what is a table, and an
         // inferred one would override a list or a paragraph it declared — and, on a page that
         // declares a `/Table`, take that table's place in the pairing below.
-        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V3
+        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V4
             && no_author_structure(structure.as_ref())
         {
             let track_runs: Vec<crate::tracks::TrackRun<'_>> = runs
@@ -930,6 +930,47 @@ fn extract_page(
             for table in crate::tracks::detect(page_number, &track_runs, &mut alloc)? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
+                }
+            }
+            // `-v4`: then inside each of the page's columns, where one is prose — the first
+            // vertical cut of the reading-order rule over the runs no table holds yet.
+            let held: Vec<bool> = runs
+                .iter()
+                .map(|r| {
+                    let (x, y) = (r.locator.origin_x, r.locator.origin_y);
+                    tables
+                        .iter()
+                        .any(|t| x >= t.rect.x0 && x < t.rect.x1 && y >= t.rect.y0 && y < t.rect.y1)
+                })
+                .collect();
+            let free: Vec<usize> = (0..runs.len()).filter(|&i| !held[i]).collect();
+            let geometry: Vec<crate::reading_order::RunGeometry> = free
+                .iter()
+                .map(|&i| crate::reading_order::RunGeometry {
+                    x: runs[i].locator.origin_x,
+                    y: runs[i].locator.origin_y,
+                    advance: runs[i].locator.advance,
+                })
+                .collect();
+            if let Some(columns) = crate::reading_order::columns(&geometry) {
+                let columns: Vec<Vec<usize>> = columns
+                    .into_iter()
+                    .map(|column| column.into_iter().map(|k| free[k]).collect())
+                    .collect();
+                let unheld: Vec<crate::tracks::TrackRun<'_>> = track_runs
+                    .iter()
+                    .zip(&held)
+                    .map(|(run, &h)| crate::tracks::TrackRun {
+                        claimed: run.claimed || h,
+                        ..*run
+                    })
+                    .collect();
+                for table in
+                    crate::tracks::detect_in_columns(page_number, &unheld, &columns, &mut alloc)?
+                {
+                    if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
+                        tables.push(table);
+                    }
                 }
             }
         }

@@ -164,11 +164,11 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v3`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v4`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5–§7 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
-table for row order, were never pushed.
+and its §5–§9 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
+table for row order, were never pushed, and `-v3` was pushed and is in no release.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
   two or more cells opens a table whose tracks are those cells' extents, and lines below join it
@@ -190,12 +190,19 @@ table for row order, were never pushed.
   the margin is no column.
 - **It runs last**, on runs no other rule's table holds, and **only where the document declares no
   author structure**: a tagged document says what is a table. A cell holds only its runs' text.
+- **And inside a page's columns** (`-v4`): where the reading-order rule's first vertical cut
+  divides the page and one column is prose, the rule runs again on each column alone, so a table
+  in one column of a two-column page is read without the other column's lines between its rows. A
+  page that is one wide table has no prose column and is not split. Any single character is a list
+  label: an icon font's bullet can map to any letter.
 - **Measured:** opendataloader-bench TEDS 0.1728 -> 0.3918 (15 documents rose, none fell), NID
   0.8793 -> 0.8849; no table on any of its 158 documents without one in ground truth, and none on
   the tagged gate corpus. ParseBench tables 0.0212 -> 0.2375 under `-v2`, and -> 0.3224 under
   `-v3` with `ruled-rects-v7` (0.2801 from that alone); content faithfulness and semantic formatting
   unchanged with no page moving, visual grounding 0.4034 -> 0.4042, so no inferred table took text
-  out of the prose. ParseBench overall 33.37 -> 35.11. A waiver without its last guard reads
+  out of the prose. ParseBench overall 33.37 -> 35.11; `-v4`'s pass inside a page's columns then
+  tables 0.3224 -> 0.3319 (eleven pages up, none down), visual grounding 0.4042 -> 0.4045, overall
+  35.94 -> 36.14, opendataloader-bench unchanged. A waiver without its last guard reads
   ParseBench tables 0.3304 and opendataloader-bench TEDS 0.4471, and drops visual grounding
   0.0003; the owner declined it (decision #39).
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table

@@ -32,6 +32,11 @@
 //! §5). Never a run another rule's table holds, and never on a document that declares author
 //! structure — the caller's gate, because a tagged document says what is a table.
 //!
+//! **And inside a page's columns** (`-v4`, [`detect_in_columns`]): where the reading-order rule's
+//! first vertical cut divides the page and one of the columns is prose, the rule runs again on
+//! each column alone, so a table set in one column of a two-column page is read without the other
+//! column's lines between its rows.
+//!
 //! **A superscript is part of its line.** A line set smaller than the line below it, its baseline
 //! above that line's by less than half that line's em, is a footnote mark or an ordinal's letters
 //! raised on that line, and joins it — on a baseline of its own it would be a line of one short
@@ -106,6 +111,10 @@ pub const MIN_COLUMNS_UNORDERED: usize = 3;
 /// (`docs/31-TABLE-TRACKS-SCOPE.md` §7).
 pub const RUNNING_TEXT_ONE_IN: usize = 3;
 
+/// A line of prose, for the column test of [`detect_in_columns`]: this many characters or more. A
+/// line of running text in a page's column holds forty to sixty.
+pub const PROSE_LINE_CHARS: usize = 30;
+
 /// The signs a cell may hold alone and so join the amount after it.
 const CURRENCY_SIGNS: &str = "$¢£¥€₹₩₽";
 
@@ -155,7 +164,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v3` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v4` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -182,6 +191,67 @@ pub(crate) fn detect(
         i += 1;
     }
     Ok(tables)
+}
+
+/// The tables [`detect`] finds inside each of a page's columns — `columns` as
+/// `crate::reading_order::columns` gives them, by run index — **where one of the columns is
+/// prose**: three lines or more, at least half of them [`PROSE_LINE_CHARS`] characters or more.
+///
+/// Two columns of prose with a table in one of them interleave line by line across the gutter,
+/// so the page-wide pass reads the table's rows between the other column's lines, and the
+/// row-order clause rightly refuses what it makes of them; inside its own column the table is
+/// rows again. A page that is one wide table cut at the gutter between its labels and its values
+/// has no prose column, and stays the page-wide pass's to find or refuse.
+///
+/// # Errors
+///
+/// An id the allocator cannot issue.
+pub(crate) fn detect_in_columns(
+    page: u32,
+    runs: &[TrackRun<'_>],
+    columns: &[Vec<usize>],
+    alloc: &mut IdAllocator,
+) -> Result<Vec<DetectedTable>, EngineError> {
+    if !columns.iter().any(|column| prose(runs, column)) {
+        return Ok(Vec::new());
+    }
+    let mut tables = Vec::new();
+    for column in columns {
+        let inside: std::collections::BTreeSet<usize> = column.iter().copied().collect();
+        let own: Vec<TrackRun<'_>> = runs
+            .iter()
+            .enumerate()
+            .map(|(i, run)| TrackRun {
+                claimed: run.claimed || !inside.contains(&i),
+                ..*run
+            })
+            .collect();
+        tables.extend(detect(page, &own, alloc)?);
+    }
+    Ok(tables)
+}
+
+/// Whether the runs of `column` are prose: three lines or more, at least half of them
+/// [`PROSE_LINE_CHARS`] characters or more.
+fn prose(runs: &[TrackRun<'_>], column: &[usize]) -> bool {
+    let mut inked: Vec<usize> = column
+        .iter()
+        .copied()
+        .filter(|&i| !runs[i].text.trim().is_empty())
+        .collect();
+    inked.sort_by_key(|&i| (runs[i].y, runs[i].x, i));
+    let mut lines: Vec<usize> = Vec::new();
+    let mut first = i64::MIN;
+    for i in inked {
+        if lines.is_empty() || (runs[i].y - first).abs() > LINE_TOLERANCE {
+            lines.push(0);
+            first = runs[i].y;
+        }
+        if let Some(chars) = lines.last_mut() {
+            *chars += runs[i].text.trim().chars().count();
+        }
+    }
+    lines.len() >= 3 && 2 * lines.iter().filter(|&&n| n >= PROSE_LINE_CHARS).count() >= lines.len()
 }
 
 /// Whether `run` is set upright, left to right: its measured box starts at its origin, runs to the
@@ -635,16 +705,15 @@ fn cell_text(cell: &Cell, runs: &[TrackRun<'_>]) -> String {
     order.iter().map(|&i| runs[i].text).collect()
 }
 
-/// Whether `text` is a list label and nothing more: a bullet or another mark that is no letter or
-/// digit, a number of up to three digits, or a single letter — the last two perhaps opened by `(`
-/// and closed by `.` or `)`. A column of these is a list's labels, or a column of note numbers.
+/// Whether `text` is a list label and nothing more: any single character — a bullet, a letter,
+/// the mark an icon font draws, which may map to any letter at all — a number of up to three
+/// digits, or a single letter perhaps opened by `(` and closed by `.` or `)`. A column of these is
+/// a list's labels, or a column of note numbers.
 fn is_label(text: &str) -> bool {
     let text = text.trim();
     let mut chars = text.chars();
-    if let (Some(only), None) = (chars.next(), chars.next()) {
-        if !only.is_alphanumeric() {
-            return true;
-        }
+    if let (Some(_), None) = (chars.next(), chars.next()) {
+        return true;
     }
     let text = text.strip_prefix('(').unwrap_or(text);
     let text = text
@@ -763,7 +832,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V3.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V4.to_string(),
     }))
 }
 
@@ -845,7 +914,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V3);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V4);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate
@@ -916,6 +985,69 @@ mod tests {
             "the premise: written row by row, the directory is a grid"
         );
         assert!(tables(&column_major(directory)).is_empty());
+    }
+
+    /// A column of prose on the left, a table on the right whose rows fall between the prose's
+    /// lines, and the content stream writing the prose first: in the order the rows are given.
+    fn prose_beside_a_table() -> (Vec<TrackRun<'static>>, Vec<usize>, Vec<usize>) {
+        let mut runs = Vec::new();
+        for k in 0..8 {
+            runs.push(run(
+                40,
+                100 + 12 * k,
+                180,
+                "the paragraph runs on down this column",
+            ));
+        }
+        let table = [
+            ["Region", "2023", "2024"],
+            ["North", "7.5", "112.0"],
+            ["South", "18.25", "9.1"],
+            ["East", "4.0", "65.5"],
+        ];
+        for (k, row) in table.iter().enumerate() {
+            let y = 106 + 16 * k as i64;
+            runs.push(run(300, y, 40, row[0]));
+            runs.push(run(400, y, 30, row[1]));
+            runs.push(run(480, y, 30, row[2]));
+        }
+        let left: Vec<usize> = (0..8).collect();
+        let right: Vec<usize> = (8..runs.len()).collect();
+        (runs, left, right)
+    }
+
+    /// **A table in one column of a two-column page is found inside its column** (`-v4`): read
+    /// across the page its rows fall between the prose's lines and nothing stands.
+    #[test]
+    fn a_table_beside_a_column_of_prose_is_found_in_its_column() {
+        let (runs, left, right) = prose_beside_a_table();
+        assert!(
+            tables(&runs).is_empty(),
+            "the premise: read across, no table"
+        );
+        let found = detect_in_columns(1, &runs, &[left, right], &mut alloc()).expect("detects");
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
+    }
+
+    /// **No prose column, no split**: a table cut at the gutter between its labels and its values
+    /// is not read as two columns' worth of tables.
+    #[test]
+    fn columns_without_prose_are_not_read_one_by_one() {
+        let (runs, _, right) = prose_beside_a_table();
+        let labels: Vec<usize> = right
+            .iter()
+            .copied()
+            .filter(|&i| runs[i].x == 30000)
+            .collect();
+        let values: Vec<usize> = right
+            .iter()
+            .copied()
+            .filter(|&i| runs[i].x != 30000)
+            .collect();
+        let found = detect_in_columns(1, &runs, &[labels, values], &mut alloc()).expect("detects");
+        assert!(found.is_empty());
     }
 
     /// **A table beside a column of text is two flows**, though the text gives itself away by no
@@ -1054,10 +1186,11 @@ mod tests {
         assert_eq!((found[0].rows, found[0].columns), (4, 2));
     }
 
-    /// **A list set in two columns is a list**: a column of bullets or numbers beside its items.
+    /// **A list set in two columns is a list**: a column of bullets or numbers beside its items —
+    /// and any single character is a bullet, since an icon font's may map to any letter.
     #[test]
     fn a_column_of_list_labels_is_a_list_not_a_table() {
-        for label in ["•", "1.", "(a)", "12"] {
+        for label in ["•", "1.", "(a)", "12", "Ȟ"] {
             let runs: Vec<TrackRun<'static>> = (0..4)
                 .flat_map(|k| {
                     let y = 100 + 16 * k;
