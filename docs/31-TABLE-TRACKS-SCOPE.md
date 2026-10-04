@@ -335,3 +335,25 @@ whose table sits in the middle of two columns, now read as a table. Overall 35.9
 opendataloader-bench unchanged on all three measures, no table on any of its 158 documents
 without one.
 
+
+## 10. Measured under `-v4` and not taken (2026-10-04)
+
+Of the 98 ParseBench table pages still at zero under `-v4`, 28 have a candidate of three rows or
+more that the row-order clause refuses with no waiver, 18 stop within two rows because the next row
+sits more than 4.2 ems below, 14 stop on a cell off every track, and 11 are two columns under the
+four-row floor (§8). Two changes were measured for the first two and refused:
+
+- **The two-flow guard only where one flow is prose** (§7's guard narrowed with `-v4`'s prose test):
+  opendataloader-bench TEDS 0.4254 → 0.4471 — `01030000000120`'s table, whose label column is
+  written as one block, comes back — and ParseBench tables 0.3319 → 0.3343, but visual grounding
+  0.4045 → 0.4041: a property-facts block beside a tenant table, and two columns of a contents
+  page, are two flows neither of which is prose. Bound 3.
+- **The 4.2-em reach measured from the last line taken, not from the row's first line**, so a row
+  whose cells wrap does not leave the next row out of reach: ParseBench tables 0.3319 → 0.3368, but
+  29 pages fell against 26 that rose — tables growing on past their end into what follows — and
+  visual grounding 0.4045 → 0.4041; on opendataloader-bench `01030000000090` lost its table
+  entirely (TEDS 0.36 → 0). Bound 3.
+
+Both are the same shortfall: a row here is a line and the lines that wrap under it, so a table
+whose rows are paragraphs, or whose cells sit on baselines a few points apart, is out of this
+rule's reach. Rows read from the whitespace across every column at once is a different rule.
