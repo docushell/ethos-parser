@@ -175,7 +175,8 @@ page of it fell, formatting unchanged — **bound 3 met**. opendataloader-bench 
 under `-v1` (TEDS 0.3918, NID 0.8849, no table on its 158 documents without one): the two-column
 tables it gained under three rows were the ones the four-row floor now refuses. The gate corpus
 gets no table from this rule. The two-column, three-row variant (ParseBench 0.2631) waits on the
-owner's word on `unruled-near-miss`.
+owner's word on `unruled-near-miss`. **Decided 2026-10-04** (decision #39): the rail stays the
+alignment rule's and stops being this rule's, on a re-measurement under `-v3`.
 
 
 ## 7. `whitespace-tracks-v3`: the amount's sign, the row's footnote mark, and row order only where prose could be (2026-10-04)
@@ -251,7 +252,8 @@ moving: **the shipped rule**. What it costs is stated too. A table that writes i
 before its values row by row has the same order, and is refused with the flows: on
 opendataloader-bench that is the whole of the waiver's gain there (TEDS 0.4471 back to 0.4254, one
 document from 0.16 to 0.86 among them). The variant without the last guard is measured above, and
-taking its bound-3 breach for those tables is the owner's call.
+taking its bound-3 breach for those tables is the owner's call. **Declined 2026-10-04** (decision
+#39); it reopens on a test that tells a label column written as one block from a column of text.
 
 Five of the documents that gained a table on text and layout pages under the numbers guard were read
 by hand. Under the shipped rule two lose theirs — a table of contents set in two pairs of columns,

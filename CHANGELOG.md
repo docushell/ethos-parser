@@ -121,7 +121,8 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   markers reads as one paragraph once joined.
   ParseBench semantic formatting 0.3502 -> 0.3623 (titles 0.3638 -> 0.3837, hierarchy 0.3174 ->
   0.3357), content faithfulness 0.6623 -> 0.6633, overall 33.11 -> 33.37; opendataloader-bench MHS
-  0.5398 -> 0.5476.
+  0.5398 -> 0.5476, five documents up and one down, `01030000000181` 0.0856 -> 0.0576 — accepted
+  with the two falls below (decision #39).
 - **Measured** on ParseBench, with the benchmark's own scorer: visual grounding 0.2267 -> 0.4028,
   overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
   opendataloader-bench, whose Markdown the units do not touch.
@@ -180,7 +181,7 @@ table for row order, were never pushed.
   unchanged with no page moving, visual grounding 0.4034 -> 0.4042, so no inferred table took text
   out of the prose. ParseBench overall 33.37 -> 35.11. A waiver without its last guard reads
   ParseBench tables 0.3304 and opendataloader-bench TEDS 0.4471, and drops visual grounding
-  0.0003; taking that is the owner's call (§7).
+  0.0003; the owner declined it (decision #39).
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 
@@ -209,7 +210,7 @@ pushed), so `profile_sha256` moves. Every line `-v2` read as a heading `-v4` rea
   unchanged) and the count bound fails only where it failed before, `nist-sp-800-218`'s title, 10
   against 7. opendataloader-bench MHS 0.3779 -> 0.5398; two documents fell (`01030000000121`, a bold
   label read as a heading; `01030000000037`, a figure caption read by size beside a right heading),
-  which breaches §7.5's bar 2 on each and is the owner's call.
+  which breaches §7.5's bar 2 on each; the owner accepted both (decision #39).
   ParseBench overall unchanged: content faithfulness 0.6627 -> 0.6623 on six pages where a numbered
   title now projects as `##`, visual grounding 0.4030 -> 0.4034.
 

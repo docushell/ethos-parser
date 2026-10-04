@@ -446,6 +446,7 @@ rises, and falls on no document" — is breached on one document**: `01030000000
 in a block of its own is read as a heading its ground truth does not hold. A colon ends a label in
 ParseBench's ground truth (`Population:` is a title there), so no clause refusing a colon was built
 for one document. Whether that one fall is accepted is the owner's call, as §7.5 reserves.
+**Amended 2026-10-04: accepted by the owner** (decision #39).
 
 **ParseBench** (`docs/measurements/parsebench/`), at `4913f25` and with `type-size-v3`:
 semantic formatting **0.3487 → 0.3502** — title hierarchy 0.3123 → 0.3173, the `is_title` checks
@@ -504,7 +505,8 @@ copy's table moved a run's band; §9's `-v3` readings were taken under the old j
 one fell — `01030000000037`, 0.6698 → 0.6050, where the new `3.1.` heading is right and a figure
 caption the size clause reads as a heading shares its hierarchy. NID 0.8849 → 0.8851, TEDS unchanged.
 §7.5's bar 2 is breached on that document, as on `01030000000121` under `-v3`; both are the owner's
-call.
+call. **Amended 2026-10-04: both accepted by the owner** (decision #39), with a third measured the
+same day: under the heading joins of `markdown-blocks-v12`, `01030000000181` 0.0856 → 0.0576.
 
 **ParseBench**: overall unchanged at 33.11. Visual grounding 0.4030 → 0.4034 and title hierarchy
 0.3173 → 0.3174, but content faithfulness 0.6627 → 0.6623 over six pages, each one where a section
