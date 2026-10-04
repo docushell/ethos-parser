@@ -907,6 +907,13 @@ fn extract_page(
             let (bx, by) = geom.to_top_left(r.x1, r.y1);
             table_rects.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
         }
+        // `ruled-rects-v10`: those a fill alone painted white, through the same transform.
+        let mut table_white = Vec::with_capacity(interp.white.len());
+        for r in &interp.white {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            table_white.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
         let origins: Vec<crate::tables::RunOrigin<'_>> = runs
             .iter()
             .map(|r| crate::tables::RunOrigin {
@@ -964,6 +971,7 @@ fn extract_page(
         let detected = crate::tables::detect(
             page_number,
             &table_rects,
+            &table_white,
             &stroke_rules,
             &uprights,
             &origins,
@@ -2338,6 +2346,12 @@ pub(crate) fn per_page_table_diagnostics(
             let (bx, by) = geom.to_top_left(r.x1, r.y1);
             table_rects.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
         }
+        let mut table_white = Vec::with_capacity(interp.white.len());
+        for r in &interp.white {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            table_white.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
 
         // Ruling segments, split by orientation exactly as `extract` splits them.
         let mut stroke_rules = Vec::new();
@@ -2376,6 +2390,7 @@ pub(crate) fn per_page_table_diagnostics(
         let detected = crate::tables::detect(
             page_number,
             &table_rects,
+            &table_white,
             &stroke_rules,
             &uprights,
             &origins,

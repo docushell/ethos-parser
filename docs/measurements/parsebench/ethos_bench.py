@@ -5,7 +5,9 @@ Usage: ETHOS_PARSER_BIN=/path/to/ethos-parser uv run python ethos_bench.py run e
 Registers through parse_bench.extensions, so the upstream tree stays unmodified.
 A refusal (non-zero exit) is a ProviderPermanentError and scores zero, as the benchmark intends.
 
-Text dimensions read `markdown`. Visual Grounding reads the engine's own units with their boxes:
+Text dimensions read `markdown`, its pipe tables converted to HTML as every local provider's are —
+except a table holding a merged cell, which GFM cannot carry: that one is the engine's own HTML
+projection of it, `rowspan` and `colspan` kept. Visual Grounding reads the engine's own units with their boxes:
 its `layout_unit`s (each `ground` element where a run carries none), each table and each image,
 labelled only from what the record states — a run's page `furniture`, a tagged role path, an
 `inferred_heading` run, a detected table, a drawn image — and `Text` otherwise. Nothing here infers a role or a unit the
@@ -14,6 +16,7 @@ engine did not.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -145,6 +148,7 @@ class EthosProvider(Provider):
             extract_path = Path(scratch) / "extract.json"
             extract_path.write_text(_run(binary, "extract", source))
             artifact = json.loads(_run(binary, "markdown", str(extract_path)))
+            html = json.loads(_run(binary, "html", str(extract_path))).get("html", "")
             try:
                 grounding = json.loads(_run(binary, "ground", str(extract_path)))
             except ProviderPermanentError:
@@ -153,6 +157,7 @@ class EthosProvider(Provider):
         completed_at = datetime.now()
         raw = {k: v for k, v in artifact.items() if k != "anchor_map"}
         raw["layout"] = layout
+        raw["html_tables"] = re.findall(r"<table>.*?</table>", html, re.S)
         return RawInferenceResult(
             request=request,
             pipeline=pipeline,
@@ -169,6 +174,14 @@ class EthosProvider(Provider):
         # The table scorer reads only HTML tables; every local provider converts its pipe tables,
         # and this is LiteParse's own conversion.
         markdown = LiteParseProvider._convert_md_tables_to_html(markdown)
+        # Both projections hold the same tables in the same order; where one holds a merged cell,
+        # its HTML projection replaces the converted pipe table GFM flattened the merge out of.
+        projected = raw_result.raw_output.get("html_tables") or []
+        converted = re.findall(r"<table>.*?</table>", markdown, re.S)
+        if len(projected) == len(converted):
+            spans = re.compile(r'<td [^>]*(?:row|col)span="')
+            chosen = iter([p if spans.search(p) else c for p, c in zip(projected, converted)])
+            markdown = re.sub(r"<table>.*?</table>", lambda _: next(chosen), markdown, flags=re.S)
         layout = raw_result.raw_output.get("layout") or {"pages": [], "items": []}
         layout_pages = []
         for page in layout["pages"]:

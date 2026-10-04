@@ -142,6 +142,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Merged cells in a line-drawn grid (`ruled-rects-v10`)
+
+`table_detection.ruled` moves `ruled-rects-v9` -> `ruled-rects-v10`, so `profile_sha256` moves.
+
+- **A group's grid whose interior lines stop at merged cells is read with those cells merged.**
+  `-v9` accepted a grid by its lines only where every line ran end to end, so a heading row across
+  every column — which breaks every column line across that row — refused the table: *"column
+  boundary 1 of 7 is not traced end to end"*. For one group's rectangles (never the page-wide
+  lattice, so `-v8`'s guards still ask after every grid it yields) an interior line's segment
+  across one band is now drawn or not, and the faces either side of an undrawn segment are one
+  cell. Only where every other line is drawn end to end, every interior line across one band at
+  least, no segment is drawn inside the rectangle a cell so formed spans, and no cell spanning rows
+  holds, in two of them, a line on the baseline of text in a one-row cell beside it — that is a
+  column the page left unruled, not a merged cell. A rectangle a fill alone painted white draws
+  none of those lines: on white paper it draws nothing a reader sees.
+- **The ParseBench adapter reads a table holding a merged cell from the engine's HTML projection**
+  (`docs/measurements/parsebench/ethos_bench.py`). GFM has no `rowspan` or `colspan`, and the
+  pipe-to-HTML conversion every local provider uses flattened the merge out; every other table is
+  converted as before.
+- **Measured** on ParseBench with the benchmark's own scorer: tables 0.4148 -> 0.4410 with the
+  adapter unchanged (34 pages up, 5 down), 0.4502 with it (44 up, 8 down; the adapter alone moves
+  `-v9` to 0.4160) — the European Medicines Agency's research-needs tables, a focus-area row across
+  each, 0 -> 0.93–1.0 on nine of their eleven pages and 0.33 on a tenth. Visual grounding 0.4695 ->
+  0.4698; content, formatting and charts unchanged, no page falling. opendataloader-bench and the
+  eight gate documents' 533 tables unchanged. Overall 41.08 -> 41.79.
+
 ### Text a font's declared map leaves out, read through the font (decision #43)
 
 `text_code_rule` moves `declared-font-codes-v2` -> `declared-font-codes-v3` and

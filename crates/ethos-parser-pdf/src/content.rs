@@ -329,6 +329,10 @@ pub struct Interpreter<'a> {
     /// [`Interpreter::rects`] drops a form's ink: a chart is often drawn as a form, and its bars are
     /// not the page furniture the ruled rule keeps out.
     pub filled: Vec<FilledRect>,
+    /// The rectangles a fill alone painted white (`ruled-rects-v10`), also in
+    /// [`Interpreter::rects`]. On white paper they draw no line a reader sees, so a grid's merged
+    /// cells are never read from their edges. Dropped with a form's ink, as `rects` is.
+    pub white: Vec<PathRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
     /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
@@ -421,6 +425,7 @@ impl<'a> Interpreter<'a> {
             text_drawn_since_placement: false,
             undecodable: Vec::new(),
             rects: Vec::new(),
+            white: Vec::new(),
             filled: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
@@ -509,6 +514,7 @@ impl<'a> Interpreter<'a> {
                 self.shown.clear();
                 self.undecodable.clear();
                 self.rects.clear();
+                self.white.clear();
                 self.segments.clear();
                 self.pending.clear();
                 self.subpath = Subpath::default();
@@ -818,6 +824,9 @@ impl<'a> Interpreter<'a> {
             | CloseFillStroke
             | CloseFillStrokeEvenOdd => {
                 self.flush_subpath();
+                if matches!(op, Fill | FillObsolete | FillEvenOdd) && self.gs.fill.is_white() {
+                    self.white.extend(self.pending.iter().copied());
+                }
                 if !matches!(op, Stroke | CloseStroke) {
                     let fill = self.gs.fill;
                     self.filled
@@ -1127,7 +1136,7 @@ impl<'a> Interpreter<'a> {
             Some((_, _, outer)) => format!("{outer}/{name}"),
             None => name.to_owned(),
         };
-        let painted = (self.rects.len(), self.segments.len());
+        let painted = (self.rects.len(), self.segments.len(), self.white.len());
         let saved = (
             self.gs,
             self.gs_stack.clone(),
@@ -1157,6 +1166,7 @@ impl<'a> Interpreter<'a> {
         }
         self.form_stack.pop();
         self.rects.truncate(painted.0);
+        self.white.truncate(painted.2);
         self.segments.truncate(painted.1);
         (
             self.gs,
@@ -1531,6 +1541,21 @@ mod tests {
             "every painted rectangle is still a ruled-table rectangle"
         );
         assert!(white.is_white() && !rgb.is_white());
+    }
+
+    #[test]
+    fn only_a_white_fill_alone_is_white() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "1 g 0 0 10 10 re f 20 0 10 10 re B 0.5 g 40 0 10 10 re f 1 g 60 0 10 10 re S \
+             1 1 1 rg 80 0 10 10 re f*",
+        ))
+        .unwrap();
+        // White filled alone, twice; filled and stroked, grey, or stroked alone draws a line.
+        let xs: Vec<f64> = i.white.iter().map(|r| r.x0).collect();
+        assert_eq!(xs, vec![0.0, 80.0]);
+        assert_eq!(i.rects.len(), 5);
     }
 
     #[test]

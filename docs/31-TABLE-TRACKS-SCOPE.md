@@ -508,3 +508,25 @@ one table of 22 rows where the whitespace rule read two; two of `nist-sp-800-161
 `declared-font-codes-v3` read the text a producer's `q … Q` had hidden, two cells of wrapped prose
 beside a one-line label shared their baselines and the EMA research table lost its grid. It now asks
 every cell of the row that holds text ([`33-UNMAPPED-CODES-SCOPE.md`](33-UNMAPPED-CODES-SCOPE.md) §4).
+
+**`ruled-rects-v10` (2026-10-05).** A grid accepted by its lines had to have every line traced end
+to end, so a row spanning every column refused its table — the European Medicines Agency's
+research-needs tables on eleven ParseBench pages, a focus-area row across each. For one group's
+rectangles an undrawn segment of an interior line now joins the faces either side into one cell
+(`Lattice::merged_cells`), under four clauses: every other line drawn end to end; every interior
+line drawn across one band at least; no segment drawn inside the rectangle a cell so formed spans;
+no cell spanning rows with lines on the baselines of the one-row cells beside it in two rows — a
+column the page left unruled, as on `FBLB-134215544` p122, where without the clause 63 rows of zip
+codes read as one cell. Each band is asked alone, so a gap where a merge crosses a line in one band
+says nothing about the next, and a rectangle a fill alone painted white draws no line: on
+`text_dense__underline` a white panel behind a source note closed a second row under a boxed
+passage and the passage read as a table. **Never on the page-wide lattice**: merged there,
+`FBLB-134215544` p19 and p84 folded sixty unruled rows into one, because clause 2 of `standing()`
+asks only after a group's grid.
+
+Measured on ParseBench's table pages: 0.4148 -> 0.4410, 34 up and 5 down; 0.4502 with the adapter
+reading a table that holds a merged cell from the engine's HTML projection, 44 up and 8 down. The
+falls are pages the whitespace rule had read better: `AZ LIC Rate Tables` p48 (a two-line header the
+truth holds as one cell), `FBLB-134215544` p16 and p43 (unruled rows under a merged header),
+`SERFF_TX` p1051 and p92, `SERFF_CA` p1201, and two of under 0.003. Measured and refused: asking an
+interior line to be drawn across most of its bands (-3.0 page units, losing true row spans).

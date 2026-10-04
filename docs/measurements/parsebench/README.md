@@ -323,6 +323,23 @@ whole before is read (GriTS 0 -> 0.1302). Table pages: 10 rise, 2 fall.
 Content pages: 22 rise, 11 fall, the largest the Farsi (-0.096) and Hindi (-0.059) pages, whose
 characters are now read and are in drawing order, which for those scripts is not reading order.
 
+### After `ruled-rects-v10` (2026-10-05)
+
+A group's grid whose interior lines stop at merged cells is read with them merged, and from here the
+adapter takes a table holding a merged cell from the engine's HTML projection, where GFM flattened
+the merge ([`31-TABLE-TRACKS-SCOPE.md`](../../31-TABLE-TRACKS-SCOPE.md), the `-v10` paragraph).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4080 | 0.4080 |
+| Tables | 0.4502 | 0.4148 |
+| Charts | 0.0984 | 0.0984 |
+| Visual grounding | 0.4698 | 0.4695 |
+
+Tables 0.4410 with the adapter unchanged; the adapter alone moves the `-v9` engine to 0.4160. 44
+table pages rise and 8 fall; no page falls on any other dimension.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
