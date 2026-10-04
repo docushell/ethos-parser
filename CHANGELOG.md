@@ -126,6 +126,25 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
   opendataloader-bench, whose Markdown the units do not touch.
 
+### A grid drawn in rules gets its cells (`ruled-rects-v7`)
+
+**A defect, and the ruled rule's id moves:** `table_detection.ruled` `ruled-rects-v6` -> `-v7`, so
+`profile_sha256` moves.
+
+- **A grid accepted by its traced lines has one cell per face.** The ruled rule accepts a grid
+  on either of two shapes of evidence — every face covered by a drawn rectangle, or every row and
+  column line traced by ink — and `-v6` built cells from the rectangles alone. A grid drawn
+  entirely as rules covers no face with a rectangle, so it was emitted with its rows and columns
+  and **no cell at all**: its text stayed outside it, and Markdown and HTML printed an empty grid
+  after the page's prose. Each face, bounded by the lines the document drew, is now a cell, and a
+  run is assigned by its origin as in every ruled cell. Tracing admits no merged cell, so no face
+  is a span; a grid accepted by its faces is built as before. `-v6`'s own test asserted the
+  grid's shape and never a cell.
+- **Measured:** ParseBench's table pages carried 51 ruled tables, 23 of them empty; none is now,
+  and its table score goes 0.2375 -> 0.2801. opendataloader-bench TEDS 0.3918 -> 0.4254, NID
+  0.8851 -> 0.8857; no document fell on any of its three measures. The table gate does not move:
+  cell-F1 69‰, 204 cells, fabrication 0, gold negatives clean.
+
 ### Tables inferred from the whitespace across their rows (decision #38)
 
 A fifth table rule, `whitespace-tracks-v2`, in a fifth `table_detection` field, `tracks`, so

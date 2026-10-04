@@ -428,6 +428,34 @@ pub const TABLE_DETECTION_V5: &str = "ruled-rects-v5";
 /// page `-v6` refuses is a page `-v4` refused.
 pub const TABLE_DETECTION_V6: &str = "ruled-rects-v6";
 
+/// The **ruled** rule with a cell for every face of a grid the page drew in lines.
+///
+/// # What `-v6` got wrong
+///
+/// **It emitted a grid drawn in rules with no cells at all.** A grid is accepted on one of two
+/// shapes of evidence — every face covered by a drawn rectangle, or every row and column line
+/// traced by ink — and `-v6` built cells from the drawn rectangles alone. A grid drawn entirely as
+/// rules draws no rectangle that covers a face, so it was accepted by its lines and emitted with
+/// its rows and columns and an empty cell list: its text stayed outside it, and Markdown and HTML
+/// projected an empty grid after the page's prose. `-v6`'s own test asserted the grid's shape and
+/// never a cell.
+///
+/// # The change
+///
+/// **A grid accepted by its lines has one cell per face**, each face the region between the drawn
+/// lines around it, and a run is assigned by its origin as every ruled cell's is — what
+/// `stroke-ruled-v1` and `unruled-align-v1` already do for theirs. Tracing accepts no merged cell,
+/// since a merged cell breaks the interior line it spans, so no face is ever a span. A grid
+/// accepted by its faces is built exactly as before.
+///
+/// # Measured
+///
+/// ParseBench's table pages carried 51 ruled tables, **23 of them empty, one per page**; under
+/// `-v7` none is. Its table score goes 0.2375 -> 0.2801. On opendataloader-bench two of twelve
+/// were empty, and TEDS goes 0.3918 -> 0.4254 with no document falling on any of its three
+/// measures.
+pub const TABLE_DETECTION_V7: &str = "ruled-rects-v7";
+
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
 /// A separate id from [`TABLE_DETECTION_V1`], not a bump of it. The two answer different
@@ -861,7 +889,7 @@ impl Default for TableDetection {
     /// All four rules, enabled — the two v1-S2 shipped, the one v1-S8 added, and the one v2-S24 did.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V6.to_string(),
+            ruled: TABLE_DETECTION_V7.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
@@ -2805,7 +2833,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3822,11 +3850,14 @@ mod tests {
              Moved for decision #38's numbered headings, `sha256:c2798ffb…` -> \
              `sha256:f69d6c01…`: `heading_inference_rule` `type-size-v3` -> `-v4`, which lets a \
              bold line opening with a section number stand apart with room above it alone. \
-             Nothing else."
+             Nothing else.\n\n\
+             Moved for a defect, `sha256:f69d6c01…` -> `sha256:4a262755…`: \
+             `table_detection.ruled` `ruled-rects-v6` -> `-v7`, which gives a grid drawn in rules \
+             a cell for each of its faces; `-v6` emitted such a grid with no cells. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:f69d6c01e528ee3322fcbc6dfa0acaeaf8094c02c21131ed1dcabc98a61d8c5c"
+            "sha256:4a262755f21ee70e9e212e1df3d8e357ba3cb905513961eb79621c0e2a3acd03"
         );
     }
 
@@ -3872,18 +3903,18 @@ mod tests {
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V6);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V7);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
         assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
         for (a, b) in [
-            (TABLE_DETECTION_V6, TABLE_DETECTION_UNRULED_V1),
-            (TABLE_DETECTION_V6, TABLE_DETECTION_STROKE_V1),
-            (TABLE_DETECTION_V6, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V7, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V7, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V7, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V6, TABLE_DETECTION_TRACKS_V2),
+            (TABLE_DETECTION_V7, TABLE_DETECTION_TRACKS_V2),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V2),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V2),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V2),
@@ -3898,7 +3929,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4013,7 +4044,7 @@ mod tests {
             "a pre-#38 profile must not silently acquire the tracks rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2"}"#;
+        let good = r#"{"ruled":"ruled-rects-v7","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

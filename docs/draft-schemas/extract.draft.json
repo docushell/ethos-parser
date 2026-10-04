@@ -381,7 +381,7 @@
         "rule": {
           "type": "string",
           "examples": [
-            "ruled-rects-v6",
+            "ruled-rects-v7",
             "unruled-align-v1",
             "stroke-ruled-v1",
             "whitespace-tracks-v2"

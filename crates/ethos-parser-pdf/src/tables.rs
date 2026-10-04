@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V6` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V7` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -44,7 +44,10 @@
 //!    cell spanning 75 rows by 45 columns. That is a fabricated table, and fabrication is the one
 //!    thing this slice may not do.
 //! 4. **Cells are the rectangles**, mapped onto the lattice. A rectangle spanning several faces
-//!    is a merged cell; one covering *every* face is the table's outer border, not a cell.
+//!    is a merged cell; one covering *every* face is the table's outer border, not a cell. **A grid
+//!    accepted by its traced lines instead** (see [`Lattice::build`]) drew no rectangle over a
+//!    face, so its cells are its faces, one each — tracing admits no merged cell, since a merged
+//!    cell breaks the line it spans (`ruled-rects-v7`).
 //! 5. **Text is assigned by origin**, never by ink-box intersection. A run's native locator is
 //!    exact; its ink box is measured or absent, and intersecting an absent box would be inventing
 //!    one. A run whose origin falls in no cell stays where it is — it is still an Extracted node.
@@ -67,7 +70,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V6` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V7` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -182,7 +185,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V6`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V7`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -642,7 +645,24 @@ pub fn detect_ruled(
         std::collections::BTreeMap::new();
     let mut cells: Vec<(TableCellPosition, QuantRect)> = Vec::new();
 
-    for r in rects {
+    // `ruled-rects-v7`: a grid accepted by its traced lines drew no rectangle over a face, so its
+    // faces are its cells. `-v6` built cells from the rectangles alone and emitted such a grid
+    // with none.
+    if lattice.traced {
+        for row in 0..lattice.rows() {
+            for column in 0..lattice.columns() {
+                let position = TableCellPosition {
+                    row,
+                    column,
+                    rowspan: 1,
+                    colspan: 1,
+                    table_id: id.clone(),
+                };
+                cells.push((position, lattice.face(row, column)));
+            }
+        }
+    }
+    for r in rects.iter().filter(|_| !lattice.traced) {
         let Some(span) = lattice.span_of(*r) else {
             continue;
         };
@@ -663,9 +683,10 @@ pub fn detect_ruled(
         cells.push((position, *r));
     }
 
-    // No gap-filling. Cells are the rectangles the document drew, and nothing else — the
-    // coherence precondition already guarantees every face is covered by one, so an "unclaimed"
-    // face cannot exist here. Inventing a cell for one would be inventing a cell.
+    // No gap-filling. On a grid accepted by its faces the cells are the rectangles the document
+    // drew, and nothing else — that precondition guarantees every face is covered by one, so an
+    // "unclaimed" face cannot exist here. Inventing a cell for one would be inventing a cell. A
+    // traced grid's faces are bounded by lines the document drew, which is what makes them cells.
     let _ = &claimed;
 
     cells.sort_by_key(|(p, _)| (p.row, p.column));
@@ -752,7 +773,7 @@ pub fn detect_ruled(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V6.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V7.to_string(),
         }],
         None,
     ))
@@ -880,6 +901,8 @@ struct Lattice {
     row_bands: Vec<usize>,
     /// Which x bands are columns of the grid. See [`Self::row_bands`].
     col_bands: Vec<usize>,
+    /// The grid was accepted by its traced lines, not by drawn faces: its cells are its faces.
+    traced: bool,
 }
 
 impl Lattice {
@@ -923,6 +946,7 @@ impl Lattice {
             col_bands: (0..xs.len() - 1).collect(),
             xs,
             ys,
+            traced: false,
         };
         let occupied = all.occupied_faces(rects, faces);
         let (rows_crossed, cols_crossed) = all.bands_crossed_by_rules(rects);
@@ -958,11 +982,12 @@ impl Lattice {
             return Err(None);
         }
 
-        let lattice = Self {
+        let mut lattice = Self {
             row_bands,
             col_bands,
             xs: all.xs,
             ys: all.ys,
+            traced: false,
         };
 
         // **And the page must draw a division inside the grid on both axes.** The lattice is
@@ -1010,6 +1035,7 @@ impl Lattice {
                     lines,
                 }));
             }
+            lattice.traced = true;
         }
 
         Ok(lattice)
@@ -1254,12 +1280,11 @@ impl Lattice {
         }
     }
 
-    /// Retained under `cfg(test)` with [`QuantRect::covers_within_tolerance`], as
-    /// the other half of the coherence scan's executable spec.
+    /// One face of the grid: a traced grid's cell, and under `cfg(test)` the other half of the
+    /// coherence scan's executable spec with [`QuantRect::covers_within_tolerance`].
     ///
     /// Indices are GRID rows and columns, so `face(0, 0)` is the first kept band pair and not
     /// necessarily the first band on the page.
-    #[cfg(test)]
     fn face(&self, row: u32, column: u32) -> QuantRect {
         let r = self.row_bands[row as usize];
         let c = self.col_bands[column as usize];
@@ -1507,6 +1532,7 @@ mod tests {
                         col_bands: (0..xs.len() - 1).collect(),
                         xs,
                         ys,
+                        traced: false,
                     };
                     assert!(
                         !spec(&lattice),
@@ -1558,6 +1584,22 @@ mod tests {
         // pdfTeX draws `\hline` and `|` as filled rectangles thinner than the lattice tolerance, so
         // each folds to one line and occupies no face. `ruled-rects-v5` selected bands by faces
         // alone, kept none here, and emitted nothing and refused nothing; `-v4` traced it.
+        //
+        // **And its cells are its faces** (`ruled-rects-v7`). `-v6` built cells from rectangles
+        // alone, this grid draws none over a face, and it came out 3 x 3 with no cell at all —
+        // this test asserted the shape and nothing else, which is how that shipped.
+        let texts = ["a", "b", "c", "d", "e", "f", "g", "h"];
+        let runs: Vec<RunOrigin<'_>> = texts
+            .iter()
+            .enumerate()
+            .map(|(k, text)| RunOrigin {
+                // One run per face, row by row, the last face left empty; each origin a baseline
+                // inside its face.
+                x: (k as i64 % 3) * 10000 + 500,
+                y: (k as i64 / 3) * 2000 + 1500,
+                text,
+            })
+            .collect();
         for (thickness, border) in [(20, false), (50, false), (100, false), (100, true)] {
             let mut rects = Vec::new();
             for i in 0..4 {
@@ -1567,13 +1609,34 @@ mod tests {
             if border {
                 rects.push(cp(0, 0, 30000 + thickness, 6000 + thickness));
             }
-            let (t, refusal) = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+            let (t, refusal) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
             assert_eq!(refusal, None, "{thickness}cp rules, border {border}");
             assert_eq!(
                 t.iter().map(|t| (t.rows, t.columns)).collect::<Vec<_>>(),
                 [(3, 3)],
                 "{thickness}cp rules, border {border}"
             );
+            let cells: Vec<(u32, u32, u32, u32, &str)> = t[0]
+                .cells
+                .iter()
+                .map(|c| {
+                    let p = &c.position;
+                    (p.row, p.column, p.rowspan, p.colspan, c.text.as_str())
+                })
+                .collect();
+            let want: Vec<(u32, u32, u32, u32, &str)> = (0..9u32)
+                .map(|k| {
+                    (
+                        k / 3,
+                        k % 3,
+                        1,
+                        1,
+                        texts.get(k as usize).copied().unwrap_or(""),
+                    )
+                })
+                .collect();
+            assert_eq!(cells, want, "{thickness}cp rules, border {border}");
+            assert_eq!(t[0].check.outcome, CheckStatus::Ok);
         }
     }
 

@@ -477,7 +477,7 @@
       "reading_order_rule": "gutter-columns-v4",
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
-        "ruled": "ruled-rects-v6",
+        "ruled": "ruled-rects-v7",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",
         "tracks": "whitespace-tracks-v2",
