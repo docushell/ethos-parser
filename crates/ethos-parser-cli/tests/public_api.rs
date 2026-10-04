@@ -269,6 +269,7 @@ const CORE: &[&str] = &[
     "RtfLocator",
     "RtfParagraphAttributes",
     "RtfParagraphBreak",
+    "Script",
     "RTF_READING_ORDER_RULE_V1",
     "RTF_TEXT_CODE_RULE_V2",
     // v2-S9. The ninth format's address and its facts. The address names a **part**, so it takes

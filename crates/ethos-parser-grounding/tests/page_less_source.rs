@@ -450,6 +450,7 @@ fn text_node(alloc: &mut IdAllocator, parent: &ethos_parser_core::NodeId) -> Nod
             inferred_heading_level: None,
             bold: false,
             italic: false,
+            script: None,
         }),
     }
 }

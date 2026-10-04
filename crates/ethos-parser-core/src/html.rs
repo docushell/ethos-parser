@@ -154,7 +154,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
 /// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
-/// heading levels, a layout unit's lines as one element — this id carries too.
+/// heading levels, a layout unit's lines as one element — and decision #40's `<sup>` and `<sub>`
+/// this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -780,7 +781,7 @@ mod tests {
     use super::*;
     use crate::markdown::tests::{
         cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
-        spanning, styled_line, with_inferred_headings, with_styles, with_units,
+        spanning, styled_line, with_inferred_headings, with_scripts, with_styles, with_units,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -812,6 +813,22 @@ mod tests {
         assert_eq!(
             artifact_of(heading).html,
             "<h1>Annual Report</h1>\n<p>Body</p>\n"
+        );
+    }
+
+    /// **A superscript and a subscript are `<sup>` and `<sub>`** (decision #40), as in Markdown.
+    #[test]
+    fn superscript_and_subscript_runs_are_sup_and_sub() {
+        use crate::Script::{Subscript, Superscript};
+        let a = artifact_of(with_scripts(
+            styled_line(),
+            &[(2, Superscript), (6, Subscript)],
+        ));
+        assert!(
+            a.html
+                .contains("<p>Total <sup>revenue</sup> rose <sub>sharply</sub></p>"),
+            "{}",
+            a.html
         );
     }
 

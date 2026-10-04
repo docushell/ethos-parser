@@ -1343,6 +1343,7 @@ mod schema_limit_tests {
                     inferred_heading_level: None,
                     bold: false,
                     italic: false,
+                    script: None,
                 }),
             };
             geometry.push(NodeGeometry {
@@ -1420,6 +1421,7 @@ mod schema_limit_tests {
                         inferred_heading_level: None,
                         bold: false,
                         italic: false,
+                        script: None,
                     }),
                 };
                 geometry.push(NodeGeometry {

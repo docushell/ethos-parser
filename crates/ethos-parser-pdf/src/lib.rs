@@ -86,6 +86,7 @@ pub(crate) mod structure;
 pub(crate) mod tables;
 // Auto-tagging S2. The writer: the strict decoder, the tokeniser with positions, the placement
 // rule, the tree, and `write_tags` with its self-check.
+mod scripts;
 pub(crate) mod tagging;
 pub(crate) mod text_state;
 pub(crate) mod thresholds;

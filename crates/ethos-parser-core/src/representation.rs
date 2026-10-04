@@ -1482,6 +1482,17 @@ pub struct AnnotationAttributes {
     pub unrecognized_flag_bits: Vec<u32>,
 }
 
+/// How a run sits against its line, where it does not sit on it: see
+/// [`TextRunAttributes::script`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Script {
+    /// Raised: a footnote mark, an ordinal's letters, an exponent.
+    Superscript,
+    /// Lowered: a formula's index.
+    Subscript,
+}
+
 /// Format-specific facts about a node that do not fit the common fields.
 ///
 /// Kept as a typed struct rather than an open map: an open map is a place for a future field to
@@ -1610,6 +1621,13 @@ pub struct TextRunAttributes {
     /// `Oblique` in its `/BaseFont`. As [`Self::bold`], rendered as emphasis.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub italic: bool,
+    /// The run is set as a superscript or a subscript: smaller than a run beside it on another
+    /// baseline, and raised or lowered off that baseline by less than half its em — a footnote
+    /// mark, an ordinal's letters, a formula's index. `Computed` from where the runs sit, under
+    /// the profile's `observation_rule`; the Markdown and HTML projections write it as `<sup>`
+    /// and `<sub>`. PDF only. **Absent** on a run set on its line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<Script>,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -3012,6 +3030,7 @@ mod tests {
                 inferred_heading_level: None,
                 bold: false,
                 italic: false,
+                script: None,
             }),
         }
     }

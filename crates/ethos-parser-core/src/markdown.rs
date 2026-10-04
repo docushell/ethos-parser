@@ -210,7 +210,8 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// [`to_markdown`]), on ParseBench semantic formatting 0.0970 -> 0.3487. Folded into `-v12` rather
 /// than moved to `-v13` on `-v11`'s precedent: no release, tag or binary carries `-v12` yet. So
 /// are the inferred heading's level (`##` past level 1) and the join of a layout unit's lines
-/// ([`LAYOUT_UNIT_LINE_JOINS`]), both decision #38, for the same reason.
+/// ([`LAYOUT_UNIT_LINE_JOINS`]), both decision #38, and `<sup>`/`<sub>` around a run set as a
+/// superscript or a subscript (decision #40), for the same reason.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -1681,11 +1682,13 @@ pub(crate) struct Emit {
     emphasis: Emphasis,
 }
 
-/// Whether a run's font declares itself bold and italic (decision #38).
+/// Whether a run's font declares itself bold and italic (decision #38), and whether the run is
+/// set as a superscript or a subscript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Style {
     bold: bool,
     italic: bool,
+    script: Option<crate::Script>,
 }
 
 /// The markup a projection writes emphasis in.
@@ -1703,14 +1706,17 @@ impl Style {
             crate::NodeAttributes::TextRun(a) => Self {
                 bold: a.bold,
                 italic: a.italic,
+                script: a.script,
             },
             _ => Self::default(),
         }
     }
 
-    /// The opening and closing markers, empty for unstyled text.
-    fn markers(self, markup: Markup) -> (&'static str, &'static str) {
-        match (markup, self.bold, self.italic) {
+    /// The opening and closing markers, empty for unstyled text. A script nests inside the
+    /// emphasis — `**x<sup>2</sup>**` — and is written as an HTML element in both projections,
+    /// since Markdown has no syntax of its own for one.
+    fn markers(self, markup: Markup) -> (String, String) {
+        let (open, close) = match (markup, self.bold, self.italic) {
             (_, false, false) => ("", ""),
             (Markup::Markdown, true, true) => ("***", "***"),
             (Markup::Markdown, true, false) => ("**", "**"),
@@ -1718,7 +1724,13 @@ impl Style {
             (Markup::Html, true, true) => ("<strong><em>", "</em></strong>"),
             (Markup::Html, true, false) => ("<strong>", "</strong>"),
             (Markup::Html, false, true) => ("<em>", "</em>"),
-        }
+        };
+        let (sopen, sclose) = match self.script {
+            None => ("", ""),
+            Some(crate::Script::Superscript) => ("<sup>", "</sup>"),
+            Some(crate::Script::Subscript) => ("<sub>", "</sub>"),
+        };
+        (format!("{open}{sopen}"), format!("{sclose}{close}"))
     }
 }
 
@@ -1793,7 +1805,7 @@ impl Emit {
     fn close_emphasis(&mut self) {
         if let Some(markup) = self.emphasis.markup {
             let (_, close) = self.emphasis.open.markers(markup);
-            self.write_syntax(close);
+            self.write_syntax(&close);
             self.emphasis.open = Style::default();
         }
     }
@@ -1819,7 +1831,7 @@ impl Emit {
         }
         self.close_emphasis();
         self.flush_held();
-        self.write_syntax(style.markers(markup).0);
+        self.write_syntax(&style.markers(markup).0);
         self.emphasis.open = style;
     }
 
@@ -2083,7 +2095,10 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 /// 9. **Bold and italic where a run's font declares them** (decision #38,
 ///    `TextRunAttributes::bold` and `italic`): `**…**`, `*…*`, `***…***`, one span over the runs
 ///    that share a style, closed before the spaces this exporter writes and at every block
-///    boundary, and never inside a heading or a table cell. The markers are `syntax`.
+///    boundary, and never inside a heading or a table cell. The markers are `syntax`. **A run set
+///    as a superscript or a subscript** (`TextRunAttributes::script`) is written inside them as
+///    `<sup>…</sup>` or `<sub>…</sub>`, under the same rules — Markdown has no syntax of its own
+///    for either, and both survive every Markdown renderer as inline HTML.
 ///
 /// # Where the tables go
 ///
@@ -3131,6 +3146,7 @@ pub(crate) mod tests {
                 inferred_heading_level: None,
                 bold: false,
                 italic: false,
+                script: None,
             }),
         }
     }
@@ -3176,6 +3192,20 @@ pub(crate) mod tests {
     }
 
     /// `repr` with the runs at `bold` and `italic` styled as their fonts would declare it.
+    /// `repr` with the run at each index of `scripts` set as that script.
+    pub(crate) fn with_scripts(
+        repr: DocumentRepresentation,
+        scripts: &[(usize, crate::Script)],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for (i, node) in payload.nodes.iter_mut().enumerate() {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.script = scripts.iter().find(|(k, _)| *k == i).map(|(_, s)| *s);
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
     pub(crate) fn with_styles(
         repr: DocumentRepresentation,
         bold: &[usize],
@@ -4694,6 +4724,7 @@ pub(crate) mod tests {
                 inferred_heading_level: None,
                 bold: false,
                 italic: false,
+                script: None,
             }),
         }
     }
@@ -4863,6 +4894,37 @@ pub(crate) mod tests {
 
         let both = artifact_of(with_styles(styled_line(), &[6], &[6]));
         assert_eq!(both.markdown, "Total revenue rose ***sharply***\n");
+    }
+
+    /// **A run set as a superscript or a subscript is written `<sup>` or `<sub>`** (decision
+    /// #40), inside any emphasis over it, and the tags are syntax: the text is the run's.
+    #[test]
+    fn superscript_and_subscript_runs_are_written_as_elements() {
+        use crate::Script::{Subscript, Superscript};
+        let a = artifact_of(with_scripts(
+            styled_line(),
+            &[(2, Superscript), (6, Subscript)],
+        ));
+        assert_eq!(
+            a.markdown,
+            "Total <sup>revenue</sup> rose <sub>sharply</sub>\n"
+        );
+        let at = |needle: &str| a.markdown.find(needle).unwrap();
+        assert!(a.anchor_map.is_invertible(at("revenue"), at("revenue") + 7));
+        assert!(
+            !a.anchor_map.is_invertible(at("<sup>"), at("<sup>") + 5),
+            "the tag is syntax"
+        );
+        assert!(a.coverage.balances());
+
+        let bold = artifact_of(with_scripts(
+            with_styles(styled_line(), &[0, 1, 2], &[]),
+            &[(2, Superscript)],
+        ));
+        assert_eq!(
+            bold.markdown,
+            "**Total** **<sup>revenue</sup>** rose sharply\n"
+        );
     }
 
     /// **No emphasis inside a heading or a table cell, and none across a block.** A heading is

@@ -275,6 +275,7 @@ pub fn to_representation(
                     inferred_heading_level: run.inferred_heading_level,
                     bold: run.bold,
                     italic: run.italic,
+                    script: run.script,
                     // v1-S6. Carried through unchanged. The node is here because the run is
                     // here; a finding never decides whether it gets projected.
                     findings: run.findings.clone(),

@@ -127,6 +127,22 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   overall 28.70 -> 32.23; content, formatting and tables unchanged. Nothing moves on
   opendataloader-bench, whose Markdown the units do not touch.
 
+### Superscripts and subscripts (decision #40)
+
+- **A run carries `script`** — `superscript` or `subscript` — where it is set short (six
+  characters or fewer), at most nine tenths the em of a run beside it on another baseline, and
+  raised or lowered off that baseline by a tenth to half that run's em: a footnote mark, an
+  ordinal's letters, a formula's index. A space between two runs of one script carries it.
+  `Computed` from positions and rendered ems alone, under `page-observations-v3`; PDF only.
+- **Markdown and HTML write `<sup>` and `<sub>`** around it, inside any emphasis and never
+  inside a heading or a table cell; the tags are `syntax` and the text is the run's. Folded into
+  `markdown-blocks-v12` and `html-blocks-v12`, which no release carries, so no rule id moves.
+- **Measured:** ParseBench semantic formatting 0.3623 -> 0.4060, 219 of 317 superscript checks
+  passing where none did; content faithfulness 0.6633 -> 0.6613 and opendataloader-bench NID
+  0.8857 -> 0.8835, MHS 0.5478 -> 0.5465, because both score footnote marks as plain text — the
+  owner took the trade (decision #40). Underline and strikeout from drawn rules were measured
+  and not taken: formatting +0.0014 against an opendataloader-bench NID cost.
+
 ### A grid drawn in rules gets its cells (`ruled-rects-v7`)
 
 **A defect, and the ruled rule's id moves:** `table_detection.ruled` `ruled-rects-v6` -> `-v7`, so

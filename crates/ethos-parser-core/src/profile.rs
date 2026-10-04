@@ -204,6 +204,9 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 /// reaches it (`Xf1/F1`); an `/MCID` it opens binds nothing. Through v2 a form was counted and not
 /// read. Also v3 (decision #38): whether a run's font declares itself bold or italic — a
 /// `/FontWeight` of 600 or more, the ForceBold or Italic flag, or a style word in its `/BaseFont`.
+/// And v3 (decision #40): whether a run is set as a superscript or a subscript — short, smaller
+/// than a run beside it on another baseline, and off that baseline by a tenth to half its em
+/// (`crate::Script`). Folded into v3 on `markdown-blocks-v12`'s precedent: no release carries it.
 pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.

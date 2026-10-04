@@ -122,6 +122,21 @@ table once. All 2,078 pages:
 
 No content or formatting page moved; visual grounding moved on fourteen pages, four up.
 
+### After decision #40 (2026-10-04)
+
+Superscripts and subscripts written `<sup>` and `<sub>`. All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6613 | 0.6633 |
+| Semantic formatting | 0.4060 | 0.3623 |
+| Tables | 0.3224 | 0.3224 |
+| Charts | 0.0031 | 0.0031 |
+| Visual grounding | 0.4042 | 0.4042 |
+
+219 of 317 superscript checks pass. Content falls because the benchmark's content scorer deletes
+`<sup>` text where its ground truth keeps the same marks inline; the owner took that trade.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

@@ -748,6 +748,7 @@ fn extract_page(
                 // Decision #38: the typeface the document chose, as its font dictionary says.
                 bold: shown.font.bold,
                 italic: shown.font.italic,
+                script: None,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -984,6 +985,10 @@ fn extract_page(
             stroke_refusals.push((page_number, r));
         }
         drop(origins);
+
+        // Decision #40: superscripts and subscripts, from where each run sits beside its line.
+        // Here, on the page's runs in content order, so `ems` still lines up with them.
+        crate::scripts::assign(&mut runs, &ems);
 
         // v1-S5. **Reading order, and the only order there is.**
         //
@@ -3175,6 +3180,7 @@ mod tests {
                 inferred_heading_level: None,
                 bold: false,
                 italic: false,
+                script: None,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,

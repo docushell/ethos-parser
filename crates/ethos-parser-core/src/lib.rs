@@ -152,9 +152,9 @@ pub use representation::{
     OfficeParagraphAttributes, OfficeRunAttributes, OfficeSlideRunAttributes, PageRecord,
     PaintedRect, PdfArtifactLocator, PdfImageLocator, PdfLocator, PdfObjectLocator,
     PdfTaggedLocator, PptxLocator, ProcessingRun, ProcessorIdentity, RepresentationPayload,
-    RtfLocator, RtfParagraphAttributes, RtfParagraphBreak, SourceIdentity, StructuralLocator,
-    SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE,
-    REPRESENTATION_SCHEMA_VERSION,
+    RtfLocator, RtfParagraphAttributes, RtfParagraphBreak, Script, SourceIdentity,
+    StructuralLocator, SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

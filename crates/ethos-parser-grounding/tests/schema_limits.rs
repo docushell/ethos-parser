@@ -133,6 +133,7 @@ fn run(alloc: &mut IdAllocator, parent: &NodeId, line: i64, text: String) -> (No
             inferred_heading_level: None,
             bold: false,
             italic: false,
+            script: None,
         }),
         text,
     };

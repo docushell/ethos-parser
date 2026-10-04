@@ -143,6 +143,10 @@ pub struct TextRun {
     /// The run's font declares itself italic — as the representation's `text_run.italic`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub italic: bool,
+    /// The run is set as a superscript or a subscript (decision #40, `crate::scripts`) — as the
+    /// representation's `text_run.script`. Absent on a run set on its line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<ethos_parser_core::Script>,
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
@@ -284,6 +288,7 @@ mod tests {
             inferred_heading_level: None,
             bold: false,
             italic: false,
+            script: None,
             text: text.to_string(),
             char_codes: codes,
             scalar_code_mismatch: false,

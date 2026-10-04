@@ -253,6 +253,10 @@
           "const": true,
           "$comment": "Decision #38, as on the representation's text_run. Absent where false."
         },
+        "script": {
+          "enum": ["superscript", "subscript"],
+          "$comment": "Decision #40, as on the representation's text_run. Absent on a run set on its line."
+        },
         "mcid": {
           "type": "integer",
           "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."
