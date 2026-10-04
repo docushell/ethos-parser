@@ -255,6 +255,22 @@ fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
 
 /// A page's candidate heading lines: each line's run indices in the final order, and the line
 /// reduced to what the verdict needs (decision #29).
+/// The advance of a run's trailing whitespace, in the units of `per_code` — the run's advance per
+/// code — where each code decoded to one character of `text` and this reader `inserted` none;
+/// `None` where the run does not end in whitespace, is whitespace alone, or cannot be read so.
+fn trailing_whitespace_advance(
+    text: &str,
+    per_code: Option<&[f64]>,
+    inserted: bool,
+) -> Option<f64> {
+    let per = per_code?;
+    if inserted || per.len() != text.chars().count() {
+        return None;
+    }
+    let trailing = text.chars().rev().take_while(|c| c.is_whitespace()).count();
+    (trailing > 0 && trailing < per.len()).then(|| per[per.len() - trailing..].iter().sum())
+}
+
 type HeadingLines = Vec<(Vec<usize>, crate::headings::Line)>;
 
 /// One page's candidate heading lines (decision #29), and its share of the body em.
@@ -524,6 +540,9 @@ fn extract_page(
     // lines for the heading rule; like the operator indices, it lives beside the runs and never
     // on a `TextRun`, so it never reaches the wire.
     let mut ems: Vec<Option<i64>> = Vec::new();
+    // `whitespace-tracks-v5`: where each run's last inked character ends, beside `ems` and aligned
+    // with `runs` as it is, until the tracks pass reads it. Never on a `TextRun`.
+    let mut ink_ends: Vec<Option<i64>> = Vec::new();
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
@@ -718,6 +737,26 @@ fn extract_page(
                 g => g,
             };
 
+            // The tracks rule reads a cell's extent off its runs' boxes, and a box spans the run's
+            // trailing whitespace: a space drawn with a wide advance carried `3 ` across the gap
+            // to the next column, and three cells read as one. Where the run is upright and its
+            // codes are its characters one for one, the end of its last inked character.
+            ink_ends.push(match geometry {
+                ethos_parser_core::GeometryPresence::Measured(b)
+                    if (b.x0() - origin_x).abs() <= crate::tracks::UPRIGHT_TOLERANCE =>
+                {
+                    trailing_whitespace_advance(
+                        &shown.text,
+                        shown.code_advances.as_deref(),
+                        !shown.synthesized_indices.is_empty(),
+                    )
+                    .and_then(|a| quantize(a, QUANTUM_PER_POINT).ok())
+                    .map(|a| b.x1() - a)
+                    .filter(|&end| end > b.x0())
+                }
+                _ => None,
+            });
+
             let synthesized: Vec<SynthesizedChar> = shown
                 .synthesized_indices
                 .iter()
@@ -903,13 +942,14 @@ fn extract_page(
         // document declares no author structure**: a tagged document says what is a table, and an
         // inferred one would override a list or a paragraph it declared — and, on a page that
         // declares a `/Table`, take that table's place in the pairing below.
-        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V4
+        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V5
             && no_author_structure(structure.as_ref())
         {
             let track_runs: Vec<crate::tracks::TrackRun<'_>> = runs
                 .iter()
                 .zip(&ems)
-                .map(|(r, em)| {
+                .zip(&ink_ends)
+                .map(|((r, em), ink_end)| {
                     let (x, y) = (r.locator.origin_x, r.locator.origin_y);
                     crate::tracks::TrackRun {
                         x,
@@ -918,7 +958,7 @@ fn extract_page(
                         rect: r.geometry.measured().map(|b| crate::tables::QuantRect {
                             x0: b.x0(),
                             y0: b.y0(),
-                            x1: b.x1(),
+                            x1: ink_end.unwrap_or(b.x1()),
                             y1: b.y1(),
                         }),
                         text: r.text.as_str(),
@@ -2999,6 +3039,43 @@ mod tests {
             display_width: dw,
             display_height: dh,
         }
+    }
+
+    /// **A run's trailing whitespace is its last codes' advance** — the wide space after `3` the
+    /// tracks rule must not read as part of the cell — and nothing where the run ends inked, is
+    /// whitespace alone, or its codes and characters do not pair one for one.
+    #[test]
+    fn trailing_whitespace_is_the_last_codes_advance() {
+        assert_eq!(
+            trailing_whitespace_advance("3 ", Some(&[5.0, 80.0]), false),
+            Some(80.0)
+        );
+        assert_eq!(
+            trailing_whitespace_advance("$1,000  ", Some(&[5.0; 8]), false),
+            Some(10.0)
+        );
+        for (text, per, inserted, why) in [
+            ("3", &[5.0][..], false, "no trailing whitespace"),
+            ("  ", &[3.0, 3.0][..], false, "whitespace alone"),
+            (
+                "fi ",
+                &[5.0, 3.0][..],
+                false,
+                "a ligature: two characters, one code",
+            ),
+            ("3 ", &[5.0, 80.0][..], true, "a space this reader inserted"),
+        ] {
+            assert_eq!(
+                trailing_whitespace_advance(text, Some(per), inserted),
+                None,
+                "{why}"
+            );
+        }
+        assert_eq!(
+            trailing_whitespace_advance("3 ", None, false),
+            None,
+            "no widths"
+        );
     }
 
     #[test]

@@ -206,11 +206,11 @@ A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v4`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v5`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5–§9 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
-table for row order, were never pushed, and `-v3` was pushed and is in no release.
+and its §5–§11 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
+table for row order, were never pushed, and `-v3` and `-v4` were pushed and are in no release.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
   two or more cells opens a table whose tracks are those cells' extents, and lines below join it
@@ -247,6 +247,17 @@ table for row order, were never pushed, and `-v3` was pushed and is in no releas
   35.94 -> 36.14, opendataloader-bench unchanged. A waiver without its last guard reads
   ParseBench tables 0.3304 and opendataloader-bench TEDS 0.4471, and drops visual grounding
   0.0003; the owner declined it (decision #39).
+- **A header set on several lines above the first row is one row** (`-v5`): the lines just above
+  an accepted table, each within a row and a half's pitch of the line below it, whose every cell
+  sits on a track clear of its neighbours, holds fewer than thirty characters and repeats no value
+  its column holds, join as the table's first row — one cell per track, its lines top to bottom —
+  where they name more than half the tracks. A caption, a title over one column and a row the
+  table did not take each end the band. **And a cell ends at its last inked character**: a space
+  drawn wide after a value no longer carries the cell into the next column.
+  ParseBench tables 0.3319 -> 0.3533, visual grounding 0.4676 -> 0.4677, content and formatting
+  unchanged, overall 37.43 -> 37.86; opendataloader-bench TEDS 0.4254 -> 0.4283 and NID 0.8835 ->
+  0.8834, no table on its 158 documents without one; on the tree-stripped gate documents every
+  table and its first four rows are as under `-v4`.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

@@ -566,6 +566,27 @@ pub const TABLE_DETECTION_TRACKS_V3: &str = "whitespace-tracks-v3";
 /// opendataloader-bench unchanged, with no table on any document whose ground truth holds none.
 pub const TABLE_DETECTION_TRACKS_V4: &str = "whitespace-tracks-v4";
 
+/// [`TABLE_DETECTION_TRACKS_V4`] **with a header set on several lines read as one row, and each
+/// cell ending at its last inked character**.
+///
+/// **What `-v4` missed.** A header's cells are set centred on a row of their own and stacked
+/// unevenly — `Line` and `Type of Data` on one baseline, `Most Recent Calendar` and `Year` above
+/// and below it — so no line of the header had a cell for every column, none opened or joined the
+/// table, and the table began at its first row of values with no header at all. ParseBench's
+/// table-record score matches a table's records by its header, and scored every such table zero.
+/// And a cell's extent was its runs' measured boxes, which span a run's trailing whitespace: a
+/// producer that draws a wide space after each value carried `3 ` across the gap to the next
+/// column, and three cells read as one.
+///
+/// **The change.** The lines just above an accepted table, each within a row and a half's pitch of
+/// the line below it, whose every cell sits on a track clear of its neighbours, holds fewer than
+/// thirty characters and repeats no value its column holds below, join as the table's first row —
+/// one cell per track, its lines top to bottom — where they name more than half the tracks. A
+/// caption or a sentence ends the band, and so does a row the table did not take. And where a run
+/// is upright and its codes are its characters one for one, its extent ends where its trailing
+/// whitespace's advance begins; the measured box on the wire is unchanged.
+pub const TABLE_DETECTION_TRACKS_V5: &str = "whitespace-tracks-v5";
+
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
 /// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
@@ -958,7 +979,7 @@ impl Default for TableDetection {
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
-            tracks: TABLE_DETECTION_TRACKS_V4.to_string(),
+            tracks: TABLE_DETECTION_TRACKS_V5.to_string(),
         }
     }
 }
@@ -2920,7 +2941,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v5","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3957,11 +3978,15 @@ mod tests {
              Moved for decision #38's second layout-unit pass, `sha256:8b44e441…` -> \
              `sha256:f16edf98…`: `layout_unit_rule` `line-units-v1` -> `-v2`, which reads each \
              line as its pieces and cuts a unit where a piece follows one that ends short. \
-             Nothing else."
+             Nothing else.\n\n\
+             Moved for decision #38's fifth table pass, `sha256:f16edf98…` -> \
+             `sha256:08bb20cf…`: `table_detection.tracks` `whitespace-tracks-v4` -> `-v5`, which \
+             reads a header set on several lines above a table's first row as its first row, and \
+             ends each cell at its last inked character. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:f16edf98d9fd93cb26779c8088e197b8a44756500747a8ec4a5607e1d10bd9d5"
+            "sha256:08bb20cf317efecaeada1d335a695d3cbe0152be40cc237d241e8c00565958e8"
         );
     }
 
@@ -4018,10 +4043,10 @@ mod tests {
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V7, TABLE_DETECTION_TRACKS_V4),
-            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V4),
-            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V4),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V4),
+            (TABLE_DETECTION_V7, TABLE_DETECTION_TRACKS_V5),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V5),
+            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V5),
+            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V5),
         ] {
             assert_ne!(
                 a, b,
@@ -4033,7 +4058,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v7","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v5","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4148,7 +4173,7 @@ mod tests {
             "a pre-#38 profile must not silently acquire the tracks rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v7","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v4"}"#;
+        let good = r#"{"ruled":"ruled-rects-v7","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v5"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

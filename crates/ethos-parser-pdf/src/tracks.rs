@@ -42,6 +42,18 @@
 //! raised on that line, and joins it — on a baseline of its own it would be a line of one short
 //! cell between two rows, and end the table there.
 //!
+//! **A cell ends at its last inked character** (`-v5`): a run's measured box spans its trailing
+//! whitespace, and a space drawn wide after a value would otherwise carry the cell across the gap
+//! to the next column — the caller hands each run's extent to that point.
+//!
+//! **A header set on several lines above the first row is one row** (`-v5`, [`header_band`]): the
+//! lines just above an accepted table, each within a row and a half's pitch of the line below it,
+//! whose every cell sits on a track clear of its neighbours, holds fewer than
+//! [`PROSE_LINE_CHARS`] characters and repeats no value its column holds below, join as the table's
+//! first row — one cell per track, its lines top to bottom — where they name more than half the
+//! tracks. A header's cells are set centred on a row of their own, stacked unevenly, and no line
+//! of them has a cell for every column, so no line of them opens or joins the table on its own.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -164,7 +176,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v4` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v5` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -177,13 +189,25 @@ pub(crate) fn detect(
     let lines = lines(runs);
     let mut tables = Vec::new();
     let mut i = 0;
+    // Lines before this one are an earlier table's, and no header of a later one.
+    let mut floor = 0;
     while i < lines.len() {
-        if let Some((rows, end)) = grow(&lines, i) {
+        if let Some((mut rows, end)) = grow(&lines, i) {
             let pair_stands = rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, &rows, runs);
             if pair_stands && accepted(&rows, runs) {
+                let tracks = tracks_of(&rows);
+                let top = header_band(&lines, floor, i, &tracks, &rows, runs);
+                if top < i {
+                    let header = header_row(&lines[top..i], &tracks);
+                    let named = header.cells.iter().filter(|c| !c.runs.is_empty()).count();
+                    if 2 * named > tracks.len() {
+                        rows.insert(0, header);
+                    }
+                }
                 if let Some(table) = build(page, &rows, runs, alloc)? {
                     tables.push(table);
                     i = end;
+                    floor = end;
                     continue;
                 }
             }
@@ -191,6 +215,109 @@ pub(crate) fn detect(
         i += 1;
     }
     Ok(tables)
+}
+
+/// Each column's extent over `rows`: the union of its cells that hold runs.
+fn tracks_of(rows: &[Row]) -> Vec<(i64, i64)> {
+    (0..rows[0].cells.len())
+        .map(|k| {
+            rows.iter()
+                .map(|r| &r.cells[k])
+                .filter(|c| !c.runs.is_empty())
+                .map(|c| (c.x0, c.x1))
+                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+                .unwrap_or((rows[0].cells[k].x0, rows[0].cells[k].x1))
+        })
+        .collect()
+}
+
+/// The first of the lines above a table's first row that are its header: climbing from `start`
+/// to no lower than `floor`, each line within a row and a half's pitch of the line below it whose
+/// every cell sits on one of `tracks` clear of its neighbours, no two on one track, holds fewer
+/// than [`PROSE_LINE_CHARS`] characters — a caption or a sentence ends the band — and repeats no
+/// value its column holds in `rows`, as a row the table did not take would.
+fn header_band(
+    lines: &[Line],
+    floor: usize,
+    start: usize,
+    tracks: &[(i64, i64)],
+    rows: &[Row],
+    runs: &[TrackRun<'_>],
+) -> usize {
+    let values: Vec<std::collections::BTreeSet<String>> = (0..tracks.len())
+        .map(|k| {
+            rows.iter()
+                .map(|r| cell_text(&r.cells[k], runs).trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect()
+        })
+        .collect();
+    let mut top = start;
+    while top > floor {
+        let (line, below) = (&lines[top - 1], &lines[top]);
+        // Pitches of 1.2 ems, in integers, as in `grow`: 1.5 is 9/5.
+        let em = line.em.max(below.em);
+        if line.cells.is_empty() || 5 * (below.y - line.y) > 9 * em {
+            break;
+        }
+        let Some(mapping) = line
+            .cells
+            .iter()
+            .map(|c| track_of(c, tracks))
+            .collect::<Option<Vec<usize>>>()
+        else {
+            break;
+        };
+        let mut distinct = mapping.clone();
+        distinct.sort_unstable();
+        distinct.dedup();
+        let clear = line
+            .cells
+            .iter()
+            .zip(&mapping)
+            .all(|(c, &k)| clear_of_neighbours(c, k, tracks));
+        let header_like = line.cells.iter().zip(&mapping).all(|(c, &k)| {
+            let text = cell_text(c, runs);
+            let text = text.trim();
+            text.chars().count() < PROSE_LINE_CHARS && !values[k].contains(text)
+        });
+        if distinct.len() != mapping.len() || !clear || !header_like {
+            break;
+        }
+        top -= 1;
+    }
+    top
+}
+
+/// A table's header row from its header `band`: each track's cells from every line of the band,
+/// top to bottom; a track no line names is an empty cell.
+fn header_row(band: &[Line], tracks: &[(i64, i64)]) -> Row {
+    let mut cells: Vec<Cell> = tracks
+        .iter()
+        .map(|&(x0, _)| Cell {
+            x0,
+            x1: x0,
+            runs: Vec::new(),
+        })
+        .collect();
+    for line in band {
+        for c in &line.cells {
+            if let Some(k) = track_of(c, tracks) {
+                let cell = &mut cells[k];
+                if cell.runs.is_empty() {
+                    (cell.x0, cell.x1) = (c.x0, c.x1);
+                } else {
+                    (cell.x0, cell.x1) = (cell.x0.min(c.x0), cell.x1.max(c.x1));
+                }
+                cell.runs.extend(&c.runs);
+            }
+        }
+    }
+    Row {
+        y: band[0].y,
+        em: band[0].em,
+        cells,
+    }
 }
 
 /// The tables [`detect`] finds inside each of a page's columns — `columns` as
@@ -832,7 +959,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V4.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V5.to_string(),
     }))
 }
 
@@ -908,13 +1035,82 @@ mod tests {
         ]
     }
 
+    /// Four rows of values, labels and two numbers, the first at 200 points: no header of their own.
+    fn values() -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, 200, 40, "North"),
+            run(250, 200, 20, "7.5"),
+            run(330, 200, 40, "112.0"),
+            run(100, 216, 40, "South"),
+            run(235, 216, 35, "18.25"),
+            run(350, 216, 20, "9.1"),
+            run(100, 232, 40, "East"),
+            run(245, 232, 25, "4.0"),
+            run(340, 232, 30, "65.5"),
+            run(100, 248, 40, "West"),
+            run(240, 248, 30, "12.0"),
+            run(335, 248, 35, "70.25"),
+        ]
+    }
+
+    /// `band` set above [`values`]: the table's rows, below the band in content order too.
+    fn under(band: Vec<TrackRun<'static>>) -> Vec<DetectedTable> {
+        tables(&band.into_iter().chain(values()).collect::<Vec<_>>())
+    }
+
+    /// **A header set on several lines above the rows is one row**: `Line` and `Type` on one
+    /// baseline, `Most Recent` above and `Year` below it over the third column — no line of it a
+    /// cell for every column — read as the table's first row, each column's lines top to bottom.
+    #[test]
+    fn a_header_set_on_several_lines_above_the_rows_is_one_row() {
+        let found = under(vec![
+            run(325, 170, 50, "Most Recent "),
+            run(105, 178, 25, "Line"),
+            run(240, 178, 25, "Type"),
+            run(340, 186, 20, "Year"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(texts(&found[0])[0], ["Line", "Type", "Most Recent Year"]);
+        assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+    }
+
+    /// **The band is a header's and nothing else's**: more than a row and a half above the rows it
+    /// is apart from them; a line naming one column of three is a title, not a header; a cell of
+    /// thirty characters is a caption; a cell repeating a value its column holds is a row the
+    /// table did not take. Each leaves the table as it was.
+    #[test]
+    fn a_band_apart_titled_captioned_or_repeating_is_no_header() {
+        for (band, why) in [
+            (
+                vec![run(105, 170, 25, "Line"), run(240, 170, 25, "Type")],
+                "thirty points above the first row",
+            ),
+            (vec![run(340, 186, 20, "Year")], "one column of three named"),
+            (
+                vec![
+                    run(105, 186, 30, "Regional rainfall by quarter, mm"),
+                    run(240, 186, 25, "Type"),
+                ],
+                "a caption",
+            ),
+            (
+                vec![run(100, 186, 40, "North"), run(240, 186, 25, "Type")],
+                "a value of the first column",
+            ),
+        ] {
+            let found = under(band);
+            assert_eq!((found[0].rows, found[0].columns), (4, 3), "{why}");
+            assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"], "{why}");
+        }
+    }
+
     #[test]
     fn right_aligned_columns_are_a_table() {
         let found = tables(&numbers());
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V4);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V5);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

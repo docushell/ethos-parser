@@ -241,15 +241,20 @@ All 2,078 pages:
 | Charts | 0.0031 | 0.0031 |
 | Visual grounding | 0.4676 | 0.4490 |
 
-**Measured and not used: a cell's extent at its last inked character.** A box spans its run's
-trailing whitespace, and a producer that draws a wide space after each value — SERFF rate tables
-from their third row on — carried `3 ` into the next column, so three cells read as one. Ending
-the tracks rule's cell extents where the trailing whitespace's advance begins moved tables 0.3319 ->
-0.3342 (eleven pages, eight up), but on the tree-stripped gate documents it read 403 more tables
-under `whitespace-tracks`, and still 51 more with a guard against a second column of running
-text: acronym lists and control mappings, and also tables of contents, bulleted and roman-numbered
-lists and the fragments of lines whose glyphs did not decode — bound 2 of
-[`31-TABLE-TRACKS-SCOPE.md`](../../31-TABLE-TRACKS-SCOPE.md) §4.
+### After `whitespace-tracks-v5` (2026-10-04)
+
+A header set on several lines above a table's first row is read as its first row, and a cell ends
+at its last inked character (`docs/31-TABLE-TRACKS-SCOPE.md` §11). The table-record half of the
+table score matches records by their header, and was zero on 26 pages the other parser scored
+above 0.3, most for a header the table had left out. All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6627 | 0.6627 |
+| Semantic formatting | 0.4063 | 0.4063 |
+| Tables | 0.3533 | 0.3319 |
+| Charts | 0.0031 | 0.0031 |
+| Visual grounding | 0.4677 | 0.4676 |
 
 ## What it found that is not fixed
 

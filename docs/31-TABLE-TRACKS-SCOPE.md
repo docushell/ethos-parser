@@ -357,3 +357,67 @@ four-row floor (§8). Two changes were measured for the first two and refused:
 Both are the same shortfall: a row here is a line and the lines that wrap under it, so a table
 whose rows are paragraphs, or whose cells sit on baselines a few points apart, is out of this
 rule's reach. Rows read from the whitespace across every column at once is a different rule.
+
+
+## 11. `whitespace-tracks-v5`: the header above the rows, and a cell's ink (2026-10-04)
+
+Of the ParseBench pages where both this engine and the other parser find a table, the
+table-record half of the score — records matched by their header — was zero on 26 that the other
+parser scored above 0.3. Most had no header row at all: a header's cells are set centred on a row
+of their own and stacked unevenly — `Line` and `Type of Data` on one baseline, `Most Recent
+Calendar` and `Year` above and below it over the third column — so no line of the header has a
+cell for every column, none opens or joins the table, and the table began at its first row of
+values.
+
+**The header band.** After a table is accepted, the lines just above its first row join it as one
+row — each column's cells from every line, top to bottom — while each line, climbing:
+
+1. sits within a row and a half's pitch (nine fifths of an em) of the line below it;
+2. has every cell on one of the table's tracks, clear of its neighbours, no two on one track — the
+   rule `grow` already applies to a sparse row;
+3. has no cell of thirty characters or more (`PROSE_LINE_CHARS`): a caption or a sentence ends
+   the band;
+4. repeats no value its column holds below: a row the table did not take ends the band;
+
+and the band is taken only where it names more than half of the table's tracks — a title centred
+over one column names one. No line before an earlier table's end is read.
+
+Each clause was measured on ParseBench tables and visual grounding, against `-v4`'s 0.3319 and
+0.4490 (measured on the build before `line-units-v2`):
+
+| band | tables | grounding |
+| --- | ---: | ---: |
+| clause 2 alone, 3.5 pitches | 0.3351 | 0.4479 |
+| and half the tracks named | 0.3518 | 0.4482 |
+| at 2 pitches / 1.5 / 1 | 0.3521 / 0.3525 / 0.3315 | 0.4485 / 0.4490 / 0.4490 |
+| at 1.5 pitches, every band line bold | 0.3467 | 0.4490 |
+| at 3.5 pitches, at most 3 / 2 lines | 0.3493 / 0.3465 | 0.4485 / 0.4489 |
+| **at 1.5 pitches, clauses 3 and 4, more than half named** | **0.3504** | **0.4493** |
+
+At 1.5 pitches without clauses 3 and 4, the tree-stripped gate documents' tables took twenty header
+rows, among them rows of `nist-sp-800-161r1`'s control matrix the table had not taken, joined into
+one cell, and a questionnaire's question tails; with them and at half the tracks, three — a word
+of a wrapped question, a question's tail and a line whose glyphs did not decode; at more than half,
+none. Bound 2 is why the last clause is "more than half".
+
+**A cell's ink.** A cell's extent was its runs' measured boxes, and a box spans its run's trailing
+whitespace: a producer that sets a table with a space drawn wide after each value — the SERFF rate
+tables do it from their third row on — carried `3 ` across the gap to the next column, three cells
+read as one, the row fell off the tracks, and the table stopped there. Where a run is upright and
+its codes are its characters one for one, its extent now ends where its trailing whitespace's
+advance begins; the box on the wire is unchanged. Alone it moved ParseBench tables 0.3319 →
+0.3342, eight pages up and three down, and nothing on the gate documents.
+
+**Measured with the shipped build**, all 2,078 pages: ParseBench tables **0.3319 → 0.3533**,
+visual grounding 0.4676 → 0.4677, content faithfulness and semantic formatting unchanged, overall
+37.43 → 37.86. opendataloader-bench TEDS 0.4254 → 0.4283 (`01030000000187` 0.6053 → 0.7241),
+NID 0.8835 → 0.8834, MHS unchanged; no table on any of its 158 documents without one, and every
+cell's text its runs'. On the tree-stripped gate documents every table and its first four rows
+are as under `-v4`.
+
+**A correction.** The ink change was first recorded as refused, for 403 more tables on the
+tree-stripped gate documents (51 with a guard against a second column of running text). That
+compared against a list of tables made before those documents were stripped again on
+2026-10-04, from a far earlier build; against `-v4` on the documents as they are, the change adds
+no table there.
+
