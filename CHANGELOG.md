@@ -87,6 +87,11 @@ build is not comparable with a 0.63.0 one**.
 
   The last two constants are this engine's, measured on two corpora, where 0.47.0 refused a tuned
   gap epsilon; `MARKDOWN_RULE_BLOCKS_V12`'s doc says where each number comes from.
+- **A line set skewed is one line** (`markdown-blocks-v12`, `html-blocks-v12`): a run whose
+  baseline sits less than a tenth of its font's median glyph from the run before it continues the
+  line, where an exact baseline was required — a scanner's text layer, or a page drawn a fraction
+  of a degree off, moved a few centipoints from run to run and projected one block per run.
+  ParseBench content faithfulness 0.6613 -> 0.6627; opendataloader-bench unchanged.
 - **A content stream of nothing but comments draws nothing, and the page is read.** PDF
   32000-1 §7.2.4 reads a comment as whitespace, but `lopdf` takes one only where the next token
   follows its line break, so a comment-only stream joined to the next made it drop the rest of the

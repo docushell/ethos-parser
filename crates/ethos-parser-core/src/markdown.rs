@@ -211,7 +211,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// than moved to `-v13` on `-v11`'s precedent: no release, tag or binary carries `-v12` yet. So
 /// are the inferred heading's level (`##` past level 1) and the join of a layout unit's lines
 /// ([`LAYOUT_UNIT_LINE_JOINS`]), both decision #38, and `<sup>`/`<sub>` around a run set as a
-/// superscript or a subscript (decision #40), for the same reason.
+/// superscript or a subscript (decision #40), for the same reason. And so is reading a line set
+/// skewed as one line ([`same_line`]): a baseline that moves less than a tenth of the font's median
+/// glyph from the run before it — ParseBench content faithfulness 0.6613 -> 0.6627, its
+/// `text_simple__parish` from one block per run to its sentences.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -1209,6 +1212,21 @@ pub(crate) struct LineKey {
     baseline: i64,
 }
 
+/// Whether `node` continues the line keyed `line`: the same page, region and stream, and a
+/// baseline within a tenth of the font's median glyph of the line's (`measure`, from the run before
+/// it). A line set skewed — a scanner's text layer, a page drawn a fraction of a degree off — moves
+/// its baseline a few centipoints from one run to the next, and ParseBench's `text_simple__parish`
+/// projected every run of it as a block of its own. The run before `node` keys the line, so the
+/// tolerance does not accumulate: each step is measured from the last.
+pub(crate) fn same_line(line: LineKey, node: &crate::Node, measure: FontMeasure) -> bool {
+    line_key(node).is_some_and(|k| {
+        k.page == line.page
+            && k.region == line.region
+            && k.artifact == line.artifact
+            && 10 * (k.baseline - line.baseline).abs() <= measure.pitch
+    })
+}
+
 pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
     let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
         return None;
@@ -1627,7 +1645,7 @@ pub fn geometric_blocks(
                 (Some(open), Some(k), Some(_)) if open == k => true,
                 (None, None, Some(_)) => match (open_line, line_ink) {
                     (Some(line), Some((ink, end, reference))) => {
-                        Some(line) == line_key(node) && ink_sequenced(ink, end, reference, node)
+                        same_line(line, node, reference) && ink_sequenced(ink, end, reference, node)
                     }
                     _ => false,
                 },
@@ -2226,7 +2244,7 @@ pub fn to_markdown(
                 // the fallback breaks at every space the page drew as its own run.
                 match (open_line, line_ink) {
                     (Some(line), Some((ink, end, reference)))
-                        if Some(line) == line_key(node)
+                        if same_line(line, node, reference)
                             && ink_sequenced(ink, end, reference, node) =>
                     {
                         line_ink = ink_reach(node, &pitch).map(|(e, r)| (node, e, r));
@@ -2339,7 +2357,7 @@ pub fn to_markdown(
             (None, None, Some(_)) => match (open_line, line_ink) {
                 (Some(line), Some((ink, end, reference)))
                     if ht.is_none()
-                        && Some(line) == line_key(node)
+                        && same_line(line, node, reference)
                         && ink_sequenced(ink, end, reference, node) =>
                 {
                     Some(
@@ -5045,6 +5063,24 @@ pub(crate) mod tests {
             ("second", None, 8200, 9600, Some(1000), None),
         ]);
         assert_eq!(blocks_of(&apart), vec!["first", "second"]);
+    }
+
+    /// **A line set skewed is still one line**: each run's baseline a few centipoints off the one
+    /// before joins, each step under a tenth of the font's median glyph — and a run raised a third
+    /// of a glyph, as a superscript sits, still does not.
+    #[test]
+    fn a_skewed_line_joins_and_a_raised_run_does_not() {
+        let skewed = project_lines(&[
+            ("open", None, 7200, 7200, Some(1000), None),
+            ("par", None, 8200, 7203, Some(1000), None),
+            ("ish", None, 9200, 7206, Some(1000), None),
+        ]);
+        assert_eq!(blocks_of(&skewed), vec!["openparish"]);
+        let raised = project_lines(&[
+            ("open", None, 7200, 7200, Some(1000), None),
+            ("par", None, 8200, 7300, Some(1000), None),
+        ]);
+        assert_eq!(blocks_of(&raised), vec!["open", "par"]);
     }
 
     /// **A page artifact with no `mcid` is not a group either** — the case above, on the locator
