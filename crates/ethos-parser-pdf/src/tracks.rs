@@ -46,6 +46,11 @@
 //! whitespace, and a space drawn wide after a value would otherwise carry the cell across the gap
 //! to the next column — the caller hands each run's extent to that point.
 //!
+//! **A row with cells missing is a row at the table's pitch** (`-v6`): a line with a cell on the
+//! first track and another beside it opens a row however close it sits, unless its first cell
+//! opens lower-case — a label's second line continues the row above. Only a line with no first
+//! cell, or one closer than a row and a half's pitch with a single cell, is a wrap.
+//!
 //! **A header set on several lines above the first row is one row** (`-v5`, [`header_band`]): the
 //! lines just above an accepted table, each within a row and a half's pitch of the line below it,
 //! whose every cell sits on a track clear of its neighbours, holds fewer than
@@ -62,7 +67,9 @@
 //!    lines around them, under a first row that reads as a header — a chart's axis labels over its
 //!    legend are a pair with gaps, the top of three columns of prose runs on below. Two columns need
 //!    four rows, and are no table where the first column is nothing but list labels or the second
-//!    nothing but rising page numbers: a list or a table of contents set in two columns.
+//!    nothing but rising page numbers: a list or a table of contents set in two columns. And no
+//!    grid whose first column is nothing but bullets is a table (`-v6`): a list's items beside the
+//!    lines of whatever another flow set level with them.
 //! 2. **A steady row pitch**: the gaps between rows vary by at most half their mean.
 //! 3. **The content stream wrote it row by row** — `crate::unruled`'s rule 5, at row grain: every
 //!    run of row *r* is emitted before any run of row *r* + 1. Two columns of prose are written
@@ -176,7 +183,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v5` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v6` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -192,7 +199,7 @@ pub(crate) fn detect(
     // Lines before this one are an earlier table's, and no header of a later one.
     let mut floor = 0;
     while i < lines.len() {
-        if let Some((mut rows, end)) = grow(&lines, i) {
+        if let Some((mut rows, end)) = grow(&lines, i, runs) {
             let pair_stands = rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, &rows, runs);
             if pair_stands && accepted(&rows, runs) {
                 let tracks = tracks_of(&rows);
@@ -588,7 +595,7 @@ fn track_of(cell: &Cell, tracks: &[(i64, i64)]) -> Option<usize> {
 
 /// The rows a table opened at line `start` grows to, and the line after its last; `None` where the
 /// line opens no table.
-fn grow(lines: &[Line], start: usize) -> Option<(Vec<Row>, usize)> {
+fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>, usize)> {
     let first = &lines[start];
     if first.cells.len() < MIN_COLUMNS {
         return None;
@@ -659,7 +666,16 @@ fn grow(lines: &[Line], start: usize) -> Option<(Vec<Row>, usize)> {
         if distinct.len() != mapping.len() || !clear {
             break;
         }
-        if line.cells.len() >= 2 && 5 * gap >= 9 * em {
+        // `-v6`: a line with a cell on the first track and another beside it opens a row at any
+        // gap, unless its first cell opens lower-case — a label's second line continues it.
+        let opens_row = mapping.len() >= 2
+            && mapping.first() == Some(&0)
+            && !cell_text(&line.cells[0], runs)
+                .trim_start()
+                .chars()
+                .next()
+                .is_some_and(char::is_lowercase);
+        if line.cells.len() >= 2 && (5 * gap >= 9 * em || opens_row) {
             // A sparse row: the tracks it leaves empty are empty cells.
             let mut cells: Vec<Cell> = tracks
                 .iter()
@@ -709,6 +725,16 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
             .filter(|t| !t.trim().is_empty())
             .collect()
     };
+    // A first column of nothing but bullets is a list, whatever stands beside it (`-v6`): its items,
+    // and the lines of whatever the next flow set level with them.
+    let bullet = |t: &String| {
+        let mut chars = t.trim().chars();
+        matches!((chars.next(), chars.next()), (Some(c), None) if !c.is_alphanumeric())
+    };
+    let first = column(0);
+    if !first.is_empty() && first.iter().all(bullet) {
+        return false;
+    }
     if columns == 2 {
         let labels = |texts: &[String]| !texts.is_empty() && texts.iter().all(|t| is_label(t));
         if labels(&column(0)) || is_contents(&column(1)) {
@@ -959,7 +985,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V5.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V6.to_string(),
     }))
 }
 
@@ -1104,13 +1130,72 @@ mod tests {
         }
     }
 
+    /// **A row with cells missing is a row at the table's pitch** (`-v6`): an invoice's item with no
+    /// quantity, 16 points under the row above like every other row, stays its own row; the second
+    /// line of a label, opening lower-case, still continues the row above.
+    #[test]
+    fn a_sparse_row_at_the_pitch_is_a_row_and_a_label_s_second_line_a_wrap() {
+        let items = |third: [TrackRun<'static>; 2]| -> Vec<TrackRun<'static>> {
+            let mut runs = vec![
+                run(100, 100, 10, "1"),
+                run(160, 100, 60, "Widget A"),
+                run(300, 100, 15, "15"),
+                run(400, 100, 30, "$60.00"),
+                run(100, 116, 10, "2"),
+                run(160, 116, 60, "Widget B"),
+                run(300, 116, 15, "12"),
+                run(400, 116, 30, "$48.00"),
+            ];
+            runs.extend(third);
+            runs.extend([
+                run(100, 148, 10, "4"),
+                run(160, 148, 60, "Widget D"),
+                run(300, 148, 15, "8"),
+                run(400, 148, 30, "$32.00"),
+            ]);
+            runs
+        };
+        let found = tables(&items([
+            run(100, 132, 10, "3"),
+            run(400, 132, 30, "$45.00"),
+        ]));
+        assert_eq!((found[0].rows, found[0].columns), (4, 4));
+        assert_eq!(texts(&found[0])[2], ["3", "", "", "$45.00"]);
+        let found = tables(&items([
+            run(100, 132, 40, "continued"),
+            run(400, 132, 30, "net"),
+        ]));
+        assert_eq!((found[0].rows, found[0].columns), (3, 4));
+        assert_eq!(
+            texts(&found[0])[1],
+            ["2continued", "Widget B", "12", "$48.00net"]
+        );
+    }
+
+    /// **A first column of bullets is a list, whatever stands beside it** (`-v6`): three columns —
+    /// bullets, items, and the lines of a paragraph set level with them — are no table.
+    #[test]
+    fn a_first_column_of_bullets_is_a_list_at_any_width() {
+        let runs: Vec<TrackRun<'static>> = (0..4)
+            .flat_map(|k| {
+                let y = 100 + 16 * k;
+                [
+                    run(100, y, 8, "•"),
+                    run(130, y, 120, "an item of the list"),
+                    run(320, y, 200, "a line of the paragraph beside it"),
+                ]
+            })
+            .collect();
+        assert!(tables(&runs).is_empty());
+    }
+
     #[test]
     fn right_aligned_columns_are_a_table() {
         let found = tables(&numbers());
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V5);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V6);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

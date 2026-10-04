@@ -256,6 +256,21 @@ above 0.3, most for a header the table had left out. All 2,078 pages:
 | Charts | 0.0031 | 0.0031 |
 | Visual grounding | 0.4677 | 0.4676 |
 
+### After `whitespace-tracks-v6` (2026-10-04)
+
+A row with cells missing stays a row at the table's pitch, and a first column of bullets is a list
+at any width (`docs/31-TABLE-TRACKS-SCOPE.md` §12). All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6627 | 0.6627 |
+| Semantic formatting | 0.4063 | 0.4063 |
+| Tables | 0.3667 | 0.3533 |
+| Charts | 0.0024 | 0.0031 |
+| Visual grounding | 0.4680 | 0.4677 |
+
+Charts fall on one page, a table whose region labels wrap onto a second line beside its 2022 rows.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

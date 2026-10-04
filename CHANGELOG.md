@@ -206,11 +206,11 @@ A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v5`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v6`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5–§11 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
-table for row order, were never pushed, and `-v3` and `-v4` were pushed and are in no release.
+and its §5–§12 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
+table for row order, were never pushed, and `-v3` to `-v5` were pushed and are in no release.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
   two or more cells opens a table whose tracks are those cells' extents, and lines below join it
@@ -258,6 +258,18 @@ table for row order, were never pushed, and `-v3` and `-v4` were pushed and are 
   unchanged, overall 37.43 -> 37.86; opendataloader-bench TEDS 0.4254 -> 0.4283 and NID 0.8835 ->
   0.8834, no table on its 158 documents without one; on the tree-stripped gate documents every
   table and its first four rows are as under `-v4`.
+- **A row with cells missing is a row at the table's pitch** (`-v6`): a line with a cell on the
+  first track and another beside it opens a row however close it sits, unless its first cell opens
+  lower-case — a label's second line continues the row above. An invoice's item with no quantity
+  was folded into the item above (`2 3 | Widget B Widget C`), and so were a control matrix's rows
+  that leave columns blank. **And a first column of nothing but bullets is a list at any width**:
+  a list's items beside the lines of another flow set level with them, which the split rows would
+  otherwise have let through. ParseBench tables 0.3533 -> 0.3667 (75 pages up, 15 down), visual
+  grounding 0.4677 -> 0.4680, content and formatting unchanged, charts 0.0031 -> 0.0024 — one chart
+  page's table, whose region labels wrap onto a second line beside its 2022 rows, is no longer read
+  — overall 37.86 -> 38.12; opendataloader-bench unchanged, no table on its 158 documents without
+  one; on the tree-stripped gate documents rows a table had folded together stand apart, and no
+  table is added.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

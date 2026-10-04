@@ -421,3 +421,35 @@ compared against a list of tables made before those documents were stripped agai
 2026-10-04, from a far earlier build; against `-v4` on the documents as they are, the change adds
 no table there.
 
+
+## 12. `whitespace-tracks-v6`: a row with cells missing, and a column of bullets (2026-10-04)
+
+**What `-v5` missed.** A line with fewer cells than the table's tracks, closer than a row and a
+half's pitch to the row above, was read as that row's wrapped second line. A table set at a tight
+pitch with empty cells had its sparse rows folded into the rows above: an invoice's items read
+`2 3 | Widget B Widget C | 15 | $4.00 | $60.00 $45.00`, and `nist-sp-800-161r1`'s control matrix
+read `MA-5(4) MA-6` as one control wherever a row left a column blank.
+
+**The change.** A line with a cell on the first track and another beside it opens a row however
+close it sits — a first column is where a row names itself — unless its first cell opens
+lower-case, as a label's second line does. A line with no first cell, or a single cell, closer
+than a row and a half's pitch, is still a wrap. Split rows also let a list through: a first column
+of bullets beside its items and the lines of the next column's paragraph, three rows of three. So
+a grid whose first column is nothing but bullets — single characters, none a letter or a digit —
+is no table at any width, as a two-column one already was not.
+
+Measured on ParseBench, against `-v5`'s tables 0.3533 and visual grounding 0.4677: the sparse row
+alone 0.3667 and 0.4675 — `lm555`'s feature list beside its description, and two pages like it,
+read as tables; with the bullet column 0.3667 and 0.4680. The lower-case clause moved no ParseBench
+score and is kept for the wrapped labels of statements, which the gate corpus holds.
+
+**Measured with the shipped build**, all 2,078 pages: ParseBench tables **0.3533 → 0.3667**,
+75 pages up and 15 down; visual grounding 0.4677 → 0.4680; content faithfulness and semantic
+formatting unchanged; charts 0.0031 → 0.0024 — the table on
+`(Web_version)_E-Government_Survey_2024_1392024_p63`, whose region labels wrap onto a second line
+level with each region's 2022 row, is no longer read, the wrapped label now opening a row of its
+own; overall 37.86 → 38.12. opendataloader-bench unchanged on all three measures, no table on
+any of its 158 documents without one. On the tree-stripped gate documents no table is added, and
+the tables that change are rows folded together under `-v5` standing apart: `MA-5(4)` and `MA-6`,
+`AC-17` and `AC-17(6)`, `PT-04`'s consent rows.
+
