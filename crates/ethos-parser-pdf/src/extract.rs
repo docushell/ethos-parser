@@ -253,6 +253,38 @@ fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
     }
 }
 
+/// The page's runs as the tracks and chart rules read them: each run's origin, em and measured box
+/// — its extent ending at its last inked character — and whether a table already holds its origin.
+fn rule_runs<'a>(
+    runs: &'a [crate::nodes::TextRun],
+    ems: &[Option<i64>],
+    ink_ends: &[Option<i64>],
+    tables: &[crate::tables::DetectedTable],
+) -> Vec<crate::tracks::TrackRun<'a>> {
+    runs.iter()
+        .zip(ems)
+        .zip(ink_ends)
+        .map(|((r, em), ink_end)| {
+            let (x, y) = (r.locator.origin_x, r.locator.origin_y);
+            crate::tracks::TrackRun {
+                x,
+                y,
+                em: *em,
+                rect: r.geometry.measured().map(|b| crate::tables::QuantRect {
+                    x0: b.x0(),
+                    y0: b.y0(),
+                    x1: ink_end.unwrap_or(b.x1()),
+                    y1: b.y1(),
+                }),
+                text: r.text.as_str(),
+                claimed: tables
+                    .iter()
+                    .any(|t| x >= t.rect.x0 && x < t.rect.x1 && y >= t.rect.y0 && y < t.rect.y1),
+            }
+        })
+        .collect()
+}
+
 /// A page's candidate heading lines: each line's run indices in the final order, and the line
 /// reduced to what the verdict needs (decision #29).
 /// The advance of a run's trailing whitespace, in the units of `per_code` — the run's advance per
@@ -945,29 +977,7 @@ fn extract_page(
         if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V6
             && no_author_structure(structure.as_ref())
         {
-            let track_runs: Vec<crate::tracks::TrackRun<'_>> = runs
-                .iter()
-                .zip(&ems)
-                .zip(&ink_ends)
-                .map(|((r, em), ink_end)| {
-                    let (x, y) = (r.locator.origin_x, r.locator.origin_y);
-                    crate::tracks::TrackRun {
-                        x,
-                        y,
-                        em: *em,
-                        rect: r.geometry.measured().map(|b| crate::tables::QuantRect {
-                            x0: b.x0(),
-                            y0: b.y0(),
-                            x1: ink_end.unwrap_or(b.x1()),
-                            y1: b.y1(),
-                        }),
-                        text: r.text.as_str(),
-                        claimed: tables.iter().any(|t| {
-                            x >= t.rect.x0 && x < t.rect.x1 && y >= t.rect.y0 && y < t.rect.y1
-                        }),
-                    }
-                })
-                .collect();
+            let track_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
             for table in crate::tracks::detect(page_number, &track_runs, &mut alloc)? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
@@ -1012,6 +1022,33 @@ fn extract_page(
                     if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                         tables.push(table);
                     }
+                }
+            }
+        }
+
+        // Decision #42. Then a bar chart's printed labels, as its table
+        // (`docs/32-CHART-LABELS-SCOPE.md`): on the runs no table above holds, under the tracks
+        // rule's gate, and kept only where it overlaps no table already found.
+        if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V1
+            && no_author_structure(structure.as_ref())
+        {
+            let mut bars = Vec::with_capacity(interp.filled.len());
+            for f in &interp.filled {
+                let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
+                let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
+                bars.push(crate::charts::Bar {
+                    rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
+                    fill: f.fill,
+                });
+            }
+            let q = f64::from(QUANTUM_PER_POINT);
+            let page_area = (geom.display_width * q) as i128 * (geom.display_height * q) as i128;
+            let chart_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            for table in
+                crate::charts::detect(page_number, &chart_runs, &bars, page_area, &mut alloc)?
+            {
+                if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
+                    tables.push(table);
                 }
             }
         }

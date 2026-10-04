@@ -208,9 +208,10 @@
         "unruled",
         "stroke_ruled",
         "tagged",
-        "tracks"
+        "tracks",
+        "charts"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24 and five since decision #38: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38 and six since decision #42: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -231,6 +232,10 @@
         "tracks": {
           "type": "string",
           "description": "Version id of the rule that infers grids from the whitespace across a table's rows (decision #38). `whitespace-tracks-v6`. A line splits into cells where its ink leaves a gap wider than one rendered em, each cell ending at its last inked character, except after a currency sign set alone, and a superscript joins the line it is raised on; a line of two or more cells opens a table whose tracks are those cells' extents, and lines below join it while their cells sit on the tracks by centre, left edge or right edge, each track growing to hold every full row's cell. Rows at a steady pitch, written row by row in the content stream unless the grid is three rows by three columns or more with a column of numbers and no column of running text (a third or more of its cells opening lower-case) whose columns do not divide into two groups each written row by row; and again inside each of a page's columns (the reading-order rule's first vertical cut) where one of them is prose; two rows only with no empty cell, standing apart from the lines around them under a header-like first row; two columns only with four rows and neither a first column of list labels nor a last column of rising page numbers; no grid whose first column is nothing but bullets. A line with a cell on the first track and another beside it is a row at any gap unless its first cell opens lower-case. Above an accepted table, the lines each within a row and a half's pitch of the line below, every cell on a track clear of its neighbours, under thirty characters and repeating no value its column holds, join as its first row where they name more than half its tracks. Runs last, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its runs' text."
+        },
+        "charts": {
+          "type": "string",
+          "description": "Version id of the rule that reads a bar chart's printed labels back as its table (decision #42). `bar-labels-v1`. Bars are rectangles the page filled in a known colour that is not white; columns are bars of one width set end to end in colours that differ; a chart is two or more columns on one base, of one width, side by side, its categories each column or each period of repeating colours. A value is the one number on a bar's segment or just past a single bar's end, a number two cells could read filling neither; a category the one label at the column's base, with the lines it wraps onto, never a number but a year, a label opening with a value, a line of prose or a label set on a bar; a series' name the one label beside a legend swatch of its colour near the chart and nearer it than other bars of that colour, or a one-colour chart's one-line title. A table only where the numbers agree with the bars in order and six bars in ten of a series carry one, no label read twice and no run in two tables; a value is never read off a bar's length and an empty cell is not emitted. Runs after `tracks`, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its label's runs."
         }
       }
     },
@@ -487,6 +492,7 @@
       "reading_order_rule": "gutter-columns-v4",
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
+        "charts": "bar-labels-v1",
         "ruled": "ruled-rects-v7",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",

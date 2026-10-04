@@ -142,6 +142,40 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A bar chart's printed labels, read as its table (decision #42)
+
+A new profile field, `table_detection.charts`, `bar-labels-v1` (the office profiles name it
+`not-run-for-this-format`), so `profile_sha256` moves. `docs/32-CHART-LABELS-SCOPE.md` is the rule.
+
+- **On a document that declares no author structure, a bar chart that prints its numbers yields a
+  table** in `tables`, under `detection_rule` `bar-labels-v1`: a header row of the series' names,
+  then a row per category. A bar is a rectangle the page filled in a known colour; its value is the
+  one number on it or just past its end, its category the one label at its base, its series its
+  colour — named by the one label beside a legend swatch of that colour near the chart, or a
+  one-colour chart's one-line title. Grouped bars (colours repeating per category) and stacked bars
+  (segments of different colours end to end) give a column per series.
+- **A table only where the numbers agree with the bars in order** — a bar a tenth longer never
+  carries a smaller number — and a series' numbers are on six of its bars in ten or more. No label
+  is read twice and no run is in two tables. **A value is never read off a bar's length**: a cell
+  with nothing printed is not emitted.
+- **Each cell is its label's runs**, their text concatenated; the table's cells are labels where the
+  page set them, so its `locator_check` is `NotApplicable` with that reason, as a tagged table's is.
+  The Markdown and HTML projections emit it where its first run falls in reading order, its runs
+  inside it and nowhere else.
+- **The content-stream interpreter carries the fill colour** (`g`, `rg`, `k`, `sc`, `scn`, reset by
+  `cs`, saved by `q`) and records each filled rectangle with it. Operands that are not numbers, or a
+  pattern, set a colour this reader does not know, and no page that parsed before stops parsing.
+  Nothing else reads the colour; the ruled-table rule's rectangles are unchanged.
+- **Measured** on ParseBench, with the benchmark's own scorer: charts 0.0024 -> 0.0942 (overall
+  38.12 -> 39.96), content, formatting, tables and visual grounding unchanged; 330 chart cells agree
+  with its ground truth, and the 5 that do not are two errors in that ground truth and three rules
+  about another chart on the same page. On opendataloader-bench TEDS is unchanged, every cell is its
+  runs' text, and NID 0.8834 -> 0.8819 and MHS 0.5465 -> 0.5458 fall on the three documents whose
+  charts became tables, because their ground truth keeps a chart's labels as loose lines. On the
+  eight tree-stripped gate documents no chart table, and every other table unchanged.
+- **Measured and not taken**: a linear fit of the numbers to the bars' lengths (charts are rarely
+  drawn to scale; it refused true charts), and line charts read from markers and polylines (+0.002).
+
 ### Page furniture: running heads and folios (decision #41)
 
 A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles name it

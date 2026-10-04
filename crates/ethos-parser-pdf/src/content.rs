@@ -34,7 +34,7 @@ use std::sync::Arc;
 use crate::fonts::Font;
 use crate::form_xobjects::{Form, FormResolver, Lookup, MAX_FORM_DEPTH};
 use crate::ops::Operator;
-use crate::text_state::{GraphicsState, Matrix, TextState};
+use crate::text_state::{Fill, GraphicsState, Matrix, TextState};
 
 /// How much a `TJ` adjustment must open a gap before it counts as a word space.
 ///
@@ -247,6 +247,19 @@ impl PathRect {
     }
 }
 
+/// One axis-aligned rectangle a page **filled**, and the colour it filled it with (decision #42).
+///
+/// Also in [`Interpreter::rects`], which holds every painted rectangle whatever painted it: this is
+/// the same evidence with the one fact a chart's bars are told apart by, kept beside it so the
+/// ruled-table rule reads exactly what it read before.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FilledRect {
+    /// The rectangle, in user space.
+    pub rect: PathRect,
+    /// The fill colour in force when it was painted.
+    pub fill: Fill,
+}
+
 /// One open marked-content sequence (v1-S3).
 ///
 /// v0 tracked only the id, which was enough to copy an `/MCID` onto a run and not enough for
@@ -307,6 +320,9 @@ pub struct Interpreter<'a> {
     /// Only **painted** subpaths land here. A path built and then discarded with `n`, or used
     /// solely as a clip, drew no ink and is not a ruling line.
     pub rects: Vec<PathRect>,
+    /// The rectangles of [`Interpreter::rects`] a fill painted, each with its fill colour
+    /// (decision #42). A rectangle only stroked is not here: an outline is not a bar.
+    pub filled: Vec<FilledRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
     /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
@@ -395,6 +411,7 @@ impl<'a> Interpreter<'a> {
             text_drawn_since_placement: false,
             undecodable: Vec::new(),
             rects: Vec::new(),
+            filled: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
             pending: Vec::new(),
@@ -708,8 +725,16 @@ impl<'a> Interpreter<'a> {
             // Line and colour state:
             LineWidth | LineCap | LineJoin | MiterLimit | DashPattern | RenderingIntent
             | Flatness | ExtGState => {}
-            StrokeColorSpace | FillColorSpace | StrokeColor | StrokeColorN | FillColor
-            | FillColorN | StrokeGray | FillGray | StrokeRgb | FillRgb | StrokeCmyk | FillCmyk => {}
+            StrokeColorSpace | StrokeColor | StrokeColorN | StrokeGray | StrokeRgb | StrokeCmyk => {
+            }
+            // Decision #42: the fill colour, which a chart's bars are told apart by. Operands that
+            // are not numbers set a colour this reader does not know rather than stopping the parse:
+            // a page that parsed before still parses. Naming a space resets the colour to one not
+            // yet known.
+            FillGray | FillRgb | FillCmyk | FillColor | FillColorN => {
+                self.gs.fill = crate::text_state::Fill::of(operands)
+            }
+            FillColorSpace => self.gs.fill = crate::text_state::Fill::UNKNOWN,
             // --- path construction: interpreted as of v1-S1 ---------------------------------
             //
             // These were acknowledged-skips through v0.1. A ruled table is a table the document
@@ -766,6 +791,11 @@ impl<'a> Interpreter<'a> {
             | CloseFillStroke
             | CloseFillStrokeEvenOdd => {
                 self.flush_subpath();
+                if !matches!(op, Stroke | CloseStroke) {
+                    let fill = self.gs.fill;
+                    self.filled
+                        .extend(self.pending.iter().map(|&rect| FilledRect { rect, fill }));
+                }
                 self.rects.append(&mut self.pending);
                 self.segments.append(&mut self.pending_segments);
             }
@@ -1429,6 +1459,46 @@ mod tests {
         let r = i.rects[0];
         assert!(approx_eq(r.x0, 40.0) && approx_eq(r.y0, 80.0));
         assert!(approx_eq(r.x1, 140.0) && approx_eq(r.y1, 120.0));
+    }
+
+    #[test]
+    fn a_filled_rectangle_carries_the_fill_it_was_painted_in() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0 0 10 10 re f 0.2 0.4 0.6 rg 20 0 10 10 re f q 1 g 40 0 10 10 re f Q 60 0 10 10 re B \
+             80 0 10 10 re S",
+        ))
+        .unwrap();
+
+        let fills: Vec<Fill> = i.filled.iter().map(|f| f.fill).collect();
+        let rgb = Fill {
+            components: [200, 400, 600, 0],
+            count: 3,
+        };
+        let white = Fill {
+            components: [1000, 0, 0, 0],
+            count: 1,
+        };
+        // Black until set; `Q` restores the colour `q` saved; a stroke alone paints no bar.
+        assert_eq!(fills, vec![Fill::BLACK, rgb, white, rgb]);
+        assert_eq!(
+            i.rects.len(),
+            5,
+            "every painted rectangle is still a ruled-table rectangle"
+        );
+        assert!(white.is_white() && !rgb.is_white());
+    }
+
+    #[test]
+    fn a_fill_this_reader_cannot_read_matches_nothing() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("/P0 scn 0 0 10 10 re f /CS0 cs 0 0 10 10 re f"))
+            .unwrap();
+        assert!(i.filled.iter().all(|f| f.fill == Fill::UNKNOWN));
+        assert!(!Fill::UNKNOWN.same(Fill::UNKNOWN));
+        assert!(Fill::BLACK.same(Fill::BLACK));
     }
 
     #[test]

@@ -396,7 +396,7 @@ fn prose(runs: &[TrackRun<'_>], column: &[usize]) -> bool {
 ///
 /// **The box, not the pen advance**, because a document may state a zero advance for every glyph
 /// and draw the glyphs at their font program's widths — the box is measured from what is drawn.
-fn upright(run: &TrackRun<'_>) -> bool {
+pub(crate) fn upright(run: &TrackRun<'_>) -> bool {
     if run.text.trim().is_empty() {
         return true;
     }

@@ -115,20 +115,94 @@ impl Matrix {
     }
 }
 
-/// Graphics state that matters to text placement.
+/// Graphics state that matters to text placement, and the fill colour a chart's bars are told
+/// apart by.
 ///
-/// Colour, line width and dash patterns are deliberately absent: they cannot move a glyph.
+/// Line width and dash patterns are deliberately absent: they cannot move a glyph and no rule
+/// reads them. The fill colour is here since decision #42: a chart's series is the bars painted in
+/// one colour, and its legend names that colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GraphicsState {
     /// The current transformation matrix.
     pub ctm: Matrix,
+    /// The colour the next fill paints in.
+    pub fill: Fill,
 }
 
 impl Default for GraphicsState {
     fn default() -> Self {
         Self {
             ctm: Matrix::IDENTITY,
+            fill: Fill::BLACK,
         }
+    }
+}
+
+/// A fill colour as the content stream set it (decision #42): its components in thousandths, and
+/// how many there are — one for a gray, three for an RGB, four for a CMYK, the space's own count
+/// for a colour space named with `cs`.
+///
+/// Compared, never converted: two bars are one series when the page painted them with the same
+/// operands. `count` 0 is a colour this reader does not know — a pattern, or a space just named
+/// and not yet given a colour — and matches nothing, not even itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Fill {
+    /// The components, in thousandths, unused ones zero.
+    pub components: [i32; 4],
+    /// How many components the colour has; 0 when it is unknown.
+    pub count: u8,
+}
+
+impl Fill {
+    /// The fill the graphics state starts with: DeviceGray black (32000-1 Table 52).
+    pub const BLACK: Fill = Fill {
+        components: [0; 4],
+        count: 1,
+    };
+
+    /// A colour this reader does not know.
+    pub const UNKNOWN: Fill = Fill {
+        components: [0; 4],
+        count: 0,
+    };
+
+    /// The colour `g`, `rg`, `k`, `sc` or `scn` sets: one to four numbers, or
+    /// [`Fill::UNKNOWN`] for anything else — a pattern's name, or operands that are not numbers.
+    pub fn of(operands: &[lopdf::Object]) -> Fill {
+        let mut components = [0; 4];
+        if operands.is_empty() || operands.len() > 4 {
+            return Fill::UNKNOWN;
+        }
+        for (slot, operand) in components.iter_mut().zip(operands) {
+            let value = match operand {
+                lopdf::Object::Integer(i) => *i as f64,
+                lopdf::Object::Real(r) => f64::from(*r),
+                _ => return Fill::UNKNOWN,
+            };
+            if !value.is_finite() {
+                return Fill::UNKNOWN;
+            }
+            *slot = (value * 1000.0).round().clamp(-1e9, 1e9) as i32;
+        }
+        Fill {
+            components,
+            count: operands.len() as u8,
+        }
+    }
+
+    /// Whether this is white paper's colour: gray or RGB at full value, or CMYK with no ink.
+    pub fn is_white(self) -> bool {
+        let used = &self.components[..usize::from(self.count)];
+        match self.count {
+            1 | 3 => used.iter().all(|&c| c >= 970),
+            4 => used.iter().all(|&c| c <= 30),
+            _ => false,
+        }
+    }
+
+    /// Whether two bars painted in these colours are one series: the same known colour.
+    pub fn same(self, other: Fill) -> bool {
+        self.count != 0 && self == other
     }
 }
 

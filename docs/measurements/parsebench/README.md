@@ -271,6 +271,24 @@ at any width (`docs/31-TABLE-TRACKS-SCOPE.md` §12). All 2,078 pages:
 
 Charts fall on one page, a table whose region labels wrap onto a second line beside its 2022 rows.
 
+### After decision #42 (2026-10-04)
+
+`bar-labels-v1` reads a bar chart's printed labels back as its table
+([`32-CHART-LABELS-SCOPE.md`](../../32-CHART-LABELS-SCOPE.md)). All 2,078 pages:
+
+| Dimension | Score | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6627 | 0.6627 |
+| Semantic formatting | 0.4063 | 0.4063 |
+| Tables | 0.3667 | 0.3667 |
+| Charts | 0.0942 | 0.0024 |
+| Visual grounding | 0.4680 | 0.4680 |
+
+Chart tables on 91 of 566 chart pages; 330 of their cells agree with the ground truth, and the 5 that
+do not are two errors in it — a value the chart prints as 3.6 named 4.5, a rule that omits which of
+two panels it means — and three rules about another chart on the same page. No chart table on any
+table, text or layout page but the charts among them.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
