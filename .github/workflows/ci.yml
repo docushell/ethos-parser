@@ -97,7 +97,7 @@ jobs:
       # is here only to preinstall a toolchain and the rustfmt/clippy components. Naming 1.88.0
       # explicitly keeps the two in agreement instead of installing `stable` and relying on
       # rustup to quietly fetch 1.88.0 afterwards.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
           components: rustfmt, clippy
@@ -384,7 +384,7 @@ jobs:
 
       # The two grep criteria carry `rust: false`: they scan source text and need no compiler,
       # so they skip the toolchain and the cache entirely and finish in seconds.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         if: matrix.rust
         with:
           toolchain: "1.88.0"
@@ -466,7 +466,7 @@ jobs:
           path: ethos-oracle
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
@@ -535,7 +535,7 @@ jobs:
           path: ethos-oracle
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
@@ -603,7 +603,7 @@ jobs:
           path: ethos-oracle
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
@@ -713,7 +713,7 @@ jobs:
       # did not, so pinning the SHA alone would leave no toolchain named and the action
       # would fall back to `rust-toolchain.toml` — silently building this fuzz job on
       # stable 1.88, which `cargo-fuzz` cannot use. The input is therefore stated.
-      - uses: dtolnay/rust-toolchain@be39649afda95dbf70f87cce95f68b8d5797b296 # nightly branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # nightly branch, 2026-09-24
         with:
           toolchain: nightly
 
@@ -807,7 +807,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
@@ -840,7 +840,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
       - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
@@ -952,7 +952,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Installed and asserted as `check` does, for the reasons given there.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
           components: rustfmt, clippy
@@ -1072,7 +1072,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
