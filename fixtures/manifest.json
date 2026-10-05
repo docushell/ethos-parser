@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 64,
+    "engine_owned": 65,
     "gate": 8
   },
   "fixtures": [
@@ -316,6 +316,15 @@
       "sha256": "sha256:a83905e9a53a9c4c0f30465e051d085f3082a7235c03d109e9885b1051dad824",
       "owner": "engine",
       "notes": "Decision #46 golden (`figure-regions-v1`). A bar chart DRAWN with paths \u2014 two stroked axes, three filled bars and a stroked curve, six paths that touch \u2014 inside a 200x140 clip that `n` ends without painting (a reader that kept its box would widen the chart's), beside a lone stroked rule 30 points above and a line of text below. Expect exactly one figure region boxed (4000, 5000, 20000, 16000), the curve's control point its top: the chart, not the rule (a cluster of one path), not the clip (never painted), and with every run still in the text. No fixture before this one painted a curve, so the curve-box path was untested."
+    },
+    {
+      "id": "units-contents-list",
+      "root": "engine",
+      "group": "engine",
+      "path": "units-contents-list/document.pdf",
+      "sha256": "sha256:85dc69acefeba746cf25d1480365f31a9358e86f9403d894f7339106a8bbc887",
+      "owner": "engine",
+      "notes": "`line-units-v3` golden. A heading set on two lines at 16 points, whose second line's first word would fit twice over after its first; a paragraph of three lines its measure broke; then a contents list of four entries set without markers, 12 points apart, each ending short of the list's widest by less than ten line heights \u2014 so `line-units-v2` read the four as one unit. Expect layout units 1, 1, 2, 2, 2, 3, 4, 5, 5: the heading whole (a heading unit is not cut), the paragraph whole, and the list cut before `Cash` and `Tax`, whose first words fit twice over after the entry above, and not before `Notes`, which does not. No fixture before this one had an entry ending short by less than ten heights, so the hard-break cut had no document behind it."
     },
     {
       "id": "both-table-rules",

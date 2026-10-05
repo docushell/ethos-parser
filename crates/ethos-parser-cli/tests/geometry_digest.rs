@@ -405,6 +405,10 @@ const PINNED: &[(&str, &str)] = &[
         "sha256:93e477cb097f9608e911681fd6ce6c0b2744ca3b3ce6ad72edb51ab827149a58",
     ),
     (
+        "engine/units-contents-list/document.pdf",
+        "sha256:29008c803789432d8e4d837290b0b68c285340a93132a1879e288d3d7ae99485",
+    ),
+    (
         "engine/unruled-near-miss/document.pdf",
         "sha256:c8da07dede912bfa990917d6135b720afacbe77d43fbcbab7750c3ba7de21ccb",
     ),

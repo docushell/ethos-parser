@@ -906,6 +906,25 @@ pub const LAYOUT_UNIT_RULE_V1: &str = "line-units-v1";
 /// formatting unchanged.
 pub const LAYOUT_UNIT_RULE_V2: &str = "line-units-v2";
 
+/// The layout-unit rule's third pass: **a line its author broke early ends its unit**.
+///
+/// **What `-v2` missed.** Its cut reads a piece ending ten of its heights short of its unit's
+/// right edge, which a contents list, a column of labels or a list set without markers rarely
+/// does: their lines end short by a word or two, so a unit held several of the ground truth's
+/// items and matched none — 1,274 of the `Text` elements ParseBench's visual grounding failed had a
+/// predicted item more than half as tall again as they were.
+///
+/// **The change.** After `-v2`'s cuts, a unit of body text is also cut before a line whose first
+/// word, with the space before it, would have fit twice over between where the line above ends and
+/// the unit's right edge — its widest piece's. The measure did not break that line; its author
+/// did. The first word's width is read at its own piece's width per character. A heading unit is
+/// not cut: a heading set on two lines stays one. Units stay where, never what.
+///
+/// **Measured** before it shipped, as a split of the adapter's items and then in the engine
+/// (`docs/measurements/parsebench/README.md`): visual grounding 0.4824 → 0.4933, content and
+/// formatting unchanged on every page.
+pub const LAYOUT_UNIT_RULE_V3: &str = "line-units-v3";
+
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
 /// edges**.
 ///
@@ -1876,7 +1895,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the layout-unit rule in force (decision #38).
     ///
-    /// See [`LAYOUT_UNIT_RULE_V2`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// See [`LAYOUT_UNIT_RULE_V3`]. Its own field for `heading_inference_rule`'s reason: it runs
     /// only where the document declares no structure, so folding it into a rule that runs on every
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
@@ -1981,7 +2000,7 @@ impl Default for Profile {
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V4.to_string(),
-            layout_unit_rule: LAYOUT_UNIT_RULE_V2.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V3.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
@@ -3185,7 +3204,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4262,11 +4281,15 @@ mod tests {
              `figure_rule`, `figure-regions-v1`, which reads the paths a page paints as one \
              drawing where they cluster, and `capabilities.figures`, true here. The office \
              profiles name the rule `not-run-for-this-format` and the capability false. Nothing \
-             else."
+             else.\n\n\
+             Moved for the layout-unit rule's third pass, `sha256:d6531270…` -> \
+             `sha256:d5e4f162…`: `layout_unit_rule` `line-units-v2` -> `-v3`, which cuts a unit \
+             of body text before a line whose first word would have fit twice over in the room \
+             the line above leaves. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:d6531270a6202890d82d925de9cb8a3549bcd8a9ec31a5ff10a5b5d26529010a"
+            "sha256:d5e4f162628b0462e7a40fec419b1aa55e29de06e22d06e4ead1ccdb9777d32f"
         );
     }
 

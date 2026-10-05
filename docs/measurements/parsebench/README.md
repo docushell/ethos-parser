@@ -385,6 +385,43 @@ they come within 3 points, are figure regions, and the adapter labels each one `
 which the ground truth boxes as the page header and a region now covers. No page moves on any other
 dimension. Overall 42.78.
 
+### After `line-units-v3` (2026-10-05)
+
+After decision #46, 1,274 of the `Text` elements visual grounding failed still had a predicted item
+more than half as tall again as they were: a contents list, a column of labels, a list set without
+markers, whose lines end short of their unit's widest by a word or two — too little for `-v2`'s ten
+line heights. The cut was measured first as a split of the adapter's items, where a line opens a new
+item when its first word, with its space, would have fit some number of times over between where the
+line above ends and the item's right edge:
+
+| first word must fit | `layout_element_rule_pass_rate` |
+| --- | ---: |
+| not cut (`-v2`) | 0.4708 |
+| once / **twice** / three / four / six times over | 0.4748 / **0.4822** / 0.4798 / 0.4780 / 0.4743 |
+
+In the engine, cutting every unit scored 0.4816 but parted two-line headings, which the projections
+join: formatting 0.4080 -> 0.4072 on three pages. Cutting body text only scored 0.4817 with content
+and formatting unchanged on every page, and is what ships.
+
+**Measured and not used: the same test the other way.** A line whose first word would *not* have
+fit, read as wrapped by its measure, joining the unit above across up to one line height of space
+(half is `-v1`'s): 0.4817 -> 0.4771, and across one and a half 0.4699. Separate paragraphs whose
+last line happens to run full joined, and lost more than wrapped lines gained.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4080 | 0.4080 |
+| Tables | 0.4833 | 0.4833 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.4933 | 0.4824 |
+
+72 grounding pages rise and 49 fall: 332 `Text` elements pass that did not and 87 no longer do.
+46 of the 49 lose one or two, mostly where the ground truth keeps a list's items as one element and
+the cut parts them — the worst `CSR-2024-25-Full-Report` p59, 0.59 -> 0.46. No page moves on
+any other dimension, and opendataloader-bench's 200 Markdown files are byte-identical. Overall
+43.00.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

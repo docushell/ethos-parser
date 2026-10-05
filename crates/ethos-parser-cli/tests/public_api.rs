@@ -320,6 +320,7 @@ const CORE: &[&str] = &[
     // Decision #38. The layout-unit rule id.
     "LAYOUT_UNIT_RULE_V1",
     "LAYOUT_UNIT_RULE_V2",
+    "LAYOUT_UNIT_RULE_V3",
     // Decision #41. The page-furniture rule id, and the edge a furniture run stands apart at.
     "FURNITURE_RULE_V1",
     "Furniture",

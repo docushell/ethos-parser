@@ -3489,6 +3489,35 @@ fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
     assert!(undecodable(&a).is_some(), "and counted");
 }
 
+/// **A line its author broke early ends its unit** (`line-units-v3`), end to end: a heading set on
+/// two lines stays one unit though its second line's first word would fit after its first, a
+/// paragraph its measure wrapped stays one, and a contents list set without markers, whose entries
+/// end short of the widest by less than ten line heights, is cut where the next entry's first word
+/// would have fit twice over — before `Cash` and `Tax`, and not before `Notes`.
+#[test]
+fn a_contents_list_is_cut_where_the_next_entry_would_have_fit() {
+    let a = extract_ok(engine_fx("units-contents-list"));
+    let units: Vec<(String, Option<u32>)> = runs(&a)
+        .iter()
+        .map(|r| (r.text.clone(), r.layout_unit))
+        .collect();
+    assert_eq!(
+        units.iter().map(|(_, u)| *u).collect::<Vec<_>>(),
+        [
+            Some(1),
+            Some(1),
+            Some(2),
+            Some(2),
+            Some(2),
+            Some(3),
+            Some(4),
+            Some(5),
+            Some(5)
+        ],
+        "{units:?}"
+    );
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.

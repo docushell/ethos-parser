@@ -142,6 +142,21 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line its author broke early ends its unit (`line-units-v3`)
+
+`layout_unit_rule` moves `line-units-v2` -> `line-units-v3`, so `profile_sha256` moves.
+
+- **A unit of body text is cut before a line whose first word, with its space, would have fit twice
+  over** between where the line above ends and the unit's widest piece's right edge: the measure did
+  not break that line, so its author did — the end of a paragraph, an entry of a contents list, an
+  item of a list set without markers. `-v2`'s cut read only a line ending ten of its heights short.
+  A heading unit is not cut, so the projections still join a heading set on two lines. New engine
+  fixture `units-contents-list`.
+- **Measured** on ParseBench: visual grounding 0.4824 -> 0.4933, 72 pages up and 49 down; content,
+  formatting, tables and charts unchanged on every page; overall 42.78 -> 43.00. opendataloader-bench
+  unchanged. The same test the other way — a wrapped line joining across a looser gap — was measured
+  and refused (0.4771).
+
 ### Figure regions: paths a page paints, read as one drawing (decision #46)
 
 The representation gains a tenth member, `figures`, so `schema_version` moves 0.7.0 -> 0.8.0 and

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! **Layout units: lines joined by their own spacing** — decision #38's paragraph-like blocks,
-//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V2`.
+//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V3`.
 //!
 //! A page's lines — the runs sharing one band, one `/Artifact` state and one baseline, the heading
 //! rule's own unit — are read in reading order, and a line joins the unit above it when
@@ -33,6 +33,12 @@
 //! unit's right edge. That is the last line of a paragraph set with no space after it, a list item
 //! set without a marker, and a label set apart from its value on one line. The unit's right edge
 //! is its widest piece's, so the cut is read once every line is in.
+//!
+//! **And a line its author broke early ends its unit** (`line-units-v3`): a unit of body text is
+//! cut before a line whose first word, with the space before it, would have fit
+//! [`HARD_BREAK_FIT`] times over between where the line above ends and the unit's right edge. The
+//! measure did not break that line, so its author did — the end of a paragraph, an entry of a
+//! contents list, an item of a list set without markers. A heading unit is not cut.
 //!
 //! **Where, never what.** A unit says these lines read as one piece of text; it is not the
 //! author's paragraph, and nothing reads a role from it — decision #19's rule for `region` and
@@ -59,7 +65,16 @@ pub(crate) struct Piece {
     pub rect: Option<Rect>,
     /// Its line's unit.
     pub unit: u32,
+    /// The width of a space and its first word, read at the piece's own width per character, or
+    /// 0 where it has no measured box or no text.
+    pub first_word: i64,
+    /// Its line is an inferred heading.
+    pub heading: bool,
 }
+
+/// A line's first word must fit this many times over in the room the line above leaves before its
+/// unit's right edge for the break between them to be the author's (`line-units-v3`).
+pub const HARD_BREAK_FIT: i64 = 2;
 
 /// One line as the rule reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +151,58 @@ pub(crate) fn cut_after_short_pieces(pieces: &[Piece]) -> Vec<u32> {
         start = end;
     }
     out
+}
+
+/// Each piece's unit once a line its author broke early closes its unit (`line-units-v3`):
+/// `pieces` in reading order and `units` their units under [`cut_after_short_pieces`]. The pieces
+/// of one unit are cut before a piece of body text set below the middle of the piece before it
+/// when its first word would have fit [`HARD_BREAK_FIT`] times over between where that piece ends
+/// and the unit's widest piece's right edge.
+pub(crate) fn cut_at_hard_breaks(pieces: &[Piece], units: &[u32]) -> Vec<u32> {
+    let mut out = vec![0; pieces.len()];
+    let mut n = 0u32;
+    let mut start = 0;
+    while start < pieces.len() {
+        let unit = units[start];
+        let end = (start..pieces.len())
+            .find(|&k| units[k] != unit)
+            .unwrap_or(pieces.len());
+        let edge = pieces[start..end]
+            .iter()
+            .filter_map(|p| p.rect)
+            .map(|r| r.2)
+            .max();
+        for k in start..end {
+            let hard = k > start
+                && !pieces[k].heading
+                && pieces[k].first_word > 0
+                && match (pieces[k - 1].rect, pieces[k].rect, edge) {
+                    (Some(before), Some(b), Some(edge)) => {
+                        2 * b.1 >= before.1 + before.3
+                            && before.2 + HARD_BREAK_FIT * pieces[k].first_word <= edge
+                    }
+                    _ => false,
+                };
+            if k == start || hard {
+                n = n.saturating_add(1);
+            }
+            out[k] = n;
+        }
+        start = end;
+    }
+    out
+}
+
+/// The width of a space and the first word of `text`, read at `width` per character of its trimmed
+/// text: the estimate [`cut_at_hard_breaks`] reads, 0 for a piece with no text.
+fn first_word(text: &str, width: i64) -> i64 {
+    let text = text.trim();
+    let chars = i64::try_from(text.chars().count()).unwrap_or(0);
+    let word = i64::try_from(text.chars().take_while(|c| !c.is_whitespace()).count()).unwrap_or(0);
+    if chars == 0 {
+        return 0;
+    }
+    (1 + word) * width / chars
 }
 
 /// A line's pieces, left to right: `runs` is each run's origin and, where it is inked and measured,
@@ -269,13 +336,21 @@ pub(crate) fn assign(page: &mut PageExtract) {
         for (rect, at) in pieces_of(&placed, height) {
             let runs: Vec<usize> = at.iter().map(|&k| line[k]).collect();
             let first = runs.iter().copied().min().unwrap_or(usize::MAX);
-            placed_pieces.push((first, Piece { rect, unit }, runs));
+            let text: String = runs.iter().map(|&i| page.runs[i].text.as_str()).collect();
+            let piece = Piece {
+                rect,
+                unit,
+                first_word: rect.map_or(0, |r| first_word(&text, r.2 - r.0)),
+                heading: read.heading.is_some(),
+            };
+            placed_pieces.push((first, piece, runs));
         }
     }
     placed_pieces.sort_unstable_by_key(|(first, _, _)| *first);
     let pieces: Vec<Piece> = placed_pieces.iter().map(|(_, piece, _)| *piece).collect();
     let members: Vec<&Vec<usize>> = placed_pieces.iter().map(|(_, _, runs)| runs).collect();
-    for (runs, unit) in members.into_iter().zip(cut_after_short_pieces(&pieces)) {
+    let short = cut_after_short_pieces(&pieces);
+    for (runs, unit) in members.into_iter().zip(cut_at_hard_breaks(&pieces, &short)) {
         for &i in runs {
             page.runs[i].layout_unit = Some(unit);
         }
@@ -361,6 +436,16 @@ mod tests {
         Piece {
             rect: Some((x0 * 100, top * 100, x1 * 100, (top + 10) * 100)),
             unit,
+            first_word: 0,
+            heading: false,
+        }
+    }
+
+    /// [`piece`], with a first word `word` points wide, its space included.
+    fn worded(top: i64, x0: i64, x1: i64, word: i64, unit: u32) -> Piece {
+        Piece {
+            first_word: word * 100,
+            ..piece(top, x0, x1, unit)
         }
     }
 
@@ -460,5 +545,78 @@ mod tests {
         ] {
             assert!(!opens_with_marker(prose), "{prose:?}");
         }
+    }
+
+    /// **A line its author broke early closes its unit** (`line-units-v3`): where its first word
+    /// would have fit twice over in the room the line above leaves before the unit's right edge.
+    /// The boundary is where it is stated.
+    #[test]
+    fn a_line_broken_early_closes_its_unit() {
+        // The unit's right edge is 500 points and the first line ends at 400: 100 points of room.
+        for (word, want) in [(50, [1, 2, 2]), (51, [1, 1, 1])] {
+            let pieces = [
+                piece(100, 72, 400, 1),
+                worded(112, 72, 500, word, 1),
+                worded(124, 72, 500, 30, 1),
+            ];
+            assert_eq!(
+                cut_at_hard_breaks(&pieces, &[1, 1, 1]),
+                want,
+                "a first word of {word} points"
+            );
+        }
+    }
+
+    /// A contents list set without markers: each entry ends short of the widest, and the next
+    /// entry's first word fits after it, so each is a unit of its own.
+    #[test]
+    fn a_list_set_without_markers_is_a_unit_per_entry() {
+        let pieces = [
+            worded(100, 72, 250, 20, 1),
+            worded(112, 72, 260, 20, 1),
+            worded(124, 72, 300, 20, 1),
+        ];
+        assert_eq!(cut_at_hard_breaks(&pieces, &[1, 1, 1]), [1, 2, 3]);
+    }
+
+    /// A heading set on two lines stays one, however short its first line.
+    #[test]
+    fn a_heading_is_not_cut() {
+        let mut pieces = [worded(100, 72, 200, 20, 1), worded(112, 72, 400, 20, 1)];
+        for p in &mut pieces {
+            p.heading = true;
+        }
+        assert_eq!(cut_at_hard_breaks(&pieces, &[1, 1]), [1, 1]);
+    }
+
+    /// Pieces on one line are the short-piece cut's to divide, not this one's: the second piece
+    /// does not sit below the middle of the first.
+    #[test]
+    fn pieces_on_one_line_are_not_cut_here() {
+        let pieces = [worded(100, 72, 120, 20, 1), worded(104, 400, 500, 20, 1)];
+        assert_eq!(cut_at_hard_breaks(&pieces, &[1, 1]), [1, 1]);
+        let below = [worded(100, 72, 120, 20, 1), worded(105, 400, 500, 20, 1)];
+        assert_eq!(cut_at_hard_breaks(&below, &[1, 1]), [1, 2]);
+    }
+
+    /// Units stay apart, and a piece with no measured first word cuts nothing.
+    #[test]
+    fn units_stay_apart_and_an_unmeasured_word_cuts_nothing() {
+        let pieces = [
+            worded(100, 72, 300, 20, 1),
+            worded(112, 72, 500, 0, 1),
+            worded(142, 72, 300, 20, 2),
+            worded(154, 72, 500, 20, 2),
+        ];
+        assert_eq!(cut_at_hard_breaks(&pieces, &[1, 1, 2, 2]), [1, 1, 2, 3]);
+    }
+
+    /// The first word's width is read at the piece's own width per character, its space included.
+    #[test]
+    fn the_first_word_is_read_at_the_piece_s_own_pitch() {
+        // Eleven characters over 1,100 centipoints: "Alpha" and its space are 600.
+        assert_eq!(first_word("Alpha Gamma", 1_100), 600);
+        assert_eq!(first_word("  Alpha Gamma  ", 1_100), 600);
+        assert_eq!(first_word("", 1_100), 0);
     }
 }

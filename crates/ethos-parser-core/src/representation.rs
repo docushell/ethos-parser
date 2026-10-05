@@ -1593,7 +1593,8 @@ pub struct TextRunAttributes {
     /// 1-based in reading order (decision #38): consecutive lines set no more than half a line
     /// apart, overlapping across, of one kind, the next opening no list marker — and since
     /// `line-units-v2` cut where a piece of text follows one that ends short, so one line's label
-    /// and value can be two units.
+    /// and value can be two units — and since `line-units-v3` before a body line whose first word
+    /// would have fit twice over after the line above, so a contents list is a unit per entry.
     ///
     /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
     /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a

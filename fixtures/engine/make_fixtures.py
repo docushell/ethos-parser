@@ -30,6 +30,10 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   unruled-near-miss          columns that align on two rows and miss on the third, so the
                              alignment rule must refuse rather than round them
                              together                                              [v1-S2]
+  units-contents-list        a paragraph wrapped by its measure above a contents list set without
+                             markers, its entries ending short by less than ten line heights:
+                             `line-units-v2` reads the list as one unit and `-v3` cuts it where
+                             the next entry's first word would have fit           [units-v3]
   figure-paths-drawn         a bar chart DRAWN with paths — two stroked axes, three filled bars
                              and a curve — under a page-sized clip, beside a lone stroked rule
                              and a line of text. One figure region, the chart's   [#46]
@@ -920,6 +924,31 @@ FIXTURES = {
         "BT /F1 8 Tf "
         "1 0 0 1 68 30 Tm (Q1) Tj 1 0 0 1 118 30 Tm (Q2) Tj 1 0 0 1 168 30 Tm (Q3) Tj "
         "1 0 0 1 40 10 Tm (Quarterly sales, drawn as paths.) Tj "
+        "ET"
+    ),
+    # `line-units-v3`'s golden. A heading set on two lines at 16 points, then a paragraph of three
+    # lines its measure broke, then a contents list of four entries set without markers, 12 points
+    # apart. The heading's second line opens with a word that would fit twice over after its
+    # first, `Annual report`, which ends short by less than ten of its heights — so only `-v3`'s
+    # cut could part them, and a heading unit is not cut.
+    # The paragraph's last line ends 145 points short of its edge, so `-v2` already cuts there; the
+    # entries end short of the list's widest by 40 to 65 points — under ten line heights, so `-v2`
+    # reads the four as one unit. `-v3` cuts before `Cash` and before `Tax`, whose first words
+    # fit twice over in that room, and not before `Notes`, which does not fit after `Tax ...`:
+    # units 1, 1 for the heading, 2, 2, 2, then 3, 4, 5, 5.
+    "units-contents-list": (
+        "BT /F1 16 Tf "
+        "1 0 0 1 40 222 Tm (Annual report) Tj "
+        "1 0 0 1 40 204 Tm (of the group and its accounts) Tj "
+        "ET "
+        "BT /F1 10 Tf "
+        "1 0 0 1 40 180 Tm (The engine reads the lines of a paragraph as one) Tj "
+        "1 0 0 1 40 168 Tm (unit where the measure broke them, and the next) Tj "
+        "1 0 0 1 40 156 Tm (line ends its unit.) Tj "
+        "1 0 0 1 40 126 Tm (Statement of profit and loss) Tj "
+        "1 0 0 1 40 114 Tm (Cash flow and working capital) Tj "
+        "1 0 0 1 40 102 Tm (Tax and the deferred tax position) Tj "
+        "1 0 0 1 40 90 Tm (Notes to the accounts and their schedules) Tj "
         "ET"
     ),
     "background-panel-not-a-grid": (
@@ -2054,6 +2083,7 @@ MEDIA = {
     "unruled-near-miss": (0, 0, 300, 200),
     "background-panel-not-a-grid": (0, 0, 240, 200),
     "figure-paths-drawn": (0, 0, 300, 200),
+    "units-contents-list": (0, 0, 300, 240),
     # v1-S8. Wide enough for four 60pt columns plus margins, tall enough for five baselines
     # and a row of headings above the topmost one.
     "stroke-ruled-worksheet": (0, 0, 280, 200),
