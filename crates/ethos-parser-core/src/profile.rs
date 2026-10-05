@@ -258,6 +258,17 @@ pub const TEXT_CODE_RULE_V2: &str = "declared-font-codes-v2";
 /// declared under `unmapped-codes-read-from-font`.
 pub const TEXT_CODE_RULE_V3: &str = "declared-font-codes-v3";
 
+/// [`TEXT_CODE_RULE_V3`] **with a `/ToUnicode` entry that names no character left unmapped
+/// instead of refusing the map** (decision #44).
+///
+/// `-v3` refused the whole document where one entry's destination was no character: an unpaired
+/// surrogate, or a `bfrange` stepping onto one — Tesseract writes `<0000> <FFFF> <0000>`, which
+/// steps through U+D800..DFFF, so every PDF it makes was refused. Now those codes alone stay
+/// unmapped; a run holding one is omitted and counted under `broken-font-encoding`, as any unmapped
+/// code's run is, and nothing is guessed for it. Hex that does not parse, a destination that is not
+/// whole code units, an inverted or truncated range still refuse the map.
+pub const TEXT_CODE_RULE_V4: &str = "declared-font-codes-v4";
+
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `ethos-parser-pdf` because the profile is `ethos-parser-core`'s and a rule id is
@@ -1946,7 +1957,7 @@ impl Default for Profile {
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: TEXT_CODE_RULE_V3.to_string(),
+            text_code_rule: TEXT_CODE_RULE_V4.to_string(),
             observation_rule: OBSERVATION_RULE_V3.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
@@ -3109,7 +3120,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v3","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v2","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4178,11 +4189,14 @@ mod tests {
              a rectangle one group paints twice as one. Nothing else.\n\n\
              Moved for the ruled rule's twelfth pass, `sha256:cb736455…` -> \
              `sha256:6d9ef715…`: `table_detection.ruled` `ruled-rects-v11` -> `-v12`, which \
-             leaves a group's decoration out of its grid. Nothing else."
+             leaves a group's decoration out of its grid. Nothing else.\n\n\
+             Moved for decision #44, `sha256:6d9ef715…` -> `sha256:9ed655a7…`: `text_code_rule` \
+             `declared-font-codes-v3` -> `-v4`, which leaves a `/ToUnicode` entry naming no \
+             character unmapped instead of refusing the map. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:6d9ef7153b10b989dfe7609f174408be3d7e68bfcc9f9fe8f51a6b067158814f"
+            "sha256:9ed655a7e84857480e02b8e511bbc9e409bea05d2bcd6f39fa09ce25c04c8561"
         );
     }
 

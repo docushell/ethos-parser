@@ -79,6 +79,12 @@ impl ToUnicode {
     /// [`EngineError::Malformed`] when a hex string is unparseable or a range is inverted.
     /// Refusing beats guessing: a mis-parsed `ToUnicode` produces text that looks right and is
     /// wrong, which is worse than no text at all.
+    ///
+    /// **An entry whose destination is no character leaves its codes unmapped** instead
+    /// (`declared-font-codes-v4`, decision #44): an unpaired surrogate, or a range stepping onto
+    /// one or past U+10FFFF — as Tesseract's `<0000> <FFFF> <0000>` steps through U+D800..DFFF.
+    /// Nothing is guessed for those codes: a run holding one is omitted and counted under
+    /// `broken-font-encoding`, as any unmapped code's run is, and the rest of the map is read.
     pub fn parse(bytes: &[u8]) -> Result<Self, EngineError> {
         let src = String::from_utf8_lossy(bytes);
         let tokens = tokenize(&src);
@@ -123,7 +129,9 @@ impl ToUnicode {
                         };
                         let code = hex_to_u32(&src_hex)?;
                         spend(1)?;
-                        map.insert(code, utf16be_hex_to_string(&dst_hex)?);
+                        if let Some(text) = utf16be_hex_to_string(&dst_hex)? {
+                            map.insert(code, text);
+                        }
                         i += 2;
                     }
                 }
@@ -173,7 +181,9 @@ impl ToUnicode {
                                             "bfrange array holds a non-hex entry",
                                         ));
                                     };
-                                    map.insert(code, utf16be_hex_to_string(&h)?);
+                                    if let Some(text) = utf16be_hex_to_string(&h)? {
+                                        map.insert(code, text);
+                                    }
                                     // At most `hi - lo + 1` ≤ 65 537 elements pass the check above.
                                     offset += 1;
                                     j += 1;
@@ -186,10 +196,15 @@ impl ToUnicode {
                                         "bfrange destination is not a hex string",
                                     ));
                                 };
-                                let base = utf16be_hex_to_string(&dst_hex)?;
-                                // The destination increments with the code, on its last scalar.
-                                for (n, code) in (lo..=hi).enumerate() {
-                                    map.insert(code, increment_last_scalar(&base, n as u32)?);
+                                // The destination increments with the code, on its last scalar;
+                                // a code whose destination is no character stays unmapped.
+                                if let Some(base) = utf16be_hex_to_string(&dst_hex)? {
+                                    for (n, code) in (lo..=hi).enumerate() {
+                                        if let Some(text) = increment_last_scalar(&base, n as u32)?
+                                        {
+                                            map.insert(code, text);
+                                        }
+                                    }
                                 }
                                 i += 3;
                             }
@@ -366,7 +381,7 @@ fn hex_to_u32(hex: &str) -> Result<u32, EngineError> {
 /// decodes to two scalars and the flag reads false on a run whose codes are not 1:1 with its
 /// characters. That field's own documentation says it is a comparison of counts and not a
 /// mapping; `the_empty_destination_offsets_a_ligature` in `extraction.rs` pins the case.
-fn utf16be_hex_to_string(hex: &str) -> Result<String, EngineError> {
+fn utf16be_hex_to_string(hex: &str) -> Result<Option<String>, EngineError> {
     if hex.len() % 4 != 0 {
         return Err(malformed(
             "ToUnicode destination is not a whole number of UTF-16 code units",
@@ -377,22 +392,25 @@ fn utf16be_hex_to_string(hex: &str) -> Result<String, EngineError> {
         .collect::<Result<_, _>>()
         .map_err(|_| malformed("ToUnicode destination is not hexadecimal"))?;
 
-    String::from_utf16(&units).map_err(|_| malformed("ToUnicode destination is not valid UTF-16"))
+    // An unpaired surrogate is no character: the entry maps nothing (`declared-font-codes-v4`).
+    Ok(String::from_utf16(&units).ok())
 }
 
-/// Add `n` to the final scalar of `base`, as `bfrange` requires.
-fn increment_last_scalar(base: &str, n: u32) -> Result<String, EngineError> {
+/// Add `n` to the final scalar of `base`, as `bfrange` requires — `None` where that lands on no
+/// character, a surrogate or past U+10FFFF (`declared-font-codes-v4`).
+fn increment_last_scalar(base: &str, n: u32) -> Result<Option<String>, EngineError> {
     if n == 0 {
-        return Ok(base.to_string());
+        return Ok(Some(base.to_string()));
     }
     let mut chars: Vec<char> = base.chars().collect();
     let Some(last) = chars.pop() else {
         return Err(malformed("bfrange destination is empty"));
     };
-    let next = char::from_u32(last as u32 + n)
-        .ok_or_else(|| malformed("bfrange destination runs past the Unicode range"))?;
+    let Some(next) = char::from_u32(last as u32 + n) else {
+        return Ok(None);
+    };
     chars.push(next);
-    Ok(chars.into_iter().collect())
+    Ok(Some(chars.into_iter().collect()))
 }
 
 #[cfg(test)]
@@ -555,6 +573,33 @@ end";
                 "{e}"
             );
         }
+    }
+
+    /// **Tesseract's identity map reads** (`declared-font-codes-v4`, decision #44): `<0000> <FFFF>
+    /// <0000>` steps through U+D800..DFFF, which are no characters; those codes stay unmapped and
+    /// every other code maps to itself.
+    #[test]
+    fn a_range_through_the_surrogates_maps_every_code_that_has_a_character() {
+        let src = b"begincmap\n1 beginbfrange\n<0000> <FFFF> <0000>\nendbfrange\nendcmap";
+        let m = ToUnicode::parse(src).unwrap();
+        assert_eq!(m.get(0x41), Some("A"));
+        assert_eq!(m.get(0xE000), Some("\u{E000}"));
+        assert_eq!((m.get(0xD800), m.get(0xDFFF)), (None, None));
+        assert_eq!(m.len(), 65_536 - 2_048);
+    }
+
+    /// An entry whose destination is an unpaired surrogate maps nothing, and its neighbours map.
+    #[test]
+    fn an_entry_whose_destination_is_no_character_maps_nothing() {
+        let src = b"begincmap\nbeginbfchar\n<01> <D800>\n<02> <0041>\nendbfchar\n\
+            beginbfrange\n<10> <11> [<DC00> <0042>]\n<20> <21> <D800>\nendbfrange\nendcmap";
+        let m = ToUnicode::parse(src).unwrap();
+        assert_eq!((m.get(0x01), m.get(0x02)), (None, Some("A")));
+        assert_eq!((m.get(0x10), m.get(0x11)), (None, Some("B")));
+        assert_eq!((m.get(0x20), m.get(0x21)), (None, None));
+        // A destination that is not a whole number of code units is still refused.
+        let odd = b"begincmap\nbeginbfchar\n<01> <004>\nendbfchar\nendcmap";
+        assert_eq!(ToUnicode::parse(odd).unwrap_err().code(), "malformed");
     }
 
     /// One code, two scalars. This is the ligature caveat at its source.

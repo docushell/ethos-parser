@@ -293,7 +293,7 @@
     "text_code_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES — this names how a string is divided before any table is consulted. `declared-font-codes-v3` (decision #43): `Q` restores the text state `q` saved, and a code the declared map leaves unmapped is read through the font's `/Differences` glyph names by the Adobe Glyph List specification's rules that need no list, or an embedded TrueType program's Unicode cmap and glyph names — never the base encoding's table, never a control or private-use value — each such run declared under `unmapped-codes-read-from-font`.",
+      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES — this names how a string is divided before any table is consulted. `declared-font-codes-v3` (decision #43): `Q` restores the text state `q` saved, and a code the declared map leaves unmapped is read through the font's `/Differences` glyph names by the Adobe Glyph List specification's rules that need no list, or an embedded TrueType program's Unicode cmap and glyph names — never the base encoding's table, never a control or private-use value — each such run declared under `unmapped-codes-read-from-font`. `declared-font-codes-v4` (decision #44): a `/ToUnicode` entry whose destination is no character — an unpaired surrogate, a range stepping onto one — leaves its codes unmapped instead of refusing the map.",
       "examples": [
         "declared-font-codes-v2"
       ]
@@ -500,7 +500,7 @@
         "unruled": "unruled-align-v1"
       },
       "text_box_rule": "advance-over-font-envelope-v1",
-      "text_code_rule": "declared-font-codes-v3",
+      "text_code_rule": "declared-font-codes-v4",
       "unicode_data_version": "std-unicode-16.0.0",
       "verifier": {
         "mode": "not_pinned"

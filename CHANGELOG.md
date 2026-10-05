@@ -142,6 +142,21 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A `/ToUnicode` entry that names no character (decision #44)
+
+`text_code_rule` moves `declared-font-codes-v3` -> `declared-font-codes-v4`, so `profile_sha256`
+moves.
+
+- **A `/ToUnicode` entry whose destination is no character leaves its codes unmapped** instead of
+  refusing the whole map: an unpaired surrogate, or a `bfrange` stepping onto one or past
+  U+10FFFF. Tesseract writes `<0000> <FFFF> <0000>`, which steps through U+D800..DFFF, so every
+  PDF it made was refused. A run holding such a code is omitted and declared under
+  `broken-font-encoding`, as any unmapped code's run is. Hex that does not parse, a destination
+  that is not whole UTF-16 code units, an inverted or truncated range still refuse the map.
+- **Measured** on ParseBench: four refused pages read — charts 0.1002 -> 0.1019, visual grounding
+  0.4707 -> 0.4708, nothing else moving; overall 42.51 -> 42.55. opendataloader-bench and the gate
+  documents: the same text, tables and limitations on all 208 documents.
+
 ### A grid's decoration, left out of it (`ruled-rects-v12`)
 
 `table_detection.ruled` moves `ruled-rects-v11` -> `ruled-rects-v12`, so `profile_sha256` moves.

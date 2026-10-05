@@ -362,6 +362,12 @@ paint of its own colour and a rule neither of whose ends meets another rectangle
 18 table pages rise and 1 falls (`SERFF_CA` p2069, 1.0 -> 0.94); no page falls on any other
 dimension. Overall 42.51.
 
+### After decision #44 (2026-10-05)
+
+`declared-font-codes-v4`: a `/ToUnicode` entry that names no character leaves its codes unmapped
+instead of refusing the map. Four refused pages read; charts 0.1002 -> 0.1019, visual grounding
+0.4707 -> 0.4708, every other dimension unchanged and no page falling. Overall 42.55.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
