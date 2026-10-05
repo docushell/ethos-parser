@@ -155,7 +155,7 @@ jobs:
       # selects 1.88.0; the action only preinstalls it, and naming the version keeps the two in
       # agreement. No rust-cache: a release is built cold from the pinned lockfile, and this
       # workflow runs rarely.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
