@@ -820,8 +820,10 @@ fn extract_page(
                 layout_unit: None,
                 inferred_heading: false,
                 inferred_heading_level: None,
-                // Decision #38: the typeface the document chose, as its font dictionary says.
-                bold: shown.font.bold,
+                // Decision #38: the typeface the document chose, as its font states it — and since
+                // `page-observations-v4` a run painted fill-then-stroke (rendering mode 2 or 6),
+                // which is how a writer with no bold face of a font draws its glyphs bold.
+                bold: shown.font.bold || matches!(shown.render_mode, 2 | 6),
                 italic: shown.font.italic,
                 script: None,
                 furniture: None,

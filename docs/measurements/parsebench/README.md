@@ -422,6 +422,28 @@ the cut parts them — the worst `CSR-2024-25-Full-Report` p59, 0.59 -> 0.46. No
 any other dimension, and opendataloader-bench's 200 Markdown files are byte-identical. Overall
 43.00.
 
+### After `page-observations-v4` (2026-10-05)
+
+A run's bold and italic are also read from the program its font embeds — `OS/2`'s weight class from
+600, or `head`'s macStyle where there is no `OS/2`, and the italic or oblique bit — and a run painted
+fill-then-stroke (rendering mode 2 or 6) is bold. Of the 960 `is_bold` rules whose text we drew but
+did not mark, 54 sat in fonts whose dictionary names no weight and whose program states one, and
+`text_simple__delinea` set all 26 of its bold labels fill-then-stroke.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4296 | 0.4080 |
+| Tables | 0.4833 | 0.4833 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.4933 | 0.4933 |
+
+17 formatting documents rise and none falls — the program alone 13, fill-then-stroke 5, measured
+apart — and no page moves on any other dimension. opendataloader-bench: MHS 0.5467 -> 0.5481, NID
+0.8839 -> 0.8838 across 12 documents, each a newly bold run gaining `**` or a newly bold title `#`,
+TEDS unchanged. The heading bounds of `docs/28-HEADINGS-SCOPE.md` §7.5 are where the owner accepted
+them. Overall 43.43.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

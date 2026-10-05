@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 65,
+    "engine_owned": 67,
     "gate": 8
   },
   "fixtures": [
@@ -325,6 +325,24 @@
       "sha256": "sha256:85dc69acefeba746cf25d1480365f31a9358e86f9403d894f7339106a8bbc887",
       "owner": "engine",
       "notes": "`line-units-v3` golden. A heading set on two lines at 16 points, whose second line's first word would fit twice over after its first; a paragraph of three lines its measure broke; then a contents list of four entries set without markers, 12 points apart, each ending short of the list's widest by less than ten line heights \u2014 so `line-units-v2` read the four as one unit. Expect layout units 1, 1, 2, 2, 2, 3, 4, 5, 5: the heading whole (a heading unit is not cut), the paragraph whole, and the list cut before `Cash` and `Tax`, whose first words fit twice over after the entry above, and not before `Notes`, which does not. No fixture before this one had an entry ending short by less than ten heights, so the hard-break cut had no document behind it."
+    },
+    {
+      "id": "font-program-bold",
+      "root": "engine",
+      "group": "engine",
+      "path": "font-program-bold/document.pdf",
+      "sha256": "sha256:09d5c2b7a41312bc4030b6bc4b6aca2edef8dffeeced8cf572f3b2bdb6dfd87b",
+      "owner": "engine",
+      "notes": "`page-observations-v4` program golden. One run in a TrueType font whose dictionary states no weight \u2014 no /FontWeight, no ForceBold, no style word in /BaseFont `AAAAAA+Face` \u2014 and whose embedded /FontFile2 is a one-table sfnt: `head`, macStyle bold bit set, no OS/2. Expect the run bold. Under `-v3`, which read the dictionary alone, it was not. No fixture before this one embedded a program that states its own style."
+    },
+    {
+      "id": "synthetic-bold-fill-stroke",
+      "root": "engine",
+      "group": "engine",
+      "path": "synthetic-bold-fill-stroke/document.pdf",
+      "sha256": "sha256:59fd145d2791a5896fabd79289a58aadbb66d0354a7e87032d9a124ea0e4e09a",
+      "owner": "engine",
+      "notes": "`page-observations-v4` rendering-mode golden. Four Helvetica runs shown in text rendering modes 0, 2, 1 and 6. Expect bold false, true, false, true: fill then stroke (2, and 6 which also clips) is how a writer with no bold face of a font draws one bold; a stroke alone (1) is an outline. No fixture before this one painted text in modes 1, 2 or 6."
     },
     {
       "id": "both-table-rules",

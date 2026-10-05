@@ -294,6 +294,7 @@
       "minLength": 1,
       "description": "Version id of the image and text-finding rule in force (v1-S6). Decides which `Do` calls become image nodes, how a painted rectangle is derived from the page's own matrix, and what counts as invisible or off-page text.",
       "examples": [
+        "page-observations-v4",
         "page-observations-v3"
       ]
     },
@@ -496,7 +497,7 @@
       "html_rule": "html-blocks-v12",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v12",
-      "observation_rule": "page-observations-v3",
+      "observation_rule": "page-observations-v4",
       "outline_rule": "outlines-v3",
       "page_budget": {
         "mode": "unlimited"

@@ -831,14 +831,16 @@ const BOLD_NAMES: [&str; 5] = ["Bold", "Black", "Heavy", "Semibold", "Demibold"]
 /// Style words a `/BaseFont` uses for a slanted face.
 const ITALIC_NAMES: [&str; 2] = ["Italic", "Oblique"];
 
-/// Whether a font declares itself bold and italic (`page-observations-v3`, decision #38).
+/// Whether a font declares itself bold and italic (`page-observations-v4`).
 ///
-/// Read from the font dictionary and nothing else: the descriptor's `/FontWeight` of 600 or more
-/// or its ForceBold flag (PDF 32000-1 Table 123, bit 19) for bold, its Italic flag (bit 7) for
-/// italic, and either one where the `/BaseFont` — the composite font's or its descendant's — holds
-/// a style word ([`BOLD_NAMES`], [`ITALIC_NAMES`]). Nothing is estimated from stem widths or glyph
-/// outlines. It is a statement about the typeface the document chose, and the projections render
-/// it as emphasis; it says nothing about why the author chose it.
+/// Read from the font dictionary: the descriptor's `/FontWeight` of 600 or more or its ForceBold
+/// flag (PDF 32000-1 Table 123, bit 19) for bold, its Italic flag (bit 7) for italic, and either one
+/// where the `/BaseFont` — the composite font's or its descendant's — holds a style word
+/// ([`BOLD_NAMES`], [`ITALIC_NAMES`]). **And since `-v4` from the program it embeds**
+/// ([`program_style`]): a subset font's dictionary often states no weight its program does. Nothing
+/// is estimated from stem widths or glyph outlines. It is a statement about the typeface the
+/// document chose, and the projections render it as emphasis; it says nothing about why the author
+/// chose it.
 fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool) {
     // Type 0 fonts hold their descriptor, and their real name, on the descendant.
     let descendant = resolve_array(doc, fd.get(b"DescendantFonts").ok())
@@ -862,11 +864,35 @@ fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool) {
         .filter_map(base_font_name)
         .collect();
     let named = |words: &[&str]| names.iter().any(|n| words.iter().any(|w| n.contains(w)));
+    let program = descriptor.as_ref().and_then(|d| {
+        resolve_stream(doc, d.get(b"FontFile2").ok())
+            .or_else(|| resolve_stream(doc, d.get(b"FontFile3").ok()))
+    });
+    // A program whose filters do not decode states nothing, as for its ink metrics.
+    let stated = program
+        .and_then(|s| crate::budget::decoded(&s, crate::budget::MAX_DECODED_BYTES).ok())
+        .and_then(|bytes| program_style(&bytes));
     let bold = flags & (1 << 18) != 0
         || number(b"FontWeight").is_some_and(|w| w >= 600.0)
-        || named(&BOLD_NAMES);
-    let italic = flags & (1 << 6) != 0 || named(&ITALIC_NAMES);
+        || named(&BOLD_NAMES)
+        || stated.is_some_and(|(bold, _)| bold);
+    let italic =
+        flags & (1 << 6) != 0 || named(&ITALIC_NAMES) || stated.is_some_and(|(_, italic)| italic);
     (bold, italic)
+}
+
+/// What an embedded TrueType or OpenType program states about its own style (`page-observations-v4`):
+/// bold where `OS/2` gives a weight class of 600 or more — or, with no `OS/2` table, where `head`'s
+/// macStyle sets its bold bit — and italic where either sets its italic or oblique bit. Read with
+/// `skrifa`, which prefers `OS/2` exactly so. `None` for a program `skrifa` does not open: a bare
+/// CFF or Type 1 one, or bytes that are no font.
+fn program_style(bytes: &[u8]) -> Option<(bool, bool)> {
+    let font = skrifa::FontRef::new(bytes).ok()?;
+    let attributes = skrifa::MetadataProvider::attributes(&font);
+    Some((
+        attributes.weight.value() >= 600.0,
+        !matches!(attributes.style, skrifa::attribute::Style::Normal),
+    ))
 }
 
 /// Whether the font's descriptor sets the Symbolic flag and not the Nonsymbolic one.
@@ -1241,6 +1267,130 @@ pub(crate) fn resolve_stream<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An sfnt holding `tables`, each a tag and its bytes: enough for `skrifa` to open.
+    fn sfnt(tables: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+        let count = tables.len() as u16;
+        let mut out = vec![0, 1, 0, 0];
+        out.extend_from_slice(&count.to_be_bytes());
+        out.extend_from_slice(&[0; 6]);
+        let mut offset = 12 + 16 * tables.len();
+        for (tag, table) in tables {
+            out.extend_from_slice(*tag);
+            out.extend_from_slice(&[0; 4]);
+            out.extend_from_slice(&(offset as u32).to_be_bytes());
+            out.extend_from_slice(&(table.len() as u32).to_be_bytes());
+            offset += table.len();
+        }
+        for (_, table) in tables {
+            out.extend_from_slice(table);
+        }
+        out
+    }
+
+    /// A `head` table with `mac_style` at its offset 44.
+    fn head(mac_style: u16) -> Vec<u8> {
+        let mut t = vec![0u8; 54];
+        t[0..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+        t[12..16].copy_from_slice(&0x5F0F_3CF5u32.to_be_bytes());
+        t[18..20].copy_from_slice(&1000u16.to_be_bytes());
+        t[44..46].copy_from_slice(&mac_style.to_be_bytes());
+        t
+    }
+
+    /// A version-0 `OS/2` table with its weight class at offset 4 and its selection flags at 62.
+    fn os2(weight: u16, selection: u16) -> Vec<u8> {
+        let mut t = vec![0u8; 78];
+        t[4..6].copy_from_slice(&weight.to_be_bytes());
+        t[6..8].copy_from_slice(&5u16.to_be_bytes());
+        t[62..64].copy_from_slice(&selection.to_be_bytes());
+        t
+    }
+
+    /// **The program's own statement of its style** (`page-observations-v4`): `OS/2`'s weight class
+    /// from 600 up, its italic or oblique bit, and with no `OS/2` table `head`'s macStyle bits.
+    #[test]
+    fn a_program_states_its_weight_and_slant() {
+        assert_eq!(
+            program_style(&sfnt(&[(b"OS/2", os2(600, 0))])),
+            Some((true, false))
+        );
+        assert_eq!(
+            program_style(&sfnt(&[(b"OS/2", os2(599, 0))])),
+            Some((false, false))
+        );
+        assert_eq!(
+            program_style(&sfnt(&[(b"OS/2", os2(400, 1))])),
+            Some((false, true))
+        );
+        assert_eq!(
+            program_style(&sfnt(&[(b"OS/2", os2(400, 1 << 9))])),
+            Some((false, true))
+        );
+        assert_eq!(
+            program_style(&sfnt(&[(b"head", head(1))])),
+            Some((true, false))
+        );
+        assert_eq!(
+            program_style(&sfnt(&[(b"head", head(2))])),
+            Some((false, true))
+        );
+        assert_eq!(
+            program_style(&sfnt(&[(b"head", head(0))])),
+            Some((false, false))
+        );
+    }
+
+    /// A font dictionary whose descriptor embeds `program` under `key`, as one document.
+    fn style_of(key: &str, program: Option<Vec<u8>>, weight: Option<i64>) -> (bool, bool) {
+        let mut doc = lopdf::Document::with_version("1.7");
+        let mut desc = lopdf::Dictionary::new();
+        desc.set("Type", lopdf::Object::Name(b"FontDescriptor".to_vec()));
+        desc.set("Flags", lopdf::Object::Integer(32));
+        if let Some(weight) = weight {
+            desc.set("FontWeight", lopdf::Object::Integer(weight));
+        }
+        if let Some(program) = program {
+            let id = doc.add_object(lopdf::Stream::new(lopdf::Dictionary::new(), program));
+            desc.set(key, lopdf::Object::Reference(id));
+        }
+        let desc = doc.add_object(desc);
+        let mut font = lopdf::Dictionary::new();
+        font.set("Type", lopdf::Object::Name(b"Font".to_vec()));
+        font.set("BaseFont", lopdf::Object::Name(b"AAAAAA+Face".to_vec()));
+        font.set("FontDescriptor", lopdf::Object::Reference(desc));
+        font_style(&doc, &font)
+    }
+
+    /// **The program a font embeds speaks for its style** (`page-observations-v4`), as
+    /// `/FontFile2` and as an OpenType `/FontFile3`; the dictionary still speaks where the program
+    /// says nothing, and a font that embeds none is read from its dictionary alone.
+    #[test]
+    fn a_font_s_embedded_program_speaks_for_its_style() {
+        let bold = sfnt(&[(b"head", head(1))]);
+        let italic = sfnt(&[(b"OS/2", os2(400, 1))]);
+        assert_eq!(style_of("FontFile2", Some(bold), None), (true, false));
+        assert_eq!(
+            style_of("FontFile3", Some(italic.clone()), None),
+            (false, true)
+        );
+        assert_eq!(style_of("FontFile3", Some(italic), Some(700)), (true, true));
+        assert_eq!(style_of("FontFile2", None, None), (false, false));
+        assert_eq!(
+            style_of("FontFile", Some(sfnt(&[(b"head", head(1))])), None),
+            (false, false)
+        );
+    }
+
+    /// `OS/2` speaks for the program where it has one, and `head` only where it has none — as
+    /// `skrifa` reads them; a program that is no font states nothing.
+    #[test]
+    fn os2_speaks_before_head_and_bytes_that_are_no_font_say_nothing() {
+        let both = sfnt(&[(b"OS/2", os2(400, 0)), (b"head", head(1))]);
+        assert_eq!(program_style(&both), Some((false, false)));
+        assert_eq!(program_style(b"not a font"), None);
+        assert_eq!(program_style(&[]), None);
+    }
 
     fn font_with(widths: WidthSource, ink: FontInk) -> Font {
         Font {

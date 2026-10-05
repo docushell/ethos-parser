@@ -34,6 +34,11 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              markers, its entries ending short by less than ten line heights:
                              `line-units-v2` reads the list as one unit and `-v3` cuts it where
                              the next entry's first word would have fit           [units-v3]
+  font-program-bold          a TrueType font whose dictionary states no weight and whose embedded
+                             program sets `head`'s bold bit: bold under
+                             `page-observations-v4`                                     [obs-v4]
+  synthetic-bold-fill-stroke four runs in rendering modes 0, 2, 1 and 6: fill-then-stroke
+                             (2, 6) is bold, a stroke alone (1) is not            [obs-v4]
   figure-paths-drawn         a bar chart DRAWN with paths — two stroked axes, three filled bars
                              and a curve — under a page-sized clip, beside a lone stroked rule
                              and a line of text. One figure region, the chart's   [#46]
@@ -949,6 +954,21 @@ FIXTURES = {
         "1 0 0 1 40 114 Tm (Cash flow and working capital) Tj "
         "1 0 0 1 40 102 Tm (Tax and the deferred tax position) Tj "
         "1 0 0 1 40 90 Tm (Notes to the accounts and their schedules) Tj "
+        "ET"
+    ),
+    # `page-observations-v4`'s program golden: one run in a TrueType font whose dictionary states no
+    # weight — no /FontWeight, no ForceBold, no style word in /BaseFont — and whose embedded
+    # program's `head` table sets macStyle's bold bit. The program states it; the run is bold.
+    "font-program-bold": "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Stated bold) Tj ET",
+    # `page-observations-v4`'s rendering-mode golden: four runs in Helvetica, whose dictionary
+    # states no bold, shown in modes 0, 2, 1 and 6. Fill then stroke (2, and 6 which also clips)
+    # is how a writer with no bold face draws one; a stroke alone (1) is an outline, not bold.
+    "synthetic-bold-fill-stroke": (
+        "BT /F1 12 Tf 0.3 w "
+        "1 0 0 1 40 120 Tm 0 Tr (Plain) Tj "
+        "1 0 0 1 40 100 Tm 2 Tr (Filled then stroked) Tj "
+        "1 0 0 1 40 80 Tm 1 Tr (Stroked only) Tj "
+        "1 0 0 1 40 60 Tm 6 Tr (Filled stroked clipped) Tj "
         "ET"
     ),
     "background-panel-not-a-grid": (
@@ -1910,6 +1930,39 @@ RAW_FONTS = {
     "absent-font-widths": (
         b"<< /Type /Font /Subtype /Type1 /BaseFont /ArialMT /Encoding /WinAnsiEncoding >>"
     ),
+    # A face name with no style word in it, and the descriptor and program as objects 6 and 7.
+    "font-program-bold": (
+        "<< /Type /Font /Subtype /TrueType /BaseFont /AAAAAA+Face /Encoding /WinAnsiEncoding "
+        "/FirstChar %d /LastChar %d /Widths [%s] /FontDescriptor 6 0 R >>"
+        % (FIRST_CHAR, LAST_CHAR, " ".join(str(UNIFORM_WIDTH) for _ in range(FIRST_CHAR, LAST_CHAR + 1)))
+    ).encode(),
+}
+
+
+def _style_program() -> bytes:
+    """An sfnt holding one `head` table whose macStyle sets the bold bit, and nothing else: no
+    `OS/2`, so `head` speaks for the program's style. No outlines and no cmap, so it states no
+    glyph — the run's text comes from /WinAnsiEncoding — and no hhea or OS/2 metrics, so its ink
+    comes from the descriptor."""
+    head = bytearray(54)
+    head[0:4] = (0x00010000).to_bytes(4, "big")
+    head[12:16] = (0x5F0F3CF5).to_bytes(4, "big")
+    head[18:20] = (1000).to_bytes(2, "big")
+    head[44:46] = (1).to_bytes(2, "big")
+    out = bytearray(b"\x00\x01\x00\x00" + (1).to_bytes(2, "big") + bytes(6))
+    out += b"head" + bytes(4) + (12 + 16).to_bytes(4, "big") + len(head).to_bytes(4, "big")
+    return bytes(out + head)
+
+
+# Objects 6 onward for a font whose program a fixture embeds: its descriptor, with real ink
+# metrics so the run is boxed, and the program as /FontFile2.
+PROGRAM_OBJECTS = {
+    "font-program-bold": [
+        b"<< /Type /FontDescriptor /FontName /AAAAAA+Face /Flags 32 /FontBBox [0 -207 1000 718] "
+        b"/ItalicAngle 0 /Ascent 718 /Descent -207 /CapHeight 718 /StemV 88 /FontFile2 7 0 R >>",
+        b"<< /Length %d /Length1 %d >>\nstream\n%s\nendstream"
+        % (len(_style_program()), len(_style_program()), _style_program()),
+    ],
 }
 
 COMPOSITE_FONTS = {
@@ -2207,6 +2260,7 @@ def main() -> int:
                 or TOUNICODE_OBJECTS.get(name)
                 or COMPOSITE_OBJECTS.get(name)
                 or UNTAGGED_FRAME_OBJECTS.get(name)
+                or PROGRAM_OBJECTS.get(name)
             ),
             font_object=COMPOSITE_FONTS.get(name) or RAW_FONTS.get(name),
             font_subtype=FONT_SUBTYPE.get(name, "Type1"),

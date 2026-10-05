@@ -3489,6 +3489,30 @@ fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
     assert!(undecodable(&a).is_some(), "and counted");
 }
 
+/// **A font program that states its weight is read for it** (`page-observations-v4`), end to end: a
+/// TrueType font whose dictionary states no weight embeds a program whose `head` table sets the bold
+/// bit, and its run is bold.
+#[test]
+fn a_font_program_that_states_bold_makes_its_run_bold() {
+    let a = extract_ok(engine_fx("font-program-bold"));
+    let bold: Vec<(String, bool)> = runs(&a).iter().map(|r| (r.text.clone(), r.bold)).collect();
+    assert_eq!(bold, [("Stated bold".to_string(), true)]);
+}
+
+/// **Fill then stroke is bold; a stroke alone is not** (`page-observations-v4`): rendering modes 2
+/// and 6 draw a glyph thicker, as a writer with no bold face of a font draws one; mode 1 draws its
+/// outline.
+#[test]
+fn fill_then_stroke_is_bold_and_a_stroke_alone_is_not() {
+    let a = extract_ok(engine_fx("synthetic-bold-fill-stroke"));
+    let bold: Vec<bool> = runs(&a)
+        .iter()
+        .filter(|r| !r.text.trim().is_empty())
+        .map(|r| r.bold)
+        .collect();
+    assert_eq!(bold, [false, true, false, true]);
+}
+
 /// **A line its author broke early ends its unit** (`line-units-v3`), end to end: a heading set on
 /// two lines stays one unit though its second line's first word would fit after its first, a
 /// paragraph its measure wrapped stays one, and a contents list set without markers, whose entries

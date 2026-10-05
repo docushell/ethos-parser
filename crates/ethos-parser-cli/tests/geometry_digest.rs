@@ -237,6 +237,10 @@ const PINNED: &[(&str, &str)] = &[
         "sha256:ea2cadf6173c7d000c0195da2ca8e181fca7d02c65d314200c7b3c7b4a7275d6",
     ),
     (
+        "engine/font-program-bold/document.pdf",
+        "sha256:3475f9b353da5aeeb4b76f84bc4901d478eb94ab44f6b2b9fba0c3aa50b27585",
+    ),
+    (
         "engine/form-field-value/document.pdf",
         "sha256:213a540c99412fd98f311d26eac820881168ba4c773b26297ee34d8299ec2434",
     ),
@@ -370,6 +374,10 @@ const PINNED: &[(&str, &str)] = &[
     (
         "engine/synthesized-space-tj/document.pdf",
         "sha256:f7c7518097e6c0a288d89257abbf5d8843fc017451619bddeeac30a2afbb0a7d",
+    ),
+    (
+        "engine/synthetic-bold-fill-stroke/document.pdf",
+        "sha256:9bf02804b1adb2427078c236cfc892d7e89981de7cc6b46f8a81db0d04ca8f02",
     ),
     ("engine/tagged-cycle/document.pdf", "exit 2"),
     (

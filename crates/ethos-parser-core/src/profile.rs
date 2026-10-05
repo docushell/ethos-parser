@@ -209,6 +209,28 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 /// (`crate::Script`). Folded into v3 on `markdown-blocks-v12`'s precedent: no release carries it.
 pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 
+/// The page-observation rule's fourth pass: **bold and italic as the font program states them, and
+/// a run painted fill-then-stroke read as bold**.
+///
+/// **What `-v3` missed.** It read a font's style from its dictionary alone, and a subset font's
+/// dictionary often states none: `AAAAAC+font000000002f637c99` names no weight and its descriptor
+/// sets no ForceBold, while the TrueType program it embeds sets `head`'s bold bit. And a writer that
+/// has no bold face of a font paints its glyphs with text rendering mode 2 — fill, then stroke the
+/// outline — which `-v3` read as regular type: ParseBench's `text_simple__delinea` set every one of
+/// its 26 bold labels that way.
+///
+/// **The change.** A run's font is also bold where its embedded TrueType or OpenType program states
+/// a weight class of 600 or more in `OS/2` — or, with no `OS/2` table, sets `head`'s macStyle bold
+/// bit — and italic where it sets the italic or oblique bit there; read with `skrifa`, as the
+/// program's ink metrics already are. A run shown in rendering mode 2 or 6, fill then stroke, is
+/// bold. Nothing is estimated from stem widths or outlines, and a program `skrifa` does not open — a
+/// bare CFF or Type 1 one — states nothing here.
+///
+/// **Measured** (`docs/measurements/parsebench/README.md`): ParseBench semantic formatting
+/// 0.4080 → 0.4296, 17 documents up and none down, every other dimension unchanged; the heading
+/// bounds of `docs/28-HEADINGS-SCOPE.md` §7.5 where they stood.
+pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
+
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
 ///
 /// **The font's own `/Subtype` decides the code width, and nothing else does.** A simple font is
@@ -2011,7 +2033,7 @@ impl Default for Profile {
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
             text_code_rule: TEXT_CODE_RULE_V4.to_string(),
-            observation_rule: OBSERVATION_RULE_V3.to_string(),
+            observation_rule: OBSERVATION_RULE_V4.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -3204,7 +3226,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4285,11 +4307,15 @@ mod tests {
              Moved for the layout-unit rule's third pass, `sha256:d6531270…` -> \
              `sha256:d5e4f162…`: `layout_unit_rule` `line-units-v2` -> `-v3`, which cuts a unit \
              of body text before a line whose first word would have fit twice over in the room \
-             the line above leaves. Nothing else."
+             the line above leaves. Nothing else.\n\n\
+             Moved for the page-observation rule's fourth pass, `sha256:d5e4f162…` -> \
+             `sha256:79a56c2f…`: `observation_rule` `page-observations-v3` -> `-v4`, which reads \
+             a run's bold and italic from the program its font embeds as well as from the font \
+             dictionary, and reads a run painted fill-then-stroke as bold. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:d5e4f162628b0462e7a40fec419b1aa55e29de06e22d06e4ead1ccdb9777d32f"
+            "sha256:79a56c2f7abf759b87b8e6f94a22b564e778bf16d9fdeea2b593420a02ad3624"
         );
     }
 

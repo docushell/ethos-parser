@@ -142,6 +142,23 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Bold and italic as the font program states them, and fill-then-stroke read as bold (`page-observations-v4`)
+
+`observation_rule` moves `page-observations-v3` -> `page-observations-v4`, so `profile_sha256`
+moves.
+
+- **A run's font is also bold or italic where the program it embeds says so**: an `OS/2` weight
+  class of 600 or more, or — with no `OS/2` table — `head`'s macStyle bold bit; the italic or
+  oblique bit for italic. Read with `skrifa`, as the program's ink metrics already are. A subset
+  font's dictionary often names no weight its program states. A bare CFF or Type 1 program is not
+  read for it, and nothing is estimated from stem widths or outlines.
+- **A run painted fill-then-stroke — text rendering mode 2 or 6 — is bold**: it is how a writer with
+  no bold face of a font draws one. A stroke alone (mode 1) is an outline and is not. New engine
+  fixtures `font-program-bold` and `synthetic-bold-fill-stroke`.
+- **Measured** on ParseBench: semantic formatting 0.4080 -> 0.4296, 17 documents up and none down;
+  every other dimension unchanged on every page; overall 43.00 -> 43.43. opendataloader-bench: MHS
+  0.5467 -> 0.5481, NID 0.8839 -> 0.8838 (newly bold runs gain `**`). Heading bounds unchanged.
+
 ### A line its author broke early ends its unit (`line-units-v3`)
 
 `layout_unit_rule` moves `line-units-v2` -> `line-units-v3`, so `profile_sha256` moves.
