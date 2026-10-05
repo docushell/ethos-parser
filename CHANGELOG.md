@@ -142,6 +142,21 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A rectangle painted twice, read once (`ruled-rects-v11`)
+
+`table_detection.ruled` moves `ruled-rects-v10` -> `ruled-rects-v11`, so `profile_sha256` moves.
+
+- **Within one group's rectangles, exact duplicates are one rectangle.** A producer that fills a
+  cell and strokes it in two paths, or paints a joint twice, lays one rectangle down twice; read as
+  two, both claimed the cell's slot, the cross-check found it owned twice, and the grid was refused.
+  Never on the page-wide lattice: there the duplicates' refusal is what leaves a page of boxed goal
+  cards (`2024-Ford-Integrated-Sustainability-and-Financial-Report` p16) to the group guards, and a
+  page-wide dedup read it as a 15 x 9 table.
+- **Measured** on ParseBench: tables 0.4502 -> 0.4578, five pages up and none down —
+  `SERFF_TX` p1045 and p300 0 -> 1.0, `FBLB-134215544` p11 0 -> 0.93, p5 0.31 -> 1.0 (its three
+  stacked tables now read one per group), p8 0.67 -> 0.87. Every other dimension,
+  opendataloader-bench and the gate documents' 533 tables unchanged. Overall 41.79 -> 41.95.
+
 ### Merged cells in a line-drawn grid (`ruled-rects-v10`)
 
 `table_detection.ruled` moves `ruled-rects-v9` -> `ruled-rects-v10`, so `profile_sha256` moves.

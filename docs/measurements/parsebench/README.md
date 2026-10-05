@@ -340,6 +340,12 @@ the merge ([`31-TABLE-TRACKS-SCOPE.md`](../../31-TABLE-TRACKS-SCOPE.md), the `-v
 Tables 0.4410 with the adapter unchanged; the adapter alone moves the `-v9` engine to 0.4160. 44
 table pages rise and 8 fall; no page falls on any other dimension.
 
+### After `ruled-rects-v11` (2026-10-05)
+
+Within one group's rectangles, a rectangle painted twice is read once. Tables 0.4502 -> 0.4578, five
+pages up and none down; content 0.6633, formatting 0.4080, charts 0.0984 and visual grounding
+0.4698 unchanged. Overall 41.95.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see

@@ -391,7 +391,7 @@ pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) 
          grid-shaped was drawn here` and `a grid was implied and judged incoherent`, and only the \
          second one is reported below. Nothing was repaired or partially emitted: a candidate \
          either satisfies every precondition of `{}` or it produces no table.",
-        ethos_parser_core::TABLE_DETECTION_V10
+        ethos_parser_core::TABLE_DETECTION_V11
     );
     // **Grouped by precondition, so the reasoning is stated once.** The ruled rule refuses 481 of
     // `nist-sp-800-53r5`'s 492 pages; repeating a five-line explanation per page would put a

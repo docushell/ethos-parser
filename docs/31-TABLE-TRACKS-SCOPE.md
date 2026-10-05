@@ -530,3 +530,8 @@ falls are pages the whitespace rule had read better: `AZ LIC Rate Tables` p48 (a
 truth holds as one cell), `FBLB-134215544` p16 and p43 (unruled rows under a merged header),
 `SERFF_TX` p1051 and p92, `SERFF_CA` p1201, and two of under 0.003. Measured and refused: asking an
 interior line to be drawn across most of its bands (-3.0 page units, losing true row spans).
+
+**`ruled-rects-v11` (2026-10-05).** Within one group's rectangles an exact duplicate is one
+rectangle: a cell filled and stroked in two paths was two cells over one slot, and the cross-check
+refused the grid. Not on the page-wide lattice, whose duplicates' refusal leaves a page of boxed
+goal cards to the group guards. ParseBench tables 0.4502 -> 0.4578, five pages up, none down.

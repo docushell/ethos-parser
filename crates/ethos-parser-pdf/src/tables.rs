@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V10` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V11` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -77,7 +77,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V10` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V11` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -192,7 +192,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V10`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V11`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -689,7 +689,11 @@ pub fn detect_ruled_with(
     let mut trial = alloc.clone();
     let mut grids = Vec::new();
     let mut first = None;
-    for group in touching_groups(rects, GROUP_GAP) {
+    for mut group in touching_groups(rects, GROUP_GAP) {
+        // `ruled-rects-v11`: a rectangle painted twice is one rectangle — as two, both claim its
+        // slot and the cross-check refuses the grid.
+        group.sort_by_key(|r| (r.x0, r.y0, r.x1, r.y1));
+        group.dedup();
         let (found, refused) = ruled_grid(page, &group, runs, &mut trial, Some(white))?;
         grids.extend(found);
         first = first.or(refused);
@@ -1035,7 +1039,7 @@ fn ruled_grid(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V10.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V11.to_string(),
         }],
         None,
     ))
@@ -1888,7 +1892,7 @@ mod tests {
         assert_eq!(tables.len(), 1);
         let t = &tables[0];
         assert_eq!((t.rows, t.columns), (2, 3));
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V10);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V11);
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
         assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
@@ -2016,7 +2020,7 @@ mod tests {
             (heading.position.colspan, heading.text.as_str()),
             (3, "Focus area")
         );
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V10);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V11);
     }
 
     #[test]
@@ -2126,6 +2130,27 @@ mod tests {
         // Painted white, it draws none of them.
         let (tables, _) = detect_ruled_with(1, &rects, &[panel], &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_rectangle_painted_twice_is_one_cell_of_a_group_s_grid() {
+        // A cell filled and stroked in two paths lays its rectangle down twice: as two, both claim
+        // its slot, and the page's rectangles as one lattice are refused for it.
+        let mut rects = grid_2x2();
+        rects.push(rects[0]);
+        let runs: Vec<RunOrigin> = [(0, 0, "A1"), (0, 1, "A2"), (1, 0, "B1"), (1, 1, "B2")]
+            .into_iter()
+            .map(|(row, col, text)| RunOrigin {
+                x: pt(5 + 100 * col),
+                y: pt(25 + 100 * row),
+                text,
+            })
+            .collect();
+        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        assert!(whole.is_empty() && refused.is_some());
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(tables[0].cells.len(), 4);
     }
 
     #[test]
