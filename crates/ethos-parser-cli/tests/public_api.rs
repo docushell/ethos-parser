@@ -323,6 +323,9 @@ const CORE: &[&str] = &[
     // Decision #41. The page-furniture rule id, and the edge a furniture run stands apart at.
     "FURNITURE_RULE_V1",
     "Furniture",
+    // Decision #46. The figure-region rule id and the record it writes.
+    "FIGURE_RULE_V1",
+    "FigureRecord",
     "SourceIdentity",
     "Stage",
     "StructuralLocator",
@@ -390,6 +393,7 @@ const CORE: &[&str] = &[
     "derivation",
     "diagnostics",
     "error",
+    "figures",
     "geom",
     "identity",
     "ids",

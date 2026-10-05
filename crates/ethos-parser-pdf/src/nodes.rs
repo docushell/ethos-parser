@@ -227,6 +227,11 @@ pub struct PageExtract {
     /// byte-identical to one produced before this field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tagged_tables: Vec<crate::tables::TaggedTableRecord>,
+    /// Figure regions the figure rule found on this page (decision #46,
+    /// `docs/34-FIGURE-REGIONS-SCOPE.md`). Omitted from the wire when empty, as
+    /// [`Self::tagged_tables`] is; the representation carries them as figure records.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub figures: Vec<crate::figures::DetectedFigure>,
     /// Form fields and annotations this page carries (v1-S4).
     ///
     /// **Empty means the walk looked and found none.** The capabilities say which of those a

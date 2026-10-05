@@ -1075,6 +1075,34 @@ fn extract_page(
             }
         }
 
+        // Decision #46. Last, once every table rule has run: the paths the page painted, read as
+        // one drawing where they cluster (`docs/34-FIGURE-REGIONS-SCOPE.md`). Under the tracks
+        // rule's gate, for its reason: a tagged document says what is a figure.
+        let mut figures: Vec<crate::figures::DetectedFigure> = Vec::new();
+        if profile.figure_rule == ethos_parser_core::FIGURE_RULE_V1
+            && no_author_structure(structure.as_ref())
+        {
+            let painted: Vec<crate::tables::QuantRect> = interp
+                .painted
+                .iter()
+                .filter_map(|r| {
+                    let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+                    let (bx, by) = geom.to_top_left(r.x1, r.y1);
+                    // A path whose coordinates cannot be placed is no evidence of a figure.
+                    crate::tables::quantize_rect(ax, ay, bx, by).ok()
+                })
+                .collect();
+            let page_box =
+                crate::tables::quantize_rect(0.0, 0.0, geom.display_width, geom.display_height)?;
+            let table_boxes: Vec<crate::tables::QuantRect> =
+                tables.iter().map(|t| t.rect).collect();
+            let placed: Vec<(i64, i64, &str)> = runs
+                .iter()
+                .map(|r| (r.locator.origin_x, r.locator.origin_y, r.text.as_str()))
+                .collect();
+            figures = crate::figures::detect(&painted, page_box, &table_boxes, &placed);
+        }
+
         // v1-S3: the document's own tags, compared against what the detectors found. The two
         // derivations meet here and nowhere else — the tree walk never saw a box, and no
         // detector ever saw a structure type.
@@ -1437,6 +1465,7 @@ fn extract_page(
         page_extract = PageExtract {
             tables,
             tagged_tables: page_tagged_tables,
+            figures,
             objects,
             images,
             index: page_number,

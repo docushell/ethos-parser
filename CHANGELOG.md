@@ -142,6 +142,25 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Figure regions: paths a page paints, read as one drawing (decision #46)
+
+The representation gains a tenth member, `figures`, so `schema_version` moves 0.7.0 -> 0.8.0 and
+the Python and Node packages read 0.8.0; the profile gains `figure_rule` and `capabilities.figures`,
+so `profile_sha256` moves.
+
+- **A drawing a page paints with paths is a figure region** (`figure-regions-v1`,
+  `docs/34-FIGURE-REGIONS-SCOPE.md`): every path a fill or a stroke paints, on the page and in the
+  forms it draws, less any covering 80% of the page or more, clustered wherever their boxes come
+  within 3 points across and down. A cluster is a region where it holds 3 paths or more, covers
+  0.1% to 80% of the page, has less than half its area inside any one table, and holds no baseline
+  of more than 60 characters. Each is a `FigureRecord` — its page, its box within the page,
+  `Computed` and the rule id — on a document that declares no author structure. **A region claims
+  no text**: its runs stay nodes, in reading order, and neither projection writes it. The office
+  profiles name the rule `not-run-for-this-format` and declare `figures-not-detected`.
+- **Measured** on ParseBench: visual grounding 0.4708 -> 0.4824, 73 pages up and 3 down by at most
+  0.036 — running heads drawn as bands of tabs that the ground truth boxes as page headers; content,
+  formatting, tables and charts unchanged on every page. The adapter labels each record `Picture`.
+
 ### Scans, through an OCR pass outside the engine (decision #45)
 
 - **The ParseBench adapter reads scans through an opt-in OCR pass** (`ETHOS_BENCH_OCR=1`): where

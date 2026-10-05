@@ -1,0 +1,32 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 333 >>
+stream
+q 30 30 200 140 re W n 1 w 0 G 40 40 m 40 140 l S 40 40 m 200 40 l S 0.5 g 60 40 30 50 re f 110 40 30 80 re f 160 40 30 30 re f 60 90 m 100 150 140 100 180 120 c S Q 40 180 m 260 180 l S BT /F1 8 Tf 1 0 0 1 68 30 Tm (Q1) Tj 1 0 0 1 118 30 Tm (Q2) Tj 1 0 0 1 168 30 Tm (Q3) Tj 1 0 0 1 40 10 Tm (Quarterly sales, drawn as paths.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000625 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1140
+%%EOF

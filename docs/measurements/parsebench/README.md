@@ -368,6 +368,23 @@ dimension. Overall 42.51.
 instead of refusing the map. Four refused pages read; charts 0.1002 -> 0.1019, visual grounding
 0.4707 -> 0.4708, every other dimension unchanged and no page falling. Overall 42.55.
 
+### After decision #46 (2026-10-05)
+
+`figure-regions-v1` (`docs/34-FIGURE-REGIONS-SCOPE.md`): the paths a page paints, clustered where
+they come within 3 points, are figure regions, and the adapter labels each one `Picture`.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4080 | 0.4080 |
+| Tables | 0.4833 | 0.4833 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.4824 | 0.4708 |
+
+73 grounding pages rise and 3 fall, each by at most 0.036: a running head drawn as a band of tabs,
+which the ground truth boxes as the page header and a region now covers. No page moves on any other
+dimension. Overall 42.78.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

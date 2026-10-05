@@ -12,7 +12,7 @@
       "const": "ethos.parser.representation.v0",
       "$comment": "At the TOP LEVEL, before any payload (§2), so a reader can fail closed on an unrecognised shape before parsing it (§8). Mirrors representation.identity.artifact_type, and a parse-time check refuses an artifact where the two disagree — a mirror that can disagree is worse than no mirror."
     },
-    "schema_version": { "const": "0.7.0" },
+    "schema_version": { "const": "0.8.0" },
     "representation": {
       "$ref": "#/$defs/payload",
       "$comment": "THE HASHED SUBTREE. representation_c14n_sha256 is the digest of exactly this member and nothing else."
@@ -94,6 +94,11 @@
           "type": "array",
           "$comment": "docs/29-OUTLINES-SCOPE.md. The hierarchy a PDF catalog declares, one record per `/Outlines` entry, in `/First`/`/Next` order. Optional on the wire and always written: an empty array means the reader LOOKED and the catalog named none, and `assurance.capabilities.outlines` says whether it looked. Never `nodes`: a bookmark title is text no content stream painted, so it has no native locator and North Star #4 requires one on every node.",
           "items": { "$ref": "#/$defs/outline_record" }
+        },
+        "figures": {
+          "type": "array",
+          "$comment": "Decision #46, docs/34-FIGURE-REGIONS-SCOPE.md. The regions `figure-regions-v1` infers from the paths a page paints, in page order. Optional on the wire and always written: an empty array means the rule found none, or did not run on a document that declares author structure, and `assurance.capabilities.figures` says whether the profile runs it at all. Never `nodes`: a region claims no text, and the runs inside it are nodes already.",
+          "items": { "$ref": "#/$defs/figure_record" }
         },
         "assurance": {
           "$ref": "urn:ethos-parser:draft-schema:coverage:0",
@@ -790,6 +795,19 @@
         "object": { "type": "integer", "minimum": 0, "$comment": "The entry's own object number." },
         "generation": { "type": "integer", "minimum": 0 },
         "page": { "type": "integer", "minimum": 1, "$comment": "The page its destination resolves to, when it resolves. No end is ever emitted." }
+      }
+    },
+
+    "figure_record": {
+      "title": "One figure region (decision #46, docs/34-FIGURE-REGIONS-SCOPE.md)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "geometry", "derivation", "detection_rule"],
+      "properties": {
+        "page": { "type": "string", "$comment": "The id of the page record the region was found on." },
+        "geometry": { "$ref": "urn:ethos-parser:draft-schema:geometry:0", "$comment": "Always `measured`: the union of the clustered paths' boxes, within the page." },
+        "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "Always `computed`: the paths are the document's, the grouping is this engine's." },
+        "detection_rule": { "type": "string", "examples": ["figure-regions-v1"], "$comment": "The rule that drew the box, from profile.figure_rule." }
       }
     },
 

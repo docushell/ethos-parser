@@ -81,7 +81,11 @@ pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.parser.representation.v0";
 /// written under `0.6.0` has no `outlines` key and one written under `0.7.0` always does — empty
 /// where the catalog names no outline — so the absence of the key and an empty array are different
 /// statements and the version is what tells them apart.
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.7.0";
+///
+/// `0.8.0` at decision #46 (`docs/34-FIGURE-REGIONS-SCOPE.md`): the payload gained a tenth member,
+/// [`RepresentationPayload::figures`], the regions the figure rule infers from painted paths —
+/// always written, empty where none was found, on `outlines`' argument for the version.
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.8.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///
@@ -2192,6 +2196,15 @@ pub struct RepresentationPayload {
     /// stream painted, so it has no native locator and North Star #4 requires one on every node.
     #[serde(default)]
     pub outlines: Vec<crate::outlines::OutlineRecord>,
+    /// Figure regions the figure rule inferred from painted paths, in page order (decision #46,
+    /// `docs/34-FIGURE-REGIONS-SCOPE.md`).
+    ///
+    /// **An empty array means the rule found none, or did not run on a document that declares
+    /// author structure** — `capabilities.figures` says whether the profile runs it at all.
+    /// Carried as its own array rather than as `nodes`, on `tables`' precedent: a region claims
+    /// no text, and the runs inside it are nodes already.
+    #[serde(default)]
+    pub figures: Vec<crate::figures::FigureRecord>,
     /// M4's L1 gate, carried forward by value: capabilities, limitations, per-page state,
     /// coverage, terminal state.
     pub assurance: Assurance,
@@ -2252,6 +2265,7 @@ impl RepresentationPayload {
             pages,
             nodes,
             outlines,
+            figures,
             tables,
             assurance,
         } = self;
@@ -2265,6 +2279,8 @@ impl RepresentationPayload {
         sink.canonical(assurance).map_err(malformed)?;
         sink.push(b",\"coordinate_system\":");
         sink.canonical(coordinate_system).map_err(malformed)?;
+        sink.push(b",\"figures\":");
+        sink.canonical(figures).map_err(malformed)?;
         sink.push(b",\"identity\":");
         sink.canonical(identity).map_err(malformed)?;
         sink.push(b",\"nodes\":[");
@@ -3000,6 +3016,7 @@ mod tests {
             nodes,
             tables: Vec::new(),
             outlines: Vec::new(),
+            figures: Vec::new(),
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,

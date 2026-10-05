@@ -30,6 +30,7 @@
     "heading_inference_rule",
     "layout_unit_rule",
     "furniture_rule",
+    "figure_rule",
     "form_annotation_rule",
     "observation_rule",
     "raster_dpi",
@@ -255,6 +256,14 @@
         "margin-bands-v1"
       ]
     },
+    "figure_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the figure-region rule in force (decision #46, docs/34-FIGURE-REGIONS-SCOPE.md). `figure-regions-v1`: on a document that declares no author structure, each page's painted paths (on the page and in the forms it draws, less any covering 80% of the page or more) are clustered wherever their boxes come within 3 points of each other across and down; a cluster holding 3 paths or more, covering 0.1% to 80% of the page, less than half inside any one table and holding no baseline of more than 60 characters is a figure region, carried in the representation's `figures` array. Where, never what: a region claims no run. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "examples": [
+        "figure-regions-v1"
+      ]
+    },
     "markdown_rule": {
       "type": "string",
       "minLength": 1,
@@ -322,6 +331,7 @@
         "measured_ink_boxes",
         "multi_column_reading_order",
         "outlines",
+        "figures",
         "page_screenshots",
         "spans",
         "structural_locators",
@@ -345,6 +355,10 @@
         "outlines": {
           "type": "boolean",
           "$comment": "true on the PDF profile since outlines-v1 — proof: the_declared_outline_is_read_as_the_document_declared_it. Claims only that this profile LOOKS at the catalog's /Outlines: the representation's `outlines` array is always written, and without this flag an empty one could not say whether a reader looked. A catalog naming none declares `outline-absent`. False on the eight office profiles, permanently: a package has no PDF catalog to carry one."
+        },
+        "figures": {
+          "type": "boolean",
+          "$comment": "true on the PDF profile since figure-regions-v1 (decision #46) — proof: a_drawn_figure_is_a_region_and_a_lone_rule_is_not. Claims only that this profile infers figure regions from painted paths: the representation's `figures` array is always written, and without this flag an empty one could not say whether a rule looked. False on the eight office profiles, which declare figures-not-detected."
         },
         "measured_ink_boxes": {
           "type": "boolean",
@@ -453,6 +467,7 @@
       "capabilities": {
         "annotations": true,
         "char_offsets": true,
+        "figures": true,
         "form_fields": true,
         "html": true,
         "images": true,
@@ -471,6 +486,7 @@
         "origin": "top-left",
         "unit": "centipoint"
       },
+      "figure_rule": "figure-regions-v1",
       "font_metrics_data_version": "core14-afm-2",
       "form_annotation_rule": "form-annotations-v2",
       "furniture_rule": "margin-bands-v1",

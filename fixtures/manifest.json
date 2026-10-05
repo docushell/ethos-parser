@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 63,
+    "engine_owned": 64,
     "gate": 8
   },
   "fixtures": [
@@ -307,6 +307,15 @@
       "sha256": "sha256:c4c2c9191f19c3b16b80c1c0db974481fec8495edfefc23a3e8e0d44667e0aa2",
       "owner": "engine",
       "notes": "v1-S7b PANEL. A filled 200x160 background rectangle \u2014 painted TWICE, as the real page does \u2014 with three 40x10 bars scattered on it. The bars' edges cluster into a 7x7 lattice of 49 faces of which they paint three, and the panel covers every one of them, so `ruled-rects-v2` accepted the coherence precondition and emitted a 7x7 table with 3 cells while separately discarding the panel as \"the table's own border\". One rectangle cannot be both the only evidence a face exists and not a cell. Expect `tables: []` under `ruled-rects-v2`, with the page's two runs still present. Measured on the real thing: `cfpb-home-loan-toolkit` pages 22 and 23 paint a 351x454 pt panel behind highlight bars and produced a 17x13 table holding 12 cells on a page whose tree declares no table at all. Filled rather than stroked, and the first engine fixture that is \u2014 every other ruled fixture uses `S`, so the fill path into the lattice had no fixture behind it."
+    },
+    {
+      "id": "figure-paths-drawn",
+      "root": "engine",
+      "group": "engine",
+      "path": "figure-paths-drawn/document.pdf",
+      "sha256": "sha256:a83905e9a53a9c4c0f30465e051d085f3082a7235c03d109e9885b1051dad824",
+      "owner": "engine",
+      "notes": "Decision #46 golden (`figure-regions-v1`). A bar chart DRAWN with paths \u2014 two stroked axes, three filled bars and a stroked curve, six paths that touch \u2014 inside a 200x140 clip that `n` ends without painting (a reader that kept its box would widen the chart's), beside a lone stroked rule 30 points above and a line of text below. Expect exactly one figure region boxed (4000, 5000, 20000, 16000), the curve's control point its top: the chart, not the rule (a cluster of one path), not the clip (never painted), and with every run still in the text. No fixture before this one painted a curve, so the curve-box path was untested."
     },
     {
       "id": "both-table-rules",

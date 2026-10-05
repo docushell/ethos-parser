@@ -73,6 +73,7 @@ pub mod c14n;
 pub mod derivation;
 pub mod diagnostics;
 pub mod error;
+pub mod figures;
 pub mod geom;
 pub mod html;
 pub mod identity;
@@ -94,6 +95,7 @@ pub use c14n::{c14n_bytes, sha256_hex, sha256_hex_bytes, C14nError};
 pub use derivation::{DerivationClass, GeometryAbsence, GeometryPresence};
 pub use diagnostics::{Diagnostics, DiagnosticsRun, HostInfo, Stage, DIAGNOSTICS_VERSION};
 pub use error::EngineError;
+pub use figures::FigureRecord;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
 pub use html::{
     to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V12, HTML_SCHEMA_VERSION,
@@ -120,9 +122,9 @@ pub use outlines::OutlineRecord;
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, DOCX_READING_ORDER_RULE_V2, DOCX_TEXT_CODE_RULE_V3,
-    EPUB_READING_ORDER_RULE_V1, EPUB_TEXT_CODE_RULE_V2, FORM_ANNOTATION_RULE_V2, FURNITURE_RULE_V1,
-    HEADING_INFERENCE_RULE_V4, LAYOUT_UNIT_RULE_V1, LAYOUT_UNIT_RULE_V2, NOT_RUN,
-    OBSERVATION_RULE_V3, ODP_READING_ORDER_RULE_V1, ODP_TEXT_CODE_RULE_V2,
+    EPUB_READING_ORDER_RULE_V1, EPUB_TEXT_CODE_RULE_V2, FIGURE_RULE_V1, FORM_ANNOTATION_RULE_V2,
+    FURNITURE_RULE_V1, HEADING_INFERENCE_RULE_V4, LAYOUT_UNIT_RULE_V1, LAYOUT_UNIT_RULE_V2,
+    NOT_RUN, OBSERVATION_RULE_V3, ODP_READING_ORDER_RULE_V1, ODP_TEXT_CODE_RULE_V2,
     ODS_READING_ORDER_RULE_V1, ODS_TEXT_CODE_RULE_V2, ODT_READING_ORDER_RULE_V1,
     ODT_TEXT_CODE_RULE_V2, PPTX_READING_ORDER_RULE_V1, PPTX_TEXT_CODE_RULE_V3,
     READING_ORDER_RULE_V0, READING_ORDER_RULE_V1, READING_ORDER_RULE_V2, READING_ORDER_RULE_V3,

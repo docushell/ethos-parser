@@ -325,6 +325,13 @@ pub mod codes {
     /// looked and the catalog named none"*. It means nobody looked, and an empty array on its
     /// own cannot say which.
     pub const OUTLINES_NOT_READ: &str = "outlines-not-read";
+    /// No figure region is inferred from the paths a page paints (decision #46,
+    /// `docs/34-FIGURE-REGIONS-SCOPE.md`).
+    ///
+    /// Partners a **false** [`Capabilities::figures`], and exists so that
+    /// `RepresentationPayload::figures` being an empty array cannot read as *"the rule looked and
+    /// found none"*. It means nobody looked.
+    pub const FIGURES_NOT_DETECTED: &str = "figures-not-detected";
     /// This document's catalog declares no outline (`docs/29-OUTLINES-SCOPE.md`).
     ///
     /// Document-scoped, on `untagged-structure-tree-absent`'s precedent: a statement about the
@@ -592,6 +599,7 @@ impl Capabilities {
             char_offsets,
             tables,
             outlines,
+            figures,
             measured_ink_boxes,
             multi_column_reading_order,
             structural_locators,
@@ -670,6 +678,15 @@ impl Capabilities {
                  not an inference over the page, and therefore not something a consumer can \
                  reconstruct from the nodes. For the office formats it is permanent — an OOXML \
                  or ODF package has no PDF catalog to carry one.",
+            ));
+        }
+        if !figures {
+            out.push(Limitation::profile(
+                codes::FIGURES_NOT_DETECTED,
+                "This profile infers no figure region from the paths a page paints, so the \
+                 `figures` array is empty because NOBODY LOOKED — not because the document draws \
+                 no chart, diagram or logo. A raster image is still an image node where the \
+                 profile emits images; a drawing made of paths has no record at all.",
             ));
         }
         if tables {
@@ -1646,6 +1663,7 @@ mod tests {
             char_offsets: false,
             tables: false,
             outlines: false,
+            figures: false,
             images: false,
             page_screenshots: false,
             measured_ink_boxes: false,
@@ -1673,6 +1691,7 @@ mod tests {
             // which is the one a reader is least able to assume was checked. The count caught a
             // missing limitation; it could not catch the wrong code being emitted for `html`.
             codes::HTML_NOT_PROJECTED,
+            codes::FIGURES_NOT_DETECTED,
         ] {
             assert!(
                 declared.iter().any(|l| l.code == code),
@@ -1681,14 +1700,15 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            15,
+            16,
             "one limitation per false capability, plus the two declared UNCONDITIONALLY: \
              `low-contrast-not-detected`, because no profile this build can produce reads colour, \
              and `document-metadata-not-read`, because none of them opens a metadata part for its \
              values. Neither is partnered to a capability in either direction, and pretending \
              otherwise would mean inventing a `contrast` or `metadata` flag nothing sets. \
              Thirteen since v1.1-S4, which added `html`; fourteen since the metadata declaration; fifteen \
-             since `outlines` joined the capability set with `outlines-not-read` beside it"
+             since `outlines` joined the capability set with `outlines-not-read` beside it; \
+             sixteen since `figures` joined it with `figures-not-detected` (decision #46)"
         );
 
         // The mirror, with one deliberate exception. A profile claiming everything declares no
@@ -1707,6 +1727,7 @@ mod tests {
             // limitation into evidence about true ones — the argument `page_screenshots` below
             // already makes.
             outlines: true,
+            figures: true,
             measured_ink_boxes: true,
             multi_column_reading_order: true,
             structural_locators: true,

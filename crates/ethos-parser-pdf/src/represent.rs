@@ -80,6 +80,7 @@ pub fn to_representation(
     let mut nodes = Vec::new();
     let mut geometry: Vec<NodeGeometry> = Vec::new();
     let mut tables: Vec<ethos_parser_core::TableRecord> = Vec::new();
+    let mut figures: Vec<ethos_parser_core::FigureRecord> = Vec::new();
 
     for page in &extract.pages {
         let page_id = alloc.next(IdKind::Page)?;
@@ -208,6 +209,15 @@ pub fn to_representation(
                 // check it against, and comparing the tree to itself would agree with itself. So no
                 // tagged-versus-geometric check is recorded rather than a self-agreeing `Ok`.
                 tagged_check: None,
+            });
+        }
+        // Decision #46. A region is a box and the rule that drew it: no text, no id of its own.
+        for f in &page.figures {
+            figures.push(ethos_parser_core::FigureRecord {
+                page: page_id.clone(),
+                geometry: ethos_parser_core::GeometryPresence::Measured(rect_to_qrect(f.rect)?),
+                derivation: ethos_parser_core::DerivationClass::Computed,
+                detection_rule: ethos_parser_core::FIGURE_RULE_V1.to_string(),
             });
         }
         pages.push(PageRecord {
@@ -556,6 +566,7 @@ pub fn to_representation(
         // Carried forward from the extract, not re-read: the outline is one tree over the
         // catalog and re-walking it here would be a second place for it to come from.
         outlines: extract.outlines.clone(),
+        figures,
         assurance,
     };
 

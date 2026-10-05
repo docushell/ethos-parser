@@ -791,7 +791,7 @@ fn touching_groups(rects: &[QuantRect], gap: i64) -> Vec<Vec<QuantRect>> {
 }
 
 /// The set `i` belongs to, in a union-find over `parent`.
-fn root(parent: &mut [usize], mut i: usize) -> usize {
+pub(crate) fn root(parent: &mut [usize], mut i: usize) -> usize {
     while parent[i] != i {
         parent[i] = parent[parent[i]];
         i = parent[i];

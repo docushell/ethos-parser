@@ -883,6 +883,9 @@ fn project_within(
         // nothing here changes whether this capability is true or false
         // (`docs/29-OUTLINES-SCOPE.md`: an outline title is not quotable).
         outlines: _,
+        // Decision #46. The projection reads `nodes`, and a figure record is not one: a region
+        // claims no text, so there is nothing of it to ground.
+        figures: _,
         measured_ink_boxes: _,
         multi_column_reading_order: _,
         structural_locators: _,
@@ -1290,6 +1293,7 @@ mod schema_limit_tests {
             coordinate_system: CoordinateSystem::V0,
             tables: Vec::new(),
             outlines: Vec::new(),
+            figures: Vec::new(),
             assurance: Assurance::new(
                 capabilities,
                 pages.iter().map(|p| p.index).max().unwrap_or(0),

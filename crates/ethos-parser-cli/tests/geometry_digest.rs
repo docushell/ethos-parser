@@ -233,6 +233,10 @@ const PINNED: &[(&str, &str)] = &[
         "sha256:213a540c99412fd98f311d26eac820881168ba4c773b26297ee34d8299ec2434",
     ),
     (
+        "engine/figure-paths-drawn/document.pdf",
+        "sha256:ea2cadf6173c7d000c0195da2ca8e181fca7d02c65d314200c7b3c7b4a7275d6",
+    ),
+    (
         "engine/form-field-value/document.pdf",
         "sha256:213a540c99412fd98f311d26eac820881168ba4c773b26297ee34d8299ec2434",
     ),

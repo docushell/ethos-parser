@@ -8,10 +8,10 @@ A refusal (non-zero exit) is a ProviderPermanentError and scores zero, as the be
 Text dimensions read `markdown`, its pipe tables converted to HTML as every local provider's are —
 except a table holding a merged cell, which GFM cannot carry: that one is the engine's own HTML
 projection of it, `rowspan` and `colspan` kept. Visual Grounding reads the engine's own units with their boxes:
-its `layout_unit`s (each `ground` element where a run carries none), each table and each image,
-labelled only from what the record states — a run's page `furniture`, a tagged role path, an
-`inferred_heading` run, a detected table, a drawn image — and `Text` otherwise. Nothing here infers a role or a unit the
-engine did not.
+its `layout_unit`s (each `ground` element where a run carries none), each table, each image and
+each figure region, labelled only from what the record states — a run's page `furniture`, a tagged
+role path, an `inferred_heading` run, a detected table, a drawn image, a figure region (decision
+#46) — and `Text` otherwise. Nothing here infers a role or a unit the engine did not.
 
 `ETHOS_BENCH_OCR=1` (decision #45) adds an OCR pass outside the engine, which is never the default:
 where ethos reads no text from a PDF, or refuses it because no font states its characters, the
@@ -139,6 +139,10 @@ def _layout(extract: dict, grounding: dict) -> dict:
         rect = ((node.get("native_locator") or {}).get("pdf_image") or {}).get("rect") or {}
         if node["kind"] == "image" and rect.get("state") == "painted":
             items.append({"page": node["native_locator"]["pdf_image"]["page"], "bbox": rect["value"], "label": "Picture", "text": ""})
+    for figure in rep.get("figures", []):
+        geometry = figure.get("geometry") or {}
+        if geometry.get("state") == "measured":
+            items.append({"page": page_of.get(figure.get("page"), 1), "bbox": geometry["value"], "label": "Picture", "text": ""})
     pages = [{"index": p["index"], "width": p["width"], "height": p["height"]} for p in rep["pages"]]
     return {"pages": pages, "items": items}
 

@@ -130,6 +130,7 @@ fn proof_table() -> Vec<Proof> {
         char_offsets,
         tables,
         outlines,
+        figures,
         measured_ink_boxes,
         multi_column_reading_order,
         structural_locators,
@@ -173,6 +174,12 @@ fn proof_table() -> Vec<Proof> {
             field: "outlines",
             claimed: outlines,
             proof_test: Some("the_declared_outline_is_read_as_the_document_declared_it"),
+            why_not: None,
+        },
+        Proof {
+            field: "figures",
+            claimed: figures,
+            proof_test: Some("a_drawn_figure_is_a_region_and_a_lone_rule_is_not"),
             why_not: None,
         },
         Proof {
@@ -1178,6 +1185,63 @@ fn limitations_are_sorted_and_free_of_duplicates() {
         a.assurance.limitations, sorted,
         "the emitted order must already be canonical"
     );
+}
+
+/// **A figure drawn with paths is a region; a lone rule and a clip are not** — the proof for
+/// `capabilities.figures`, rule `figure-regions-v1` (decision #46,
+/// `docs/34-FIGURE-REGIONS-SCOPE.md`).
+///
+/// `figure-paths-drawn` paints a bar chart as six touching paths — two axes, three bars and a
+/// curve — inside a page-sized clip, beside a lone stroked rule and a line of text. Exactly one
+/// region comes out, boxed by the chart's paths: the rule is a cluster of one, the clip was never
+/// painted, and no run is claimed or moved. A page that paints no path has none.
+#[test]
+fn a_drawn_figure_is_a_region_and_a_lone_rule_is_not() {
+    let a = extract_ok(engine_fx("figure-paths-drawn"));
+    assert!(a.assurance.capabilities.figures);
+    let found: Vec<_> = a.pages.iter().flat_map(|p| p.figures.iter()).collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "the chart, and neither the rule nor the clip: {found:?}"
+    );
+    let r = found[0].rect;
+    assert_eq!(
+        (r.x0, r.y0, r.x1, r.y1),
+        (4_000, 5_000, 20_000, 16_000),
+        "40..200 across and 40..150 up on a 200-point page, in the declared top-left system: \
+         the axes, bars and curve, topped by the curve's control point at 150"
+    );
+
+    let rep = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    let records = &rep.payload().figures;
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].detection_rule, ethos_parser_core::FIGURE_RULE_V1);
+    assert_eq!(
+        records[0].derivation,
+        ethos_parser_core::DerivationClass::Computed,
+        "the paths are the document's; the grouping is this engine's"
+    );
+    assert_eq!(
+        records[0].geometry,
+        ethos_parser_core::GeometryPresence::Measured(
+            ethos_parser_core::QRect::new(4_000, 5_000, 20_000, 16_000).expect("a box")
+        )
+    );
+
+    // A region claims no text: every run the page draws is still a run.
+    let text: String = a
+        .pages
+        .iter()
+        .flat_map(|p| p.runs.iter())
+        .map(|r| r.text.as_str())
+        .collect();
+    for word in ["Q1", "Q2", "Q3", "Quarterly sales, drawn as paths."] {
+        assert!(text.contains(word), "`{word}` is still in the text");
+    }
+
+    let none = extract_ok(engine_fx("markdown-two-blocks"));
+    assert!(none.pages.iter().all(|p| p.figures.is_empty()));
 }
 
 /// **The declared outline is read as the document declared it** — the proof for

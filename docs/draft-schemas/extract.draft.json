@@ -128,6 +128,13 @@
           },
           "$comment": "Tables the structure tree declares that no geometric rule matched (v2-S24). Omitted when there are none."
         },
+        "figures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/detected_figure"
+          },
+          "$comment": "Figure regions `figure-regions-v1` found on this page (decision #46). Omitted when there are none. The representation carries them as figure records."
+        },
         "objects": {
           "type": "array",
           "items": {
@@ -306,6 +313,19 @@
         }
       },
       "$comment": "A table or cell rectangle in integer centipoints, as the detector measured it. An object here, where the representation writes a QRect as [x0, y0, x1, y1]."
+    },
+    "detected_figure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rect"
+      ],
+      "properties": {
+        "rect": {
+          "$ref": "#/$defs/quant_rect",
+          "$comment": "The union of the clustered paths' boxes, within the page, in page space."
+        }
+      }
     },
     "detected_table": {
       "type": "object",

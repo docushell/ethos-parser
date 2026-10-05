@@ -346,6 +346,12 @@ pub struct Interpreter<'a> {
     /// painted over its background, whose edges no reader sees and whose area the fill beneath
     /// already covers. Dropped with a form's ink, as `rects` is.
     pub inset: Vec<PathRect>,
+    /// The box of every path a fill or a stroke painted, in user space, curves included and a
+    /// form's paths kept (`figure-regions-v1`, decision #46) — the figure rule's only input. A
+    /// path ended with `n` painted nothing and is not here.
+    pub painted: Vec<PathRect>,
+    /// The box of the path being built: every point and control point it has named so far.
+    path_box: Option<PathRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
     /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
@@ -440,6 +446,8 @@ impl<'a> Interpreter<'a> {
             rects: Vec::new(),
             white: Vec::new(),
             inset: Vec::new(),
+            painted: Vec::new(),
+            path_box: None,
             filled: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
@@ -575,6 +583,20 @@ impl<'a> Interpreter<'a> {
     fn ctm_is_axis_aligned(&self) -> bool {
         let m = self.gs.ctm;
         (approx_eq(m.b, 0.0) && approx_eq(m.c, 0.0)) || (approx_eq(m.a, 0.0) && approx_eq(m.d, 0.0))
+    }
+
+    /// Widen the box of the path being built to hold `p`, a point in user space.
+    fn grow_path_box(&mut self, p: (f64, f64)) {
+        let b = self.path_box.get_or_insert(PathRect {
+            x0: p.0,
+            y0: p.1,
+            x1: p.0,
+            y1: p.1,
+        });
+        b.x0 = b.x0.min(p.0);
+        b.y0 = b.y0.min(p.1);
+        b.x1 = b.x1.max(p.0);
+        b.y1 = b.y1.max(p.1);
     }
 
     /// Turn the subpath under construction into a rectangle, if it is one.
@@ -799,6 +821,15 @@ impl<'a> Interpreter<'a> {
                 );
                 let a = self.gs.ctm.apply(x, y);
                 let b = self.gs.ctm.apply(x + w, y + h);
+                // All four corners: under a rotated CTM two of them do not bound the rest.
+                for p in [
+                    a,
+                    b,
+                    self.gs.ctm.apply(x + w, y),
+                    self.gs.ctm.apply(x, y + h),
+                ] {
+                    self.grow_path_box(p);
+                }
                 // A rotated or skewed CTM turns a rectangle into a parallelogram. Capturing its
                 // bounding box would invent edges the document never drew, so it is dropped.
                 if self.ctm_is_axis_aligned() {
@@ -809,10 +840,12 @@ impl<'a> Interpreter<'a> {
             MoveTo => {
                 self.flush_subpath();
                 let p = self.gs.ctm.apply(num(operands, 0)?, num(operands, 1)?);
+                self.grow_path_box(p);
                 self.subpath.points.push(p);
             }
             LineTo => {
                 let p = self.gs.ctm.apply(num(operands, 0)?, num(operands, 1)?);
+                self.grow_path_box(p);
                 if let Some(&prev) = self.subpath.points.last() {
                     // A diagonal is not a ruling line, and a rectangle inferred from one would be
                     // an edge nobody drew.
@@ -826,7 +859,20 @@ impl<'a> Interpreter<'a> {
             // **Curves are never tessellated into ruling lines.** Flattening a Bézier would
             // manufacture straight edges for a table the document drew with curves — the
             // clearest possible case of inventing geometry. The subpath is disqualified instead.
-            CurveTo | CurveToV | CurveToY => self.subpath.disqualified = true,
+            //
+            // The figure rule reads a curve's box from its points and control points, which hold
+            // the curve: a Bézier lies inside the hull of its four.
+            CurveTo | CurveToV | CurveToY => {
+                for i in (0..operands.len() / 2).map(|k| 2 * k) {
+                    // Read where it can be, and skipped where it cannot: a curve was never
+                    // refused for its operands before this rule read them.
+                    if let (Ok(x), Ok(y)) = (num(operands, i), num(operands, i + 1)) {
+                        let p = self.gs.ctm.apply(x, y);
+                        self.grow_path_box(p);
+                    }
+                }
+                self.subpath.disqualified = true;
+            }
 
             // --- painting: ink reached the page, so the pending rectangles are real ----------
             Stroke
@@ -839,6 +885,9 @@ impl<'a> Interpreter<'a> {
             | CloseFillStroke
             | CloseFillStrokeEvenOdd => {
                 self.flush_subpath();
+                if let Some(b) = self.path_box.take() {
+                    self.painted.push(b);
+                }
                 if matches!(op, Fill | FillObsolete | FillEvenOdd) {
                     let fill = self.gs.fill;
                     for &rect in &self.pending {
@@ -864,6 +913,7 @@ impl<'a> Interpreter<'a> {
             // `n` ends a path **without painting it**. Nothing was drawn, so nothing is a ruling
             // line — this is also the operator that ends a clip-only path.
             EndPath => {
+                self.path_box = None;
                 self.subpath = Subpath::default();
                 self.pending.clear();
                 self.pending_segments.clear();
@@ -1179,6 +1229,7 @@ impl<'a> Interpreter<'a> {
             std::mem::take(&mut self.subpath),
             std::mem::take(&mut self.pending),
             std::mem::take(&mut self.pending_segments),
+            self.path_box.take(),
         );
         self.gs.ctm = form.matrix.then(self.gs.ctm);
         self.form_stack.push((id, Arc::clone(&form), path));
@@ -1211,6 +1262,7 @@ impl<'a> Interpreter<'a> {
             self.subpath,
             self.pending,
             self.pending_segments,
+            self.path_box,
         ) = saved;
         outcome
     }

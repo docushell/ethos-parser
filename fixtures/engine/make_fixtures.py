@@ -30,6 +30,9 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   unruled-near-miss          columns that align on two rows and miss on the third, so the
                              alignment rule must refuse rather than round them
                              together                                              [v1-S2]
+  figure-paths-drawn         a bar chart DRAWN with paths — two stroked axes, three filled bars
+                             and a curve — under a page-sized clip, beside a lone stroked rule
+                             and a line of text. One figure region, the chart's   [#46]
   background-panel-not-a-grid  a filled background panel with three scattered bars on it: the
                              panel covers every face the bars' edges imply, so `ruled-rects-v1`
                              called it a 7x7 table with 3 cells                   [v1-S7b]
@@ -898,6 +901,27 @@ FIXTURES = {
     # The two runs share one baseline deliberately: with a single row line the alignment rule
     # produces neither a table nor a refusal, so this fixture tests the ruled rule alone. Text is
     # present so a test can also assert that refusing the grid costs the page none of its words.
+    # Decision #46's golden. A bar chart drawn with paths: two stroked axes meeting at (40, 40),
+    # three filled bars standing on the x-axis and a trend curve over them, all inside a 200 x 140
+    # point clip that `n` ends without painting — a reader that kept the clip's box would widen
+    # the chart's to (30, 30, 230, 170). The six paths touch, so they are one cluster. The curve's second control point, (100, 150), is its highest point and the
+    # cluster's: the box is 40..200 across and 40..150 up — (4000, 5000, 20000, 16000) in the
+    # artifact's top-left centipoints on this 200-point page — and a reader that dropped control
+    # points would stop at the y-axis' 140. A lone rule 30 points above is a path of its own, and
+    # a cluster of one is no figure. The labels are short and the line of text is outside the
+    # box, so neither is prose inside it.
+    "figure-paths-drawn": (
+        "q 30 30 200 140 re W n "
+        "1 w 0 G 40 40 m 40 140 l S 40 40 m 200 40 l S "
+        "0.5 g 60 40 30 50 re f 110 40 30 80 re f 160 40 30 30 re f "
+        "60 90 m 100 150 140 100 180 120 c S "
+        "Q "
+        "40 180 m 260 180 l S "
+        "BT /F1 8 Tf "
+        "1 0 0 1 68 30 Tm (Q1) Tj 1 0 0 1 118 30 Tm (Q2) Tj 1 0 0 1 168 30 Tm (Q3) Tj "
+        "1 0 0 1 40 10 Tm (Quarterly sales, drawn as paths.) Tj "
+        "ET"
+    ),
     "background-panel-not-a-grid": (
         "0.9 g "
         "20 20 200 160 re f "
@@ -2029,6 +2053,7 @@ MEDIA = {
     "ruled-table-overlap": (0, 0, 300, 160),
     "unruled-near-miss": (0, 0, 300, 200),
     "background-panel-not-a-grid": (0, 0, 240, 200),
+    "figure-paths-drawn": (0, 0, 300, 200),
     # v1-S8. Wide enough for four 60pt columns plus margins, tall enough for five baselines
     # and a row of headings above the topmost one.
     "stroke-ruled-worksheet": (0, 0, 280, 200),

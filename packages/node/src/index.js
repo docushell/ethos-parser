@@ -114,7 +114,7 @@ export const REPRESENTATION_ARTIFACT_TYPE = "ethos.parser.representation.v0";
  * The one representation shape this package reads, beside `REPRESENTATION_ARTIFACT_TYPE`.
  * `crates/ethos-parser-cli/tests/sdk_versions.rs` pins both to the engine's.
  */
-const REPRESENTATION_SCHEMA_VERSION = "0.7.0";
+const REPRESENTATION_SCHEMA_VERSION = "0.8.0";
 
 // -------------------------------------------------------------------------------------------
 // The public surface — four functions, and not one of them names a coordinate
