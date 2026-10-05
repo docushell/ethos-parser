@@ -535,3 +535,14 @@ interior line to be drawn across most of its bands (-3.0 page units, losing true
 rectangle: a cell filled and stroked in two paths was two cells over one slot, and the cross-check
 refused the grid. Not on the page-wide lattice, whose duplicates' refusal leaves a page of boxed
 goal cards to the group guards. ParseBench tables 0.4502 -> 0.4578, five pages up, none down.
+
+**`ruled-rects-v12` (2026-10-05).** Within one group's rectangles, decoration is left out before
+the grid is read: a fill painted over paint of its own colour (the last fill beneath that contains
+it — a cell's padding over its background), and a rule neither of whose ends meets another
+rectangle (an underline). The first cut columns of padding that hold no text, and clause 4 of
+`standing()` refused the grid; the second drew a segment inside a cell, and `merged_cells` refused
+it. **Only on a document that declares no author structure**, as the whitespace and chart rules
+run: on the tagged gate documents a grid read through its decoration took a declared table's place
+in the pairing, and combined micro recall fell 474‰ -> 386‰. ParseBench tables 0.4578 -> 0.4833,
+18 up and 1 down; opendataloader-bench TEDS 0.4322 -> 0.4949; on the gate documents with their
+trees stripped, whole ruled tables replace whitespace fragments.

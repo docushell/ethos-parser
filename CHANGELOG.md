@@ -142,6 +142,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A grid's decoration, left out of it (`ruled-rects-v12`)
+
+`table_detection.ruled` moves `ruled-rects-v11` -> `ruled-rects-v12`, so `profile_sha256` moves.
+
+- **Within one group's rectangles, two kinds of decoration are left out before the grid is read.**
+  A fill painted over paint of its own colour — a cell's padding over its background, whose edges
+  no reader sees — cut columns of padding that hold no text, and the group's grid was refused as a
+  split the text does not make. A rule neither of whose ends meets another rectangle — an
+  underline — drew a segment inside a cell, and the grid was refused as a line stopping part-way
+  into one. The page-wide lattice reads what it read before.
+- **Only on a document that declares no author structure.** Where the document's tree says where
+  its tables are, a grid read through its decoration takes a declared table's place in the
+  pairing: measured on the tagged gate documents, combined micro recall fell 474‰ -> 386‰ while
+  the geometric recall rose 7‰ -> 249‰. There a group is read as `ruled-rects-v11` read it, and
+  the gate documents read as before.
+- **Measured** on ParseBench: tables 0.4578 -> 0.4833 (18 pages up, 1 down: `SERFF_CA` p2069 1.0
+  -> 0.94), charts 0.0984 -> 0.1002, visual grounding 0.4698 -> 0.4707, content and formatting
+  unchanged, no page falling on any of them; overall 41.95 -> 42.51.
+  opendataloader-bench TEDS 0.4322 -> 0.4949 and NID 0.8825 -> 0.8839, three documents up, none
+  down, no table where the ground truth holds none. On the eight gate documents with their trees
+  stripped, 34 tables grow, 21 are new and 12 fragments are gone into the whole tables that replace
+  them — `nist-sp-800-161r1`'s
+  control matrices with their headers (p174's five whitespace fragments are one 48 x 7 table),
+  revision histories, `nist-sp-800-37r2`'s RMF task tables, and `nist-sp-800-171r3` p110's PM rows
+  that decision #43's text lost a table for — and one follows the two columns its page draws.
+
 ### A rectangle painted twice, read once (`ruled-rects-v11`)
 
 `table_detection.ruled` moves `ruled-rects-v10` -> `ruled-rects-v11`, so `profile_sha256` moves.

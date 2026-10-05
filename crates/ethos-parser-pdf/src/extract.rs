@@ -914,6 +914,12 @@ fn extract_page(
             let (bx, by) = geom.to_top_left(r.x1, r.y1);
             table_white.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
         }
+        let mut table_inset = Vec::with_capacity(interp.inset.len());
+        for r in &interp.inset {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            table_inset.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
         let origins: Vec<crate::tables::RunOrigin<'_>> = runs
             .iter()
             .map(|r| crate::tables::RunOrigin {
@@ -972,6 +978,10 @@ fn extract_page(
             page_number,
             &table_rects,
             &table_white,
+            // `ruled-rects-v12`: a group's decoration is left out only where the document
+            // declares no author structure — where it does, a grid read through its decoration
+            // would take a declared table's place in the pairing below.
+            no_author_structure(structure.as_ref()).then_some(&table_inset[..]),
             &stroke_rules,
             &uprights,
             &origins,
@@ -2290,6 +2300,7 @@ pub(crate) fn per_page_table_diagnostics(
     let mut alloc = IdAllocator::new(profile_sha256);
     let mut out = Vec::with_capacity(doc.pages().len());
     let content = crate::budget::ContentBudget::default();
+    let structure = crate::structure::read(doc.inner())?;
 
     for &(page_number, page_id) in doc.pages() {
         let page_dict =
@@ -2352,6 +2363,12 @@ pub(crate) fn per_page_table_diagnostics(
             let (bx, by) = geom.to_top_left(r.x1, r.y1);
             table_white.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
         }
+        let mut table_inset = Vec::with_capacity(interp.inset.len());
+        for r in &interp.inset {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            table_inset.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
 
         // Ruling segments, split by orientation exactly as `extract` splits them.
         let mut stroke_rules = Vec::new();
@@ -2391,6 +2408,10 @@ pub(crate) fn per_page_table_diagnostics(
             page_number,
             &table_rects,
             &table_white,
+            // `ruled-rects-v12`: a group's decoration is left out only where the document
+            // declares no author structure — where it does, a grid read through its decoration
+            // would take a declared table's place in the pairing below.
+            no_author_structure(structure.as_ref()).then_some(&table_inset[..]),
             &stroke_rules,
             &uprights,
             &origins,

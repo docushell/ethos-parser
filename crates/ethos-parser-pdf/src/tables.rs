@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V11` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V12` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -77,7 +77,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V11` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V12` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -192,7 +192,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V11`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V12`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -360,13 +360,15 @@ pub fn detect(
     page: u32,
     rects: &[QuantRect],
     white: &[QuantRect],
+    decoration: Option<&[QuantRect]>,
     rules: &[crate::stroke_ruled::Rule],
     uprights: &[crate::stroke_ruled::Upright],
     runs: &[RunOrigin<'_>],
     fields: &[QuantRect],
     alloc: &mut IdAllocator,
 ) -> Result<Detected, EngineError> {
-    let (mut tables, ruled_refusal) = detect_ruled_with(page, rects, white, runs, alloc)?;
+    let (mut tables, ruled_refusal) =
+        detect_ruled_with(page, rects, white, decoration, runs, alloc)?;
 
     // v1-S8. The rule on the ruling LINES the page stroked, on regions the ruled rule did not
     // already claim.
@@ -660,7 +662,7 @@ pub fn detect_ruled(
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
-    detect_ruled_with(page, rects, &[], runs, alloc)
+    detect_ruled_with(page, rects, &[], Some(&[]), runs, alloc)
 }
 
 /// Detect ruled tables on one page.
@@ -670,7 +672,10 @@ pub fn detect_ruled(
 /// and the grids that stand ([`standing`]) are the page's tables — numbered only once they stand,
 /// so a page where none does keeps every id it had. Where none stands, the page-wide refusal is
 /// the page's. `white` names those of `rects` a fill alone painted white: none of them draws a line
-/// a group's grid reads its merged cells from ([`Lattice::merged_cells`]).
+/// a group's grid reads its merged cells from ([`Lattice::merged_cells`]). `decoration`, where it is
+/// given, names those a fill alone painted over paint of their own colour, and a group's grid is
+/// read without its decoration ([`without_decoration`]); `None` — a document that declares its own
+/// structure — reads a group as `ruled-rects-v11` did.
 ///
 /// # Errors
 ///
@@ -679,6 +684,7 @@ pub fn detect_ruled_with(
     page: u32,
     rects: &[QuantRect],
     white: &[QuantRect],
+    decoration: Option<&[QuantRect]>,
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
@@ -694,6 +700,10 @@ pub fn detect_ruled_with(
         // slot and the cross-check refuses the grid.
         group.sort_by_key(|r| (r.x0, r.y0, r.x1, r.y1));
         group.dedup();
+        let group = match decoration {
+            Some(inset) => without_decoration(group, inset),
+            None => group,
+        };
         let (found, refused) = ruled_grid(page, &group, runs, &mut trial, Some(white))?;
         grids.extend(found);
         first = first.or(refused);
@@ -709,6 +719,47 @@ pub fn detect_ruled_with(
         }
     }
     Ok((grids, first))
+}
+
+/// `ruled-rects-v12`: a group's rectangles without what decorates a grid rather than rules it — a
+/// fill painted over paint of its own colour (`inset`), a cell's padding over its background, and a
+/// rule neither of whose ends meets another rectangle, an underline. Neither is a line the page
+/// drew between cells, and read as one each splits a cell into faces no rule bounds.
+fn without_decoration(group: Vec<QuantRect>, inset: &[QuantRect]) -> Vec<QuantRect> {
+    let group: Vec<QuantRect> = group.into_iter().filter(|r| !inset.contains(r)).collect();
+    // Whether another rectangle has an edge at `at` that spans `along` — the end of a rule there
+    // meets it. `vertical` names the other rectangle's edge.
+    let meets = |r: &QuantRect, at: i64, along: i64, vertical: bool| {
+        group.iter().any(|s| {
+            let (a, b, lo, hi) = if vertical {
+                (s.x0, s.x1, s.y0, s.y1)
+            } else {
+                (s.y0, s.y1, s.x0, s.x1)
+            };
+            s != r
+                && ((a - at).abs() <= LATTICE_TOLERANCE || (b - at).abs() <= LATTICE_TOLERANCE)
+                && lo - LATTICE_TOLERANCE <= along
+                && along <= hi + LATTICE_TOLERANCE
+        })
+    };
+    let meets_nothing = |r: &QuantRect| {
+        let (w, h) = (r.x1 - r.x0, r.y1 - r.y0);
+        if h <= LATTICE_TOLERANCE && w > LATTICE_TOLERANCE {
+            let y = (r.y0 + r.y1) / 2;
+            !meets(r, r.x0, y, true) && !meets(r, r.x1, y, true)
+        } else if w <= LATTICE_TOLERANCE && h > LATTICE_TOLERANCE {
+            let x = (r.x0 + r.x1) / 2;
+            !meets(r, r.y0, x, false) && !meets(r, r.y1, x, false)
+        } else {
+            false
+        }
+    };
+    let keep: Vec<bool> = group.iter().map(|r| !meets_nothing(r)).collect();
+    group
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(r, k)| k.then_some(r))
+        .collect()
 }
 
 /// The page's rectangles in groups: two are in one group where their boxes, each grown by `gap`,
@@ -1039,7 +1090,7 @@ fn ruled_grid(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V11.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V12.to_string(),
         }],
         None,
     ))
@@ -1892,7 +1943,7 @@ mod tests {
         assert_eq!(tables.len(), 1);
         let t = &tables[0];
         assert_eq!((t.rows, t.columns), (2, 3));
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V11);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V12);
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
         assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
@@ -2020,7 +2071,7 @@ mod tests {
             (heading.position.colspan, heading.text.as_str()),
             (3, "Focus area")
         );
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V11);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V12);
     }
 
     #[test]
@@ -2128,7 +2179,8 @@ mod tests {
         let (read, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(read.len(), 1, "{read:?}");
         // Painted white, it draws none of them.
-        let (tables, _) = detect_ruled_with(1, &rects, &[panel], &runs, &mut alloc()).unwrap();
+        let (tables, _) =
+            detect_ruled_with(1, &rects, &[panel], Some(&[]), &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
     }
 
@@ -2151,6 +2203,56 @@ mod tests {
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
         assert_eq!(tables[0].cells.len(), 4);
+    }
+
+    #[test]
+    fn a_cell_s_padding_over_its_background_is_no_line() {
+        // A grid of rules; its first cell filled, and its padding filled again inside the fill.
+        let mut rects = segments(2, 2, |_, _, _| true);
+        let padding = r(105, 101, 195, 139);
+        rects.extend([r(101, 101, 200, 140), padding]);
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        // Read as lines, the padding's edges cut columns of padding that hold no text.
+        let (read, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(read.is_empty(), "{read:?}");
+        let (tables, _) =
+            detect_ruled_with(1, &rects, &[], Some(&[padding]), &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(
+            (tables[0].rows, tables[0].columns, tables[0].cells.len()),
+            (2, 2, 4)
+        );
+    }
+
+    #[test]
+    fn a_document_that_declares_its_structure_keeps_its_decoration() {
+        // The underline fixture below, on a document whose tree says where its tables are: its
+        // groups are read as `ruled-rects-v11` read them, so a declared table keeps its place.
+        let mut rects = segments(2, 2, |_, _, _| true);
+        rects.push(r(110, 137, 160, 138));
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let (tables, _) = detect_ruled_with(1, &rects, &[], None, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn an_underline_inside_a_cell_is_no_line() {
+        // A rule close above a cell's lower edge, meeting nothing at either end.
+        let mut rects = segments(2, 2, |_, _, _| true);
+        rects.push(r(110, 137, 160, 138));
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(
+            (tables[0].rows, tables[0].columns, tables[0].cells.len()),
+            (2, 2, 4)
+        );
     }
 
     #[test]

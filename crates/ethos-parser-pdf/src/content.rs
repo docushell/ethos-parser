@@ -245,6 +245,14 @@ impl PathRect {
             y1: a.1.max(b.1),
         }
     }
+
+    /// Whether `other` lies within this rectangle, to a hundredth of a point.
+    fn contains(&self, other: &PathRect) -> bool {
+        self.x0 <= other.x0 + 0.01
+            && self.y0 <= other.y0 + 0.01
+            && self.x1 >= other.x1 - 0.01
+            && self.y1 >= other.y1 - 0.01
+    }
 }
 
 /// One axis-aligned rectangle a page **filled**, and the colour it filled it with (decision #42).
@@ -333,6 +341,11 @@ pub struct Interpreter<'a> {
     /// [`Interpreter::rects`]. On white paper they draw no line a reader sees, so a grid's merged
     /// cells are never read from their edges. Dropped with a form's ink, as `rects` is.
     pub white: Vec<PathRect>,
+    /// The rectangles a fill alone painted over paint of their own colour (`ruled-rects-v12`) —
+    /// the last fill beneath that contains them — also in [`Interpreter::rects`]: a cell's padding
+    /// painted over its background, whose edges no reader sees and whose area the fill beneath
+    /// already covers. Dropped with a form's ink, as `rects` is.
+    pub inset: Vec<PathRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
     /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
@@ -426,6 +439,7 @@ impl<'a> Interpreter<'a> {
             undecodable: Vec::new(),
             rects: Vec::new(),
             white: Vec::new(),
+            inset: Vec::new(),
             filled: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
@@ -515,6 +529,7 @@ impl<'a> Interpreter<'a> {
                 self.undecodable.clear();
                 self.rects.clear();
                 self.white.clear();
+                self.inset.clear();
                 self.segments.clear();
                 self.pending.clear();
                 self.subpath = Subpath::default();
@@ -824,8 +839,19 @@ impl<'a> Interpreter<'a> {
             | CloseFillStroke
             | CloseFillStrokeEvenOdd => {
                 self.flush_subpath();
-                if matches!(op, Fill | FillObsolete | FillEvenOdd) && self.gs.fill.is_white() {
-                    self.white.extend(self.pending.iter().copied());
+                if matches!(op, Fill | FillObsolete | FillEvenOdd) {
+                    let fill = self.gs.fill;
+                    for &rect in &self.pending {
+                        if fill.is_white() {
+                            self.white.push(rect);
+                        }
+                        let beneath = self.filled.iter().rev().find(|f| f.rect.contains(&rect));
+                        if beneath.is_some_and(|b| {
+                            b.fill.same(fill) || (b.fill.is_white() && fill.is_white())
+                        }) {
+                            self.inset.push(rect);
+                        }
+                    }
                 }
                 if !matches!(op, Stroke | CloseStroke) {
                     let fill = self.gs.fill;
@@ -1136,7 +1162,12 @@ impl<'a> Interpreter<'a> {
             Some((_, _, outer)) => format!("{outer}/{name}"),
             None => name.to_owned(),
         };
-        let painted = (self.rects.len(), self.segments.len(), self.white.len());
+        let painted = (
+            self.rects.len(),
+            self.segments.len(),
+            self.white.len(),
+            self.inset.len(),
+        );
         let saved = (
             self.gs,
             self.gs_stack.clone(),
@@ -1167,6 +1198,7 @@ impl<'a> Interpreter<'a> {
         self.form_stack.pop();
         self.rects.truncate(painted.0);
         self.white.truncate(painted.2);
+        self.inset.truncate(painted.3);
         self.segments.truncate(painted.1);
         (
             self.gs,
@@ -1556,6 +1588,21 @@ mod tests {
         let xs: Vec<f64> = i.white.iter().map(|r| r.x0).collect();
         assert_eq!(xs, vec![0.0, 80.0]);
         assert_eq!(i.rects.len(), 5);
+    }
+
+    #[test]
+    fn a_fill_over_paint_of_its_own_colour_is_inset() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0.5 g 0 0 100 100 re f 10 10 20 20 re f 60 60 10 10 re B 0.2 g 40 40 20 20 re f \
+             0.5 g 45 45 5 5 re f 1 g 200 0 50 50 re f 210 10 10 10 re f 0.5 g 500 0 10 10 re f",
+        ))
+        .unwrap();
+        // Grey over grey and white over white; not stroked, not another colour, not grey over the
+        // darker square laid on the grey, not over the page.
+        let xs: Vec<f64> = i.inset.iter().map(|r| r.x0).collect();
+        assert_eq!(xs, vec![10.0, 210.0]);
     }
 
     #[test]

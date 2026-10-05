@@ -346,6 +346,22 @@ Within one group's rectangles, a rectangle painted twice is read once. Tables 0.
 pages up and none down; content 0.6633, formatting 0.4080, charts 0.0984 and visual grounding
 0.4698 unchanged. Overall 41.95.
 
+### After `ruled-rects-v12` (2026-10-05)
+
+On a document that declares no author structure, a group's grid leaves out a fill painted over
+paint of its own colour and a rule neither of whose ends meets another rectangle.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4080 | 0.4080 |
+| Tables | 0.4833 | 0.4578 |
+| Charts | 0.1002 | 0.0984 |
+| Visual grounding | 0.4707 | 0.4698 |
+
+18 table pages rise and 1 falls (`SERFF_CA` p2069, 1.0 -> 0.94); no page falls on any other
+dimension. Overall 42.51.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
