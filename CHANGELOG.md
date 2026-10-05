@@ -142,6 +142,17 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Scans, through an OCR pass outside the engine (decision #45)
+
+- **The ParseBench adapter reads scans through an opt-in OCR pass** (`ETHOS_BENCH_OCR=1`): where
+  ethos reads no text from a PDF, or refuses it because no font states its characters, the pages
+  are rasterized (Ghostscript, 300 dpi) and read by Tesseract (`ETHOS_BENCH_OCR_LANG`, default
+  `eng`) into a PDF whose invisible text layer ethos extracts; an image file ethos does not take
+  goes to Tesseract directly. The engine is unchanged and stays OCR-free (North Star #11).
+- **Measured** as *ethos + OCR pass*: content 0.6633 -> 0.7747, formatting 0.4080 -> 0.4167, visual
+  grounding 0.4708 -> 0.4922, tables 0.4833 -> 0.4882, charts unchanged; 137 pages up, none down;
+  overall 42.55 -> 45.47. Engine-only numbers stay the headline.
+
 ### A `/ToUnicode` entry that names no character (decision #44)
 
 `text_code_rule` moves `declared-font-codes-v3` -> `declared-font-codes-v4`, so `profile_sha256`

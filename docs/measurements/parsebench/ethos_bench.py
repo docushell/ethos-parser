@@ -12,6 +12,13 @@ its `layout_unit`s (each `ground` element where a run carries none), each table 
 labelled only from what the record states — a run's page `furniture`, a tagged role path, an
 `inferred_heading` run, a detected table, a drawn image — and `Text` otherwise. Nothing here infers a role or a unit the
 engine did not.
+
+`ETHOS_BENCH_OCR=1` (decision #45) adds an OCR pass outside the engine, which is never the default:
+where ethos reads no text from a PDF, or refuses it because no font states its characters, the
+pages are rasterized (Ghostscript, 300 dpi) and read by Tesseract (`ETHOS_BENCH_OCR_LANG`, default
+`eng`) into a PDF whose invisible text layer ethos then extracts; an image file ethos does not take
+goes to Tesseract directly. Results under it are "ethos + OCR pass", reported beside the
+engine-only ones. Needs `gs`, `tesseract` and `qpdf` on PATH.
 """
 
 import json
@@ -136,6 +143,30 @@ def _layout(extract: dict, grounding: dict) -> dict:
     return {"pages": pages, "items": items}
 
 
+
+def _has_text(extract_json: str) -> bool:
+    rep = json.loads(extract_json).get("representation", {})
+    return any(n.get("kind") == "text_run" and (n.get("text") or "").strip() for n in rep.get("nodes", []))
+
+
+def _ocr(source: str, scratch: Path, image: bool) -> str:
+    """Decision #45: OCR outside the engine, to a PDF ethos reads like any other."""
+    lang = os.environ.get("ETHOS_BENCH_OCR_LANG", "eng")
+    if image:
+        pages = [Path(source)]
+    else:
+        subprocess.run(["gs", "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", "-r300",
+                        f"-sOutputFile={scratch}/p%04d.png", source], check=True, capture_output=True)
+        pages = sorted(scratch.glob("p*.png"))
+    pdfs = []
+    for i, page in enumerate(pages):
+        out = scratch / f"ocr{i:04d}"
+        subprocess.run(["tesseract", str(page), str(out), "-l", lang, "pdf"], check=True, capture_output=True)
+        pdfs.append(f"{out}.pdf")
+    merged = scratch / "ocr.pdf"
+    subprocess.run(["qpdf", "--empty", "--pages", *pdfs, "--", str(merged)], check=True, capture_output=True)
+    return str(merged)
+
 @register_provider("ethos")
 class EthosProvider(Provider):
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
@@ -146,7 +177,20 @@ class EthosProvider(Provider):
         source = str(Path(request.source_file_path))
         with tempfile.TemporaryDirectory() as scratch:
             extract_path = Path(scratch) / "extract.json"
-            extract_path.write_text(_run(binary, "extract", source))
+            if os.environ.get("ETHOS_BENCH_OCR") == "1":
+                proc = subprocess.run([binary, "extract", source], capture_output=True, text=True)
+                no_font = "unsupported text encoding" in proc.stderr
+                image = "unsupported media type" in proc.stderr
+                if proc.returncode == 0 and _has_text(proc.stdout):
+                    extract_path.write_text(proc.stdout)
+                elif proc.returncode == 0 or no_font or image:
+                    ocr_dir = Path(scratch) / "ocr"
+                    ocr_dir.mkdir()
+                    extract_path.write_text(_run(binary, "extract", _ocr(source, ocr_dir, image)))
+                else:
+                    extract_path.write_text(_run(binary, "extract", source))
+            else:
+                extract_path.write_text(_run(binary, "extract", source))
             artifact = json.loads(_run(binary, "markdown", str(extract_path)))
             html = json.loads(_run(binary, "html", str(extract_path))).get("html", "")
             try:

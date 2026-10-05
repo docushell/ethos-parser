@@ -368,6 +368,22 @@ dimension. Overall 42.51.
 instead of refusing the map. Four refused pages read; charts 0.1002 -> 0.1019, visual grounding
 0.4707 -> 0.4708, every other dimension unchanged and no page falling. Overall 42.55.
 
+### Ethos + OCR pass (decision #45, 2026-10-05)
+
+Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
+only; `gs`, `tesseract` and `qpdf` on PATH). These are not engine numbers and are reported beside
+them:
+
+| Dimension | Engine only | Ethos + OCR pass |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.7747 |
+| Semantic formatting | 0.4080 | 0.4167 |
+| Tables | 0.4833 | 0.4882 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.4708 | 0.4922 |
+
+137 pages rise and none falls. Overall 42.55 engine-only, 45.47 with the pass.
+
 ## What it found that is not fixed
 
 - **Tables.** Phrases before the unruled fold do not recover them; see
