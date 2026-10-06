@@ -27,7 +27,8 @@ A **figure region** is a box this engine infers from the paths a page paints. Pe
    across and at most 3 points down.
 3. **Kept** where the cluster:
    - holds **3 paths or more** — a lone rectangle is a panel or a rule, not a figure;
-   - covers **at least 0.1% and at most 80%** of the page — a speck, or a page background;
+   - covers **at least 0.05% and at most 80%** of the page — a speck, or a page background
+     (0.1% until §6.2);
    - has **less than half its area inside any one table** a table rule found on the page;
    - holds **no line of prose**: no baseline inside it carries more than 60 characters other than
      whitespace (runs whose origins lie in the box, baselines within the same 1.5 points read as
@@ -124,6 +125,27 @@ The tree-stripped gate copies now carry 248 regions: `nist-sp-800-161r1` 73, `ni
 and `nist-sp-800-37r2` 12, the rest as before. The 28 new on `nist-sp-800-218` are §7's row bands:
 each line of the SSDF table's References column is set on a band of its own, with its links
 underlined, and the bands no longer join the panel beside them that held prose.
+
+### 6.2 Half a thousandth of the page (2026-10-07)
+
+After §6.1, 269 of the pictures visual grounding failed had no region near them, 216 of them under
+0.2% of the page: line-drawn icons set beside a line of text, which ground truth boxes one by one.
+The floor on a cluster's area, swept with everything else as §2 states, in ten-thousandths of the
+page:
+
+| Floor | Visual grounding | Pages up / down | Regions on the gate documents' tree-stripped copies |
+| ---: | ---: | ---: | ---: |
+| 10 (0.1%) | 0.5156 | — | 248 |
+| **5 (0.05%)** | **0.5174** | **17 / 0** | **267** |
+| 3 | 0.5177 | 20 / 0 | 359 |
+| 2 | 0.5179 | 23 / 0 | 363 |
+| 1 | — | — | 366 |
+
+Below half a thousandth the copies' count jumps: 89 of the 92 regions 3 adds, all on
+`nist-sp-800-161r1`, are under 2 points across one side — rules a page draws in pieces, most of
+them full width and under a point tall, 0.045% of a Letter page: a rule, not a figure. The 19 that 5 adds are the parts of the vector logotype on four cover pages. A floor of 2
+paths or of 1 was measured beside it — 0.5176 with 10 pages down, and 0.5186 with 18 — and not used.
+The floor moves to 5, folded into `figure-regions-v1`, which no release carries.
 
 ## 7. Not done
 

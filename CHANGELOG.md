@@ -239,6 +239,11 @@ so `profile_sha256` moves.
   opendataloader-bench byte-identical. The gate documents' tree-stripped copies carry 248 regions
   where they carried 208, 28 of the new ones row bands in a table column
   (`docs/34-FIGURE-REGIONS-SCOPE.md` §6.1 and §7).
+- **A region's floor is half a thousandth of the page** (folded into `figure-regions-v1`): it was a
+  thousandth, and line-drawn icons set beside a line of text fell under it. Visual grounding 0.5156
+  -> 0.5174, 17 pages up and none down; every other dimension unchanged on every page;
+  opendataloader-bench and the committed fixtures' records byte-identical. Lower floors were
+  measured and admit the rules a page draws in pieces (§6.2).
 
 ### Scans, through an OCR pass outside the engine (decision #45)
 

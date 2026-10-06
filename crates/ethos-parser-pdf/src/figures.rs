@@ -22,9 +22,9 @@
 //! 2. **Clustered by touch**: two boxes are one cluster where the gap between them is at most
 //!    [`GAP`] across and at most [`GAP`] down.
 //! 3. **Kept** where the cluster holds [`MIN_PATHS`] paths or more, covers between
-//!    [`MIN_AREA_PER_MILLE`] per mille and [`BACKGROUND`] of the page, has less than half its area
-//!    inside any one table found on the page, and holds no line of prose — no baseline inside it
-//!    carrying more than [`MAX_LINE_CHARS`] characters other than whitespace.
+//!    [`MIN_AREA_PER_TEN_THOUSAND`] ten-thousandths and [`BACKGROUND`] of the page, has less than
+//!    half its area inside any one table found on the page, and holds no line of prose — no
+//!    baseline inside it carrying more than [`MAX_LINE_CHARS`] characters other than whitespace.
 //!
 //! Its box is the union of its paths' boxes, within the page. **Where, never what**: a region
 //! claims no run and names no caption; the runs inside it stay in the text and in reading order.
@@ -40,8 +40,10 @@ pub const GAP: i64 = 300;
 /// A cluster of fewer painted paths is a rule or a panel, not a figure.
 pub const MIN_PATHS: usize = 3;
 
-/// A cluster covering less of the page than this many thousandths is a speck.
-pub const MIN_AREA_PER_MILLE: i128 = 1;
+/// A cluster covering less of the page than this many ten-thousandths is a speck: half a
+/// thousandth, where a page's hairline rule drawn in pieces covers less and an icon set beside a
+/// line of text more (`docs/34-FIGURE-REGIONS-SCOPE.md` §6.2).
+pub const MIN_AREA_PER_TEN_THOUSAND: i128 = 5;
 
 /// A path or a cluster covering this many tenths of the page or more is its background.
 pub const BACKGROUND: i128 = 8;
@@ -126,7 +128,7 @@ pub(crate) fn detect(
         })
         .filter(|b| {
             let a = area(b);
-            a * 1000 >= page_area * MIN_AREA_PER_MILLE && a * 10 < page_area * BACKGROUND
+            a * 10_000 >= page_area * MIN_AREA_PER_TEN_THOUSAND && a * 10 < page_area * BACKGROUND
         })
         .filter(|b| {
             !tables.iter().any(|t| {
@@ -240,8 +242,8 @@ mod tests {
     }
 
     #[test]
-    fn a_speck_is_not_a_figure_and_a_thousandth_of_the_page_is() {
-        // 612 x 792 points: a thousandth is 484.7 square points.
+    fn a_speck_is_not_a_figure_and_half_a_thousandth_of_the_page_is() {
+        // 612 x 792 points: half a thousandth is 242.4 square points.
         let small = vec![
             pt(100, 100, 107, 110),
             pt(108, 100, 115, 110),
@@ -249,17 +251,17 @@ mod tests {
         ];
         assert!(
             detect(&small, page(), &[], &[]).is_empty(),
-            "22 x 10 points is under a thousandth"
+            "22 x 10 points is under half a thousandth"
         );
         let enough = vec![
-            pt(100, 100, 110, 125),
-            pt(111, 100, 120, 125),
-            pt(121, 100, 125, 125),
+            pt(100, 100, 108, 110),
+            pt(109, 100, 117, 110),
+            pt(118, 100, 125, 110),
         ];
         assert_eq!(
             detect(&enough, page(), &[], &[]).len(),
             1,
-            "25 x 25 points is over one"
+            "25 x 10 points is over it"
         );
     }
 

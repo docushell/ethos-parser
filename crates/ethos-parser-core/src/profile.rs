@@ -992,8 +992,8 @@ pub const FURNITURE_RULE_V1: &str = "margin-bands-v1";
 /// of the page or more, and (folded in 2026-10-06, which no release had yet carried) any whose box
 /// holds a line of more than 60 characters, a panel text is set on — are clustered wherever their
 /// boxes come within 3 points of each other
-/// across and down. A cluster is a figure region where it holds 3 paths or more, covers 0.1% to
-/// 80% of the page, has less than half its area inside any one table found on the page, and holds
+/// across and down. A cluster is a figure region where it holds 3 paths or more, covers 0.05%
+/// (folded in 2026-10-06; it was 0.1%) to 80% of the page, has less than half its area inside any one table found on the page, and holds
 /// no baseline carrying more than 60 characters other than whitespace. Each region is a
 /// [`crate::FigureRecord`]: a box and this id.
 ///

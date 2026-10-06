@@ -544,6 +544,14 @@ documents whose TEDS it raised: a header set on several lines was taken in part.
 TRM scored with no column matched — 0.287 of the 0.517 the dimension loses — 146 hold their
 header text in the lines just above our table, which starts at its first data row.
 
+### After half a thousandth of the page (2026-10-07)
+
+269 of the pictures visual grounding still failed had no region near them, 216 under 0.2% of the
+page: line-drawn icons beside lines of text. `figure-regions-v1`'s floor on a region's area moves
+from a thousandth of the page to half of one (`docs/34-FIGURE-REGIONS-SCOPE.md` §6.2, where the
+sweep is). Visual grounding 0.5156 -> 0.5174, 17 pages up and none down; content, formatting,
+tables and charts unchanged on every page; opendataloader-bench byte-identical. Overall 44.01.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

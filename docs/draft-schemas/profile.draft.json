@@ -261,7 +261,7 @@
     "figure_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the figure-region rule in force (decision #46, docs/34-FIGURE-REGIONS-SCOPE.md). `figure-regions-v1`: on a document that declares no author structure, each page's painted paths (on the page and in the forms it draws, less any covering 80% of the page or more) are clustered wherever their boxes come within 3 points of each other across and down; a cluster holding 3 paths or more, covering 0.1% to 80% of the page, less than half inside any one table and holding no baseline of more than 60 characters is a figure region, carried in the representation's `figures` array. Where, never what: a region claims no run. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "description": "Version id of the figure-region rule in force (decision #46, docs/34-FIGURE-REGIONS-SCOPE.md). `figure-regions-v1`: on a document that declares no author structure, each page's painted paths (on the page and in the forms it draws, less any covering 80% of the page or more and any holding a baseline of more than 60 characters, a panel text is set on) are clustered wherever their boxes come within 3 points of each other across and down; a cluster holding 3 paths or more, covering 0.05% to 80% of the page, less than half inside any one table and holding no baseline of more than 60 characters is a figure region, carried in the representation's `figures` array. Where, never what: a region claims no run. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
       "examples": [
         "figure-regions-v1"
       ]
