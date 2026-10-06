@@ -471,6 +471,16 @@ two labels — `ARTICLE 11` over `DIVIDEND EQUIVALENTS` — and joining them mov
 0.4303 with 8 documents down (`text_simple__dividend` 1.0 -> 0.5) and content 0.6633 -> 0.6632
 with 19 pages down. Overall 43.79.
 
+### After a space in a font of spaces alone carries its line (2026-10-06)
+
+Word sets a document's spaces in fonts of their own, and a font with no glyph measured gave such a
+space no reach, so the Markdown and HTML ended the line at it: `text_simple__sunnyslope` read
+`**IN**`, `**PERSON**`, `**PUBLIC**` one block each. A font that draws only spaces is now measured
+by them (folded into `markdown-blocks-v12`). Semantic formatting 0.4296 -> 0.4310, 3 documents up
+and none down; content faithfulness 0.6633 unchanged, 6 pages up and 4 down by at most 0.0063,
+where a line now read whole is a sentence the ground truth splits; every other dimension unchanged
+on every page, and opendataloader-bench byte-identical. Overall 43.82.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

@@ -214,7 +214,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// superscript or a subscript (decision #40), for the same reason. And so is reading a line set
 /// skewed as one line ([`same_line`]): a baseline that moves less than a tenth of the font's median
 /// glyph from the run before it — ParseBench content faithfulness 0.6613 -> 0.6627, its
-/// `text_simple__parish` from one block per run to its sentences.
+/// `text_simple__parish` from one block per run to its sentences. And so is measuring a font that
+/// draws only spaces by the spaces it draws ([`pitch_reference`]), so a space Word sets in a font
+/// of its own carries the line — ParseBench semantic formatting 0.4296 -> 0.4310 with no document
+/// down, content faithfulness unchanged at 0.6633, opendataloader-bench byte-identical.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -1315,7 +1318,7 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
         v.sort_unstable();
         v[v.len() / 2]
     };
-    per_font
+    let mut measures: PitchReference = per_font
         .into_iter()
         .filter_map(|(k, mut v)| {
             (v.len() >= 2).then(|| {
@@ -1324,7 +1327,27 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
                 (k, FontMeasure { pitch, space })
             })
         })
-        .collect()
+        .collect();
+    // **A font that draws only spaces is measured by the spaces it draws** (folded into `-v12`).
+    // Word sets a document's spaces in fonts of their own: ParseBench's `text_simple__append` draws
+    // `FUTURE`, `AGENDA` and `ITEMS` in one face and the spaces between them in two others. With no
+    // glyph of its own measured such a space had no reach, the line was abandoned at it, and every
+    // word projected as a block of its own — mid-line on 75 of that corpus's 501 text documents.
+    // Its glyph IS the space, so its median space is its pitch, corroborated by two runs as any
+    // other: 62 of the 75 draw two or more and carry their lines; the rest still break.
+    for (k, mut s) in per_font_space {
+        if s.len() >= 2 && !measures.contains_key(&k) {
+            let space = median(&mut s);
+            measures.insert(
+                k,
+                FontMeasure {
+                    pitch: space,
+                    space: Some(space),
+                },
+            );
+        }
+    }
+    measures
 }
 
 /// Where `a`'s ink ends, and the width of one of its glyphs — both taken from the document's own
@@ -5494,6 +5517,101 @@ pub(crate) mod tests {
         specs.push((" ", None, 7860, 7200, Some(200), None));
         specs.push(("withholding", None, 8060, 7200, Some(660), None));
         assert!(joined_block(&specs, "backup withholding"));
+    }
+
+    /// **A space drawn in a font that draws nothing else still carries the line** (folded into
+    /// `-v12`), as Word draws them: `FUTURE` and `AGENDA` in `F1`, the space between them in `G6`.
+    /// One space in such a font corroborates nothing, so the line still breaks at it.
+    #[test]
+    fn a_space_in_a_font_of_spaces_alone_carries_the_line() {
+        let project = |spaces_in_g6: usize| {
+            let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+            let page = PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index: 1,
+                width: 61200,
+                height: 79200,
+                rotation: 0,
+            };
+            let mut specs = corroborating(2);
+            specs.push(("FUTURE", None, 7200, 7200, Some(4930), None));
+            specs.push((" ", None, 12130, 7200, Some(290), None));
+            specs.push(("AGENDA", None, 12420, 7200, Some(5594), None));
+            specs.push((" ", None, 40000, 50000, Some(290), None));
+            let mut nodes: Vec<Node> = specs
+                .iter()
+                .enumerate()
+                .map(|(i, (t, l, x, y, a, r))| {
+                    placed_run(
+                        &mut alloc,
+                        &page.id,
+                        i as u32 + 1,
+                        t,
+                        l.clone(),
+                        *x,
+                        *y,
+                        *a,
+                        *r,
+                    )
+                })
+                .collect();
+            for node in nodes
+                .iter_mut()
+                .filter(|n| n.text == " ")
+                .take(spaces_in_g6)
+            {
+                if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                    a.font_id = "G6".into();
+                }
+            }
+            let line = geometric_blocks(&nodes, &std::collections::BTreeSet::new())
+                .into_iter()
+                .any(|b| b.text == "FUTURE AGENDA");
+            let geometry = nodes
+                .iter()
+                .map(|n| NodeGeometry {
+                    node: n.id.clone(),
+                    presence: GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+                })
+                .collect();
+            let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+            let md = blocks_of(&artifact_of(repr)).contains(&"FUTURE AGENDA".to_string());
+            (line, md)
+        };
+        assert_eq!(project(2), (true, true), "two spaces in G6 measure it");
+        assert_eq!(project(1), (false, false), "one space corroborates nothing");
+    }
+
+    /// A font measured by its glyphs keeps that measure: the spaces it also draws state its word
+    /// gap, never its pitch.
+    #[test]
+    fn a_font_with_glyphs_is_measured_by_its_glyphs_not_its_spaces() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = alloc.next(IdKind::Page).unwrap();
+        let nodes: Vec<Node> = [("ab", 660), ("ab", 660), (" ", 290), (" ", 290)]
+            .iter()
+            .enumerate()
+            .map(|(i, (t, a))| {
+                placed_run(
+                    &mut alloc,
+                    &page,
+                    i as u32 + 1,
+                    t,
+                    None,
+                    7200,
+                    7200,
+                    Some(*a),
+                    None,
+                )
+            })
+            .collect();
+        assert_eq!(
+            pitch_reference(&nodes)[&("F1".to_string(), 2400)],
+            FontMeasure {
+                pitch: 330,
+                space: Some(290)
+            }
+        );
     }
 
     /// **A declared run never joins an undeclared one, in either order.** The fallback arm

@@ -92,6 +92,14 @@ build is not comparable with a 0.63.0 one**.
   line, where an exact baseline was required — a scanner's text layer, or a page drawn a fraction
   of a degree off, moved a few centipoints from run to run and projected one block per run.
   ParseBench content faithfulness 0.6613 -> 0.6627; opendataloader-bench unchanged.
+- **A space drawn in a font that draws only spaces carries the line** (`markdown-blocks-v12`,
+  `html-blocks-v12`): Word sets a document's spaces in fonts of their own, and with no glyph of its
+  own measured such a space ended the line, so every word projected as a block of its own — mid-line
+  on 75 of ParseBench's 501 text documents. Such a font is now measured by its spaces, corroborated
+  by two runs as any other, which reaches 62 of the 75. ParseBench semantic formatting 0.4296 -> 0.4310, 3 documents up and none
+  down; content faithfulness unchanged at 0.6633, 6 pages up and 4 down by at most 0.0063, where
+  a line now read whole is a sentence the ground truth splits; grounding, tables and charts
+  unchanged on every page; opendataloader-bench byte-identical.
 - **A content stream of nothing but comments draws nothing, and the page is read.** PDF
   32000-1 §7.2.4 reads a comment as whitespace, but `lopdf` takes one only where the next token
   follows its line break, so a comment-only stream joined to the next made it drop the rest of the
