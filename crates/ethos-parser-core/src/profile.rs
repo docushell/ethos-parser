@@ -989,7 +989,9 @@ pub const FURNITURE_RULE_V1: &str = "margin-bands-v1";
 ///
 /// On a document that declares no author structure, each page's painted paths — every path a fill
 /// or stroke operator paints, on the page and in the forms it draws, less any whose box covers 80%
-/// of the page or more — are clustered wherever their boxes come within 3 points of each other
+/// of the page or more, and (folded in 2026-10-06, which no release had yet carried) any whose box
+/// holds a line of more than 60 characters, a panel text is set on — are clustered wherever their
+/// boxes come within 3 points of each other
 /// across and down. A cluster is a figure region where it holds 3 paths or more, covers 0.1% to
 /// 80% of the page, has less than half its area inside any one table found on the page, and holds
 /// no baseline carrying more than 60 characters other than whitespace. Each region is a

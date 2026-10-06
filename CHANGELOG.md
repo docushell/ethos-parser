@@ -230,6 +230,15 @@ so `profile_sha256` moves.
 - **Measured** on ParseBench: visual grounding 0.4708 -> 0.4824, 73 pages up and 3 down by at most
   0.036 — running heads drawn as bands of tabs that the ground truth boxes as page headers; content,
   formatting, tables and charts unchanged on every page. The adapter labels each record `Picture`.
+- **A panel holding prose joins no drawing** (folded into `figure-regions-v1`, which no release
+  carries): a path whose box holds a baseline of more than 60 characters — the length the cluster
+  clause already reads as prose — is a panel text is set on, and is left out before clustering, so
+  the drawings set on it beside the text are regions of their own instead of one region the size of
+  the panel. Visual grounding 0.5115 -> 0.5156, 25 pages up and 3 down by at most 0.045, each a
+  running head drawn as a band; content, formatting, tables and charts unchanged on every page;
+  opendataloader-bench byte-identical. The gate documents' tree-stripped copies carry 248 regions
+  where they carried 208, 28 of the new ones row bands in a table column
+  (`docs/34-FIGURE-REGIONS-SCOPE.md` §6.1 and §7).
 
 ### Scans, through an OCR pass outside the engine (decision #45)
 

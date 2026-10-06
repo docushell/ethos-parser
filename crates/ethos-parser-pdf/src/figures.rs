@@ -17,7 +17,8 @@
 //!
 //! 1. **Every painted path's box**, on the page and in the forms it draws
 //!    ([`crate::content::Interpreter::painted`]), less any whose box covers [`BACKGROUND`] of the
-//!    page or more: that is the page's background.
+//!    page or more — that is the page's background — and any holding a line of prose, as clause 3
+//!    reads one: a panel text is set on, which joins no drawing set on it beside the text.
 //! 2. **Clustered by touch**: two boxes are one cluster where the gap between them is at most
 //!    [`GAP`] across and at most [`GAP`] down.
 //! 3. **Kept** where the cluster holds [`MIN_PATHS`] paths or more, covers between
@@ -74,7 +75,7 @@ pub(crate) fn detect(
     let boxes: Vec<QuantRect> = painted
         .iter()
         .copied()
-        .filter(|b| area(b) * 10 < page_area * BACKGROUND)
+        .filter(|b| area(b) * 10 < page_area * BACKGROUND && !holds_prose(b, runs))
         .collect();
 
     // Swept in order of left edge, so the inner loop stops at the first box too far right.
@@ -134,21 +135,24 @@ pub(crate) fn detect(
                 2 * i128::from(x) * i128::from(y) >= area(b)
             })
         })
-        .filter(|b| {
-            let mut per_line: std::collections::BTreeMap<i64, usize> =
-                std::collections::BTreeMap::new();
-            for &(x, y, text) in runs {
-                if x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1 {
-                    *per_line.entry(y.div_euclid(LINE_BAND)).or_insert(0) +=
-                        text.chars().filter(|c| !c.is_whitespace()).count();
-                }
-            }
-            per_line.values().all(|&chars| chars <= MAX_LINE_CHARS)
-        })
+        .filter(|b| !holds_prose(b, runs))
         .map(|rect| DetectedFigure { rect })
         .collect();
     out.sort_by_key(|f| (f.rect.y0, f.rect.x0, f.rect.y1, f.rect.x1));
     out
+}
+
+/// Whether `b` holds a line of prose: a band of baselines inside it carrying more than
+/// [`MAX_LINE_CHARS`] characters other than whitespace.
+fn holds_prose(b: &QuantRect, runs: &[(i64, i64, &str)]) -> bool {
+    let mut per_line: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
+    for &(x, y, text) in runs {
+        if x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1 {
+            *per_line.entry(y.div_euclid(LINE_BAND)).or_insert(0) +=
+                text.chars().filter(|c| !c.is_whitespace()).count();
+        }
+    }
+    per_line.values().any(|&chars| chars > MAX_LINE_CHARS)
 }
 
 #[cfg(test)]
@@ -292,6 +296,41 @@ mod tests {
             detect(&chart(), page(), &less, &[]).len(),
             1,
             "less than half inside"
+        );
+    }
+
+    /// **A panel holding prose joins no drawing**: two charts set on one shaded panel are two
+    /// figures where the panel holds a line of prose beside them, and one with the panel where it
+    /// holds only labels.
+    #[test]
+    fn a_panel_holding_prose_joins_no_drawing() {
+        let second: Vec<QuantRect> = chart()
+            .iter()
+            .map(|b| QuantRect {
+                x0: b.x0 + 20000,
+                x1: b.x1 + 20000,
+                ..*b
+            })
+            .collect();
+        let painted = [chart(), second, vec![pt(90, 90, 410, 300)]].concat();
+        let (prose, label) = ("x".repeat(61), "x".repeat(60));
+        let found = |text: &str| detect(&painted, page(), &[], &[(10000, 25000, text)]);
+        assert_eq!(
+            found(&prose),
+            [
+                DetectedFigure {
+                    rect: pt(100, 100, 200, 160)
+                },
+                DetectedFigure {
+                    rect: pt(300, 100, 400, 160)
+                }
+            ]
+        );
+        assert_eq!(
+            found(&label),
+            [DetectedFigure {
+                rect: pt(90, 90, 410, 300)
+            }]
         );
     }
 

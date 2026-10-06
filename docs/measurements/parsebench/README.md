@@ -517,6 +517,33 @@ bounds where they are and moved visual grounding 0.5115 -> 0.5152, but 17 pages 
 -> 0.5438 where chart values and table lines became headings. Taking that size wherever ten such
 lines exist read 500 false headings on `nist-sp-800-218` and 4,480 on `nist-sp-800-53Ar5`.
 
+### After a panel holding prose joins no drawing (2026-10-06)
+
+After decision #48, 433 of the pictures visual grounding failed were covered by a picture box more
+than five times their size, three in four of those boxes a figure region a shaded panel had
+joined to every drawing set on it. `figure-regions-v1` now leaves out of its clusters a path whose
+box holds a line of prose, as its cluster clause already reads one — more than 60 characters
+(`docs/34-FIGURE-REGIONS-SCOPE.md` §6.1, where the sweep of that length is).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4347 | 0.4347 |
+| Tables | 0.4833 | 0.4833 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.5156 | 0.5115 |
+
+25 grounding pages rise and 3 fall, by at most 0.045, each a Ford report page whose running head,
+drawn as a band, is now a region of its own. No page moves on any other dimension, and
+opendataloader-bench's 200 Markdown files are byte-identical. Overall 43.98.
+
+**Measured and not used, on tables.** Letting `whitespace-tracks-v6`'s header band reach two
+pitches above a table's first row, where it reaches one and a half, moved tables 0.4833 -> 0.4840
+with 3 pages down (`Apple 10-k` p28 1.0 -> 0.77) and cost opendataloader-bench NID on the two
+documents whose TEDS it raised: a header set on several lines was taken in part. Of the tables
+TRM scored with no column matched — 0.287 of the 0.517 the dimension loses — 146 hold their
+header text in the lines just above our table, which starts at its first data row.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

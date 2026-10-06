@@ -20,7 +20,9 @@ A **figure region** is a box this engine infers from the paths a page paints. Pe
    rectangles and curves alike, a curve's control points included — on the page and inside the
    forms it draws, which is where an included figure usually is. A path ended with `n` (a clip, or
    nothing) paints nothing and is not read. A path whose box covers 80% of the page or more is the
-   page's background and is not read either.
+   page's background and is not read either, and nor is one whose box holds a line of prose as
+   clause 3 reads one: a panel text is set on, which joins no drawing set on it beside the text
+   (§6.1, folded into `figure-regions-v1` before any release carried it).
 2. **Clustered by touch**: two boxes are one cluster where the gap between them is at most 3 points
    across and at most 3 points down.
 3. **Kept** where the cluster:
@@ -104,6 +106,25 @@ regions over 1,466 pages: `irs-f1040sd-2025` 0, `irs-fw9` 1, `nist-sp-800-161r1`
 `nist-sp-800-171r3` 1, `nist-sp-800-207` 13, `nist-sp-800-218` 10, `nist-sp-800-37r2` 9 and
 `nist-sp-800-53Ar5` 110.
 
+### 6.1 A panel holding prose joins no drawing (2026-10-06)
+
+Of the pictures visual grounding failed after `-v1`, 433 were covered by a picture box more than
+five times their size — 182 boxes, three in four of them this rule's regions, holding 585 pictures
+between them and 891 text and 309 section elements: a shaded panel joined the drawings set on it,
+and the region took the page.
+Clause 1 now leaves out a path whose box holds a line of prose, as clause 3 reads one. Measured as a
+sweep of the line it takes, in characters: 20 — 0.5169, 43 pages up and 12 down; 30 — 0.5171, 38
+and 6; 45 — 0.5163, 30 and 3; **60, clause 3's own — 0.5156, 25 up and 3 down**, each a Ford
+report page whose running head, drawn as a band, now forms a region the ground truth boxes as the
+header (by 0.045, 0.024 and 0.009, inside §5's 0.05). Clause 3's length is kept, so the two clauses
+read prose alike. Content, formatting, tables and charts are unchanged on every page, and
+opendataloader-bench's 200 Markdown files are byte-identical.
+
+The tree-stripped gate copies now carry 248 regions: `nist-sp-800-161r1` 73, `nist-sp-800-218` 38
+and `nist-sp-800-37r2` 12, the rest as before. The 28 new on `nist-sp-800-218` are §7's row bands:
+each line of the SSDF table's References column is set on a band of its own, with its links
+underlined, and the bands no longer join the panel beside them that held prose.
+
 ## 7. Not done
 
 - **Icons in rows.** Ground truth boxes each small icon; a row of them touching one rule clusters
@@ -112,3 +133,7 @@ regions over 1,466 pages: `irs-f1040sd-2025` 0, `irs-fw9` 1, `nist-sp-800-161r1`
   rule claims no text.
 - **Captions** and the link from a figure to one.
 - **A raster image and the paths drawn over it**, read as one figure.
+- **Row bands.** A column of lines each set on a band of its own — and the underlines of its links —
+  touch, hold no prose, and read as a region: 28 on `nist-sp-800-218`'s tree-stripped copy (§6.1).
+  `-v1` read them so wherever no prose panel joined them; it is reported here rather than ruled out
+  by a clause no measurement asks for yet.
