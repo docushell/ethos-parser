@@ -556,3 +556,13 @@ with `#`, and the label tier is reported beside them, as here.
 
 **opendataloader-bench**: all 200 Markdown files byte-identical — a label was already a bold line
 there. **ParseBench**: see `docs/measurements/parsebench/README.md`.
+
+**Since decision #48 (2026-10-06)** a label its column wrapped — the second line starting where the
+first does, its first word too wide for the room the first leaves within the text the label heads —
+is written on one line by both projections; nothing in the record moves, so the bounds above stand.
+**Measured beside it and not used:** a body size read from running text — the size most lines of
+40 characters or more are set in. Taken wherever ten such lines exist, it read 500 false headings
+on `nist-sp-800-218` and 4,480 on `nist-sp-800-53Ar5`, where small type runs the long lines; taken
+only where the larger common size sets fewer than ten of them, the `#` tier and the label tier read
+here exactly as above, but opendataloader-bench `01030000000199` and `-200` read chart values and
+table lines as headings (MHS 0.5481 -> 0.5438).

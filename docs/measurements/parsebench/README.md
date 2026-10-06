@@ -481,6 +481,42 @@ and none down; content faithfulness 0.6633 unchanged, 6 pages up and 4 down by a
 where a line now read whole is a sentence the ground truth splits; every other dimension unchanged
 on every page, and opendataloader-bench byte-identical. Overall 43.82.
 
+### After a label its column wrapped is one line (decision #48, 2026-10-06)
+
+Of the `is_title` rules we failed, 230 hold text we drew but broke across lines, about a hundred of
+them written as bold lines one under the other: `**NOTICE OF PUBLIC**` over `**HEARING**` in a
+newspaper's narrow column. Both projections now join a label's next line where its column wrapped it: the line
+starts where the first does, opens with no number or marker, follows a first line that ends no
+sentence, and its first word would not have fit after the first within the text the label heads —
+the body lines below it that start where it starts, measured by the widest of them.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4347 | 0.4310 |
+| Tables | 0.4833 | 0.4833 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.5115 | 0.5115 |
+
+8 formatting documents rise and none falls; 8 content pages fall by at most 0.001, each a joined
+title the scorer reads as a sentence its ground truth lacks. opendataloader-bench byte-identical.
+Overall 43.89.
+
+**Measured and not used, on the way there.** Cutting the layout units where a label's author broke
+it, so the projections could join a unit's lines, cost visual grounding 0.0010 on 7 pages: the
+ground truth boxes a title set on several lines as one element however it was broken. Measuring a
+label by the lines around it rather than the text it heads joined two centred lines of
+`text_simple__edited` and cost that document 0.11. **Emphasis in table cells** (decision #48):
+`**` in GFM cells cost opendataloader-bench TEDS 0.4949 -> 0.4777 on 14 documents, whose scorer
+keeps the markers in a cell's text, and `<strong>` in HTML cells alone moved nothing — this adapter
+reads pipe tables converted to HTML and the HTML projection's table only where it holds a merged
+cell. **A body size read from running text** (decision #48) — the size most lines of 40 characters
+or more are set in, where the larger common size sets fewer than ten of them — kept the heading
+bounds where they are and moved visual grounding 0.5115 -> 0.5152, but 17 pages fell, the worst
+`Apple_Environmental_Progress_Report_2025` p5 0.68 -> 0.30, and opendataloader-bench MHS fell 0.5481
+-> 0.5438 where chart values and table lines became headings. Taking that size wherever ten such
+lines exist read 500 false headings on `nist-sp-800-218` and 4,480 on `nist-sp-800-53Ar5`.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

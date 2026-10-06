@@ -423,6 +423,7 @@ pub fn to_html(
     // v2.2-S5. The undeclared fallback, from `crate::markdown` so the two projections cannot
     // drift: a document that reads as one block there must read as one `<p>` here.
     let pitch = crate::markdown::pitch_reference(&payload.nodes);
+    let wrapped = crate::markdown::wrapped_labels(repr);
     let mut open_line: Option<crate::markdown::LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -573,7 +574,7 @@ pub fn to_html(
         if joining.is_none()
             && key.is_none()
             && open_group.is_none()
-            && open_prev.is_some_and(|prev| crate::markdown::unit_continues(prev, node))
+            && open_prev.is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
         {
             e.syntax(" ");
             escaped_source(&mut e, &text, node.id.as_str());

@@ -217,7 +217,9 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// `text_simple__parish` from one block per run to its sentences. And so is measuring a font that
 /// draws only spaces by the spaces it draws ([`pitch_reference`]), so a space Word sets in a font
 /// of its own carries the line — ParseBench semantic formatting 0.4296 -> 0.4310 with no document
-/// down, content faithfulness unchanged at 0.6633, opendataloader-bench byte-identical.
+/// down, content faithfulness unchanged at 0.6633, opendataloader-bench byte-identical. And so is
+/// joining a label's next line where its column wrapped it ([`wrapped_labels`], decision #48) —
+/// semantic formatting 0.4310 -> 0.4347 with no document down, opendataloader-bench byte-identical.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -1054,19 +1056,148 @@ pub(crate) fn hyphen_tail<'a>(
 /// prose into one block was measured and lost ParseBench content faithfulness on 170 pages, since
 /// a list set without markers reads as one paragraph once joined, and a bold title line read as a
 /// title only while it stood on a line of its own. Called by both projections.
-pub(crate) fn unit_continues(prev: &crate::Node, node: &crate::Node) -> bool {
-    // Decision #47: a label — level 7 — keeps its lines, as body text does. Two labels set one
-    // under the other, `ARTICLE 11` over `DIVIDEND EQUIVALENTS`, are two, and joined each would
-    // stop being the line it names.
+///
+/// Decision #47: a label — level 7 — keeps its lines, as body text does, unless its column wrapped
+/// it: `node` opens a line [`wrapped_labels`] names. Two labels set one under the other, `ARTICLE
+/// 11` over `DIVIDEND EQUIVALENTS`, are two, and joined each would stop being the line it names;
+/// `NOTICE OF PUBLIC` over `HEARING` in a newspaper's narrow column is one.
+pub(crate) fn unit_continues(
+    prev: &crate::Node,
+    node: &crate::Node,
+    wrapped: &std::collections::BTreeSet<&str>,
+) -> bool {
     let unit = |n: &crate::Node| {
         text_run_attributes(n)
-            .filter(|a| a.inferred_heading && a.inferred_heading_level.unwrap_or(1) <= 6)
-            .and_then(|a| a.layout_unit)
+            .filter(|a| a.inferred_heading)
+            .and_then(|a| a.layout_unit.map(|u| (u, a.inferred_heading_level)))
     };
+    let label = unit(node).is_some_and(|(_, level)| level.unwrap_or(1) > 6);
     prev.parent == node.parent
         && unit(prev).is_some()
         && unit(prev) == unit(node)
         && on_different_lines(prev, node)
+        && (!label || wrapped.contains(node.id.as_str()))
+}
+
+/// The runs that open a label's next line where the label's column wrapped it (decision #47,
+/// folded into `-v12`): each names a line [`unit_continues`] joins to the label line above.
+///
+/// Two lines of one label unit, on one page, are one label where the second **starts where the
+/// first does** (within its own height), **opens with no number or marker**, follows a first line
+/// that **ends no sentence**, and **its first word, with its space, would not have fit** after the
+/// first line within the text the label heads — the body lines read after its unit, up to the next
+/// heading, that start where it starts, measured by the widest of them. A first line running past
+/// that measure is set to another, and stays a line of its own. Measured on ParseBench: the
+/// `NOTICE OF PUBLIC` / `HEARING` of a newspaper's narrow column joins, `ARTICLE 11` over
+/// `DIVIDEND EQUIVALENTS` and a centred title's lines do not.
+pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections::BTreeSet<&str> {
+    // One line: its first inked run, its text, its box, and the label, heading and unit it carries.
+    struct Line<'a> {
+        first: &'a str,
+        text: String,
+        rect: Option<(i64, i64, i64, i64)>,
+        label: bool,
+        heading: bool,
+        unit: Option<u32>,
+        page: u32,
+    }
+    let payload = repr.payload();
+    let mut lines: Vec<Line<'_>> = Vec::new();
+    let mut open: Option<LineKey> = None;
+    for (i, node) in payload.nodes.iter().enumerate() {
+        let (Some(a), Some(key)) = (text_run_attributes(node), line_key(node)) else {
+            open = None;
+            continue;
+        };
+        if open != Some(key) {
+            open = Some(key);
+            lines.push(Line {
+                first: "",
+                text: String::new(),
+                rect: None,
+                label: false,
+                heading: false,
+                unit: None,
+                page: key.page,
+            });
+        }
+        let Some(line) = lines.last_mut() else {
+            continue;
+        };
+        line.text.push_str(&node.text);
+        if node.text.trim().is_empty() {
+            continue;
+        }
+        if line.first.is_empty() {
+            line.first = node.id.as_str();
+            line.heading = a.inferred_heading;
+            line.label = a.inferred_heading && a.inferred_heading_level.unwrap_or(1) > 6;
+            line.unit = a.layout_unit;
+        }
+        if let Some(crate::GeometryPresence::Measured(r)) = repr.geometry_at(i) {
+            let b = (r.x0(), r.y0(), r.x1(), r.y1());
+            line.rect = Some(line.rect.map_or(b, |o| {
+                (o.0.min(b.0), o.1.min(b.1), o.2.max(b.2), o.3.max(b.3))
+            }));
+        }
+    }
+    let lines: Vec<(Line<'_>, (i64, i64, i64, i64))> = lines
+        .into_iter()
+        .filter_map(|l| l.rect.map(|r| (l, r)))
+        .collect();
+    let mut out = std::collections::BTreeSet::new();
+    for i in 1..lines.len() {
+        let ((a, ra), (b, rb)) = (&lines[i - 1], &lines[i]);
+        let height = rb.3 - rb.1;
+        if !(a.label && b.label && a.page == b.page)
+            || (ra.0 - rb.0).abs() > height
+            || opens_with_label(&b.text)
+            || a.text.trim_end().ends_with(['?', '!', '.'])
+        {
+            continue;
+        }
+        let heads = lines[i..]
+            .iter()
+            .skip_while(|(l, _)| l.page == a.page && l.unit == a.unit)
+            .take_while(|(l, _)| l.page == a.page && !l.heading)
+            .filter(|(_, r)| (r.0 - ra.0).abs() <= height)
+            .map(|(_, r)| r.2)
+            .max();
+        let text = b.text.trim();
+        let chars = i64::try_from(text.chars().count()).unwrap_or(i64::MAX);
+        let word =
+            i64::try_from(text.chars().take_while(|c| !c.is_whitespace()).count()).unwrap_or(0);
+        let first_word = (1 + word) * (rb.2 - rb.0) / chars.max(1);
+        if heads.is_some_and(|edge| ra.2 <= edge + height && ra.2 + first_word > edge) {
+            out.insert(b.first);
+        }
+    }
+    out
+}
+
+/// Whether `text` opens with a number — `2`, `3.1.`, `(4)` — a roman numeral or a letter closed by
+/// `.` or `)`, or a bullet, and then whitespace: a line that opens a heading or an item of its own.
+fn opens_with_label(text: &str) -> bool {
+    let text = text.trim_start();
+    let Some((head, _)) = text.split_once(char::is_whitespace) else {
+        return false;
+    };
+    if head.chars().count() == 1 && "•·▪◦‣–—*-".contains(head) {
+        return true;
+    }
+    let head = head.strip_prefix('(').unwrap_or(head);
+    let body = head.trim_end_matches(['.', ')']);
+    let closed = body.len() < head.len();
+    let numbered = !body.is_empty()
+        && body
+            .split('.')
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()));
+    let lettered = closed
+        && (body.len() == 1 && body.bytes().all(|b| b.is_ascii_alphabetic())
+            || !body.is_empty()
+                && (body.bytes().all(|b| b"IVXLC".contains(&b))
+                    || body.bytes().all(|b| b"ivxlc".contains(&b))));
+    numbered || lettered
 }
 
 /// Whether the content stream marked this run as page furniture rather than flow content.
@@ -2214,6 +2345,7 @@ pub fn to_markdown(
     // document's own fonts, because `advance` alone cannot be trusted to be an ink width; see
     // `ink_reach`.
     let pitch = pitch_reference(&payload.nodes);
+    let wrapped = wrapped_labels(repr);
     let mut open_line: Option<LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -2409,7 +2541,7 @@ pub fn to_markdown(
         if joining.is_none()
             && key.is_none()
             && open_group.is_none()
-            && open_prev.is_some_and(|prev| unit_continues(prev, node))
+            && open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped))
         {
             e.syntax(" ");
             e.source(&text, node.id.as_str());
@@ -4944,8 +5076,9 @@ pub(crate) mod tests {
             .any(|e| e.code == LAYOUT_UNIT_LINE_JOINS));
     }
 
-    /// **A label keeps its lines** (decision #47): two labels set one under the other in one unit
-    /// are two bold lines, never joined as a heading set on two lines is.
+    /// **A label keeps its lines** (decision #47): two labels set one under the other in one unit,
+    /// in a column with room for the second's first word after the first, are two bold lines,
+    /// never joined as a heading set on two lines is.
     #[test]
     fn two_labels_in_one_unit_keep_their_lines() {
         let base = with_inferred_headings(
@@ -4953,6 +5086,20 @@ pub(crate) mod tests {
             &[0, 1],
         );
         let base = with_units(base, &[Some(1), Some(1), Some(2)]);
+        let boxes = [
+            (2000, 1000, 5000, 2000),
+            (2000, 2100, 4800, 3100),
+            (2000, 3300, 28000, 4300),
+        ];
+        let geometry: Vec<NodeGeometry> = base
+            .geometry()
+            .iter()
+            .zip(boxes)
+            .map(|(g, b)| NodeGeometry {
+                node: g.node.clone(),
+                presence: GeometryPresence::Measured(QRect::new(b.0, b.1, b.2, b.3).unwrap()),
+            })
+            .collect();
         for (level, want, joined) in [
             (7u8, "**ARTICLE 11**\n\n**DIVIDENDS**\n\nBody text\n", false),
             (6, "###### ARTICLE 11 DIVIDENDS\n\nBody text\n", true),
@@ -4964,7 +5111,7 @@ pub(crate) mod tests {
                     a.bold = true;
                 }
             }
-            let repr = DocumentRepresentation::seal(payload, base.geometry().to_vec()).unwrap();
+            let repr = DocumentRepresentation::seal(payload, geometry.clone()).unwrap();
             let a = artifact_of(repr);
             assert_eq!(a.markdown, want, "level {level}");
             assert_eq!(
@@ -5580,6 +5727,162 @@ pub(crate) mod tests {
         };
         assert_eq!(project(2), (true, true), "two spaces in G6 measure it");
         assert_eq!(project(1), (false, false), "one space corroborates nothing");
+    }
+
+    /// One line of [`project_label_lines`]: its text, its box `x0, y0, x1, y1`, and its level.
+    type LabelLine<'a> = (&'a str, (i64, i64, i64, i64), Option<u8>);
+
+    /// Lines, one run each, projected: the labels (level 7) one layout unit, a ranked heading
+    /// another, and the rest body text, as `type-size-v5` records them.
+    fn project_label_lines(lines: &[LabelLine<'_>]) -> Vec<String> {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+        };
+        let mut nodes = Vec::new();
+        let mut geometry = Vec::new();
+        for (i, (text, b, level)) in lines.iter().enumerate() {
+            let mut node = placed_run(
+                &mut alloc,
+                &page.id,
+                i as u32 + 1,
+                text,
+                None,
+                b.0,
+                b.3,
+                Some(b.2 - b.0),
+                None,
+            );
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.inferred_heading = level.is_some();
+                a.inferred_heading_level = *level;
+                a.layout_unit = Some(match level {
+                    Some(7) => 1,
+                    Some(_) => 3,
+                    None => 2,
+                });
+            }
+            geometry.push(NodeGeometry {
+                node: node.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(b.0, b.1, b.2, b.3).unwrap()),
+            });
+            nodes.push(node);
+        }
+        let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+        blocks_of(&artifact_of(repr))
+    }
+
+    /// **A label its column wrapped is one line; a label its author broke keeps its lines**
+    /// (decision #48, folded into `-v12`). `NOTICE OF PUBLIC` ends a point short of the column
+    /// its text is set in, where `HEARING` would not fit; each change below parts them.
+    #[test]
+    fn a_label_its_column_wrapped_is_one_line() {
+        let project = |first: &str, second: &str, x: i64, column: i64| {
+            project_label_lines(&[
+                (first, (7200, 7200, 19000, 8200), Some(7)),
+                (second, (x, 8300, x + 4800, 9300), Some(7)),
+                (
+                    "A Public Hearing will be",
+                    (7200, 9500, column, 10500),
+                    None,
+                ),
+                (
+                    "held during the Meeting",
+                    (7200, 10600, column - 500, 11600),
+                    None,
+                ),
+                (
+                    "A line of the next column",
+                    (30000, 9500, 60000, 10500),
+                    None,
+                ),
+            ])
+        };
+        let joined = |blocks: &[String]| blocks.iter().any(|b| b == "NOTICE OF PUBLIC HEARING");
+        assert!(joined(&project("NOTICE OF PUBLIC", "HEARING", 7200, 19500)));
+        // The column leaves room for `HEARING`: its author broke the line.
+        assert!(!joined(&project(
+            "NOTICE OF PUBLIC",
+            "HEARING",
+            7200,
+            40000
+        )));
+        // The first line runs past the column it heads: it is set to another.
+        assert!(!joined(&project(
+            "NOTICE OF PUBLIC",
+            "HEARING",
+            7200,
+            17900
+        )));
+        // The second line starts elsewhere, as a centred one does.
+        assert!(!joined(&project(
+            "NOTICE OF PUBLIC",
+            "HEARING",
+            8300,
+            19500
+        )));
+        // The second line opens with a number; the first ends a sentence.
+        let numbered = project("NOTICE OF PUBLIC", "2 HEARING", 7200, 19500);
+        assert!(
+            !numbered.iter().any(|b| b.contains("PUBLIC 2")),
+            "{numbered:?}"
+        );
+        let ended = project("NOTICE OF PUBLIC?", "HEARING", 7200, 19500);
+        assert!(
+            !ended.iter().any(|b| b.contains("PUBLIC? HEARING")),
+            "{ended:?}"
+        );
+        // No text below it, or a heading before any: nothing measures the column.
+        let label = [
+            ("NOTICE OF PUBLIC", (7200, 7200, 19000, 8200), Some(7)),
+            ("HEARING", (7200, 8300, 12000, 9300), Some(7)),
+        ];
+        let alone = project_label_lines(&label);
+        assert!(!joined(&alone), "{alone:?}");
+        let headed = project_label_lines(
+            &[
+                &label[..],
+                &[
+                    ("Schedule", (7200, 9500, 19500, 10500), Some(1)),
+                    (
+                        "A Public Hearing will be",
+                        (7200, 10600, 19500, 11600),
+                        None,
+                    ),
+                ],
+            ]
+            .concat(),
+        );
+        assert!(!joined(&headed), "{headed:?}");
+    }
+
+    /// What opens a heading or an item of its own: a number, a roman numeral or a letter closed by
+    /// `.` or `)`, or a bullet — and never a word that happens to be one letter.
+    #[test]
+    fn a_number_or_a_marker_opens_a_label() {
+        for text in [
+            "2 Scope",
+            "3.1. Methods",
+            "(4) Terms",
+            "IV. Annex",
+            "a) Fees",
+            "• Item",
+        ] {
+            assert!(opens_with_label(text), "{text}");
+        }
+        for text in [
+            "A Public Hearing",
+            "Abc. Def",
+            "HEARING",
+            "2024Report",
+            "I. ",
+        ] {
+            assert_eq!(opens_with_label(text), text == "I. ", "{text}");
+        }
     }
 
     /// A font measured by its glyphs keeps that measure: the spaces it also draws state its word

@@ -163,6 +163,15 @@ draft schema lets `inferred_heading_level` be 7, folded into the unreleased repr
 - **Both projections write a label as the bold line it is, never with `#`**, and a label set on two
   lines keeps both; a heading of levels 1 to 6 set on two lines is still joined. No projection rule
   id moves: no record before `-v5` carried a level past six.
+- **A label its column wrapped is one line** (decision #48, folded into `markdown-blocks-v12` and
+  `html-blocks-v12`): its second line starts where the first does, opens with no number or marker,
+  follows a first line that ends no sentence, and its first word would not have fit after the first
+  line within the text the label heads — the body lines below it that start where it starts. A
+  newspaper column's `NOTICE OF PUBLIC` over `HEARING` is one label; `ARTICLE 11` over `DIVIDEND
+  EQUIVALENTS` and a centred title's lines stay two. ParseBench semantic formatting 0.4310 ->
+  0.4347, 8 documents up and none down; content faithfulness unchanged at 0.6633, 8 pages down by
+  at most 0.001, each a joined title the scorer reads as a sentence its ground truth lacks;
+  grounding, tables and charts unchanged on every page; opendataloader-bench byte-identical.
 - **The heading bounds count labels apart** (`docs/28-HEADINGS-SCOPE.md` §7.5, amended by the
   owner): the `#` headings are where `-v4` left them, 0.00%..4.61%; on the eleven tagged documents
   the label tier fires on 719 lines, 375 the author tagged as headings and 340 against the tags —
