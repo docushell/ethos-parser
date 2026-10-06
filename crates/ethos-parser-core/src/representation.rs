@@ -84,7 +84,9 @@ pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.parser.representation.v0";
 ///
 /// `0.8.0` at decision #46 (`docs/34-FIGURE-REGIONS-SCOPE.md`): the payload gained a tenth member,
 /// [`RepresentationPayload::figures`], the regions the figure rule infers from painted paths —
-/// always written, empty where none was found, on `outlines`' argument for the version.
+/// always written, empty where none was found, on `outlines`' argument for the version. Folded into
+/// it, as no release carries 0.8.0: `TextRunAttributes::inferred_heading_level` may be 7, a label
+/// (decision #47), where 0.7.0 stopped at 6.
 pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.8.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
@@ -1624,6 +1626,10 @@ pub struct TextRunAttributes {
     /// for what it measured. `Computed`, as [`Self::inferred_heading`] is, and only beside it.
     /// **Absent at level 1** and on every run that is no inferred heading, so a document whose
     /// headings share one size serializes as it did under `type-size-v2`.
+    ///
+    /// **7 is a label** since `type-size-v5` (decision #47): a bold line at the head of its text
+    /// that does not stand apart, below every ranked level. Both projections write it as a bold
+    /// line and never with `#`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inferred_heading_level: Option<u8>,
     /// The font that drew this run declares itself bold (decision #38): a `/FontWeight` of 600

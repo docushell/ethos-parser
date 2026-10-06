@@ -483,8 +483,14 @@ pub fn untagged_structure_tree_absent() -> Limitation {
 /// body reference it measured on this document, so a reader can re-derive the cut — six fifths of
 /// that reference — without the engine. [`untagged_structure_tree_absent`] stays declared beside
 /// it as the precondition: the catalog still declares no `/StructTreeRoot`.
-pub fn headings_inferred_from_type(lines: u32, bold: u32, rule: &str, body_em: i64) -> Limitation {
-    let sized = lines.saturating_sub(bold);
+pub fn headings_inferred_from_type(
+    lines: u32,
+    bold: u32,
+    labels: u32,
+    rule: &str,
+    body_em: i64,
+) -> Limitation {
+    let sized = lines.saturating_sub(bold).saturating_sub(labels);
     Limitation::document(
         ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE,
         format!(
@@ -497,7 +503,11 @@ pub fn headings_inferred_from_type(lines: u32, bold: u32, rule: &str, body_em: i
              neighbours, where the leading-gap cut put the line in a block of its own or, for a \
              line opening with a section number, more than half a line of space stands above \
              it, in a document whose body is not bold; they are the level \
-             below the smallest size. A level deeper than 1 travels as `inferred_heading_level`. \
+             below the smallest size. {labels} are labels: bold lines at the head of their text \
+             that do not stand apart, of at most 60 characters, whose text no three lines of the \
+             document share, at level 7, below every ranked level, which the projections write \
+             as bold lines and never with `#`. A level deeper than 1 travels as \
+             `inferred_heading_level`. \
              The document declares no author structure — no `/StructTreeRoot`, or only one this \
              engine wrote — so EVERY heading in this artifact is this engine's measurement of type \
              and NONE is the author's, and each level is a rank of type sizes, not the author's \

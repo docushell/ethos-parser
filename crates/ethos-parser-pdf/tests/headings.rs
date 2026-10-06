@@ -100,7 +100,7 @@ fn a_display_line_on_an_untagged_page_is_an_inferred_heading() {
     let detail = declared(&repr, HEADINGS).expect("the inference is declared");
     for fact in [
         "1 line(s)",
-        "`type-size-v4`",
+        "`type-size-v5`",
         "1200 centipoints",
         "NONE is the author's",
     ] {

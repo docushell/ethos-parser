@@ -894,6 +894,27 @@ pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 /// `REFERENCES` label its producer tagged `/P` (`docs/measurements/headings/README.md` §10).
 pub const HEADING_INFERENCE_RULE_V4: &str = "type-size-v4";
 
+/// The heading rule's fifth pass (decision #47): **a bold line at the head of its text is a label**.
+///
+/// **What `-v4` missed.** Its bold clause reads a bold line only where it stands apart, and on the
+/// pages ParseBench's ground truth calls section headers, 850 of the 1,416 we read as text are bold
+/// lines at the body size set tight over the lines they name: `Contact person:`, `Loan terms`,
+/// `Audience`. Judging every bold line by the spacing was refused at `-v4` (`nist-sp-800-171r3`'s
+/// `DISCUSSION` labels); reading them all as `#` headings put 21 false headings on `nist-sp-800-218`
+/// and on opendataloader-bench read a list's bold item labels as its headings (`01030000000117`,
+/// MHS 0.8758 → 0.4581).
+///
+/// **The change.** A line the bold clause would read but for standing apart, of at most 60
+/// characters, whose text no three lines of the document share, is a **label**: level 7, below
+/// every ranked level, carried as `TextRunAttributes::inferred_heading_level`. Both projections
+/// write it as the bold line it is, never with `#`. The size clause, the ranks and `-v4`'s bold
+/// clauses are unchanged.
+///
+/// **Measured** (`docs/measurements/headings/README.md` §11): the label tier is mostly section
+/// labels producers tag `/P`, and the owner amended `docs/28-HEADINGS-SCOPE.md` §7.5 so it is
+/// counted apart from the headings written with `#`.
+pub const HEADING_INFERENCE_RULE_V5: &str = "type-size-v5";
+
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.
 ///
 /// On a document that declares no author structure, each page's lines — the runs sharing one
@@ -1906,7 +1927,7 @@ pub struct Profile {
     pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V4`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V5`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -2021,7 +2042,7 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V4.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V5.to_string(),
             layout_unit_rule: LAYOUT_UNIT_RULE_V3.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
@@ -3226,7 +3247,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v4","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v5","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v6","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4311,11 +4332,14 @@ mod tests {
              Moved for the page-observation rule's fourth pass, `sha256:d5e4f162…` -> \
              `sha256:79a56c2f…`: `observation_rule` `page-observations-v3` -> `-v4`, which reads \
              a run's bold and italic from the program its font embeds as well as from the font \
-             dictionary, and reads a run painted fill-then-stroke as bold. Nothing else."
+             dictionary, and reads a run painted fill-then-stroke as bold. Nothing else.\n\n\
+             Moved for decision #47, `sha256:79a56c2f…` -> `sha256:edefadbb…`: \
+             `heading_inference_rule` `type-size-v4` -> `-v5`, which reads a bold line at the \
+             head of its text that does not stand apart as a label, level 7. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:79a56c2f7abf759b87b8e6f94a22b564e778bf16d9fdeea2b593420a02ad3624"
+            "sha256:edefadbb6330d52bd3ec889a88a5072a5668c53b86c8ece6e82da37fe71f8f22"
         );
     }
 

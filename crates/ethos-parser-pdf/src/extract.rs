@@ -581,7 +581,7 @@ fn extract_page(
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V4
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V5
         && no_author_structure(structure.as_ref());
     let mut heading_lines: HeadingLines = Vec::new();
     let mut em_tally = crate::headings::EmTally::default();
@@ -2076,13 +2076,16 @@ fn extract_counted(
     if let Some(levels) = crate::headings::Levels::new(candidates, &doc_em_tally) {
         let mut fired: u32 = 0;
         let mut bold_headings: u32 = 0;
+        let mut labels: u32 = 0;
         for (page, lines) in pages.iter_mut().zip(&heading_lines_by_page) {
             for (indices, line) in lines {
                 let Some(level) = levels.of(*line) else {
                     continue;
                 };
                 fired = fired.saturating_add(1);
-                if !line.is_heading(levels.body_em()) {
+                if level == crate::headings::LABEL_LEVEL {
+                    labels = labels.saturating_add(1);
+                } else if !line.is_heading(levels.body_em()) {
                     bold_headings = bold_headings.saturating_add(1);
                 }
                 for &i in indices {
@@ -2095,6 +2098,7 @@ fn extract_counted(
             limitations.push(lim::headings_inferred_from_type(
                 fired,
                 bold_headings,
+                labels,
                 &profile.heading_inference_rule,
                 levels.body_em(),
             ));

@@ -833,11 +833,17 @@ pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     // Decision #29: the reader's measurement of type, last. A run under this engine's own `/Div`
     // reaches here too — its role path names no heading — which is what keeps an engine-tagged
     // document's projections equal to its untagged original's (docs/23 §4.3).
-    // Decision #38: at the level the rule ranked it, 1 where it states none, and never deeper
-    // than six, which is as deep as either projection writes.
+    // Decision #38: at the level the rule ranked it, 1 where it states none. Decision #47: a
+    // level past six — `type-size-v5`'s label, a bold line at the head of its text — is no
+    // heading either projection writes, and projects as the paragraph it is, its bold its own, as
+    // an ODF level past six does. No projection rule id moves: no record before `type-size-v5`
+    // carried a level past six, so none projects differently.
     text_run_attributes(node)
         .filter(|a| a.inferred_heading)
-        .map(|a| a.inferred_heading_level.unwrap_or(1).clamp(1, 6))
+        .and_then(|a| {
+            let level = a.inferred_heading_level.unwrap_or(1).max(1);
+            (level <= 6).then_some(level)
+        })
 }
 
 /// An ODF block's level: the one its own `<text:h>` stated, where that is a depth these two
@@ -1046,9 +1052,12 @@ pub(crate) fn hyphen_tail<'a>(
 /// a list set without markers reads as one paragraph once joined, and a bold title line read as a
 /// title only while it stood on a line of its own. Called by both projections.
 pub(crate) fn unit_continues(prev: &crate::Node, node: &crate::Node) -> bool {
+    // Decision #47: a label — level 7 — keeps its lines, as body text does. Two labels set one
+    // under the other, `ARTICLE 11` over `DIVIDEND EQUIVALENTS`, are two, and joined each would
+    // stop being the line it names.
     let unit = |n: &crate::Node| {
         text_run_attributes(n)
-            .filter(|a| a.inferred_heading)
+            .filter(|a| a.inferred_heading && a.inferred_heading_level.unwrap_or(1) <= 6)
             .and_then(|a| a.layout_unit)
     };
     prev.parent == node.parent
@@ -4091,6 +4100,38 @@ pub(crate) mod tests {
         assert!(a.coverage.balances());
     }
 
+    /// **A label is no heading either projection writes** (decision #47): a run the reader read at
+    /// level 7, below every ranked level, projects as the paragraph it is, and the bold its font
+    /// declares is what marks it; the levels a projection writes stop at six.
+    #[test]
+    fn a_label_projects_as_a_bold_paragraph_and_never_with_a_hash() {
+        let base =
+            with_inferred_headings(repr_of(&[("Loan terms", None), ("Body text", None)]), &[0]);
+        for (level, md, tag) in [
+            (7u8, "**Loan terms**\n\nBody text\n", "<p><strong>"),
+            (6, "###### Loan terms\n\nBody text\n", "<h6>"),
+        ] {
+            let mut payload = base.payload().clone();
+            if let NodeAttributes::TextRun(a) = &mut payload.nodes[0].attributes {
+                a.inferred_heading_level = Some(level);
+                a.bold = true;
+            }
+            let repr = DocumentRepresentation::seal(payload, base.geometry().to_vec()).unwrap();
+            let a = artifact_of(repr.clone());
+            assert_eq!(a.markdown, md, "level {level}");
+            assert!(a.coverage.balances());
+            let profile = Profile::default();
+            let h = crate::html::to_html(
+                &repr,
+                &profile.parser_version,
+                &profile.profile_sha256().unwrap(),
+                &profile.html_rule,
+            )
+            .expect("projects");
+            assert!(h.html.contains(tag), "level {level}: {}", h.html);
+        }
+    }
+
     /// **A declared heading wins over the flag**, structurally: the reader never sets both, and
     /// were a hand-edited record to carry both, the document's own `/H2` is what projects.
     #[test]
@@ -4878,6 +4919,40 @@ pub(crate) mod tests {
             .structural_erasures
             .iter()
             .any(|e| e.code == LAYOUT_UNIT_LINE_JOINS));
+    }
+
+    /// **A label keeps its lines** (decision #47): two labels set one under the other in one unit
+    /// are two bold lines, never joined as a heading set on two lines is.
+    #[test]
+    fn two_labels_in_one_unit_keep_their_lines() {
+        let base = with_inferred_headings(
+            repr_of_lines(&["ARTICLE 11", "DIVIDENDS", "Body text"]),
+            &[0, 1],
+        );
+        let base = with_units(base, &[Some(1), Some(1), Some(2)]);
+        for (level, want, joined) in [
+            (7u8, "**ARTICLE 11**\n\n**DIVIDENDS**\n\nBody text\n", false),
+            (6, "###### ARTICLE 11 DIVIDENDS\n\nBody text\n", true),
+        ] {
+            let mut payload = base.payload().clone();
+            for node in payload.nodes.iter_mut().take(2) {
+                if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                    a.inferred_heading_level = Some(level);
+                    a.bold = true;
+                }
+            }
+            let repr = DocumentRepresentation::seal(payload, base.geometry().to_vec()).unwrap();
+            let a = artifact_of(repr);
+            assert_eq!(a.markdown, want, "level {level}");
+            assert_eq!(
+                a.coverage
+                    .structural_erasures
+                    .iter()
+                    .any(|e| e.code == LAYOUT_UNIT_LINE_JOINS),
+                joined,
+                "level {level}"
+            );
+        }
     }
 
     /// **A heading the reader set on two lines is one heading line**, never run into the text,

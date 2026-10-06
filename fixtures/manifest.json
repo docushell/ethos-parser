@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 67,
+    "engine_owned": 68,
     "gate": 8
   },
   "fixtures": [
@@ -343,6 +343,15 @@
       "sha256": "sha256:59fd145d2791a5896fabd79289a58aadbb66d0354a7e87032d9a124ea0e4e09a",
       "owner": "engine",
       "notes": "`page-observations-v4` rendering-mode golden. Four Helvetica runs shown in text rendering modes 0, 2, 1 and 6. Expect bold false, true, false, true: fill then stroke (2, and 6 which also clips) is how a writer with no bold face of a font draws one bold; a stroke alone (1) is an outline. No fixture before this one painted text in modes 1, 2 or 6."
+    },
+    {
+      "id": "heading-label-line",
+      "root": "engine",
+      "group": "engine",
+      "path": "heading-label-line/document.pdf",
+      "sha256": "sha256:ee7b359e76032148b5d955979f9613990b7c62b59b828665bd7c029ba0d24a63",
+      "owner": "engine",
+      "notes": "Decision #47 golden (`type-size-v5`). A label, `Loan terms`, set tight over the eleven body lines it names \u2014 the body size and the body leading, so the leading-gap cut gives it no block of its own and `type-size-v4`'s bold clause reads nothing \u2014 bold by fill-then-stroke (`page-observations-v4`), so the page needs one font. Expect the label at `inferred_heading_level` 7, `headings-inferred-from-type` counting one label, and the Markdown writing it as a bold line, never with `#`. No fixture before this one had a bold line that does not stand apart."
     },
     {
       "id": "both-table-rules",

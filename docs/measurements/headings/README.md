@@ -514,3 +514,45 @@ number and its title share a baseline (`2.3 Foreign currency translation`) and b
 the content scorer marks down from the bold lines they were. The rule's gain is on the corpora whose
 ground truth names headings, not on this one.
 
+
+## 11. `type-size-v5` — the label tier, counted apart (2026-10-05)
+
+On ParseBench's visual-grounding pages, 1,416 of the elements its ground truth calls section headers
+were read as text, and 850 of them are bold lines at the body size set tight over the lines they
+name — `Contact person:`, `Loan terms`, `Audience` — which `-v4`'s bold clause leaves alone because
+they do not stand apart. Reading them as `#` headings was measured first and broke both bounds and an
+opendataloader-bench document's hierarchy (`01030000000117` MHS 0.8758 → 0.4581, a list's bold item
+labels read as its headings). Reading them as **labels** — level 7, below every ranked level, written
+by both projections as the bold line they are — left the `#` headings untouched.
+
+**The rule**: a line the bold clause would read but for standing apart, of at most 60 characters,
+whose text no three lines of the document share, is a label. Raw readings in this tree's
+`falsepos.py` output, which since decision #47 counts the two tiers apart on the same lines:
+
+| document | declared | `#` right | `#` false | `#` FP rate | labels | labels right | labels against the tags |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 | 9 | 1 | 2 | 1.67% | 5 | 5 | 0 |
+| irs-fw9 | 28 | 26 | 0 | 0.00% | 9 | 0 | 9 |
+| nist-sp-800-218 | 7 | 2 | 10 | 0.54% | 16 | 5 | 11 |
+| nist-sp-800-207 | 57 | 7 | 12 | 0.64% | 6 | 2 | 4 |
+| nist-sp-800-171r3 | 180 | 168 | 5 | 0.12% | 5 | 1 | 4 |
+| nist-sp-800-37r2 | 957 | 35 | 32 | 0.40% | 130 | 12 | 118 |
+| nist-sp-800-161r1 | 454 | 93 | 84 | 0.66% | 166 | 24 | 142 |
+| nist-sp-800-53Ar5 | 61 | 40 | 38 | 0.05% | 24 | 9 | 15 |
+| nist-sp-800-53r5 | 389 | 52 | 22 | 0.10% | 340 | 314 | 26 |
+| cfpb-home-loan-toolkit | 83 | 19 | 42 | 4.61% | 16 | 2 | 10 |
+| irs-form-1040-2025 | 24 | 22 | 1 | 0.43% | 2 | 1 | 1 |
+
+**The `#` headings are where `-v4` and `page-observations-v4` left them**: the rate band over the
+nine is 0.00%..4.61%, worst `cfpb-home-loan-toolkit`, and the count bound is breached only by
+`nist-sp-800-218`'s title, 10 against 7, as the owner accepted for `-v2`. **The label tier** fires on
+719 lines: 375 the author tagged as headings, 340 against the tags, 4 untagged. Read line by line on
+the two documents the first prototype breached, every label counted against the tags is a section
+label its producer tagged `/P`, or on `nist-sp-800-218` twice a contents entry — `Abstract`,
+`Audience`, `Note to Readers`, `Table of Contents` there; `Loan terms`, `Escrow`, `Finance Charge` on
+`cfpb-home-loan-toolkit`. **The owner amended
+`docs/28-HEADINGS-SCOPE.md` §7.5 on 2026-10-05** (decision #47): its bars hold the headings written
+with `#`, and the label tier is reported beside them, as here.
+
+**opendataloader-bench**: all 200 Markdown files byte-identical — a label was already a bold line
+there. **ParseBench**: see `docs/measurements/parsebench/README.md`.

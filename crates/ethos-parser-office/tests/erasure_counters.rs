@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 20] = [
+const PDF_COUNTERS: [&str; 21] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -106,6 +106,9 @@ const PDF_COUNTERS: [&str; 20] = [
     // Decision #38 (`type-size-v3`). Of those, the lines read from a bold face standing apart,
     // the second count `headings-inferred-from-type` names.
     "bold_headings",
+    // Decision #47 (`type-size-v5`). Of those, the labels: bold lines at the head of their text,
+    // the third count `headings-inferred-from-type` names.
+    "labels",
     // The right-to-left declaration (2026-09-23, `OPEN-WORK.md` §4). The runs holding a scalar
     // from a right-to-left block, the count `right-to-left-not-reordered` names. Caught the same
     // way a fourth time — the author had read `readers()` and concluded this file scanned only

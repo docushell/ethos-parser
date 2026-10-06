@@ -262,6 +262,10 @@ pub(crate) struct Line {
     /// How deep the line's own section number goes: 2 for `2.1 Methods`, and 1 for a line with
     /// no number or a number of one part. [`section_depth`].
     depth: u8,
+    /// The line's text, lower-cased with its whitespace folded, hashed: two lines that read the same
+    /// share it, which is how the label tier tells a running label from a heading
+    /// ([`LABEL_RECURS`]).
+    key: u64,
 }
 
 impl Line {
@@ -280,6 +284,15 @@ impl Line {
             sentence: text.starts_with(char::is_lowercase) || text.ends_with('.'),
             isolated,
             depth: section_depth(text),
+            key: {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                text.split_whitespace()
+                    .map(str::to_lowercase)
+                    .collect::<Vec<_>>()
+                    .hash(&mut h);
+                h.finish()
+            },
         }
     }
 
@@ -354,6 +367,18 @@ pub(crate) const BOLD_HEADING_MAX_CHARS: u64 = 80;
 /// The deepest level a heading is given. Markdown and HTML both stop at six.
 pub(crate) const MAX_LEVEL: u8 = 6;
 
+/// The level of a label (`type-size-v5`): below every level a heading is ranked at, and past six,
+/// so the Markdown and HTML projections write it as the bold line it is rather than with `#`.
+pub(crate) const LABEL_LEVEL: u8 = MAX_LEVEL + 1;
+
+/// A label holds at most this many characters other than whitespace: a label names what follows,
+/// and a longer bold line at the head of its text is a lead-in sentence.
+pub(crate) const LABEL_MAX_CHARS: u64 = 60;
+
+/// A text this many lines of a document share is no label: a running label, a repeated column
+/// name, a form's field caption — each the same words again, where a heading names one place.
+pub(crate) const LABEL_RECURS: u32 = 3;
+
 /// `type-size-v3`'s verdict: a heading's level, from the sizes the document's headings are set in
 /// and the depth their own numbering states (decision #38, which gives decision #29's one level a
 /// rank and its size clause a sibling).
@@ -381,6 +406,14 @@ pub(crate) const MAX_LEVEL: u8 = 6;
 /// with a bold heading below every size; then, within one size, by the depth its section number
 /// states ([`section_depth`]). Each distinct place is a level, from 1 down to [`MAX_LEVEL`], and
 /// anything deeper shares the last.
+///
+/// **The label tier is `type-size-v5`'s** (decision #47): a line the bold clause would read but for
+/// clause 3 — a bold line at the head of its text that does not stand apart, `Contact person:` or
+/// `Loan terms` above the lines it names — of at most [`LABEL_MAX_CHARS`] characters and whose
+/// text no [`LABEL_RECURS`] lines of the document share, is a label, at [`LABEL_LEVEL`], below
+/// every ranked level. The projections write it as a bold line, never with `#`. Measured against
+/// the author's tags it is mostly the section labels producers tag `/P`, and the owner shipped it
+/// with `docs/28-HEADINGS-SCOPE.md` §7.5 amended to count it apart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Levels {
     body_em: i64,
@@ -388,6 +421,8 @@ pub(crate) struct Levels {
     /// Every heading's place in the document, highest first: its binned size — `i64::MIN` for a
     /// bold heading — and its depth.
     places: Vec<(i64, u8)>,
+    /// The text keys [`LABEL_RECURS`] or more of the document's lines share.
+    recurring: std::collections::HashSet<u64>,
 }
 
 impl Levels {
@@ -398,14 +433,24 @@ impl Levels {
         tally: &EmTally,
     ) -> Option<Levels> {
         let body_em = tally.body_em()?;
+        let lines: Vec<&Line> = lines.into_iter().collect();
+        let mut counts: std::collections::HashMap<u64, u32> = std::collections::HashMap::new();
+        for line in &lines {
+            *counts.entry(line.key).or_insert(0) += 1;
+        }
         let mut levels = Levels {
             body_em,
             body_is_bold: tally.body_is_bold(body_em),
             places: Vec::new(),
+            recurring: counts
+                .into_iter()
+                .filter(|(_, n)| *n >= LABEL_RECURS)
+                .map(|(k, _)| k)
+                .collect(),
         };
         let mut places: Vec<(i64, u8)> = lines
-            .into_iter()
-            .filter_map(|line| levels.place(*line))
+            .iter()
+            .filter_map(|line| levels.place(**line))
             .collect();
         places.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         places.dedup();
@@ -418,11 +463,30 @@ impl Levels {
         self.body_em
     }
 
-    /// `line`'s heading level, or `None` where neither clause reads it as a heading.
+    /// `line`'s heading level, or `None` where no clause reads it as a heading: a ranked level, or
+    /// [`LABEL_LEVEL`] for a label (`type-size-v5`) — a line the bold clause would read but for
+    /// standing apart, of at most [`LABEL_MAX_CHARS`] characters, whose text no
+    /// [`LABEL_RECURS`] lines of the document share. A line standing apart is ranked first, so a
+    /// label is always one that does not.
     pub(crate) fn of(&self, line: Line) -> Option<u8> {
-        let place = self.place(line)?;
-        let n = self.places.iter().position(|&p| p == place)?;
-        Some(u8::try_from(n + 1).map_or(MAX_LEVEL, |level| level.min(MAX_LEVEL)))
+        if let Some(place) = self.place(line) {
+            let n = self.places.iter().position(|&p| p == place)?;
+            return Some(u8::try_from(n + 1).map_or(MAX_LEVEL, |level| level.min(MAX_LEVEL)));
+        }
+        let label =
+            self.bold(line) && line.chars <= LABEL_MAX_CHARS && !self.recurring.contains(&line.key);
+        label.then_some(LABEL_LEVEL)
+    }
+
+    /// The bold clause's conditions other than standing apart: clauses 1, 2, 4 and 5.
+    fn bold(&self, line: Line) -> bool {
+        !self.body_is_bold
+            && line.is_candidate()
+            && line.all_bold
+            && line.min_em.is_some_and(|em| bin(em) >= self.body_em)
+            && (2..=BOLD_HEADING_MAX_CHARS).contains(&line.chars)
+            && 2 * line.letters >= line.chars
+            && !line.sentence
     }
 
     /// Where `line` ranks, or `None` where it is no heading.
@@ -430,15 +494,7 @@ impl Levels {
         if line.is_heading(self.body_em) {
             return Some((bin(line.min_em?), line.depth));
         }
-        let bold = !self.body_is_bold
-            && line.is_candidate()
-            && line.all_bold
-            && line.min_em.is_some_and(|em| bin(em) >= self.body_em)
-            && line.isolated
-            && (2..=BOLD_HEADING_MAX_CHARS).contains(&line.chars)
-            && 2 * line.letters >= line.chars
-            && !line.sentence;
-        bold.then_some((i64::MIN, line.depth))
+        (self.bold(line) && line.isolated).then_some((i64::MIN, line.depth))
     }
 }
 
@@ -759,11 +815,35 @@ mod tests {
         assert_eq!(levels_over(&[title, label]).of(label), Some(2));
     }
 
-    /// **Bold prose is not a heading**: the same line, running on in its paragraph.
+    /// **A bold line that does not stand apart is a label** (`type-size-v5`), below every ranked
+    /// level — and bold prose, a lead-in longer than a label, is no heading of either kind.
     #[test]
-    fn bold_prose_is_not_a_heading() {
-        let prose = line(&[bold(1000, "Methods")], "Methods", false);
-        assert_eq!(levels_over(&[prose]).of(prose), None);
+    fn a_bold_line_that_runs_on_is_a_label_and_bold_prose_is_none() {
+        let label = line(&[bold(1000, "Methods")], "Methods", false);
+        assert_eq!(levels_over(&[label]).of(label), Some(LABEL_LEVEL));
+        let title = line(&[run(Some(2400), "Annual report")], "Annual report", false);
+        assert_eq!(levels_over(&[title, label]).of(label), Some(7));
+        // Sixty characters other than whitespace, and sixty-one.
+        let sixty = "Abcdefghij ".repeat(6);
+        let sixty_one = format!("{sixty}k");
+        for (text, want) in [(sixty.as_str(), Some(7)), (sixty_one.as_str(), None)] {
+            let l = line(&[bold(1000, text)], text, false);
+            assert_eq!(levels_over(&[l]).of(l), want, "{} characters", l.chars);
+        }
+    }
+
+    /// **A text three lines of the document share is no label**: a running label or a repeated
+    /// caption names no place, where a heading names one. Two lines sharing it are still labels.
+    #[test]
+    fn a_text_three_lines_share_is_no_label() {
+        let once = line(&[bold(1000, "Notes")], "Notes", false);
+        let again = line(&[bold(1000, "notes ")], "notes ", false);
+        assert_eq!(levels_over(&[once, again]).of(once), Some(LABEL_LEVEL));
+        let levels = levels_over(&[once, again, once]);
+        assert_eq!(levels.of(once), None, "lower case and spacing read alike");
+        assert_eq!(levels.of(again), None);
+        let other = line(&[bold(1000, "Methods")], "Methods", false);
+        assert_eq!(levels.of(other), Some(LABEL_LEVEL));
     }
 
     /// A bold line shaped as a sentence, too long to be a label, or mostly digits is not one.

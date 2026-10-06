@@ -271,6 +271,10 @@ const PINNED: &[(&str, &str)] = &[
         "sha256:268f1d4ebfafa2b37f006bc791e8bb733ca70fe4f7adb22158d1a0b355ff02d2",
     ),
     (
+        "engine/heading-label-line/document.pdf",
+        "sha256:3350da623b0547b5cf0feba2a0e17b2fc9ffc7784ee15d8dd01206acc582f322",
+    ),
+    (
         "engine/horizontal-scaling-tz/document.pdf",
         "sha256:0cd5a1502fbed8b0c3df1978fdbe2b29e8279851a98ef264bf494dedb699135b",
     ),

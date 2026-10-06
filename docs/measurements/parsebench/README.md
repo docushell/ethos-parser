@@ -444,6 +444,33 @@ apart — and no page moves on any other dimension. opendataloader-bench: MHS 0.
 TEDS unchanged. The heading bounds of `docs/28-HEADINGS-SCOPE.md` §7.5 are where the owner accepted
 them. Overall 43.43.
 
+### After `type-size-v5` (decision #47, 2026-10-06)
+
+On the visual-grounding pages, 1,416 of the elements the ground truth calls section headers were
+read as text, and 850 of them are bold lines at the body size set tight over the lines they name —
+`Contact person:`, `Loan terms`, `Audience` — which `-v4`'s bold clause leaves alone because they do
+not stand apart. `-v5` reads them as **labels**: level 7, below every ranked level, written by both
+projections as the bold lines they already were, never with `#`. The adapter labels them
+`Section-header`, as it does every inferred heading.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4296 | 0.4296 |
+| Tables | 0.4833 | 0.4833 |
+| Charts | 0.1019 | 0.1019 |
+| Visual grounding | 0.5115 | 0.4933 |
+
+111 grounding pages rise and 38 fall; 32 of the 38 lose `Section-header` precision where a bold
+line the ground truth keeps as text — a lead-in, a list item's label — is now a label, the worst
+`614c519a-7fe2-4057-a7eb-8a7614148818` p30, 0.73 -> 0.53. No page moves on any other dimension,
+and opendataloader-bench's 200 Markdown files are byte-identical.
+
+**Measured and not used: a label's lines joined**, as a heading's are. A label set on two lines is
+two labels — `ARTICLE 11` over `DIVIDEND EQUIVALENTS` — and joining them moved formatting 0.4296 ->
+0.4303 with 8 documents down (`text_simple__dividend` 1.0 -> 0.5) and content 0.6633 -> 0.6632
+with 19 pages down. Overall 43.79.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

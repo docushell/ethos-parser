@@ -3489,6 +3489,45 @@ fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
     assert!(undecodable(&a).is_some(), "and counted");
 }
 
+/// **A bold line at the head of its text is a label** (`type-size-v5`, decision #47), end to end:
+/// set tight over the lines it names, it stands apart from nothing, and is read at level 7, below
+/// every ranked level; the document's limitation counts it as a label, and the Markdown writes it
+/// as a bold line, never with `#`.
+#[test]
+fn a_bold_label_set_tight_over_its_text_is_a_level_seven_label() {
+    let a = extract_ok(engine_fx("heading-label-line"));
+    let headings: Vec<(String, Option<u8>)> = runs(&a)
+        .iter()
+        .filter(|r| r.inferred_heading)
+        .map(|r| (r.text.clone(), r.inferred_heading_level))
+        .collect();
+    assert_eq!(headings, [("Loan terms".to_string(), Some(7))]);
+    let detail = &a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE)
+        .expect("the inference is declared")
+        .detail;
+    assert!(detail.contains("1 are labels"), "{detail}");
+    assert!(
+        detail.contains("0 of them are set at least 6/5"),
+        "a label is counted once, never also as a sized heading: {detail}"
+    );
+    let rep = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    let profile = Profile::default();
+    let md = ethos_parser_core::to_markdown(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects")
+    .markdown;
+    assert!(md.starts_with("**Loan terms**\n\n"), "{md}");
+    assert!(!md.contains('#'), "{md}");
+}
+
 /// **A font program that states its weight is read for it** (`page-observations-v4`), end to end: a
 /// TrueType font whose dictionary states no weight embeds a program whose `head` table sets the bold
 /// bit, and its run is bold.
@@ -3779,10 +3818,11 @@ fn a_runs_font_declares_bold_and_italic() {
     );
 }
 
-/// **A bold line alone in its block is an inferred heading; a bold line inside a paragraph is
-/// not** (decision #38, `type-size-v3`). Plain 10pt prose on a 12pt leading, a bold `Methods` with
-/// 30pt of whitespace above and below — wider than 1.6 leadings, so the leading-gap cut gives it a
-/// block of its own — and a bold `Bold lead line` set inside the next paragraph's leading.
+/// **A bold line alone in its block is an inferred heading; a bold line inside a paragraph is a
+/// label, below every ranked level** (decision #38, `type-size-v3`; decision #47, `type-size-v5`).
+/// Plain 10pt prose on a 12pt leading, a bold `Methods` with 30pt of whitespace above and below —
+/// wider than 1.6 leadings, so the leading-gap cut gives it a block of its own — and a bold `Bold
+/// lead line` set inside the next paragraph's leading.
 #[test]
 fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
     let mut content = String::new();
@@ -3825,12 +3865,13 @@ fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
     ]);
     let a = extracted(&bytes).expect("reads");
-    let headings: Vec<&str> = runs(&a)
+    let headings: Vec<(&str, Option<u8>)> = runs(&a)
         .iter()
         .filter(|r| r.inferred_heading)
-        .map(|r| r.text.as_str())
+        .map(|r| (r.text.as_str(), r.inferred_heading_level))
         .collect();
-    assert_eq!(headings, ["Methods"]);
+    // A run records level 1 as no level.
+    assert_eq!(headings, [("Methods", None), ("Bold lead line", Some(7))]);
     let lead = runs(&a)
         .into_iter()
         .find(|r| r.text == "Bold lead line")
@@ -3841,9 +3882,10 @@ fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
     );
 }
 
-/// **A numbered bold line set tight over its text is a heading; the same line unnumbered is not**
-/// (decision #38, `type-size-v4`). Plain prose on a 12pt leading; 30 points of space; then a bold
-/// line and, a leading below it, the prose it heads. Numbered, it needs only the room above.
+/// **A numbered bold line set tight over its text is a heading; the same line unnumbered is a
+/// label** (decision #38, `type-size-v4`; decision #47, `type-size-v5`). Plain prose on a 12pt
+/// leading; 30 points of space; then a bold line and, a leading below it, the prose it heads.
+/// Numbered, it needs only the room above.
 #[test]
 fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
     let page = |label: &str| {
@@ -3883,16 +3925,23 @@ fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
         ])
     };
-    let headings = |bytes: &[u8]| -> Vec<String> {
+    let headings = |bytes: &[u8]| -> Vec<(String, Option<u8>)> {
         let a = extracted(bytes).expect("reads");
         runs(&a)
             .iter()
             .filter(|r| r.inferred_heading)
-            .map(|r| r.text.clone())
+            .map(|r| (r.text.clone(), r.inferred_heading_level))
             .collect()
     };
-    assert_eq!(headings(&page("3.1. Methods")), ["3.1. Methods"]);
-    assert!(headings(&page("Methods")).is_empty());
+    // A run records level 1 as no level.
+    assert_eq!(
+        headings(&page("3.1. Methods")),
+        [("3.1. Methods".to_string(), None)]
+    );
+    assert_eq!(
+        headings(&page("Methods")),
+        [("Methods".to_string(), Some(7))]
+    );
 }
 
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and

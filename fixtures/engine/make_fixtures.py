@@ -39,6 +39,8 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              `page-observations-v4`                                     [obs-v4]
   synthetic-bold-fill-stroke four runs in rendering modes 0, 2, 1 and 6: fill-then-stroke
                              (2, 6) is bold, a stroke alone (1) is not            [obs-v4]
+  heading-label-line         a bold label, `Loan terms`, set tight over the eleven lines it
+                             names: a label at level 7 under `type-size-v5`         [#47]
   figure-paths-drawn         a bar chart DRAWN with paths — two stroked axes, three filled bars
                              and a curve — under a page-sized clip, beside a lone stroked rule
                              and a line of text. One figure region, the chart's   [#46]
@@ -969,6 +971,26 @@ FIXTURES = {
         "1 0 0 1 40 100 Tm 2 Tr (Filled then stroked) Tj "
         "1 0 0 1 40 80 Tm 1 Tr (Stroked only) Tj "
         "1 0 0 1 40 60 Tm 6 Tr (Filled stroked clipped) Tj "
+        "ET"
+    ),
+    # Decision #47's golden. A label set tight over the eleven body lines it names, at the body
+    # size and the body leading, so the leading-gap cut gives it no block of its own and `-v4`'s
+    # bold clause reads nothing. Bold by fill-then-stroke, `page-observations-v4`, so the page
+    # needs one font. Under `type-size-v5` it is a label: level 7, and a bold line in Markdown.
+    "heading-label-line": (
+        "BT /F1 10 Tf 0.3 w "
+        "1 0 0 1 40 250 Tm 2 Tr (Loan terms) Tj "
+        "1 0 0 1 40 238 Tm 0 Tr (The lender sets the rate for the life of the loan, and) Tj "
+        "1 0 0 1 40 226 Tm 0 Tr (the payment stays the same each month until it is paid) Tj "
+        "1 0 0 1 40 214 Tm 0 Tr (off. A longer term lowers the payment and raises the) Tj "
+        "1 0 0 1 40 202 Tm 0 Tr (interest paid over the years. Ask each lender for the) Tj "
+        "1 0 0 1 40 190 Tm 0 Tr (same loan so the offers can be compared side by side,) Tj "
+        "1 0 0 1 40 178 Tm 0 Tr (and keep the estimates it sends in writing. Points paid) Tj "
+        "1 0 0 1 40 166 Tm 0 Tr (at closing lower the rate, and a lender credit raises) Tj "
+        "1 0 0 1 40 154 Tm 0 Tr (it in exchange for help with the costs of closing. The) Tj "
+        "1 0 0 1 40 142 Tm 0 Tr (estimate shows both, and the closing disclosure shows) Tj "
+        "1 0 0 1 40 130 Tm 0 Tr (what was agreed three days before the papers are signed) Tj "
+        "1 0 0 1 40 118 Tm 0 Tr (so there is time to ask about anything that changed.) Tj "
         "ET"
     ),
     "background-panel-not-a-grid": (
@@ -2136,6 +2158,7 @@ MEDIA = {
     "unruled-near-miss": (0, 0, 300, 200),
     "background-panel-not-a-grid": (0, 0, 240, 200),
     "figure-paths-drawn": (0, 0, 300, 200),
+    "heading-label-line": (0, 0, 300, 280),
     "units-contents-list": (0, 0, 300, 240),
     # v1-S8. Wide enough for four 60pt columns plus margins, tall enough for five baselines
     # and a row of headings above the topmost one.

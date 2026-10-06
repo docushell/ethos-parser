@@ -707,6 +707,14 @@ corpus for the reason `19-BLOCK-SUBDIVISION-SCOPE.md` §10 gives for `layout_att
 so here because **eleven documents from two producers is a thin population** and §7.1.1 shows
 nothing else in reach can widen it.
 
+**Amended 2026-10-05 (decision #47).** The bars hold the headings both projections write with `#`,
+levels 1 to 6. `type-size-v5`'s **label tier** — a bold line at the head of its text that does not
+stand apart, read at level 7 and written as a bold line — is counted apart by `falsepos.py` and
+reported beside the bars, never folded into them. The owner chose it shown that every label the
+first prototype counted against the bars on `cfpb-home-loan-toolkit` and `nist-sp-800-218` was a
+section label its producer tagged `/P`, or a contents entry; the numbers are
+`docs/measurements/headings/README.md` §11.
+
 ## 8. What is refused, each by name
 
 | Input or idea | Answer | Why |

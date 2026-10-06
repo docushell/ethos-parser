@@ -414,7 +414,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
-/// The pinned set is **90**, and not one of the thirty additions since v2-S21 is a
+/// The pinned set is **91**, and not one of the thirty-one additions since v2-S21 is a
 /// mutation-behaviour change. It was **64** at v2.2-S3: `ink-past-the-media-box` (D4-S5),
 /// `form-xobject-text-drawn` (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
 /// `composite-font-non-identity-cmap` (v2.2-S3) were each added to the corpus and each survives
@@ -438,7 +438,8 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// `figure-paths-drawn` (decision #46), `units-contents-list` (`line-units-v3`), and
 /// `font-program-bold` and `synthetic-bold-fill-stroke` (`page-observations-v4`) join the same way
 /// and make it **90**: a drawing in paths, a contents list and a font program's stated weight
-/// change nothing about how the damage is refused either.
+/// change nothing about how the damage is refused either. `heading-label-line` (decision #47)
+/// joins the same way and makes it **91**.
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -477,7 +478,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 90] = [
+const EXPECTED_SURVIVORS: [&str; 91] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -505,6 +506,7 @@ const EXPECTED_SURVIVORS: [&str; 90] = [
     "heading-display-line-tagged/junk-after-eof",
     "heading-display-line-tf-one/junk-after-eof",
     "heading-display-line/junk-after-eof",
+    "heading-label-line/junk-after-eof",
     "horizontal-scaling-tz/junk-after-eof",
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
@@ -904,8 +906,10 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        94,
-        "the manifest should declare 94 fixtures across FOUR roots. Decision #46, `line-units-v3` \
+        95,
+        "the manifest should declare 95 fixtures across FOUR roots. Decision #47 moved this from \
+         94 by adding `heading-label-line`, a bold label set tight over the lines it names: no \
+         fixture before it had a bold line that does not stand apart. Decision #46, `line-units-v3` \
          and `page-observations-v4` moved this from 90 by adding four fixtures for what their \
          rules read that no fixture drew: `figure-paths-drawn`, a bar chart drawn in paths beside \
          a lone rule, read as one figure region and the rule as none; `units-contents-list`, a \

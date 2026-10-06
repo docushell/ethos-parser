@@ -37,6 +37,13 @@ differently, and one sets 180 declared headings at body type).
 which is §7.5's own reason for refusing 10% made checkable. The count was added by the owner on
 2026-09-18 after `type-size-v1` met the rate on its letter while fabricating 2,446 headings against
 61 declared on one document, because a rate over 80,090 lines cannot see that. Both must hold.
+
+# The label tier, reported beside them
+
+Since decision #47, `type-size-v5` reads a bold line that does not stand apart as a label — heading
+level 7, which both projections write as a bold line rather than with `#`. The owner amended §7.5 on
+2026-10-05: the bounds hold the headings written with `#`, levels 1 to 6, and the label tier is
+counted apart — fired, right and against the author's tags — on the same lines and the same join.
 """
 
 import json
@@ -134,7 +141,11 @@ def extract(pdf, work, tag):
             "key": (loc["page"], attrs.get("region"), "pdf_artifact" in sl, loc["origin_y"]),
             "role": role,
             "mcid": (sl.get("pdf_tagged") or {}).get("mcid"),
-            "flag": bool(attrs.get("inferred_heading")),
+            "inferred": bool(attrs.get("inferred_heading")),
+            # A heading the projections write with `#`: levels 1 to 6. `type-size-v5`'s label tier,
+            # level 7, is written as a bold line and counted apart (decision #47).
+            "flag": bool(attrs.get("inferred_heading")) and (attrs.get("inferred_heading_level") or 1) <= 6,
+            "label": bool(attrs.get("inferred_heading")) and (attrs.get("inferred_heading_level") or 1) > 6,
         })
     return rows, codes
 
@@ -163,7 +174,7 @@ def measure(pdf, work):
     if by_at.keys() != at_v.keys():
         raise SystemExit(f"{pdf.name}: {len(by_at.keys() ^ at_v.keys())} run(s) differ between the original and the stripped copy")
     pairs = [(by_at[k], at_v[k]) for k in at_v]
-    if any(o and o["flag"] for o in original):
+    if any(o and o["inferred"] for o in original):
         raise SystemExit(f"{pdf.name}: the tagged original carries an inferred heading; the gate leaked")
     if "untagged-structure-tree-absent" not in s_codes:
         raise SystemExit(f"{pdf.name}: the stripped copy still reads as tagged")
@@ -172,6 +183,7 @@ def measure(pdf, work):
     for o, v in pairs:
         lines.setdefault(v["key"], []).append((o, v))
     labelled = declared = fired = tp = fp = fired_unlabelled = 0
+    label_fired = label_tp = label_fp = 0
     items = set()
     for key, members in lines.items():
         if key[2] or all(not o["text"].strip() for o, _ in members):
@@ -182,7 +194,10 @@ def measure(pdf, work):
             if o["role"] in HEADING_ROLES:
                 items.add((key[0], o["mcid"]))
         did_fire = any(v["flag"] for _, v in members)
+        # A line is one tier or the other: the label tier reads only what the heading clauses do not.
+        did_label = not did_fire and any(v["label"] for _, v in members)
         fired += did_fire
+        label_fired += did_label
         if not roles:
             fired_unlabelled += did_fire
             continue
@@ -190,6 +205,8 @@ def measure(pdf, work):
         declared += is_heading
         tp += did_fire and is_heading
         fp += did_fire and not is_heading
+        label_tp += did_label and is_heading
+        label_fp += did_label and not is_heading
     return {
         "document": pdf.stem,
         "heading_items": len(items),
@@ -199,6 +216,9 @@ def measure(pdf, work):
         "true_positives": tp,
         "false_positives": fp,
         "fired_unlabelled": fired_unlabelled,
+        "label_fired_lines": label_fired,
+        "label_true_positives": label_tp,
+        "label_false_positives": label_fp,
         "fp_rate_bp": round(10000 * fp / labelled) if labelled else None,
         "recall_bp": round(10000 * tp / declared) if declared else None,
         "declared_headings_inferred": "headings-inferred-from-type" in s_codes,
@@ -224,7 +244,9 @@ def main():
         print(f"{row['document']:24} items {row['heading_items']:>4}  labelled {row['labelled_lines']:>6}  "
               f"declared {row['declared_heading_lines']:>4}  fired {row['fired_lines']:>4}  "
               f"TP {row['true_positives']:>4}  FP {row['false_positives']:>4}  "
-              f"FP rate {pct(row['fp_rate_bp']):>7}  recall {pct(row['recall_bp']):>7}", flush=True)
+              f"FP rate {pct(row['fp_rate_bp']):>7}  recall {pct(row['recall_bp']):>7}  "
+              f"| label tier fired {row['label_fired_lines']:>4}  TP {row['label_true_positives']:>4}  "
+              f"FP {row['label_false_positives']:>4}", flush=True)
     (work / "falsepos.json").write_text(json.dumps(rows, indent=1) + "\n")
 
     bounded = [r for r in rows if r["document"] not in COUNTS_ONLY]
@@ -245,6 +267,9 @@ def main():
     print(f"the count bound, false headings <= declared headings on all {len(rows)}: "
           f"{'MET' if not over else 'NOT MET'}")
     print(f"ALL BOUNDS: {'MET' if met and not over else 'NOT MET'}")
+    print(f"label tier, reported beside the bounds (decision #47): fired "
+          f"{sum(r['label_fired_lines'] for r in rows)}, right {sum(r['label_true_positives'] for r in rows)}, "
+          f"against the author's tags {sum(r['label_false_positives'] for r in rows)}")
 
 
 if __name__ == "__main__":

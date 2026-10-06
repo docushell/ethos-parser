@@ -142,6 +142,27 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A bold line at the head of its text is a label (`type-size-v5`, decision #47)
+
+`heading_inference_rule` moves `type-size-v4` -> `type-size-v5`, so `profile_sha256` moves. The
+draft schema lets `inferred_heading_level` be 7, folded into the unreleased representation 0.8.0.
+
+- **A line the bold clause would read but for standing apart is a label**: a bold line at the body
+  size set tight over the lines it names — `Contact person:`, `Loan terms` — of at most 60
+  characters, whose text no three lines of the document share. It is read at
+  `inferred_heading_level` 7, below every ranked level, and `headings-inferred-from-type` counts it
+  apart. New engine fixture `heading-label-line`.
+- **Both projections write a label as the bold line it is, never with `#`**, and a label set on two
+  lines keeps both; a heading of levels 1 to 6 set on two lines is still joined. No projection rule
+  id moves: no record before `-v5` carried a level past six.
+- **The heading bounds count labels apart** (`docs/28-HEADINGS-SCOPE.md` §7.5, amended by the
+  owner): the `#` headings are where `-v4` left them, 0.00%..4.61%; on the eleven tagged documents
+  the label tier fires on 719 lines, 375 the author tagged as headings and 340 against the tags —
+  section labels their producers tagged `/P`, and contents entries.
+- **Measured** on ParseBench: visual grounding 0.4933 -> 0.5115, 111 pages up and 38 down;
+  content, formatting, tables and charts unchanged on every page; overall 43.43 -> 43.79.
+  opendataloader-bench: all 200 Markdown files byte-identical.
+
 ### Bold and italic as the font program states them, and fill-then-stroke read as bold (`page-observations-v4`)
 
 `observation_rule` moves `page-observations-v3` -> `page-observations-v4`, so `profile_sha256`
