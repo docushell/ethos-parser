@@ -414,7 +414,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
-/// The pinned set is **82**, and not one of the twenty-two additions since v2-S21 is a
+/// The pinned set is **90**, and not one of the thirty additions since v2-S21 is a
 /// mutation-behaviour change. It was **64** at v2.2-S3: `ink-past-the-media-box` (D4-S5),
 /// `form-xobject-text-drawn` (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
 /// `composite-font-non-identity-cmap` (v2.2-S3) were each added to the corpus and each survives
@@ -433,6 +433,12 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// place around, each the leading-gap page with one thing changed — join the same way and make
 /// it **81**: a marked-content frame, a shared stream or an inline image in the content changes
 /// nothing about how the damage is refused either (85 fixtures, 487 mutants).
+/// `rtl-hebrew-visual-order` (B9), the three `heading-display-line` pages (C1 S1) and
+/// `scalar-units-non-bmp` (OPEN-WORK §5) joined the same way and made it **86**.
+/// `figure-paths-drawn` (decision #46), `units-contents-list` (`line-units-v3`), and
+/// `font-program-bold` and `synthetic-bold-fill-stroke` (`page-observations-v4`) join the same way
+/// and make it **90**: a drawing in paths, a contents list and a font program's stated weight
+/// change nothing about how the damage is refused either.
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -471,7 +477,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 86] = [
+const EXPECTED_SURVIVORS: [&str; 90] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -489,6 +495,8 @@ const EXPECTED_SURVIVORS: [&str; 86] = [
     "engine-tagged-widget-objr/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
+    "figure-paths-drawn/junk-after-eof",
+    "font-program-bold/junk-after-eof",
     "foreign/opendataloader/real/junk-after-eof",
     "form-field-value/junk-after-eof",
     "form-orphan-widget/junk-after-eof",
@@ -534,6 +542,7 @@ const EXPECTED_SURVIVORS: [&str; 86] = [
     "stroke-ruled-field-boxes/junk-after-eof",
     "stroke-ruled-worksheet/junk-after-eof",
     "synthesized-space-tj/junk-after-eof",
+    "synthetic-bold-fill-stroke/junk-after-eof",
     "synthetic/heading-export/junk-after-eof",
     "synthetic/hyphenated-line-break/junk-after-eof",
     "synthetic/ligature-fi-embedded-font/junk-after-eof",
@@ -551,6 +560,7 @@ const EXPECTED_SURVIVORS: [&str; 86] = [
     "tagged-widget-objr/junk-after-eof",
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
+    "units-contents-list/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
     "untagged-artifact-furniture/junk-after-eof",
     "untagged-mcid-by-name/junk-after-eof",
@@ -894,8 +904,14 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        90,
-        "the manifest should declare 90 fixtures across FOUR roots. `OPEN-WORK.md` §5 moved this \
+        94,
+        "the manifest should declare 94 fixtures across FOUR roots. Decision #46, `line-units-v3` \
+         and `page-observations-v4` moved this from 90 by adding four fixtures for what their \
+         rules read that no fixture drew: `figure-paths-drawn`, a bar chart drawn in paths beside \
+         a lone rule, read as one figure region and the rule as none; `units-contents-list`, a \
+         contents list set without markers, cut where the next entry would have fit; and \
+         `font-program-bold` and `synthetic-bold-fill-stroke`, a weight only the embedded program \
+         states and a bold drawn fill-then-stroke. `OPEN-WORK.md` §5 moved this \
          from 89 by adding `scalar-units-non-bmp`: a non-BMP scalar and a combining sequence were \
          in NEITHER owned corpus, checked across `make_fixtures.py` on 2026-09-18, so the \
          contract's rule that a char offset counts SCALARS — not UTF-8 bytes, not UTF-16 units — \
