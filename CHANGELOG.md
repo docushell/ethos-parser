@@ -150,6 +150,27 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A bold body set as display type keeps its text's labels (`type-size-v6`, decision #50)
+
+`heading_inference_rule` moves `type-size-v5` -> `type-size-v6`, so `profile_sha256` moves.
+
+- **Where the body em is a size set mostly bold, bold lines are read against the text's size**: a
+  statement opening the page, set larger than its text and running on ten lines or more, is the
+  largest common size, and set mostly bold it closed the bold clause's guard, so the text's labels
+  went unread — `Reporting Period` and `Restatements` under a bold statement of purpose. The bold
+  clause and the label tier now read against the largest common size not set mostly bold, and the
+  guard asks that size; where every common size is bold, as on a deck whose prose is bold, the
+  clause withdraws as before. The size clause and the ranks still read the body em.
+- **The heading bounds cannot see it**: none of the eleven tagged documents has such a body, and
+  they read as under `-v5`, line for line. Against ParseBench's ground truth it reads 281 more
+  section headers as headings and 39 text elements as headings they are not — slide decks' bold
+  names over their job titles — and the owner shipped it with that trade.
+- **Measured** on ParseBench: visual grounding 0.5173 -> 0.5252, 32 pages up and 5 down;
+  semantic formatting 0.4347 -> 0.4356, 3 documents up and none down; content faithfulness 0.6633,
+  3 pages down by at most 0.002; tables and charts unchanged on every page; overall 44.24 -> 44.42.
+  opendataloader-bench MHS 0.5481 -> 0.5454, one document 0.4082 -> 0.1134 where seven bold lines
+  standing apart became headings; NID and TEDS unchanged, one document's NID up.
+
 ### A bold line at the head of its text is a label (`type-size-v5`, decision #47)
 
 `heading_inference_rule` moves `type-size-v4` -> `type-size-v5`, so `profile_sha256` moves. The

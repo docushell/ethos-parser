@@ -185,7 +185,8 @@ impl EmTally {
     /// Whether most characters set at `body_em` are bold: a deck or a form whose prose is bold,
     /// where weight means nothing and `type-size-v3`'s bold clause withdraws rather than reading
     /// every short line as a heading. The guard `docs/measurements/headings/README.md` §7 measured
-    /// beside the font-weight clause, kept.
+    /// beside the font-weight clause, kept. Since `type-size-v6`, [`Levels`] asks it of the size it
+    /// reads bold lines against: [`Self::regular_text_em`] where the body is bold display type.
     pub(crate) fn body_is_bold(&self, body_em: i64) -> bool {
         let all = self.chars.get(&body_em).copied().unwrap_or(0);
         let bold = self.bold.get(&body_em).copied().unwrap_or(0);
@@ -214,17 +215,34 @@ impl EmTally {
             .iter()
             .find(|(_, chars)| **chars == best)
             .map(|(em, _)| *em)?;
-        let total: u64 = self.chars.values().sum();
         let largest_common = self
             .chars
-            .iter()
+            .keys()
             .rev()
-            .find(|(em, chars)| {
-                **chars * BODY_SHARE_DEN >= total
-                    && self.lines.get(em).copied().unwrap_or(0) >= BODY_MIN_LINES
-            })
-            .map(|(em, _)| *em);
+            .find(|&&em| self.is_common(em))
+            .copied();
         Some(largest_common.map_or(mode, |common| common.max(mode)))
+    }
+
+    /// The text size where the body is bold display type (`type-size-v6`): the largest common size
+    /// whose characters are not mostly bold, or `None` where every common size is. A bold
+    /// paragraph opening a page — an annual report's statement of purpose, set larger than the
+    /// text — can be the largest common size, and is then [`Self::body_em`]; the text the labels
+    /// head is set in this one.
+    pub(crate) fn regular_text_em(&self) -> Option<i64> {
+        self.chars
+            .keys()
+            .rev()
+            .find(|&&em| self.is_common(em) && !self.body_is_bold(em))
+            .copied()
+    }
+
+    /// Whether `em` is a common size: at least 1/[`BODY_SHARE_DEN`] of the body characters, on at
+    /// least [`BODY_MIN_LINES`] lines.
+    fn is_common(&self, em: i64) -> bool {
+        let total: u64 = self.chars.values().sum();
+        self.chars.get(&em).copied().unwrap_or(0) * BODY_SHARE_DEN >= total
+            && self.lines.get(&em).copied().unwrap_or(0) >= BODY_MIN_LINES
     }
 }
 
@@ -393,7 +411,8 @@ pub(crate) const LABEL_RECURS: u32 = 3;
 /// already a heading by size and
 ///
 /// 1. every run with text is bold, and the document's body is not ([`EmTally::body_is_bold`]);
-/// 2. it is set at least at the body em, so bold small print is not a heading;
+/// 2. it is set at least at the body em, so bold small print is not a heading — clauses 1 and 2
+///    both reading the text's em instead where the body is bold display type (`-v6`, below);
 /// 3. its caller measured it as standing apart — `isolated`, the one fact of position this rule
 ///    reads, and the reason decision #38 amends decision #29's rider: a leading-gap block of its
 ///    own, or, for a line opening with a section number, room above it (`type-size-v4`);
@@ -414,9 +433,20 @@ pub(crate) const LABEL_RECURS: u32 = 3;
 /// every ranked level. The projections write it as a bold line, never with `#`. Measured against
 /// the author's tags it is mostly the section labels producers tag `/P`, and the owner shipped it
 /// with `docs/28-HEADINGS-SCOPE.md` §7.5 amended to count it apart.
+///
+/// **A bold body set as display type keeps its text's labels** (`type-size-v6`, decision #50).
+/// Where the body em is a size set mostly bold — a bold statement opening a page, larger than the
+/// text and running on ten lines or more — the bold clause and the label tier read against the
+/// text instead: [`EmTally::regular_text_em`], the largest common size not set mostly bold. Clause
+/// 1's guard asks the same size, so the clause withdraws only where no common size is set in a
+/// regular weight. The size clause and the ranks still read the body em, so no line is a heading
+/// by its size that `-v5` did not read as one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Levels {
     body_em: i64,
+    /// The em the bold clause and its guard read against: the body em, or under `-v6` the
+    /// regular text's where the body is set mostly bold.
+    bold_em: i64,
     body_is_bold: bool,
     /// Every heading's place in the document, highest first: its binned size — `i64::MIN` for a
     /// bold heading — and its depth.
@@ -433,6 +463,11 @@ impl Levels {
         tally: &EmTally,
     ) -> Option<Levels> {
         let body_em = tally.body_em()?;
+        let bold_em = if tally.body_is_bold(body_em) {
+            tally.regular_text_em().unwrap_or(body_em)
+        } else {
+            body_em
+        };
         let lines: Vec<&Line> = lines.into_iter().collect();
         let mut counts: std::collections::HashMap<u64, u32> = std::collections::HashMap::new();
         for line in &lines {
@@ -440,7 +475,8 @@ impl Levels {
         }
         let mut levels = Levels {
             body_em,
-            body_is_bold: tally.body_is_bold(body_em),
+            bold_em,
+            body_is_bold: tally.body_is_bold(bold_em),
             places: Vec::new(),
             recurring: counts
                 .into_iter()
@@ -483,7 +519,7 @@ impl Levels {
         !self.body_is_bold
             && line.is_candidate()
             && line.all_bold
-            && line.min_em.is_some_and(|em| bin(em) >= self.body_em)
+            && line.min_em.is_some_and(|em| bin(em) >= self.bold_em)
             && (2..=BOLD_HEADING_MAX_CHARS).contains(&line.chars)
             && 2 * line.letters >= line.chars
             && !line.sentence
@@ -905,6 +941,54 @@ mod tests {
             tally.add(&body[0]);
             tally.add_line(&body);
         }
+        let label = line(&[bold(1000, "Methods")], "Methods", true);
+        let levels = Levels::new(&[label], &tally).expect("the body is measurable");
+        assert_eq!(levels.of(label), None);
+    }
+
+    /// **A bold body set as display type keeps its text's labels** (`type-size-v6`): twelve lines
+    /// of a bold statement at 12pt over fifty of plain 10pt text make 12pt the body, set mostly
+    /// bold. Read against the text, a bold 10pt line at the head of its text is still a label and
+    /// one standing apart a heading; a plain 12pt line is still no heading by its size.
+    #[test]
+    fn a_bold_body_set_as_display_type_keeps_its_text_s_labels() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 50, 1000, 60);
+        for _ in 0..12 {
+            let statement = [bold(1200, &"x".repeat(60))];
+            tally.add(&statement[0]);
+            tally.add_line(&statement);
+        }
+        assert_eq!(
+            tally.body_em(),
+            Some(1200),
+            "the statement is the largest common size"
+        );
+        let label = line(&[bold(1000, "Reporting Period")], "Reporting Period", false);
+        let heading = line(&[bold(1000, "Restatements")], "Restatements", true);
+        let display = line(&[run(Some(1200), "Our purpose")], "Our purpose", false);
+        let levels =
+            Levels::new(&[label, heading, display], &tally).expect("the body is measurable");
+        assert_eq!(levels.of(label), Some(LABEL_LEVEL));
+        assert_eq!(levels.of(heading), Some(1));
+        assert_eq!(
+            levels.of(display),
+            None,
+            "the size clause still reads the body em"
+        );
+    }
+
+    /// **…and the clause still withdraws where no common size is set in a regular weight**: a bold
+    /// deck over five lines of plain small print — a footer, too few lines to be text.
+    #[test]
+    fn a_bold_deck_over_a_plain_footer_still_withdraws() {
+        let mut tally = EmTally::default();
+        for _ in 0..50 {
+            let body = [bold(1000, &"x".repeat(60))];
+            tally.add(&body[0]);
+            tally.add_line(&body);
+        }
+        lines_of(&mut tally, 5, 700, 60);
         let label = line(&[bold(1000, "Methods")], "Methods", true);
         let levels = Levels::new(&[label], &tally).expect("the body is measurable");
         assert_eq!(levels.of(label), None);

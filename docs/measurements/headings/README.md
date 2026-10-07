@@ -566,3 +566,34 @@ on `nist-sp-800-218` and 4,480 on `nist-sp-800-53Ar5`, where small type runs the
 only where the larger common size sets fewer than ten of them, the `#` tier and the label tier read
 here exactly as above, but opendataloader-bench `01030000000199` and `-200` read chart values and
 table lines as headings (MHS 0.5481 -> 0.5438).
+
+## 12. `type-size-v6` — a bold body set as display type (2026-10-07)
+
+On ParseBench's visual-grounding pages, 276 of the elements its ground truth calls section headers
+and we read as text sit on documents whose body em is a size set mostly bold: a statement opening the
+page, set larger than its text and running on ten lines or more — `The purpose of this Report is to
+provide…` on `Marico_Annual_Report_FY24` p4 — is the largest common size, and set mostly bold it
+closes the bold clause's guard, so the labels of the text below it went unread (`Reporting Period`,
+`Restatements`). 149 more are bold lines set below such a body em.
+
+**The rule**: where the body em is a size set mostly bold, the bold clause and the label tier read
+against the largest common size not set mostly bold, and the guard asks that size; where every
+common size is set mostly bold — a deck whose prose is bold — the clause withdraws as before. The
+size clause and the ranks still read the body em, so no line is a heading by its size that `-v5` did
+not read as one.
+
+**The bounds cannot see it.** On none of the eleven documents is the body em a size set mostly bold
+beside a common size set in a regular weight, so `falsepos.py` reads exactly what §11 reads, line
+for line, on both tiers — which says nothing for or against the rule. Its false headings were
+measured on ParseBench's ground truth instead: of the elements whose verdict moved, 281 section
+headers are now read as headings and 39 text elements are read as headings they are not — slide
+decks' bold names over their job titles, bold claims — and 38 text elements lose their box, 26 of
+them where a new label now covers part of the paragraph it heads. On opendataloader-bench
+`01030000000200`, whose body is such a size, seven bold lines standing apart (`Service Stage`,
+`1. Project creation`, `Explanation`, `Expected Benefit`) become headings and its MHS falls 0.4082 →
+0.1134, the document §11's running-text variant also moved. The owner shipped it with that trade (decision #50).
+
+**Measured beside it and not used:** the text's size as the body for every clause, the size clause
+included — the same grounding, but nine pages fell where five do, a content page fell 0.049
+(`text_dense__underline`), and the same opendataloader-bench document fell to 0.0575, the size
+clause reading lines set larger than the text as headings.

@@ -575,6 +575,28 @@ breach of the tracks scope's bound 3 the owner accepted (decision #49). opendata
 0.4949 -> 0.5060, 5 documents up and none down; NID 0.8838 -> 0.8839, one document down 0.8632 ->
 0.8283. Overall 44.24.
 
+### After a bold body set as display type (`type-size-v6`, decision #50, 2026-10-07)
+
+Of the elements visual grounding calls section headers and we read as text, 276 sit on documents
+whose body em is a size set mostly bold — a statement opening the page, set larger than its text —
+which closed the bold clause's guard, and 149 more are bold lines set below such a body em.
+`type-size-v6` reads bold lines against the largest common size not set mostly bold there; the size
+clause still reads the body em (`docs/measurements/headings/README.md` §12).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4356 | 0.4347 |
+| Tables | 0.4932 | 0.4932 |
+| Charts | 0.1035 | 0.1035 |
+| Visual grounding | 0.5252 | 0.5173 |
+
+32 grounding pages rise and 5 fall, the falls slide decks whose bold names over their job titles now
+read as labels; of the elements whose verdict moved, 281 section headers are now read right and 39
+text elements are read as headings they are not. 3 formatting documents rise and none falls; 3
+content pages fall by at most 0.002. opendataloader-bench MHS 0.5481 -> 0.5454, one document. The
+owner shipped it with that trade (decision #50). Overall 44.42.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
