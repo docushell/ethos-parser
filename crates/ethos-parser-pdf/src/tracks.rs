@@ -75,6 +75,21 @@
 //! narrow, and the cut of a line at an em read the two as one cell reaching across two tracks, which
 //! ended the table there or kept it from opening. A line that joins as it is stays as it is.
 //!
+//! **A line wider than the table re-tracks it** (`-v9`, [`retrack`]): a line with more cells than
+//! the table has tracks, set within a row and a half's pitch of the row above it, gives the table
+//! its cells as tracks, where the table holds [`RETRACK_MIN_ROWS`] rows or more, each with a digit,
+//! and every cell of every row sits on one of them, a track of its own, clear of its neighbours. A
+//! table opened on a row whose long cell reached across an empty column, or on rows that leave a
+//! column empty, ended at its first full row. A header holds no data rows, so it is no table's
+//! rows to re-track: it stays the header band's.
+//!
+//! **A row its wrapped cell made tall reaches past the pitch** (`-v9`): a full row more than three
+//! and a half pitches below the row above it joins where it sits within them of that row's last
+//! wrapped line, the row's wraps fell on some of its tracks and not all, the line is set within a
+//! tenth of the row's size, and the table has [`REACH_MIN_COLUMNS`] tracks or more. A catalogue
+//! whose descriptions run on over several lines ended at its first tall row. And a table its reach
+//! cannot keep stands without it, as it was before the reach.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -139,6 +154,16 @@ pub const MIN_ROWS_UNORDERED: usize = 3;
 /// written down the page are the very shape of two columns of prose.
 pub const MIN_COLUMNS_UNORDERED: usize = 3;
 
+/// The fewest rows, each holding a digit, a table must have before a line wider than it re-tracks
+/// it (`-v9`): a header set on two lines — `2024 | 2023` over `€'000 | €'000` — holds digits too, and
+/// is the header band's.
+pub const RETRACK_MIN_ROWS: usize = 3;
+
+/// The fewest tracks a table must have for a row its wrapped cell made tall to reach past the pitch
+/// (`-v9`): a list of terms beside their definitions is two columns, wraps its definitions the same
+/// way, and is no table.
+pub const REACH_MIN_COLUMNS: usize = 3;
+
 /// A column is running text when at least one in this many of its cells opens with a lower-case
 /// letter, as a paragraph's continuation lines do. Measured, not chosen: on opendataloader-bench
 /// every column of prose this rule took for a table without the row-order clause opened two in
@@ -199,7 +224,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v8` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v9` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -215,9 +240,19 @@ pub(crate) fn detect(
     // Lines before this one are an earlier table's, and no header of a later one.
     let mut floor = 0;
     while i < lines.len() {
-        if let Some((mut rows, end)) = grow(&lines, i, runs) {
-            let pair_stands = rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, &rows, runs);
-            if pair_stands && accepted(&rows, runs) {
+        if let Some((mut rows, mut end, reach)) = grow(&lines, i, runs) {
+            let stands = |rows: &[Row], end: usize| {
+                (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
+                    && accepted(rows, runs)
+            };
+            let mut stand = stands(&rows, end);
+            // `-v9`: a table its reach past the pitch cannot keep stands without it.
+            if let (false, Some((kept, at))) = (stand, reach) {
+                rows.truncate(kept);
+                end = at;
+                stand = stands(&rows, end);
+            }
+            if stand {
                 let tracks = tracks_of(&rows);
                 let top = header_band(&lines, floor, i, &tracks, &rows, runs);
                 let mut headed = false;
@@ -640,9 +675,10 @@ fn track_of(cell: &Cell, tracks: &[(i64, i64)]) -> Option<usize> {
         })
 }
 
-/// The rows a table opened at line `start` grows to, and the line after its last; `None` where the
-/// line opens no table.
-fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>, usize)> {
+/// The rows a table opened at line `start` grows to, the line after its last, and where its first
+/// reach past the pitch began (`-v9`) — the rows before it, and its line; `None` where the line
+/// opens no table.
+fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<Grown> {
     let first = &lines[start];
     if first.cells.len() < MIN_COLUMNS {
         return None;
@@ -654,6 +690,11 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>
         cells: first.cells.clone(),
     }];
     let mut j = start + 1;
+    // `-v9`: the baseline of the last line taken, row or wrap; the tracks the current row's wrapped
+    // lines fell on; and where the first reach past the pitch began.
+    let mut last = first.y;
+    let mut wrapped: Vec<usize> = Vec::new();
+    let mut reach: Option<(usize, usize)> = None;
     while let Some(line) = lines.get(j) {
         let Some(above) = rows.last() else { break };
         if line.cells.is_empty() {
@@ -663,7 +704,19 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>
         let em = above.em.max(line.em);
         let gap = line.y - above.y;
         if 5 * gap > 21 * em {
-            break;
+            // `-v9`: a row its wrapped cell made tall reaches as far below its last wrapped line,
+            // for a full row of its size; a tenth of the size is the bin a row's own type keeps.
+            let reaches = tracks.len() >= REACH_MIN_COLUMNS
+                && !wrapped.is_empty()
+                && wrapped.len() < tracks.len()
+                && 5 * (line.y - last) <= 21 * em
+                && 10 * (line.em - above.em).abs() <= above.em
+                && line.cells.len() == tracks.len()
+                && fits(line, &tracks);
+            if !reaches {
+                break;
+            }
+            reach.get_or_insert((rows.len(), j));
         }
         // `-v8`: a line the table would end at joins with its cells of two numbers split, where
         // that makes it a row.
@@ -701,11 +754,38 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>
                 em: line.em,
                 cells: line.cells.clone(),
             });
+            last = line.y;
+            wrapped.clear();
             j += 1;
             continue;
         }
         if line.cells.len() > tracks.len() {
-            break;
+            // `-v9`: a line wider than the table, set at the row pitch under rows of data, re-tracks
+            // it where every row sits on the line's cells.
+            let wider: Vec<(i64, i64)> = line.cells.iter().map(|c| (c.x0, c.x1)).collect();
+            let data = rows.len() >= RETRACK_MIN_ROWS
+                && rows.iter().all(|r| {
+                    r.cells
+                        .iter()
+                        .any(|c| cell_text(c, runs).chars().any(|ch| ch.is_ascii_digit()))
+                });
+            let Some(retracked) = (data && 5 * gap <= 9 * em)
+                .then(|| retrack(&rows, &wider))
+                .flatten()
+            else {
+                break;
+            };
+            rows = retracked;
+            tracks = wider;
+            rows.push(Row {
+                y: line.y,
+                em: line.em,
+                cells: line.cells.clone(),
+            });
+            last = line.y;
+            wrapped.clear();
+            j += 1;
+            continue;
         }
         let Some(mapping) = line
             .cells
@@ -753,15 +833,53 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>
                 em: line.em,
                 cells,
             });
+            wrapped.clear();
         } else if let Some(row) = rows.last_mut() {
             // A wrap: the line's runs join the row above, cell by cell.
             for (cell, &m) in line.cells.iter().zip(&mapping) {
                 row.cells[m].runs.extend(&cell.runs);
+                if !wrapped.contains(&m) {
+                    wrapped.push(m);
+                }
             }
         }
+        last = line.y;
         j += 1;
     }
-    Some((rows, j))
+    Some((rows, j, reach))
+}
+
+/// What [`grow`] returns: the rows, the line after the last, and where the first reach past the
+/// pitch began — the rows before it, and its line.
+type Grown = (Vec<Row>, usize, Option<(usize, usize)>);
+
+/// `rows` on `tracks`, a wider line's cells (`-v9`): each cell holding runs on a track of its own,
+/// clear of its neighbours; `None` where a row's cells do not sit so.
+fn retrack(rows: &[Row], tracks: &[(i64, i64)]) -> Option<Vec<Row>> {
+    let mut out = Vec::with_capacity(rows.len() + 1);
+    for row in rows {
+        let mut cells: Vec<Cell> = tracks
+            .iter()
+            .map(|&(x0, _)| Cell {
+                x0,
+                x1: x0,
+                runs: Vec::new(),
+            })
+            .collect();
+        for cell in row.cells.iter().filter(|c| !c.runs.is_empty()) {
+            let k = track_of(cell, tracks)?;
+            if !cells[k].runs.is_empty() || !clear_of_neighbours(cell, k, tracks) {
+                return None;
+            }
+            cells[k] = cell.clone();
+        }
+        out.push(Row {
+            y: row.y,
+            em: row.em,
+            cells,
+        });
+    }
+    Some(out)
 }
 
 /// Whether `line` joins rows on `tracks` as [`grow`] reads them: a full line, one cell at most off
@@ -1153,7 +1271,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V8.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V9.to_string(),
     }))
 }
 
@@ -1391,6 +1509,159 @@ mod tests {
         assert!(tables(&amounts("Oat", "flakes")).is_empty());
     }
 
+    /// Three rows of data, a label and a figure each, the middle column empty, 16 points apart.
+    fn data_rows() -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, 100, 40, "North"),
+            run(330, 100, 40, "112.0"),
+            run(100, 116, 40, "South"),
+            run(350, 116, 20, "9.1"),
+            run(100, 132, 40, "East"),
+            run(340, 132, 30, "65.5"),
+        ]
+    }
+
+    /// `West`'s line at `y`, filling the middle column.
+    fn wider_line(y: i64) -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, y, 40, "West"),
+            run(240, y, 30, "12.0"),
+            run(335, y, 35, "70.25"),
+        ]
+    }
+
+    /// **A line wider than the table re-tracks it** (`-v9`): three rows of data leave the middle
+    /// column empty and `West`'s line fills it; the table runs on in three columns, the rows above
+    /// on the tracks they sit on.
+    #[test]
+    fn a_line_wider_than_the_table_re_tracks_it() {
+        let found = tables(&[data_rows(), wider_line(148)].concat());
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["North", "", "112.0"]);
+        assert_eq!(texts(&found[0])[3], ["West", "12.0", "70.25"]);
+    }
+
+    /// **…not under two rows**, too few to be the table's — a header set on two lines holds digits
+    /// too; **nor under rows that hold no digit**, a header's words; **nor across a gap**, `West`
+    /// two rows' pitch below opening something new. No table stands in any of them.
+    #[test]
+    fn a_wider_line_re_tracks_only_rows_of_data_at_the_pitch() {
+        let two = [&data_rows()[..4], &wider_line(132)[..]].concat();
+        assert!(tables(&two).is_empty(), "two rows");
+        let words: Vec<TrackRun<'static>> = data_rows()
+            .into_iter()
+            .map(|r| {
+                if r.x > 20_000 {
+                    TrackRun { text: "High", ..r }
+                } else {
+                    r
+                }
+            })
+            .chain(wider_line(148))
+            .collect();
+        assert!(tables(&words).is_empty(), "no digit");
+        assert!(
+            tables(&[data_rows(), wider_line(156)].concat()).is_empty(),
+            "two rows' pitch below"
+        );
+    }
+
+    /// One catalogue row at `y`: a code, a name and a description whose `wraps` run on under it, 12
+    /// points apart, in the third column.
+    fn tall(y: i64, code: &'static str, wraps: &[&'static str]) -> Vec<TrackRun<'static>> {
+        let mut out = vec![
+            run(100, y, 20, code),
+            run(200, y, 30, "Oats"),
+            run(300, y, 80, "Rolled grain"),
+        ];
+        for (k, wrap) in (1..).zip(wraps) {
+            out.push(run(300, y + 12 * k, 60, wrap));
+        }
+        out
+    }
+
+    /// Four catalogue rows 46 points apart — past three and a half pitches of a row's first line,
+    /// 22 points under its last.
+    fn catalogue() -> Vec<TrackRun<'static>> {
+        [(100, "1.1"), (146, "1.2"), (192, "1.3"), (238, "1.4")]
+            .into_iter()
+            .flat_map(|(y, code)| tall(y, code, &["and dried", "at speed"]))
+            .collect()
+    }
+
+    /// **A row its wrapped cell made tall reaches past the pitch** (`-v9`): every row of the
+    /// catalogue is the table's, which ended at its first row.
+    #[test]
+    fn a_row_its_wrapped_cell_made_tall_reaches_past_the_pitch() {
+        let found = tables(&catalogue());
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+    }
+
+    /// **…not in two columns** — terms beside their definitions; **nor where the wraps fill every
+    /// column**, a block of figures and their captions; **nor to a row set at another size**.
+    #[test]
+    fn a_tall_row_reaches_only_in_three_columns_wrapped_in_part_at_its_size() {
+        let two: Vec<TrackRun<'static>> =
+            catalogue().into_iter().filter(|r| r.x != 20_000).collect();
+        assert!(tables(&two).is_empty(), "two columns");
+        let every: Vec<TrackRun<'static>> = [100, 146, 192, 238]
+            .into_iter()
+            .flat_map(|y| {
+                vec![
+                    run(100, y, 20, "1.1"),
+                    run(200, y, 30, "Oats"),
+                    run(300, y, 80, "Rolled grain"),
+                    run(100, y + 12, 20, "and"),
+                    run(200, y + 12, 30, "more"),
+                    run(300, y + 24, 60, "at speed"),
+                ]
+            })
+            .collect();
+        assert!(tables(&every).is_empty(), "every column wrapped");
+        let larger: Vec<TrackRun<'static>> = [(100, "1.1"), (146, "1.2"), (192, "1.3")]
+            .into_iter()
+            .flat_map(|(y, code)| tall(y, code, &["and dried", "at speed"]))
+            .chain(tall(254, "1.4", &[]).into_iter().map(|r| TrackRun {
+                em: Some(1400),
+                ..r
+            }))
+            .collect();
+        assert_eq!(tables(&larger)[0].rows, 3, "a row set at 14 points");
+    }
+
+    /// **…nor beyond the reach of the row's last wrapped line** — rows 62 points apart, one wrapped
+    /// line each, 50 points under it; **nor for a row missing a cell**, whose name is not there.
+    #[test]
+    fn a_tall_row_reaches_a_full_row_within_reach_of_its_last_line() {
+        let far: Vec<TrackRun<'static>> = [(100, "1.1"), (162, "1.2"), (224, "1.3"), (286, "1.4")]
+            .into_iter()
+            .flat_map(|(y, code)| tall(y, code, &["and dried"]))
+            .collect();
+        assert!(
+            tables(&far).is_empty(),
+            "past the last wrapped line's reach"
+        );
+        let sparse: Vec<TrackRun<'static>> = catalogue()
+            .into_iter()
+            .filter(|r| r.y == 10_000 || r.x != 20_000)
+            .collect();
+        assert!(tables(&sparse).is_empty(), "a row missing its name");
+    }
+
+    /// **…and a table its reach cannot keep stands without it**: five rows at a 12-point pitch, the
+    /// last made tall, and a sixth 46 points under it, which the pitch refuses — the five stand.
+    #[test]
+    fn a_table_its_reach_cannot_keep_stands_without_it() {
+        let runs: Vec<TrackRun<'static>> = [(100, "1.1"), (112, "1.2"), (124, "1.3"), (136, "1.4")]
+            .into_iter()
+            .flat_map(|(y, code)| tall(y, code, &[]))
+            .chain(tall(148, "1.5", &["and dried", "at speed"]))
+            .chain(tall(194, "1.6", &[]))
+            .collect();
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+    }
+
     /// **…nor a number in the gutter**: `5`, set between the second column and the third and on
     /// neither, is no column's value, though a full line may hold one cell off its track.
     #[test]
@@ -1466,7 +1737,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V8);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V9);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

@@ -626,3 +626,49 @@ joined two tables into one), visual grounding 0.5252 → 0.5238 and charts 0.103
 tree-stripped gate documents it read a form's section and a bulleted list as tables. And two amounts
 drawn as one text run — `(349,497,206) (577,466)` on an AXA statement — are out of this rule's
 reach: it cuts between runs, never inside one.
+
+## 16. `whitespace-tracks-v9`: a line wider than the table, and a row made tall (2026-10-07, decision #52)
+
+**What `-v8` missed.** Two more of `grow`'s stops inside the real table (§15). **A line with more
+cells than the table has tracks** — 282 stops on ParseBench's low-scoring table pages — ends a table
+that opened on a row leaving a column empty, or whose long cell reached across one: the first full
+row has more cells than the opening row gave tracks. **A gap over three and a half pitches** ends a
+table at a row whose cell wraps over several lines, since the next row is measured from that row's
+first line: a catalogue of feed materials whose descriptions run on, an exhibit index.
+
+**The change.** A line wider than the table, set within a row and a half's pitch of the row above
+it, re-tracks it — its cells become the tracks — where the table holds three rows or more, each with
+a digit, and every cell of every row sits on one of the line's cells, a track of its own, clear of
+its neighbours. And a full row more than three and a half pitches below the row above it joins where
+it sits within them of that row's last wrapped line, the row's wraps fell on some of its tracks and
+not all, the line is set within a tenth of the row's size, and the table has three tracks or more; a
+table that reach cannot keep — its pitch no longer steady — stands without it, as before the reach.
+
+**Measured**, with the shipped build on all 2,078 pages, against `e7d121f`: ParseBench tables
+**0.4954 → 0.5010**, 17 pages up and 2 down by at most 0.031 (`SERFF_CA` p1492, where a wider table
+set right under another was joined to it); visual grounding 0.5252 → 0.5253, 1 page up and none down; charts,
+content faithfulness and semantic formatting unchanged on every page; overall 44.46 → 44.57.
+opendataloader-bench TEDS 0.5114 → 0.5122, one document up and none down; NID and MHS unchanged; no
+table on any document whose ground truth holds none. The tree-stripped gate documents' 542 tables are
+unchanged, cell for cell. Every bound of §4 holds.
+
+**Measured and not used**, each against `e7d121f`:
+
+- **Re-tracking under any rows**: tables 0.4954 → 0.4943, 43 pages up and 53 down — a stacked
+  header's lines, each wider than the one above, became rows of the table where the header band had
+  joined them (`METLIFE-10Q` p8 0.98 → 0.43).
+- **Under rows that each hold a digit, two or more**: a header set on two lines holds digits too —
+  `2024 | 2023` over `€'000 | €'000` — and was split (`xl-re-europe-se-sfcr-2024` p10 0.80 → 0.57);
+  under one row, `Apple 10-k` p23's `September` over its years fell 0.90 → 0.38.
+- **At any gap**: a three-row trend table re-tracked onto the next section's header set below it
+  (`SERFF_TX` p384 0.15 → 0.07).
+- **The reach with no fallback**: a table it grew past its end lost its pitch and every row
+  (`SERFF_TX` p503 0.93 → 0.46).
+- **To a row of another size**: a block of key figures, their captions and the section headings
+  under them read as a table (`Lancashire-Annual-Report-and-Accounts-2024` p2, visual grounding down).
+- **In two columns**: 96 new tables on the tree-stripped gate documents, nearly all
+  `nist-sp-800-53Ar5`'s lists of parameters, references and terms beside their definitions — a breach
+  of bound 2.
+- **Only where the wraps fell on one track**: the catalogues whose names wrap as well as their
+  descriptions kept stopping at their first tall row — tables 0.4967, against 0.4992 with wraps on
+  some tracks, both before the size guard and the three-column floor.

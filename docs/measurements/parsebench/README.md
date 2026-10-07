@@ -616,6 +616,25 @@ where that lets the line join as a row (`docs/31-TABLE-TRACKS-SCOPE.md` §15).
 other dimension. opendataloader-bench TEDS 0.5060 -> 0.5114 and NID 0.8839 -> 0.8843, none down.
 Overall 44.46.
 
+### After a wider line and a tall row (`whitespace-tracks-v9`, decision #52, 2026-10-07)
+
+`whitespace-tracks-v8`'s tables still stop inside the real table at a line with more cells than the
+table has tracks — the table opened on a row leaving a column empty — and at a gap past three and a
+half pitches, where a row's cell wraps over several lines. `whitespace-tracks-v9` re-tracks the
+table at such a line under rows of data, and lets a row its wrapped cell made tall reach past the
+pitch (`docs/31-TABLE-TRACKS-SCOPE.md` §16).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4356 | 0.4356 |
+| Tables | 0.5010 | 0.4954 |
+| Charts | 0.1035 | 0.1035 |
+| Visual grounding | 0.5253 | 0.5252 |
+
+17 table pages rise and 2 fall by at most 0.031; one grounding page rises and none falls; no page
+moves on any other dimension. opendataloader-bench TEDS 0.5114 -> 0.5122, none down. Overall 44.57.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
