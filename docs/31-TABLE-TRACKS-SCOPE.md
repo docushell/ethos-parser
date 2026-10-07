@@ -595,3 +595,34 @@ two-pitch first step to lines of two cells or more moved one page the other way 
 Refusing a header cell that stands beyond the table's outer tracks gave `SERFF_CA` p1221 its header
 back and cost `SERFF_TX` p453 0.60 → 0.43, whose last column name stands wider than its column of
 percentages.
+
+## 15. `whitespace-tracks-v8`: two numbers closer than an em (2026-10-07, decision #51)
+
+**What `-v7` missed.** ParseBench's table pages lose recall more than precision — 0.76 against 0.86
+over the tables we find — and this rule's tables stop inside the real table on four clauses of
+`grow`: a sparse line's cell reaching a neighbour's track (39 pages), a line with more cells than
+the table has tracks (38), a sparse cell on no track (30), a gap over three and a half pitches (25).
+The owner chose to work on them (decision #51). Among the first are two amounts a space apart — a
+financial statement setting one year's figure beside the next's in narrow columns — which the cut
+of a line at an em reads as one cell reaching across two tracks, ending the table there or keeping
+it from opening.
+
+**The change.** A line the table would end at, a cell of which holds two numbers — cut at the widest
+gap between its runs — joins as the row it is with them split, where the split line joins the
+tracks as a row: each cell on a track of its own and clear of its neighbours. Two words are not
+split, and a line that joins as it is stays as it is.
+
+**Measured**, with the shipped build on all 2,078 pages, against `f9dd109`: ParseBench tables
+**0.4932 → 0.4954**, 10 pages up and none down — `Goldman Sachs 10-k` p74 0.14 → 0.58, a table read
+as prose till now; visual grounding, charts, content faithfulness and semantic formatting unchanged
+on every page; overall 44.42 → 44.46. opendataloader-bench TEDS 0.5060 → 0.5114 and NID 0.8839 →
+0.8843, one document up each and none down; MHS unchanged. The tree-stripped gate documents' 542
+tables are unchanged, cell for cell. Every bound of §4 holds.
+
+**Measured and not used.** A single cell on no track between two rows — a rate sheet's section
+label — read as a row spanning the table: one Axos rate sheet's seven tables became one, but
+ParseBench tables fell 0.4932 → 0.4927, 22 pages up and 10 down (one 1.0 → 0.007, where a label
+joined two tables into one), visual grounding 0.5252 → 0.5238 and charts 0.1035 → 0.1004, and on the
+tree-stripped gate documents it read a form's section and a bulleted list as tables. And two amounts
+drawn as one text run — `(349,497,206) (577,466)` on an AXA statement — are out of this rule's
+reach: it cuts between runs, never inside one.

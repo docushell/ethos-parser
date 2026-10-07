@@ -68,6 +68,13 @@
 //! with — a cell of it, two column names closer than an em, covering a neighbour's column — is
 //! none: the rows stand as they would without it.
 //!
+//! **Two numbers set closer than an em are two cells** (`-v8`, [`split_number_pair`]): a line the
+//! table would end at, a cell of which holds two numbers — cut at the widest gap between its runs,
+//! each half on a track of its own, left before right — joins as the row it is with them split. A
+//! financial statement sets one year's amount a space from the next year's where its columns are
+//! narrow, and the cut of a line at an em read the two as one cell reaching across two tracks, which
+//! ended the table there or kept it from opening. A line that joins as it is stays as it is.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -192,7 +199,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v7` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v8` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -658,6 +665,19 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>
         if 5 * gap > 21 * em {
             break;
         }
+        // `-v8`: a line the table would end at joins with its cells of two numbers split, where
+        // that makes it a row.
+        let split;
+        let line = if fits(line, &tracks) {
+            line
+        } else {
+            split = split_numbers(line, &tracks, runs);
+            if fits(&split, &tracks) {
+                &split
+            } else {
+                line
+            }
+        };
         if line.cells.len() == tracks.len() {
             let off = line
                 .cells
@@ -742,6 +762,111 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<(Vec<Row>
         j += 1;
     }
     Some((rows, j))
+}
+
+/// Whether `line` joins rows on `tracks` as [`grow`] reads them: a full line, one cell at most off
+/// its track, or a sparse one, each cell on a track of its own — every cell clear of its
+/// neighbours.
+fn fits(line: &Line, tracks: &[(i64, i64)]) -> bool {
+    if line.cells.is_empty() || line.cells.len() > tracks.len() {
+        return false;
+    }
+    if line.cells.len() == tracks.len() {
+        let off = line
+            .cells
+            .iter()
+            .zip(tracks)
+            .filter(|(c, &t)| !on_track(c, t))
+            .count();
+        return off <= 1
+            && line
+                .cells
+                .iter()
+                .enumerate()
+                .all(|(k, c)| clear_of_neighbours(c, k, tracks));
+    }
+    let Some(mapping) = line
+        .cells
+        .iter()
+        .map(|c| track_of(c, tracks))
+        .collect::<Option<Vec<usize>>>()
+    else {
+        return false;
+    };
+    let mut distinct = mapping.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    distinct.len() == mapping.len()
+        && line
+            .cells
+            .iter()
+            .zip(&mapping)
+            .all(|(c, &k)| clear_of_neighbours(c, k, tracks))
+}
+
+/// `line` with each cell that [`split_number_pair`] reads as two numbers on two tracks split in
+/// two (`-v8`).
+fn split_numbers(line: &Line, tracks: &[(i64, i64)], runs: &[TrackRun<'_>]) -> Line {
+    let mut cells = Vec::with_capacity(line.cells.len() + 1);
+    for cell in &line.cells {
+        match split_number_pair(cell, tracks, runs) {
+            Some((left, right)) => {
+                cells.push(left);
+                cells.push(right);
+            }
+            None => cells.push(cell.clone()),
+        }
+    }
+    Line {
+        y: line.y,
+        em: line.em,
+        cells,
+    }
+}
+
+/// `cell` as two cells, cut at the widest gap between its inked runs, where each half is a number on
+/// a track, the left half's track before the right's; `None` where it is not that. A half in the
+/// gutter between two tracks is no track's value, though a full line may hold one cell off its
+/// track.
+fn split_number_pair(
+    cell: &Cell,
+    tracks: &[(i64, i64)],
+    runs: &[TrackRun<'_>],
+) -> Option<(Cell, Cell)> {
+    let mut order = cell.runs.clone();
+    order.sort_by_key(|&i| (runs[i].x, i));
+    let inked = |i: &usize| !runs[*i].text.trim().is_empty();
+    let end = |i: usize| runs[i].rect.map_or(runs[i].x, |b| b.x1);
+    let ink: Vec<usize> = order.iter().copied().filter(inked).collect();
+    let (gap, at) = ink
+        .windows(2)
+        .map(|w| (runs[w[1]].x - end(w[0]), runs[w[1]].x))
+        .max()?;
+    if gap <= 0 {
+        return None;
+    }
+    let half = |left: bool| -> Option<Cell> {
+        let members: Vec<usize> = order
+            .iter()
+            .copied()
+            .filter(|&i| (runs[i].x < at) == left)
+            .collect();
+        let x0 = members
+            .iter()
+            .filter(|i| inked(i))
+            .map(|&i| runs[i].x)
+            .min()?;
+        let x1 = members.iter().filter(|i| inked(i)).map(|&i| end(i)).max()?;
+        Some(Cell {
+            x0,
+            x1,
+            runs: members,
+        })
+    };
+    let (left, right) = (half(true)?, half(false)?);
+    let ordered = track_of(&left, tracks)? < track_of(&right, tracks)?;
+    (ordered && is_number(&cell_text(&left, runs)) && is_number(&cell_text(&right, runs)))
+        .then_some((left, right))
 }
 
 /// Whether the rows are a table: enough of them, a steady pitch, and written row by row.
@@ -864,16 +989,19 @@ fn pair_plausible(
 /// Whether a column's non-empty cells, top to bottom, are a column of numbers: at least half of
 /// them hold a digit and nothing but digits, spaces, [`NUMBER_MARKS`] and [`CURRENCY_SIGNS`].
 fn numbers(texts: &[String]) -> bool {
-    let number = |t: &&String| {
-        t.chars().any(|c| c.is_ascii_digit())
-            && t.chars().all(|c| {
-                c.is_ascii_digit()
-                    || c.is_whitespace()
-                    || NUMBER_MARKS.contains(c)
-                    || CURRENCY_SIGNS.contains(c)
-            })
-    };
-    !texts.is_empty() && 2 * texts.iter().filter(number).count() >= texts.len()
+    !texts.is_empty() && 2 * texts.iter().filter(|t| is_number(t)).count() >= texts.len()
+}
+
+/// Whether `text` is a number: a digit, and nothing but digits, spaces, [`NUMBER_MARKS`] and
+/// [`CURRENCY_SIGNS`].
+fn is_number(text: &str) -> bool {
+    text.chars().any(|c| c.is_ascii_digit())
+        && text.chars().all(|c| {
+            c.is_ascii_digit()
+                || c.is_whitespace()
+                || NUMBER_MARKS.contains(c)
+                || CURRENCY_SIGNS.contains(c)
+        })
 }
 
 /// Whether a column's non-empty cells, top to bottom, are running text: at least one in
@@ -1025,7 +1153,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V7.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V8.to_string(),
     }))
 }
 
@@ -1228,6 +1356,51 @@ mod tests {
         assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
     }
 
+    /// Four rows of amounts whose `South` row sets its two amounts 5 points apart — closer than an
+    /// em, so one cell reaching from the second column into the third — or two words the same way.
+    fn amounts(left: &'static str, right: &'static str) -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, 100, 40, "Region"),
+            run(240, 100, 30, "2023"),
+            run(340, 100, 30, "2024"),
+            run(100, 116, 40, "North"),
+            run(250, 116, 20, "7.5"),
+            run(330, 116, 40, "112.0"),
+            run(100, 132, 40, "South"),
+            run(228, 132, 42, left),
+            run(275, 132, 95, right),
+            run(100, 148, 40, "East"),
+            run(245, 148, 25, "4.0"),
+            run(340, 148, 30, "65.5"),
+        ]
+    }
+
+    /// **Two numbers set closer than an em are two cells** (`-v8`): `South`'s amounts, one cell
+    /// reaching across two columns, are each their column's, and the table runs on through them.
+    #[test]
+    fn two_numbers_closer_than_an_em_are_two_cells() {
+        let found = tables(&amounts("1,420,142", "1,381,247"));
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[2], ["South", "1,420,142", "1,381,247"]);
+    }
+
+    /// **…and two words are not**: a phrase reaching across two columns is no pair of values, and
+    /// the line still ends the rows above it, too few to stand.
+    #[test]
+    fn two_words_closer_than_an_em_are_not_split() {
+        assert!(tables(&amounts("Oat", "flakes")).is_empty());
+    }
+
+    /// **…nor a number in the gutter**: `5`, set between the second column and the third and on
+    /// neither, is no column's value, though a full line may hold one cell off its track.
+    #[test]
+    fn a_number_in_the_gutter_is_no_column_s() {
+        let mut runs = amounts("1,420,142", "1,381,247");
+        runs[7] = run(228, 132, 57, "1,420,142");
+        runs[8] = run(290, 132, 45, "5");
+        assert!(tables(&runs).is_empty());
+    }
+
     /// **A row with cells missing is a row at the table's pitch** (`-v6`): an invoice's item with no
     /// quantity, 16 points under the row above like every other row, stays its own row; the second
     /// line of a label, opening lower-case, still continues the row above.
@@ -1293,7 +1466,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V7);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V8);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

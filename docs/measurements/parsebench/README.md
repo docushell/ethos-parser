@@ -597,6 +597,25 @@ text elements are read as headings they are not. 3 formatting documents rise and
 content pages fall by at most 0.002. opendataloader-bench MHS 0.5481 -> 0.5454, one document. The
 owner shipped it with that trade (decision #50). Overall 44.42.
 
+### After two numbers closer than an em are two cells (`whitespace-tracks-v8`, decision #51, 2026-10-07)
+
+Our tables recover less of the ground truth's content than they add that is wrong — recall 0.76
+against precision 0.86 — and `whitespace-tracks-v7`'s stop inside the real table on four clauses
+of their growth. `whitespace-tracks-v8` splits a cell holding two numbers set closer than an em
+where that lets the line join as a row (`docs/31-TABLE-TRACKS-SCOPE.md` §15).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4356 | 0.4356 |
+| Tables | 0.4954 | 0.4932 |
+| Charts | 0.1035 | 0.1035 |
+| Visual grounding | 0.5252 | 0.5252 |
+
+10 table pages rise and none falls, `Goldman Sachs 10-k` p74 0.14 -> 0.58; no page moves on any
+other dimension. opendataloader-bench TEDS 0.5060 -> 0.5114 and NID 0.8839 -> 0.8843, none down.
+Overall 44.46.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

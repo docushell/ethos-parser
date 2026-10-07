@@ -515,11 +515,12 @@ A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v7`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v8`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5–§12 and §14 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked
-every table for row order, were never pushed, and `-v3` to `-v6` were pushed and are in no release.
+and its §5–§12, §14 and §15 the measurements; `-v1`, three columns and three rows, and `-v2`, which
+asked every table for row order, were never pushed, and `-v3` to `-v7` were pushed and are in no
+release.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
   two or more cells opens a table whose tracks are those cells' extents, and lines below join it
@@ -592,6 +593,13 @@ every table for row order, were never pushed, and `-v3` to `-v6` were pushed and
   (`Table II:`) and a key figure set over a table (`2023: 85%`) were taken into headers on two
   pages, and one opendataloader-bench document's NID 0.8632 -> 0.8283, where a header set on three
   lines was taken in part.
+- **Two numbers set closer than an em are two cells** (`-v8`, decision #51): a line the table would
+  end at, a cell of which holds two numbers, joins with them split at the widest gap between its
+  runs where that makes it a row — a financial statement's two years' amounts a space apart in
+  narrow columns. Two words are not split. ParseBench tables 0.4932 -> 0.4954, 10 pages up and
+  none down; every other dimension unchanged on every page; overall 44.42 -> 44.46;
+  opendataloader-bench TEDS 0.5060 -> 0.5114 and NID 0.8839 -> 0.8843, none down; the tree-stripped
+  gate documents' tables unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 
