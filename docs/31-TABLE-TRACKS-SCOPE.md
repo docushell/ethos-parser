@@ -546,3 +546,52 @@ run: on the tagged gate documents a grid read through its decoration took a decl
 in the pairing, and combined micro recall fell 474‰ -> 386‰. ParseBench tables 0.4578 -> 0.4833,
 18 up and 1 down; opendataloader-bench TEDS 0.4322 -> 0.4949; on the gate documents with their
 trees stripped, whole ruled tables replace whitespace fragments.
+
+## 14. `whitespace-tracks-v7`: a header set off its columns (2026-10-07, decision #49)
+
+**What `-v6` missed.** Of the ParseBench tables whose records the scorer could match on no column —
+0.287 of the 0.517 the dimension lost — 146 held their header text in the lines just above the
+table, which began at its first data row. Of the 136 such tables this rule built, `-v5`'s band
+stopped short most often because the header line sat more than a row and a half's pitch above the
+first row (30), a cell sat on no track (27), a cell reached into its neighbour's track or the line
+read as no header (26), or the band named half its tracks or fewer (23). The second
+is the shape a reader knows: a column name centred over figures set flush right — `Change` over a
+column of percentages, `Year` over a column of years, `Shares` and `Stock` over narrow columns of
+numbers — and the first, a header set off its first row by a rule and its padding.
+
+**The change.** A header line of two cells or more whose cells do not each sit on a track clear of
+its neighbours gives each cell the track whose centre is nearest its own, where they come out
+strictly left to right, one to a track; a single cell off every track — a caption, a units note —
+still heads nothing. The band's first line may stand two rows' pitch above the table; the lines
+above it still climb a row and a half at most. Every other clause of `-v5`'s band holds: fewer than
+thirty characters a cell, no value its column holds, more than half the tracks named. **And a header
+the table cannot be built with is none**: the rows stand as they would without it. Two column names
+set closer than an em are one cell, and where that cell covers a neighbour's column no cell of that
+column can be told from it; the table was refused, and the rule opened it again a line lower with
+the lines above as its header — `SERFF_TX` p384 lost its first three rows that way.
+
+**Measured**, with the shipped build on all 2,078 pages, against `bec130b`: ParseBench tables
+**0.4833 → 0.4932**, 48 pages up and 5 down; charts 0.1019 → 0.1035, one page 0 → 0.9; content
+faithfulness and semantic formatting unchanged on every page; visual grounding 0.5174 → 0.5173, 1
+page up and 2 down; overall 44.01 → 44.24. opendataloader-bench TEDS
+**0.4949 → 0.5060**, 5 documents up and none down; NID 0.8838 → 0.8839, 4 up and 1 down; MHS
+unchanged. The tree-stripped gate documents' 542 tables, 422 of them this rule's, are unchanged,
+cell for cell.
+
+**Bound 3 is breached, and the owner accepted it** (decision #49), as decision #39 accepted the
+waiver's: the two grounding pages lost a line the ground truth boxes as text — `Table II:` set on
+one baseline with the group headers beside it, and a key figure set over a table, `2023: 85%` — and
+opendataloader-bench `01030000000130`'s NID fell 0.8632 → 0.8283 where a header set on three lines
+was taken in part. Of the 5 table pages that fell, four are stacked headers whose bottom line the
+table already held as its first row: the band now adds the lines above it as a row of its own — on
+`SERFF_TX` p1213 a title block with them — the header splits in two, and a scorer reading one
+header row keys the columns by its upper half: `IBM_Annual_Report_2018` p32 by 0.082, the rest by
+0.051 or less. The fifth, `SERFF_CA` p1221, took a chart's lowest axis labels, `0.0%` at its left
+and `0` past the table's right edge, set just above the header, into it: 0.97 → 0.93.
+
+**Measured and not used.** A band reaching two rows' pitch at every step, not only the first, took
+a units note over the header — `(dollars in millions):` on `Apple 10-k` p28, 1.0 → 0.77. Keeping the
+two-pitch first step to lines of two cells or more moved one page the other way and nothing else.
+Refusing a header cell that stands beyond the table's outer tracks gave `SERFF_CA` p1221 its header
+back and cost `SERFF_TX` p453 0.60 → 0.43, whose last column name stands wider than its column of
+percentages.

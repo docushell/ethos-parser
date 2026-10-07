@@ -494,11 +494,11 @@ A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v6`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v7`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5–§12 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked every
-table for row order, were never pushed, and `-v3` to `-v5` were pushed and are in no release.
+and its §5–§12 and §14 the measurements; `-v1`, three columns and three rows, and `-v2`, which asked
+every table for row order, were never pushed, and `-v3` to `-v6` were pushed and are in no release.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
   two or more cells opens a table whose tracks are those cells' extents, and lines below join it
@@ -558,6 +558,19 @@ table for row order, were never pushed, and `-v3` to `-v5` were pushed and are i
   — overall 37.86 -> 38.12; opendataloader-bench unchanged, no table on its 158 documents without
   one; on the tree-stripped gate documents rows a table had folded together stand apart, and no
   table is added.
+- **A header set off its columns is still theirs** (`-v7`, decision #49): a header line of two
+  cells or more whose cells do not each sit on a track — a column name centred over figures set
+  flush right — gives each cell the track whose centre is nearest its own, where they come out
+  strictly left to right; and the band's first line may stand two rows' pitch above the table,
+  where a rule and its padding set a header off its first row. A header the table cannot be built
+  with is none, and the rows stand as without it. ParseBench tables 0.4833 -> 0.4932 (48 pages up,
+  5 down, four of them stacked headers now split in two), charts 0.1019 -> 0.1035, content and
+  formatting unchanged, overall 44.01 -> 44.24; opendataloader-bench TEDS 0.4949 -> 0.5060, 5
+  documents up and none down; the tree-stripped gate documents' tables unchanged. **The owner
+  accepted a breach of the scope's bound 3**: visual grounding 0.5174 -> 0.5173, where a caption
+  (`Table II:`) and a key figure set over a table (`2023: 85%`) were taken into headers on two
+  pages, and one opendataloader-bench document's NID 0.8632 -> 0.8283, where a header set on three
+  lines was taken in part.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

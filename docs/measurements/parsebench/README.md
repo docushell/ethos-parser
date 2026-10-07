@@ -552,6 +552,29 @@ from a thousandth of the page to half of one (`docs/34-FIGURE-REGIONS-SCOPE.md` 
 sweep is). Visual grounding 0.5156 -> 0.5174, 17 pages up and none down; content, formatting,
 tables and charts unchanged on every page; opendataloader-bench byte-identical. Overall 44.01.
 
+### After a header set off its columns (`whitespace-tracks-v7`, decision #49, 2026-10-07)
+
+Of the tables TRM scored with no column matched, 146 hold their header text in the lines just
+above our table. `whitespace-tracks-v7` gives each cell of a header line of two cells or more, where
+they do not each sit on a track, the track whose centre is nearest its own, in order; lets the
+band's first line stand two rows' pitch above the table; and builds the table without a header it
+cannot be built with (`docs/31-TABLE-TRACKS-SCOPE.md` §14).
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6633 | 0.6633 |
+| Semantic formatting | 0.4347 | 0.4347 |
+| Tables | 0.4932 | 0.4833 |
+| Charts | 0.1035 | 0.1019 |
+| Visual grounding | 0.5173 | 0.5174 |
+
+48 table pages rise and 5 fall by at most 0.082, four of them stacked headers now split in two; one
+chart page rises 0 -> 0.9; content and formatting move on no page. Two grounding pages fall, where a
+caption (`Table II:`) and a key figure set over a table (`2023: 85%`) were taken into headers — a
+breach of the tracks scope's bound 3 the owner accepted (decision #49). opendataloader-bench TEDS
+0.4949 -> 0.5060, 5 documents up and none down; NID 0.8838 -> 0.8839, one document down 0.8632 ->
+0.8283. Overall 44.24.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

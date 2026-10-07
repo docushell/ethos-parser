@@ -59,6 +59,15 @@
 //! tracks. A header's cells are set centred on a row of their own, stacked unevenly, and no line
 //! of them has a cell for every column, so no line of them opens or joins the table on its own.
 //!
+//! **A header set off its columns is still theirs** (`-v7`, [`header_tracks`]): a header line of
+//! two cells or more whose cells do not each sit on a track — a column name centred over figures
+//! set flush right, a year over its column of numbers — gives each cell the track whose centre is
+//! nearest its own, where they come out in order, one to a track. And the band's first line may
+//! stand two rows' pitch above the table, where a rule and its padding set a header off its first
+//! row; the lines above it still climb a row and a half at most. A header the table cannot be built
+//! with — a cell of it, two column names closer than an em, covering a neighbour's column — is
+//! none: the rows stand as they would without it.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -183,7 +192,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v6` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v7` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -204,14 +213,22 @@ pub(crate) fn detect(
             if pair_stands && accepted(&rows, runs) {
                 let tracks = tracks_of(&rows);
                 let top = header_band(&lines, floor, i, &tracks, &rows, runs);
+                let mut headed = false;
                 if top < i {
                     let header = header_row(&lines[top..i], &tracks);
                     let named = header.cells.iter().filter(|c| !c.runs.is_empty()).count();
                     if 2 * named > tracks.len() {
                         rows.insert(0, header);
+                        headed = true;
                     }
                 }
-                if let Some(table) = build(page, &rows, runs, alloc)? {
+                let mut table = build(page, &rows, runs, alloc)?;
+                // A header the table cannot be built with is none (`-v7`): the rows stand alone.
+                if table.is_none() && headed {
+                    rows.remove(0);
+                    table = build(page, &rows, runs, alloc)?;
+                }
+                if let Some(table) = table {
                     tables.push(table);
                     i = end;
                     floor = end;
@@ -239,10 +256,11 @@ fn tracks_of(rows: &[Row]) -> Vec<(i64, i64)> {
 }
 
 /// The first of the lines above a table's first row that are its header: climbing from `start`
-/// to no lower than `floor`, each line within a row and a half's pitch of the line below it whose
-/// every cell sits on one of `tracks` clear of its neighbours, no two on one track, holds fewer
-/// than [`PROSE_LINE_CHARS`] characters — a caption or a sentence ends the band — and repeats no
-/// value its column holds in `rows`, as a row the table did not take would.
+/// to no lower than `floor`, each line within a row and a half's pitch of the line below it — the
+/// first line within two rows' pitch of the table (`-v7`) — whose cells [`header_tracks`] gives a
+/// track each, no two on one track, each holding fewer than [`PROSE_LINE_CHARS`] characters — a
+/// caption or a sentence ends the band — and repeating no value its column holds in `rows`, as a
+/// row the table did not take would.
 fn header_band(
     lines: &[Line],
     floor: usize,
@@ -262,38 +280,61 @@ fn header_band(
     let mut top = start;
     while top > floor {
         let (line, below) = (&lines[top - 1], &lines[top]);
-        // Pitches of 1.2 ems, in integers, as in `grow`: 1.5 is 9/5.
+        // Pitches of 1.2 ems, in integers, as in `grow`: 1.5 is 9/5, and 2 is 12/5.
         let em = line.em.max(below.em);
-        if line.cells.is_empty() || 5 * (below.y - line.y) > 9 * em {
+        let reach = if top == start { 12 } else { 9 };
+        if line.cells.is_empty() || 5 * (below.y - line.y) > reach * em {
             break;
         }
-        let Some(mapping) = line
-            .cells
-            .iter()
-            .map(|c| track_of(c, tracks))
-            .collect::<Option<Vec<usize>>>()
-        else {
+        let Some(mapping) = header_tracks(line, tracks) else {
             break;
         };
         let mut distinct = mapping.clone();
         distinct.sort_unstable();
         distinct.dedup();
-        let clear = line
-            .cells
-            .iter()
-            .zip(&mapping)
-            .all(|(c, &k)| clear_of_neighbours(c, k, tracks));
         let header_like = line.cells.iter().zip(&mapping).all(|(c, &k)| {
             let text = cell_text(c, runs);
             let text = text.trim();
             text.chars().count() < PROSE_LINE_CHARS && !values[k].contains(text)
         });
-        if distinct.len() != mapping.len() || !clear || !header_like {
+        if distinct.len() != mapping.len() || !header_like {
             break;
         }
         top -= 1;
     }
     top
+}
+
+/// The track each of `line`'s cells heads: the one it sits on, clear of its neighbours, where every
+/// cell sits on one; else, for a line of two cells or more (`-v7`), the track whose centre is
+/// nearest each cell's, where those come out strictly left to right. A single cell off every
+/// track — a caption, a units note — heads none.
+fn header_tracks(line: &Line, tracks: &[(i64, i64)]) -> Option<Vec<usize>> {
+    let on: Option<Vec<usize>> = line.cells.iter().map(|c| track_of(c, tracks)).collect();
+    if let Some(on) = on {
+        if line
+            .cells
+            .iter()
+            .zip(&on)
+            .all(|(c, &k)| clear_of_neighbours(c, k, tracks))
+        {
+            return Some(on);
+        }
+    }
+    if line.cells.len() < 2 {
+        return None;
+    }
+    let nearest: Vec<usize> = line
+        .cells
+        .iter()
+        .map(|c| {
+            let centre2 = c.x0 + c.x1;
+            (0..tracks.len())
+                .min_by_key(|&k| ((tracks[k].0 + tracks[k].1 - centre2).abs(), k))
+                .unwrap_or(0)
+        })
+        .collect();
+    nearest.windows(2).all(|w| w[0] < w[1]).then_some(nearest)
 }
 
 /// A table's header row from its header `band`: each track's cells from every line of the band,
@@ -308,16 +349,15 @@ fn header_row(band: &[Line], tracks: &[(i64, i64)]) -> Row {
         })
         .collect();
     for line in band {
-        for c in &line.cells {
-            if let Some(k) = track_of(c, tracks) {
-                let cell = &mut cells[k];
-                if cell.runs.is_empty() {
-                    (cell.x0, cell.x1) = (c.x0, c.x1);
-                } else {
-                    (cell.x0, cell.x1) = (cell.x0.min(c.x0), cell.x1.max(c.x1));
-                }
-                cell.runs.extend(&c.runs);
+        let mapping = header_tracks(line, tracks).unwrap_or_default();
+        for (c, &k) in line.cells.iter().zip(&mapping) {
+            let cell = &mut cells[k];
+            if cell.runs.is_empty() {
+                (cell.x0, cell.x1) = (c.x0, c.x1);
+            } else {
+                (cell.x0, cell.x1) = (cell.x0.min(c.x0), cell.x1.max(c.x1));
             }
+            cell.runs.extend(&c.runs);
         }
     }
     Row {
@@ -985,7 +1025,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V6.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V7.to_string(),
     }))
 }
 
@@ -1130,6 +1170,64 @@ mod tests {
         }
     }
 
+    /// **A header set off its columns is still theirs** (`-v7`): `Units` and `Price`, set left of
+    /// their columns of figures, on no track of their own, head the columns whose centres are
+    /// nearest theirs; two cells nearest one column head nothing.
+    #[test]
+    fn a_header_set_off_its_columns_is_still_theirs() {
+        let found = under(vec![
+            run(100, 186, 30, "Region"),
+            run(205, 186, 30, "Units"),
+            run(300, 186, 30, "Price"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(texts(&found[0])[0], ["Region", "Units", "Price"]);
+        let found = under(vec![run(205, 186, 20, "Units"), run(228, 186, 20, "Count")]);
+        assert_eq!(
+            (found[0].rows, found[0].columns),
+            (4, 3),
+            "both nearest the second column"
+        );
+    }
+
+    /// **A header's first line may stand two rows' pitch above the table** (`-v7`), where a rule and
+    /// its padding set it off: 20 points over 10-point rows. A line above it still joins only within
+    /// a row and a half's pitch, and a single cell on no track — a units note — heads nothing.
+    #[test]
+    fn a_header_two_rows_pitch_above_is_the_table_s_and_no_further() {
+        let found = under(vec![run(105, 180, 25, "Line"), run(240, 180, 25, "Type")]);
+        assert_eq!(texts(&found[0])[0], ["Line", "Type", ""]);
+        let found = under(vec![
+            run(105, 160, 25, "Unit"),
+            run(105, 180, 25, "Line"),
+            run(240, 180, 25, "Type"),
+        ]);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Line", "Type", ""],
+            "a second line 20 points above"
+        );
+        let found = under(vec![
+            run(160, 172, 40, "(in millions)"),
+            run(105, 186, 25, "Line"),
+            run(240, 186, 25, "Type"),
+        ]);
+        assert_eq!(texts(&found[0])[0], ["Line", "Type", ""]);
+    }
+
+    /// **A header the table cannot be built with is none** (`-v7`): `Units and price`, nearest the
+    /// third column, covers the second, so no cell of the second could be told from it; the table
+    /// is its four rows, every one of them, as with no header at all.
+    #[test]
+    fn a_header_covering_a_neighbour_s_column_leaves_the_rows_whole() {
+        let found = under(vec![
+            run(105, 186, 25, "Line"),
+            run(190, 186, 240, "Units and price"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
+    }
+
     /// **A row with cells missing is a row at the table's pitch** (`-v6`): an invoice's item with no
     /// quantity, 16 points under the row above like every other row, stays its own row; the second
     /// line of a label, opening lower-case, still continues the row above.
@@ -1195,7 +1293,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V6);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V7);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate
