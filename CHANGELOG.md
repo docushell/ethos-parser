@@ -515,11 +515,11 @@ A new profile field, `furniture_rule`, `margin-bands-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v9`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v10`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5–§12 and §14–§16 the measurements; `-v1`, three columns and three rows, and `-v2`, which
-asked every table for row order, were never pushed, and `-v3` to `-v8` were pushed and are in no
+and its §5–§12 and §14–§17 the measurements; `-v1`, three columns and three rows, and `-v2`, which
+asked every table for row order, were never pushed, and `-v3` to `-v9` were pushed and are in no
 release.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
@@ -610,6 +610,10 @@ release.
   0.4954 -> 0.5010, 17 pages up and 2 down; visual grounding 0.5252 -> 0.5253; every other dimension
   unchanged on every page; overall 44.46 -> 44.57; opendataloader-bench TEDS 0.5114 -> 0.5122, no
   table on a document without one; the tree-stripped gate documents' tables unchanged.
+- **A cell of several numbers is as many cells** (`-v10`, decision #53): failing `-v8`'s pair, a
+  cell cut at every gap between its runs wider than a word space joins as that many cells, each a
+  number on a track of its own, left to right. ParseBench tables 0.5010 -> 0.5026, 2 pages up and
+  none down; every other dimension and opendataloader-bench unchanged; overall 44.57 -> 44.61.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

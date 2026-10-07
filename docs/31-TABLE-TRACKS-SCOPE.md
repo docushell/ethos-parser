@@ -672,3 +672,27 @@ unchanged, cell for cell. Every bound of §4 holds.
 - **Only where the wraps fell on one track**: the catalogues whose names wrap as well as their
   descriptions kept stopping at their first tall row — tables 0.4967, against 0.4992 with wraps on
   some tracks, both before the size guard and the three-column floor.
+
+## 17. `whitespace-tracks-v10`: a cell of several numbers (2026-10-07, decision #53)
+
+**What `-v9` missed.** Of the ParseBench tables whose header lies above our table and that the
+scorer matched on no column, the header band stopped most often — 45 tables — at a line it could not
+read as a header because it is a row of data: the table had begun below it. On `1212.1661v1` p7 that
+row runs four figures a word space apart in one cell, `9 -1.515 69.428 15`; `-v8` splits a cell of
+two numbers, at its widest gap, and no more.
+
+**The change.** Failing `-v8`'s pair, a cell cut at every gap between its runs wider than a fifth of
+an em — a word space — joins as that many cells, where each piece is a number on a track of its own,
+the tracks left to right. A sign set against its digits stays with them; words are never split.
+
+**Measured**, with the shipped build on all 2,078 pages, against `eb393d0`: ParseBench tables
+**0.5010 → 0.5026**, 2 pages up and none down (`SERFF_CA` p2248 0.20 → 1.00); every other dimension
+unchanged on every page; overall 44.57 → 44.61. opendataloader-bench unchanged, no table on a
+document without one; the tree-stripped gate documents' 542 tables unchanged, cell for cell. Every
+bound of §4 holds.
+
+**Measured and not used.** A header line's cells cut into their words, each word given the track
+whose centre is nearest it and neighbours on one track joined — for the 40 tables whose band
+stopped at a single cell off every track or cells out of order: tables 0.5026 → 0.4944, 15 pages up
+and 19 down, visual grounding down on 4 pages — a caption over a table read word by word as its
+header (`Goldman Sachs 10-k` p122 0.85 → 0.44).

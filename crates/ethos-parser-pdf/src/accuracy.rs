@@ -1257,7 +1257,7 @@ mod tests {
                 // `docs/31-TABLE-TRACKS-SCOPE.md` §4 and `docs/32-CHART-LABELS-SCOPE.md` §4 are
                 // where they are measured.
                 for t in p.tables.iter().filter(|t| {
-                    t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V9
+                    t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V10
                         && t.rule != ethos_parser_core::TABLE_DETECTION_CHARTS_V1
                 }) {
                     *real

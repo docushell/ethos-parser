@@ -799,6 +799,18 @@ pub const TABLE_DETECTION_TRACKS_V8: &str = "whitespace-tracks-v8";
 /// keep stands without it.
 pub const TABLE_DETECTION_TRACKS_V9: &str = "whitespace-tracks-v9";
 
+/// [`TABLE_DETECTION_TRACKS_V9`] **with a cell of several numbers read as as many cells** (decision
+/// #53).
+///
+/// **What `-v9` missed.** `-v8` split a cell holding two numbers at its widest gap. A table set in
+/// narrow columns runs three or four numbers a word space apart, which the cut of a line at an em
+/// reads as one cell reaching across their tracks, and the table ended above its first such row.
+///
+/// **The change.** Failing `-v8`'s pair, a cell cut at every gap between its runs wider than a fifth
+/// of an em joins as that many cells, where each piece is a number on a track of its own, the
+/// tracks left to right; a sign set against its digits stays with them.
+pub const TABLE_DETECTION_TRACKS_V10: &str = "whitespace-tracks-v10";
+
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,
 /// `docs/32-CHART-LABELS-SCOPE.md`).
 ///
@@ -807,7 +819,7 @@ pub const TABLE_DETECTION_TRACKS_V9: &str = "whitespace-tracks-v9";
 /// end, a series the colour — named by the one label beside a legend swatch of that colour, or a
 /// one-colour chart's title line. A table only where the numbers agree with the bars in order and a
 /// series' numbers are on most of its bars; a value is never read off a bar's length. Runs after
-/// [`TABLE_DETECTION_TRACKS_V9`], on runs no other rule's table holds, only on a document that
+/// [`TABLE_DETECTION_TRACKS_V10`], on runs no other rule's table holds, only on a document that
 /// declares no author structure; a cell holds its label's runs, and an empty cell is not emitted.
 pub const TABLE_DETECTION_CHARTS_V1: &str = "bar-labels-v1";
 
@@ -1287,7 +1299,7 @@ impl Default for TableDetection {
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
-            tracks: TABLE_DETECTION_TRACKS_V9.to_string(),
+            tracks: TABLE_DETECTION_TRACKS_V10.to_string(),
             charts: TABLE_DETECTION_CHARTS_V1.to_string(),
         }
     }
@@ -3313,7 +3325,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v9","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v10","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4414,11 +4426,14 @@ mod tests {
              Moved for decision #52, `sha256:e20b33e3…` -> `sha256:b28dabd3…`: \
              `table_detection.tracks` `whitespace-tracks-v8` -> `-v9`, which re-tracks a table at \
              a wider line and lets a row its wrapped cell made tall reach past the pitch. Nothing \
-             else."
+             else.\n\n\
+             Moved for decision #53, `sha256:b28dabd3…` -> `sha256:fbc11839…`: \
+             `table_detection.tracks` `whitespace-tracks-v9` -> `-v10`, which reads a cell of \
+             several numbers as as many cells. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b28dabd36a2dc913c971ed81d4ba26fd9873dc179c49b666a513962c0849d434"
+            "sha256:fbc11839feef33939da46d57d0a7d3484c627d5b66d03e7e24ec4dba6109c5a7"
         );
     }
 
@@ -4475,15 +4490,15 @@ mod tests {
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V12, TABLE_DETECTION_TRACKS_V9),
-            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V9),
-            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V9),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V9),
+            (TABLE_DETECTION_V12, TABLE_DETECTION_TRACKS_V10),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V10),
+            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V10),
+            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V10),
             (TABLE_DETECTION_V12, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_CHARTS_V1),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_CHARTS_V1),
-            (TABLE_DETECTION_TRACKS_V9, TABLE_DETECTION_CHARTS_V1),
+            (TABLE_DETECTION_TRACKS_V10, TABLE_DETECTION_CHARTS_V1),
         ] {
             assert_ne!(
                 a, b,
@@ -4495,7 +4510,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v9","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v10","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4617,7 +4632,7 @@ mod tests {
             "a pre-#42 profile must not silently acquire the chart rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v12","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v9","charts":"bar-labels-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v12","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v10","charts":"bar-labels-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

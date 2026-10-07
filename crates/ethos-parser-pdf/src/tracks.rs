@@ -90,6 +90,12 @@
 //! whose descriptions run on over several lines ended at its first tall row. And a table its reach
 //! cannot keep stands without it, as it was before the reach.
 //!
+//! **A cell of several numbers is as many cells** (`-v10`, [`split_number_list`]): a line the table
+//! would end at, a cell of which holds numbers a word space apart or more — each on a track of its
+//! own, left to right — joins with them split there; a sign set against its digits stays with them.
+//! `-v8` split two at the widest gap; a table set in narrow columns runs three or four together, and
+//! the table ended above its first such row.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -224,7 +230,7 @@ struct Row {
     cells: Vec<Cell>,
 }
 
-/// Every table `whitespace-tracks-v9` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v10` finds on one page, in reading-down order.
 ///
 /// # Errors
 ///
@@ -922,11 +928,15 @@ fn fits(line: &Line, tracks: &[(i64, i64)]) -> bool {
             .all(|(c, &k)| clear_of_neighbours(c, k, tracks))
 }
 
-/// `line` with each cell that [`split_number_pair`] reads as two numbers on two tracks split in
-/// two (`-v8`).
+/// `line` with each cell that [`split_number_list`] reads as numbers on tracks of their own (`-v10`),
+/// or failing that [`split_number_pair`] as two (`-v8`), split into them.
 fn split_numbers(line: &Line, tracks: &[(i64, i64)], runs: &[TrackRun<'_>]) -> Line {
     let mut cells = Vec::with_capacity(line.cells.len() + 1);
     for cell in &line.cells {
+        if let Some(numbers) = split_number_list(cell, line.em, tracks, runs) {
+            cells.extend(numbers);
+            continue;
+        }
         match split_number_pair(cell, tracks, runs) {
             Some((left, right)) => {
                 cells.push(left);
@@ -940,6 +950,55 @@ fn split_numbers(line: &Line, tracks: &[(i64, i64)], runs: &[TrackRun<'_>]) -> L
         em: line.em,
         cells,
     }
+}
+
+/// `cell` cut at every gap between its inked runs wider than a fifth of `em` — a word space — where
+/// that makes two pieces or more, each a number on a track, the tracks left to right (`-v10`); `None`
+/// where it does not. A sign set against its digits stays with them.
+fn split_number_list(
+    cell: &Cell,
+    em: i64,
+    tracks: &[(i64, i64)],
+    runs: &[TrackRun<'_>],
+) -> Option<Vec<Cell>> {
+    let mut order = cell.runs.clone();
+    order.sort_by_key(|&i| (runs[i].x, i));
+    let end = |i: usize| runs[i].rect.map_or(runs[i].x, |b| b.x1);
+    let mut pieces: Vec<Cell> = Vec::new();
+    // The furthest any inked run so far reaches: a gap is measured from it.
+    let mut reach: Option<i64> = None;
+    for &i in &order {
+        let inked = !runs[i].text.trim().is_empty();
+        match pieces.last_mut() {
+            Some(piece) if !inked || reach.is_some_and(|r| 5 * (runs[i].x - r) <= em) => {
+                if inked {
+                    piece.x1 = piece.x1.max(end(i));
+                }
+                piece.runs.push(i);
+            }
+            _ if inked => pieces.push(Cell {
+                x0: runs[i].x,
+                x1: end(i),
+                runs: vec![i],
+            }),
+            _ => {}
+        }
+        if inked {
+            reach = Some(reach.map_or(end(i), |r| r.max(end(i))));
+        }
+    }
+    if pieces.len() < 2 {
+        return None;
+    }
+    let mut previous: Option<usize> = None;
+    for piece in &pieces {
+        let k = track_of(piece, tracks)?;
+        if previous.is_some_and(|p| p >= k) || !is_number(&cell_text(piece, runs)) {
+            return None;
+        }
+        previous = Some(k);
+    }
+    Some(pieces)
 }
 
 /// `cell` as two cells, cut at the widest gap between its inked runs, where each half is a number on
@@ -1271,7 +1330,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V9.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V10.to_string(),
     }))
 }
 
@@ -1662,6 +1721,35 @@ mod tests {
         assert_eq!((found[0].rows, found[0].columns), (5, 3));
     }
 
+    /// Three rows of a label and three figures, `South`'s figures 6 points apart — closer than an
+    /// em, so one cell across three columns — or three words the same way.
+    fn figures(a: &'static str, b: &'static str, c: &'static str) -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, 100, 40, "North"),
+            run(250, 100, 20, "1.0"),
+            run(310, 100, 20, "2.0"),
+            run(370, 100, 20, "3.0"),
+            run(100, 116, 40, "South"),
+            run(252, 116, 18, a),
+            run(276, 116, 54, b),
+            run(336, 116, 54, c),
+            run(100, 132, 40, "East"),
+            run(255, 132, 15, "4.0"),
+            run(315, 132, 15, "5.0"),
+            run(375, 132, 15, "6.0"),
+        ]
+    }
+
+    /// **A cell of several numbers is as many cells** (`-v10`): `South`'s three figures are each
+    /// their column's, and the table runs on through them; three words are not split.
+    #[test]
+    fn a_cell_of_several_numbers_is_as_many_cells() {
+        let found = tables(&figures("11.5", "22.5", "33.5"));
+        assert_eq!((found[0].rows, found[0].columns), (3, 4));
+        assert_eq!(texts(&found[0])[1], ["South", "11.5", "22.5", "33.5"]);
+        assert!(tables(&figures("alpha", "beta", "gamma")).is_empty());
+    }
+
     /// **…nor a number in the gutter**: `5`, set between the second column and the third and on
     /// neither, is no column's value, though a full line may hold one cell off its track.
     #[test]
@@ -1737,7 +1825,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V9);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V10);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

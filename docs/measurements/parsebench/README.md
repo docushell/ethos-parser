@@ -635,6 +635,14 @@ pitch (`docs/31-TABLE-TRACKS-SCOPE.md` §16).
 17 table pages rise and 2 fall by at most 0.031; one grounding page rises and none falls; no page
 moves on any other dimension. opendataloader-bench TEDS 0.5114 -> 0.5122, none down. Overall 44.57.
 
+### After a cell of several numbers (`whitespace-tracks-v10`, decision #53, 2026-10-07)
+
+A row of data whose cell runs three or four figures a word space apart kept a table from starting
+above it, and its header from being found. `whitespace-tracks-v10` splits such a cell into its numbers
+where each sits on a track of its own (`docs/31-TABLE-TRACKS-SCOPE.md` §17). Tables 0.5010 -> 0.5026,
+2 pages up and none down; every other dimension unchanged on every page; opendataloader-bench
+unchanged. Overall 44.61.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
