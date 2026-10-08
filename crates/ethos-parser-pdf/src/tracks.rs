@@ -96,6 +96,25 @@
 //! `-v8` split two at the widest gap; a table set in narrow columns runs three or four together, and
 //! the table ended above its first such row.
 //!
+//! **Dot leaders end a cell** (`-v11`, [`ends_with_leaders`]): a run ending with three dots or more,
+//! set solid or spaced, ends its cell however close the next run sets, unless that run is leaders
+//! and nothing else — a leader drawn as several runs continues its label. A statement draws its
+//! leaders from a label up to the first figure, within an em of it, and the label took the figure:
+//! the row came a cell short, and the table did not take it. **And a sign set alone joins the figure
+//! after it** in a cell of several numbers, as [`join_currency_signs`] joins it to the cell after it:
+//! a statement sets its `$` flush left in columns too narrow to set it more than an em off.
+//!
+//! **A row of data above a table is its row** (`-v11`, [`rows_above`]): once a table stands, each
+//! line above its first row, within a row and a half's pitch of the line below it, that fits its
+//! tracks — as it is or with its numbers split — has two cells or more, names itself on the first
+//! track and holds a number in half its cells or more joins it at the top, and the header band
+//! climbs from there. A table opened at its first row whose every cell sat on a track; a row above
+//! it that a leader or an empty column kept from opening it was then read as a header, and ended
+//! the band. A header line leaves the first track empty, and stays the band's. **And the stub's
+//! heading may run long**: a header line of two cells or more whose first cell heads the first
+//! track ends no band for that cell's length — `(in millions of dollars, except ratios)`, a
+//! statement's title.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -259,11 +278,12 @@ pub(crate) fn detect(
                 stand = stands(&rows, end);
             }
             if stand {
+                let first = rows_above(&lines, floor, i, &mut rows, runs);
                 let tracks = tracks_of(&rows);
-                let top = header_band(&lines, floor, i, &tracks, &rows, runs);
+                let top = header_band(&lines, floor, first, &tracks, &rows, runs);
                 let mut headed = false;
-                if top < i {
-                    let header = header_row(&lines[top..i], &tracks);
+                if top < first {
+                    let header = header_row(&lines[top..first], &tracks);
                     let named = header.cells.iter().filter(|c| !c.runs.is_empty()).count();
                     if 2 * named > tracks.len() {
                         rows.insert(0, header);
@@ -289,6 +309,88 @@ pub(crate) fn detect(
     Ok(tables)
 }
 
+/// The first of the lines above a table's first row that are rows of it (`-v11`), each put at the
+/// top of `rows`: climbing from `start` to no lower than `floor`, each line within a row and a
+/// half's pitch of the line below it that fits the table's tracks — as it is, or with its numbers
+/// split — has two cells or more, names itself on the first track, and holds a number in half its
+/// cells or more. A header line leaves the first track empty and stays the header band's.
+fn rows_above(
+    lines: &[Line],
+    floor: usize,
+    start: usize,
+    rows: &mut Vec<Row>,
+    runs: &[TrackRun<'_>],
+) -> usize {
+    let tracks = tracks_of(rows);
+    let mut first = start;
+    while first > floor {
+        let (line, below) = (&lines[first - 1], &lines[first]);
+        // Pitches of 1.2 ems, in integers, as in `grow`: 1.5 is 9/5.
+        let em = line.em.max(below.em);
+        if line.cells.is_empty() || 5 * (below.y - line.y) > 9 * em {
+            break;
+        }
+        let split;
+        let line = if fits(line, &tracks) {
+            line
+        } else {
+            split = split_numbers(line, &tracks, runs);
+            if !fits(&split, &tracks) {
+                break;
+            }
+            &split
+        };
+        let numbers = line
+            .cells
+            .iter()
+            .filter(|c| is_number(cell_text(c, runs).trim()))
+            .count();
+        let Some(mapping) = line
+            .cells
+            .iter()
+            .map(|c| track_of(c, &tracks))
+            .collect::<Option<Vec<usize>>>()
+        else {
+            break;
+        };
+        if line.cells.len() < 2 || mapping.first() != Some(&0) || 2 * numbers < line.cells.len() {
+            break;
+        }
+        let cells = if line.cells.len() == tracks.len() {
+            line.cells.clone()
+        } else {
+            placed(&line.cells, &mapping, &tracks)
+        };
+        rows.insert(
+            0,
+            Row {
+                y: line.y,
+                em: line.em,
+                cells,
+            },
+        );
+        first -= 1;
+    }
+    first
+}
+
+/// A sparse line's cells on `tracks`: each at the track `mapping` gives it, every other track an
+/// empty cell at its start.
+fn placed(cells: &[Cell], mapping: &[usize], tracks: &[(i64, i64)]) -> Vec<Cell> {
+    let mut row: Vec<Cell> = tracks
+        .iter()
+        .map(|&(x0, _)| Cell {
+            x0,
+            x1: x0,
+            runs: Vec::new(),
+        })
+        .collect();
+    for (cell, &m) in cells.iter().zip(mapping) {
+        row[m] = cell.clone();
+    }
+    row
+}
+
 /// Each column's extent over `rows`: the union of its cells that hold runs.
 fn tracks_of(rows: &[Row]) -> Vec<(i64, i64)> {
     (0..rows[0].cells.len())
@@ -307,8 +409,9 @@ fn tracks_of(rows: &[Row]) -> Vec<(i64, i64)> {
 /// to no lower than `floor`, each line within a row and a half's pitch of the line below it — the
 /// first line within two rows' pitch of the table (`-v7`) — whose cells [`header_tracks`] gives a
 /// track each, no two on one track, each holding fewer than [`PROSE_LINE_CHARS`] characters — a
-/// caption or a sentence ends the band — and repeating no value its column holds in `rows`, as a
-/// row the table did not take would.
+/// caption or a sentence ends the band, though since `-v11` the stub's heading, on the first track of
+/// a line of two cells or more, may run long — and repeating no value its column holds in `rows`,
+/// as a row the table did not take would.
 fn header_band(
     lines: &[Line],
     floor: usize,
@@ -340,11 +443,20 @@ fn header_band(
         let mut distinct = mapping.clone();
         distinct.sort_unstable();
         distinct.dedup();
-        let header_like = line.cells.iter().zip(&mapping).all(|(c, &k)| {
-            let text = cell_text(c, runs);
-            let text = text.trim();
-            text.chars().count() < PROSE_LINE_CHARS && !values[k].contains(text)
-        });
+        // `-v11`: the stub's heading, on the first track of a line of two cells or more, may run
+        // long — `(in millions of dollars, except ratios)`, a statement's title.
+        let stub = line.cells.len() >= 2 && mapping.first() == Some(&0);
+        let header_like = line
+            .cells
+            .iter()
+            .zip(&mapping)
+            .enumerate()
+            .all(|(n, (c, &k))| {
+                let text = cell_text(c, runs);
+                let text = text.trim();
+                (text.chars().count() < PROSE_LINE_CHARS || (stub && n == 0))
+                    && !values[k].contains(text)
+            });
         if distinct.len() != mapping.len() || !header_like {
             break;
         }
@@ -548,8 +660,9 @@ fn join_superscripts(runs: &[TrackRun<'_>], grouped: Vec<Vec<usize>>) -> Vec<Vec
 }
 
 /// One line's cells: its inked runs left to right, a new cell wherever the gap from one run's box to
-/// the next run's origin is wider than the line's em. A whitespace run belongs to the cell whose
-/// extent holds its origin, and opens none.
+/// the next run's origin is wider than the line's em, and after a run ending in dot leaders unless
+/// the next is leaders and nothing else (`-v11`). A whitespace run belongs to the cell whose extent
+/// holds its origin, and opens none.
 fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
     let y = runs[members[0]].y;
     let mut inked: Vec<usize> = members
@@ -580,12 +693,13 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
         };
     };
     let mut cells: Vec<Cell> = Vec::new();
+    let mut after_leader = false;
     for &i in &inked {
         let run = &runs[i];
         // Upright, so measured: `lines` let no other inked run through.
         let end = run.rect.map_or(run.x, |b| b.x1);
         match cells.last_mut() {
-            Some(cell) if run.x - cell.x1 <= em => {
+            Some(cell) if run.x - cell.x1 <= em && (!after_leader || leaders_only(run.text)) => {
                 cell.x1 = cell.x1.max(end);
                 cell.runs.push(i);
             }
@@ -595,6 +709,7 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
                 runs: vec![i],
             }),
         }
+        after_leader = ends_with_leaders(run.text);
     }
     let mut cells = join_currency_signs(runs, cells);
     for &i in members.iter().filter(|&&i| runs[i].text.trim().is_empty()) {
@@ -604,6 +719,27 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
         }
     }
     Line { y, em, cells }
+}
+
+/// Whether `text` ends with dot leaders (`-v11`): three dots or more, set solid or spaced, or an
+/// ellipsis — what a statement draws from a label to its first figure.
+fn ends_with_leaders(text: &str) -> bool {
+    text.trim_end()
+        .chars()
+        .rev()
+        .take_while(|&c| c == '.' || c == ' ' || c == '\u{2026}')
+        .filter(|&c| c != ' ')
+        .count()
+        >= 3
+}
+
+/// Whether `text` is dot leaders and nothing else (`-v11`): a leader drawn as several runs.
+fn leaders_only(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|c| c == '.' || c == ' ' || c == '\u{2026}')
 }
 
 /// A line's cells with each currency sign set alone joined to the cell after it: a financial
@@ -823,21 +959,10 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<Grown> {
                 .is_some_and(char::is_lowercase);
         if line.cells.len() >= 2 && (5 * gap >= 9 * em || opens_row) {
             // A sparse row: the tracks it leaves empty are empty cells.
-            let mut cells: Vec<Cell> = tracks
-                .iter()
-                .map(|&(x0, _)| Cell {
-                    x0,
-                    x1: x0,
-                    runs: Vec::new(),
-                })
-                .collect();
-            for (cell, &m) in line.cells.iter().zip(&mapping) {
-                cells[m] = cell.clone();
-            }
             rows.push(Row {
                 y: line.y,
                 em: line.em,
-                cells,
+                cells: placed(&line.cells, &mapping, &tracks),
             });
             wrapped.clear();
         } else if let Some(row) = rows.last_mut() {
@@ -954,7 +1079,8 @@ fn split_numbers(line: &Line, tracks: &[(i64, i64)], runs: &[TrackRun<'_>]) -> L
 
 /// `cell` cut at every gap between its inked runs wider than a fifth of `em` — a word space — where
 /// that makes two pieces or more, each a number on a track, the tracks left to right (`-v10`); `None`
-/// where it does not. A sign set against its digits stays with them.
+/// where it does not. A sign set against its digits stays with them, and since `-v11` a sign set
+/// alone joins the piece after it, as [`join_currency_signs`] joins it to the cell after it.
 fn split_number_list(
     cell: &Cell,
     em: i64,
@@ -987,6 +1113,7 @@ fn split_number_list(
             reach = Some(reach.map_or(end(i), |r| r.max(end(i))));
         }
     }
+    let pieces = join_currency_signs(runs, pieces);
     if pieces.len() < 2 {
         return None;
     }
@@ -1082,6 +1209,19 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
         if labels(&column(0)) || is_contents(&column(1)) {
             return false;
         }
+    }
+    // `-v11`: titles drawn with dot leaders, then a column of numbers, are a table of contents at
+    // any width — the leaders now end the title's cell, so its page number is a column of its own.
+    // A statement drawn with leaders sets several columns of figures after its labels, and a
+    // schedule leads its years or ranges, not titles, to its figures.
+    let titles = column(columns - 2);
+    if !titles.is_empty()
+        && titles
+            .iter()
+            .all(|t| ends_with_leaders(t) && t.chars().any(char::is_alphabetic))
+        && column(columns - 1).iter().all(|t| is_number(t.trim()))
+    {
+        return false;
     }
     // The pitch's spread at most half its mean, in integers: 4·n·Σg² ≤ 5·(Σg)².
     let gaps: Vec<i128> = rows
@@ -1330,7 +1470,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V10.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V11.to_string(),
     }))
 }
 
@@ -1458,11 +1598,15 @@ mod tests {
             ),
             (vec![run(340, 186, 20, "Year")], "one column of three named"),
             (
-                vec![
-                    run(105, 186, 30, "Regional rainfall by quarter, mm"),
-                    run(240, 186, 25, "Type"),
-                ],
+                vec![run(105, 186, 30, "Regional rainfall by quarter, mm")],
                 "a caption",
+            ),
+            (
+                vec![
+                    run(105, 186, 25, "Region"),
+                    run(240, 186, 30, "Rainfall by quarter, in millimetres"),
+                ],
+                "a long cell past the stub",
             ),
             (
                 vec![run(100, 186, 40, "North"), run(240, 186, 25, "Type")],
@@ -1750,6 +1894,188 @@ mod tests {
         assert!(tables(&figures("alpha", "beta", "gamma")).is_empty());
     }
 
+    /// Four rows whose labels draw dot leaders up to their first figure, five points short of it:
+    /// `South`'s leader is drawn as two runs.
+    fn leaders() -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, 100, 30, "North"),
+            run(132, 100, 128, "................"),
+            run(265, 100, 20, "7.5"),
+            run(330, 100, 15, "9.1"),
+            run(100, 116, 30, "South"),
+            run(132, 116, 60, "........"),
+            run(194, 116, 66, "........"),
+            run(265, 116, 20, "12.0"),
+            run(330, 116, 15, "4.4"),
+            run(100, 132, 30, "East"),
+            run(132, 132, 128, "................"),
+            run(265, 132, 20, "3.0"),
+            run(330, 132, 15, "6.5"),
+            run(100, 148, 12, "St."),
+            run(114, 148, 18, "Louis"),
+            run(134, 148, 126, "................"),
+            run(265, 148, 20, "8.0"),
+            run(330, 148, 15, "2.2"),
+        ]
+    }
+
+    /// **Dot leaders end a cell** (`-v11`): each label keeps its leaders and the figure they lead to
+    /// is its column's, though it sets within an em of them; a leader drawn as two runs is still its
+    /// label's, and an abbreviation's one point ends no cell.
+    #[test]
+    fn dot_leaders_end_a_cell() {
+        let found = tables(&leaders());
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["North................", "7.5", "9.1"]);
+        assert_eq!(
+            texts(&found[0])[1],
+            ["South................", "12.0", "4.4"]
+        );
+        assert_eq!(
+            texts(&found[0])[3],
+            ["St.Louis................", "8.0", "2.2"]
+        );
+    }
+
+    /// **A sign set alone joins the figure after it** (`-v11`): `South`'s three amounts, each `$`
+    /// flush left in its column, run together within an em into one cell, and split into their
+    /// columns with each sign kept with its figure.
+    #[test]
+    fn a_sign_set_alone_joins_the_figure_after_it() {
+        let runs = vec![
+            run(100, 100, 40, "North"),
+            run(265, 100, 20, "1.0"),
+            run(312, 100, 20, "2.0"),
+            run(359, 100, 20, "3.0"),
+            run(100, 116, 40, "South"),
+            run(250, 116, 5, "$"),
+            run(260, 116, 25, "11.5"),
+            run(293, 116, 5, "$"),
+            run(307, 116, 25, "22.5"),
+            run(340, 116, 5, "$"),
+            run(354, 116, 25, "33.5"),
+            run(100, 132, 40, "East"),
+            run(265, 132, 20, "4.0"),
+            run(312, 132, 20, "5.0"),
+            run(359, 132, 20, "6.0"),
+        ];
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (3, 4));
+        assert_eq!(texts(&found[0])[1], ["South", "$11.5", "$22.5", "$33.5"]);
+    }
+
+    /// **Titles drawn with dot leaders, then their page numbers, are a table of contents** (`-v11`),
+    /// at any width: the leaders end each title's cell, so the page numbers stand as a column of their
+    /// own, and neither three columns — numbered sections — nor two whose numbers carry a revision
+    /// mark beside them are a table.
+    #[test]
+    fn titles_drawn_with_leaders_then_page_numbers_are_contents() {
+        let mut sections = Vec::new();
+        let mut revised = Vec::new();
+        for (n, (number, title, page)) in [
+            ("1", "Introduction", "1"),
+            ("2", "Zero Trust Basics", "4"),
+            ("3", "Components", "9"),
+            ("4", "Deployment", "17"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 100 + 16 * i64::try_from(n).expect("small");
+            sections.extend([
+                run(100, y, 10, number),
+                run(130, y, 60, title),
+                run(192, y, 200, "................................"),
+                run(400, y, 10, page),
+            ]);
+            revised.extend([
+                run(130, y, 60, title),
+                run(192, y, 200, "................................"),
+                run(400, y, 30, ["103101", "105103", "106104", "107105"][n]),
+            ]);
+        }
+        assert!(tables(&sections).is_empty(), "numbered sections");
+        assert!(tables(&revised).is_empty(), "revised page numbers");
+        // Titles led to words, not numbers, are a table of two columns.
+        let terms: Vec<TrackRun<'static>> = revised
+            .iter()
+            .enumerate()
+            .map(|(k, r)| {
+                if k % 3 == 2 {
+                    run(400, r.y / 100, 60, "Alpha Beta")
+                } else {
+                    *r
+                }
+            })
+            .collect();
+        assert_eq!(tables(&terms).len(), 1, "a glossary drawn with leaders");
+        // Years led to their figures are a schedule, not titles.
+        let years: Vec<TrackRun<'static>> = revised
+            .iter()
+            .enumerate()
+            .map(|(k, r)| {
+                if k % 3 == 0 {
+                    run(130, r.y / 100, 60, ["2022", "2023", "2024", "2025"][k / 3])
+                } else {
+                    *r
+                }
+            })
+            .collect();
+        assert_eq!(tables(&years).len(), 1, "a schedule drawn with leaders");
+    }
+
+    /// **A row of data above a table is its row** (`-v11`): `Total`, repeating `North`'s figure and
+    /// leaving the third column empty, is no header and could open no table, and it is the table's
+    /// first row — within a row and a half's pitch of it, and no further.
+    #[test]
+    fn a_row_of_data_above_a_table_is_its_row() {
+        let total = |y: i64| vec![run(100, y, 40, "Total"), run(250, y, 20, "7.5")];
+        let found = under(total(184));
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(texts(&found[0])[0], ["Total", "7.5", ""]);
+        let found = under(total(170));
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
+    }
+
+    /// **…and a header line leaves the first track empty and stays the band's**: `2023` and `2024`
+    /// under `Fiscal` are numbers, and they are the header's second line, not a row.
+    #[test]
+    fn a_header_line_of_numbers_stays_the_band_s() {
+        let found = under(vec![
+            run(245, 168, 25, "Fiscal"),
+            run(340, 168, 30, "Fiscal"),
+            run(250, 184, 20, "2023"),
+            run(340, 184, 30, "2024"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(texts(&found[0])[0], ["", "Fiscal2023", "Fiscal2024"]);
+    }
+
+    /// **The stub's heading may run long** (`-v11`): `(in millions of dollars, except ratios)` heads
+    /// the first column of a header line that names the others.
+    #[test]
+    fn the_stub_s_heading_may_run_long() {
+        let found = under(vec![
+            run(100, 186, 45, "(in millions of dollars, except ratios)"),
+            run(205, 186, 30, "Units"),
+            run(300, 186, 30, "Price"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(
+            texts(&found[0])[0],
+            ["(in millions of dollars, except ratios)", "Units", "Price"]
+        );
+        // Alone on its line, a long cell is a caption or a units note, and the band ends there.
+        let found = under(vec![
+            run(205, 170, 30, "Units"),
+            run(300, 170, 30, "Price"),
+            run(100, 186, 45, "(in millions of dollars, except ratios)"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
+    }
+
     /// **…nor a number in the gutter**: `5`, set between the second column and the third and on
     /// neither, is no column's value, though a full line may hold one cell off its track.
     #[test]
@@ -1825,7 +2151,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V10);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V11);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

@@ -697,3 +697,55 @@ whose centre is nearest it and neighbours on one track joined — for the 40 tab
 stopped at a single cell off every track or cells out of order: tables 0.5026 → 0.4944, 15 pages up
 and 19 down, visual grounding down on 4 pages — a caption over a table read word by word as its
 header (`Goldman Sachs 10-k` p122 0.85 → 0.44).
+
+## 18. `whitespace-tracks-v11`: leaders, the rows above, a long stub, contents (2026-10-08, decision #55)
+
+**What `-v10` missed.** Asked for table headers again ("Table headers, round 3"), the header band's
+stops were read on the 171 ParseBench tables whose header lies just above ours and that the scorer
+matched on no column. The commonest, 45 tables, was a line the band could not read as a header — and
+on 21 of them it was a row of data the table had not taken. Two causes: a statement draws its dot
+leaders from a label up to the first figure, within an em of it, so the label took the figure and
+the row came a cell short (`AMZN.2005` p32 `Net sales......$8,490`, `JNPR.2008` p50, `VRSK`, `WU`,
+`SYK`); and a row leaving a column empty could not open the table, which began at the first row
+below every cell of which sat on a track. On others it was a genuine header line whose stub heading
+ran past thirty characters — `(in millions of dollars, except ratios)`, `Selected financial and
+sales data:`, `Consolidated Statements of Income`.
+
+**The change.**
+
+- **Dot leaders end a cell**: a run ending with three dots or more, set solid or spaced (or an
+  ellipsis), ends its cell however close the next run sets, unless that run is leaders and nothing
+  else — `JNPR` draws one leader as several runs, and cutting after each made the dots cells.
+- **A sign set alone joins the figure after it** in a cell of several numbers, as
+  `join_currency_signs` joins it to the cell after it: `AMZN`'s `$ 0.81 $ 1.45 …` run together within
+  an em.
+- **The rows above a table**: once a table stands, each line above its first row, within a row and a
+  half's pitch of the line below it, that fits its tracks (as it is, or with its numbers split), has
+  two cells or more, names itself on the first track and holds a number in half its cells or more,
+  joins at the top; then the header band climbs. A header line leaves the first track empty: measured
+  without that clause, the second line of a two-line header (`2025` under `September`, `€'000`
+  under a year) was taken as a row and split the header — `Apple 10-k` p23 0.90 → 0.38.
+- **A long stub heading**: a header line of two cells or more whose first cell heads the first track
+  ends no band for that cell's length. A long cell alone on its line, or past the stub, still ends
+  it: that is a caption or a units note.
+- **Contents at any width**: titles drawn with dot leaders, each holding a letter, followed by a last
+  column of numbers, are a table of contents. With the leaders ending each title's cell, a contents
+  page's page numbers came out a column of their own, and contents read as tables:
+  `text_simple__strikeUnderline` (formatting 0.56 → 0.47, its bold entries written in cells) and
+  three pages of `nist-sp-800-207` among the gate documents.
+  Titles must hold a letter: a schedule leads its years or ranges to its figures (`SERFF_CA` p283,
+  `1653739079` p39), and those stay tables.
+
+**Measured**, with the shipped build on all 2,078 pages, against `30820ba`: ParseBench tables
+**0.5026 → 0.5066**, 22 pages up and none down (`Goldman Sachs 10-k` p79 0.62 → 0.96, `UNM.2007`
+p51 0.41 → 0.68, `long-table` p1 0.48 → 0.71); visual grounding 0.5253 → 0.5258, 3 pages up and
+none down; content, formatting and charts unchanged on every page; overall 44.67 → 44.76.
+opendataloader-bench unchanged byte for byte in its Markdown, no table on a document without one.
+On the tree-stripped gate documents 539 of the 542 tables are unchanged cell for cell, and the three
+that `-v10` read off tables of contents (`nist-sp-800-161r1` p7 twice, `nist-sp-800-171r3` p8) are no
+tables now: their page numbers stand apart, and the contents clause reads them as what they are.
+Every bound of §4 holds.
+
+**Measured and not used.** The rows above with no first-track clause (tables 0.5017, 7 pages down);
+the leader cut opening a cell after every leader run (`JNPR` p50 0.40 → 0); contents read from
+leaders alone, without a letter in the title (`SERFF_CA` p283 0.06 → 0, `1653739079` p39 down).

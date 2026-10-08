@@ -651,6 +651,17 @@ release.
   cell cut at every gap between its runs wider than a word space joins as that many cells, each a
   number on a track of its own, left to right. ParseBench tables 0.5010 -> 0.5026, 2 pages up and
   none down; every other dimension and opendataloader-bench unchanged; overall 44.57 -> 44.61.
+- **Dot leaders end a cell, a table takes the rows of data above it, and a stub heading may run
+  long** (`-v11`, decision #55): a run ending in three dots or more ends its cell unless the next run
+  is leaders alone; a currency sign set alone joins the figure after it in a cell of several
+  numbers; once a table stands, each line above it within a row and a half's pitch that fits its
+  tracks, names itself on the first track and holds a number in half its cells or more joins at
+  the top before the header band climbs; a header line of two cells or more may hold a long stub
+  heading on its first track; and titles drawn with dot leaders, each holding a letter, over a last
+  column of numbers are a table of contents at any width. ParseBench tables 0.5026 -> 0.5066, 22
+  pages up and none down; visual grounding 0.5253 -> 0.5258; every other dimension unchanged;
+  overall 44.67 -> 44.76. On the gate documents three tables of contents `-v10` read as tables are
+  none now; the other 539 tables are unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

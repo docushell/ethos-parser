@@ -673,6 +673,17 @@ the rest; and moving an Indic vowel sign drawn before its consonant after it, wh
 one Hindi page where the sign was unambiguous and broke a Bengali page already in logical order
 (0.71 -> 0.33) where it was moved regardless.
 
+### After leaders, the rows above and a long stub (`whitespace-tracks-v11`, decision #55, 2026-10-08)
+
+The header band stopped most often at a row of data the table had not taken — a statement's dot
+leaders running up to its first figure, or a row leaving a column empty — and at a header line whose
+stub heading ran past thirty characters. `whitespace-tracks-v11` ends a cell after dot leaders,
+joins a lone currency sign to its figure, takes the rows of data above a table, lets a stub heading
+run long, and reads titles drawn with leaders over page numbers as contents
+(`docs/31-TABLE-TRACKS-SCOPE.md` §18). Tables 0.5026 -> 0.5066, 22 pages up and none down; visual
+grounding 0.5253 -> 0.5258, 3 up and none down; content, formatting and charts unchanged on every
+page; opendataloader-bench unchanged. Overall 44.67 -> 44.76.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

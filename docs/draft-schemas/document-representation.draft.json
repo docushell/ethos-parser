@@ -614,7 +614,7 @@
         "columns": { "type": "integer", "minimum": 0 },
         "cells": { "type": "array", "items": { "$ref": "#/$defs/table_cell_record" } },
         "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "`computed` for a grid this engine reconstructed from ink or alignment, `extracted` for one the structure tree declares." },
-        "detection_rule": { "type": "string", "examples": ["ruled-rects-v8", "unruled-align-v1", "stroke-ruled-v1", "tagged-tables-v1", "whitespace-tracks-v10", "bar-labels-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
+        "detection_rule": { "type": "string", "examples": ["ruled-rects-v8", "unruled-align-v1", "stroke-ruled-v1", "tagged-tables-v1", "whitespace-tracks-v11", "bar-labels-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
         "locator_check": {
           "$ref": "#/$defs/locator_check",
           "$comment": "The structural and geometric cross-check of the cells against the grid."
