@@ -129,7 +129,8 @@ pub struct Occurrence {
 pub struct OccurrencePart {
     /// The node id, copied out of the representation searched.
     pub node: NodeId,
-    /// First scalar of this node's own `text`, inclusive.
+    /// First scalar of this node's own text, inclusive — as read ([`crate::Node::reading_text`]),
+    /// which is its `text` wherever its line is not read right to left (decision #54).
     pub char_start: u32,
     /// One past the last scalar, exclusive.
     pub char_end: u32,
@@ -236,7 +237,10 @@ pub fn locate(
         member_starts.push(0);
         let mut acc = 0usize;
         for &member in &block.members {
-            acc += node_at(&payload.nodes, member)?.text.chars().count();
+            acc += node_at(&payload.nodes, member)?
+                .reading_text()
+                .chars()
+                .count();
             member_starts.push(acc);
         }
         searched_scalars = searched_scalars.saturating_add(acc);
@@ -354,18 +358,23 @@ fn occurrence_at(
 
         // A character this reader inserted is still one of the occurrence's scalars, and the
         // count is what lets a consumer tell a matched space from a drawn one.
+        // Decision #54: a run read right to left is searched as read, and its reading flags the
+        // characters this reader inserted where it reads them.
         if let crate::NodeAttributes::TextRun(attrs) = &node.attributes {
-            synthesized += u32::try_from(
-                attrs
+            let inside = |at: usize| at >= in_node_start && at < in_node_end;
+            let count = match &attrs.reading {
+                Some(read) => read
                     .synthesized
                     .iter()
-                    .filter(|s| {
-                        let at = s.char_index as usize;
-                        at >= in_node_start && at < in_node_end
-                    })
+                    .filter(|&&at| inside(at as usize))
                     .count(),
-            )
-            .unwrap_or(u32::MAX);
+                None => attrs
+                    .synthesized
+                    .iter()
+                    .filter(|s| inside(s.char_index as usize))
+                    .count(),
+            };
+            synthesized += u32::try_from(count).unwrap_or(u32::MAX);
         }
 
         parts.push(OccurrencePart {
@@ -403,6 +412,44 @@ mod tests {
         repr_of(&[(text, None, 7200, 7200, Some(1000), None)])
     }
 
+    /// **A run read right to left is searched as read, and its reading says which matched
+    /// character this reader inserted** (decision #54): `על` and the space inserted after it are
+    /// drawn `לע `, flagged at index 2, and read ` על`, flagged at index 0.
+    #[test]
+    fn a_run_read_right_to_left_is_searched_as_read_with_its_inserted_space_flagged() {
+        let mut payload = one_run("\u{5DC}\u{5E2} ").payload().clone();
+        if let crate::NodeAttributes::TextRun(a) = &mut payload.nodes[0].attributes {
+            a.synthesized = vec![crate::SynthesizedAt {
+                char_index: 2,
+                reason: "tj-gap".into(),
+            }];
+            a.reading = Some(crate::Reading {
+                text: " \u{5E2}\u{5DC}".into(),
+                synthesized: vec![0],
+            });
+        }
+        let geometry = one_run("x").geometry().to_vec();
+        let repr = DocumentRepresentation::seal(payload, geometry).unwrap();
+        let found = located(&repr, " \u{5E2}");
+        assert_eq!(found.occurrences.len(), 1);
+        assert_eq!(
+            (
+                found.occurrences[0].parts[0].char_start,
+                found.occurrences[0].parts[0].char_end
+            ),
+            (0, 2),
+            "offsets count into the reading"
+        );
+        assert_eq!(
+            found.occurrences[0].synthesized, 1,
+            "the space read first is the one this reader inserted"
+        );
+        assert!(
+            located(&repr, "\u{5DC}\u{5E2}").occurrences.is_empty(),
+            "the order drawn is not what is searched"
+        );
+    }
+
     fn located(repr: &DocumentRepresentation, quote: &str) -> Locations {
         let profile = Profile::default();
         locate(
@@ -435,7 +482,7 @@ mod tests {
             .iter()
             .find(|n| n.id.as_str() == part.node.as_str())
             .expect("a part names a node of the representation it came from");
-        node.text
+        node.reading_text()
             .chars()
             .skip(part.char_start as usize)
             .take((part.char_end - part.char_start) as usize)

@@ -37,7 +37,8 @@
 //!    `0..markdown.len()` exactly — unsorted, overlapping, gapped, out of range, or empty against
 //!    non-empty Markdown. The same check re-runs on parse, so a hand-edited file cannot smuggle a
 //!    hole past the type.
-//! 3. **Two segment kinds, and only two.** [`SegmentKind::Source`] inverts to node text;
+//! 3. **Two segment kinds, and only two.** [`SegmentKind::Source`] inverts to node text — as read
+//!    ([`crate::Node::reading_text`], decision #54);
 //!    [`SegmentKind::Syntax`] is markup this exporter invented and says so. There is no
 //!    "probably source" — that is a confidence field wearing a different hat (§9).
 //! 4. **Coverage is a census.** `emitted + dropped == in_representation`, in *characters*, with
@@ -388,7 +389,8 @@ pub const HEADING_LEVEL_UNREPRESENTABLE: &str = "heading-level-unrepresentable-v
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentKind {
-    /// Bytes that invert to canonical node text.
+    /// Bytes that invert to canonical node text — a run's reading where its line is read right to
+    /// left (decision #54), its text everywhere else.
     ///
     /// The segment names the representation node id(s) these bytes came from, so a quote falling
     /// wholly inside one is traceable to evidence without re-parsing anything.
@@ -1043,7 +1045,7 @@ pub(crate) fn hyphen_tail<'a>(
         return None;
     }
 
-    let tail = normalize(&next.text);
+    let tail = normalize(next.reading_text());
     if !tail.starts_with(char::is_alphabetic) {
         return None;
     }
@@ -1634,6 +1636,83 @@ pub(crate) fn ink_sequenced(
         && y.origin_x - a_end >= -a_measure.pitch
 }
 
+/// Which stretch of drawn ink each run of a line read right to left lies in (decision #54), by
+/// node id: see [`read_stretches`].
+pub(crate) type Stretches<'a> = std::collections::HashMap<&'a str, usize>;
+
+/// The stretches of ink the runs of each line read right to left lie in (decision #54).
+///
+/// Such a line's runs come in the order the right-to-left rule reads them, so the run read next
+/// is not the next ink along the line, and [`ink_sequenced`] — which follows the pen left to
+/// right — would break between every two. Here each such line is taken as the page draws it, its
+/// runs left to right, and cut wherever `ink_sequenced` cuts a drawn line; two runs of one stretch
+/// join in both projections, with the space the page drew between them, and two of different
+/// stretches do not ([`read_together`]). A line is the runs consecutive in reading order that carry
+/// a reading, on one page, in one region and stream, each within one of its first run's glyphs of
+/// that run's baseline, so the marks set above and below its letters ride with it. Empty on a
+/// representation no run of which is read right to left.
+pub(crate) fn read_stretches<'a>(
+    nodes: &'a [crate::Node],
+    pitch: &PitchReference,
+) -> Stretches<'a> {
+    let read = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.reading.is_some());
+    let mut out = Stretches::new();
+    let mut stretch = 0usize;
+    let mut start = 0;
+    while start < nodes.len() {
+        let first = &nodes[start];
+        let Some(key) = line_key(first).filter(|_| read(first)) else {
+            start += 1;
+            continue;
+        };
+        let reach = ink_reach(first, pitch).map_or(0, |(_, measure)| measure.pitch);
+        let end = nodes[start..]
+            .iter()
+            .position(|n| {
+                !read(n)
+                    || !line_key(n).is_some_and(|k| {
+                        k.page == key.page
+                            && k.region == key.region
+                            && k.artifact == key.artifact
+                            && (k.baseline - key.baseline).abs() <= reach
+                    })
+            })
+            .map_or(nodes.len(), |n| start + n);
+        let mut drawn: Vec<&crate::Node> = nodes[start..end].iter().collect();
+        drawn.sort_by_key(|n| match &n.native_locator {
+            crate::NativeLocator::Pdf(loc) => loc.origin_x,
+            _ => 0,
+        });
+        let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
+        for node in drawn {
+            if !line_ink.is_some_and(|(ink, end, measure)| ink_sequenced(ink, end, measure, node)) {
+                stretch += 1;
+            }
+            out.insert(node.id.as_str(), stretch);
+            // The furthest reach so far, so a mark drawn inside the glyph before it does not pull
+            // the line's ink back to itself.
+            line_ink = match (line_ink, ink_reach(node, pitch)) {
+                (Some(ink), Some((end, _))) if ink.1 >= end => Some(ink),
+                (_, Some((end, measure))) => Some((node, end, measure)),
+                (_, None) => None,
+            };
+        }
+        start = end;
+    }
+    out
+}
+
+/// Whether two runs of lines read right to left lie in one stretch of the ink the page drew
+/// (decision #54, [`read_stretches`]); `None` unless both are such runs, where the joins along a
+/// drawn line decide.
+pub(crate) fn read_together(
+    stretches: &Stretches<'_>,
+    a: &crate::Node,
+    b: &crate::Node,
+) -> Option<bool> {
+    Some(stretches.get(a.id.as_str())? == stretches.get(b.id.as_str())?)
+}
+
 /// The gap, in centipoints, at or below which the page drew no space between two runs.
 ///
 /// A quantization epsilon, not a tuned threshold. Measured on the gate corpus, the gap between
@@ -1790,6 +1869,7 @@ pub fn geometric_blocks(
     table_owned: &std::collections::BTreeSet<&str>,
 ) -> Vec<GeometricBlock> {
     let pitch = pitch_reference(nodes);
+    let stretches = read_stretches(nodes, &pitch);
     let mut out: Vec<GeometricBlock> = Vec::new();
     let mut open_group: Option<GroupKey> = None;
     let mut open_line: Option<LineKey> = None;
@@ -1803,26 +1883,29 @@ pub fn geometric_blocks(
             node.kind != crate::NodeKind::TextRun || table_owned.contains(node.id.as_str());
 
         let key = group_key(node);
-        let joins = !standalone
-            && match (open_group, key, open_prev) {
-                (Some(open), Some(k), Some(_)) if open == k => true,
-                (None, None, Some(_)) => match (open_line, line_ink) {
-                    (Some(line), Some((ink, end, reference))) => {
-                        same_line(line, node, reference) && ink_sequenced(ink, end, reference, node)
-                    }
+        let joins =
+            !standalone
+                && match (open_group, key, open_prev) {
+                    (Some(open), Some(k), Some(_)) if open == k => true,
+                    (None, None, Some(prev)) => read_together(&stretches, prev, node)
+                        .unwrap_or_else(|| match (open_line, line_ink) {
+                            (Some(line), Some((ink, end, reference))) => {
+                                same_line(line, node, reference)
+                                    && ink_sequenced(ink, end, reference, node)
+                            }
+                            _ => false,
+                        }),
                     _ => false,
-                },
-                _ => false,
-            };
+                };
 
         match out.last_mut() {
             Some(block) if joins => {
                 block.members.push(i);
-                block.text.push_str(&node.text);
+                block.text.push_str(node.reading_text());
             }
             _ => out.push(GeometricBlock {
                 members: vec![i],
-                text: node.text.clone(),
+                text: node.reading_text().to_string(),
             }),
         }
 
@@ -2345,6 +2428,7 @@ pub fn to_markdown(
     // document's own fonts, because `advance` alone cannot be trusted to be an ink width; see
     // `ink_reach`.
     let pitch = pitch_reference(&payload.nodes);
+    let stretches = read_stretches(&payload.nodes, &pitch);
     let wrapped = wrapped_labels(repr);
     let mut open_line: Option<LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
@@ -2377,7 +2461,7 @@ pub fn to_markdown(
             if !emitted_tables[t] {
                 emitted_tables[t] = true;
                 separate(&mut e, &mut last, Block::Standalone);
-                emit_table(&mut e, &plans[t], &pitch);
+                emit_table(&mut e, &plans[t], &pitch, &stretches);
                 open_item = None;
             }
             // v2.2-S1. A table's runs are consumed by `emit_table`, so the block around them is
@@ -2392,7 +2476,7 @@ pub fn to_markdown(
             continue;
         }
 
-        let text = normalize(&node.text);
+        let text = normalize(node.reading_text());
         if text.is_empty() {
             // Whitespace-only runs exist (a `Tj` of spaces is a real operator). They contribute no
             // Markdown, and they contribute no dropped characters either: `normalize` removed
@@ -2437,7 +2521,7 @@ pub fn to_markdown(
                 let abuts = i
                     .checked_sub(1)
                     .and_then(|at| payload.nodes.get(at))
-                    .is_some_and(|prev| cell_runs_abut(prev, node, &pitch));
+                    .is_some_and(|prev| cell_runs_abut(prev, node, &pitch, &stretches));
                 if !abuts {
                     e.syntax(" ");
                 }
@@ -2492,8 +2576,8 @@ pub fn to_markdown(
             (Some(open), Some(k), Some(prev)) if open == k => {
                 // 1. The page drew a space — in either run's own bytes, or as a run of its own.
                 let drew_space = pending_space
-                    || prev.text.ends_with(char::is_whitespace)
-                    || node.text.starts_with(char::is_whitespace);
+                    || prev.reading_text().ends_with(char::is_whitespace)
+                    || node.reading_text().starts_with(char::is_whitespace);
                 // 2. A line break inside one marked-content sequence. Rendering it as a space
                 //    invents no word; welding across it would. `hyphen_tail` has already had first
                 //    refusal, so a word the line break split is closed up instead. Same outcome as
@@ -2502,7 +2586,9 @@ pub fn to_markdown(
                 let broke_a_line = on_different_lines(prev, node);
                 if drew_space || broke_a_line {
                     Some(true)
-                } else if ink_contiguous(prev, node, &pitch) {
+                } else if read_together(&stretches, prev, node)
+                    .unwrap_or_else(|| ink_contiguous(prev, node, &pitch))
+                {
                     // 3. Same baseline, no gap the page drew: two fragments of one word.
                     Some(false)
                 } else {
@@ -2518,19 +2604,28 @@ pub fn to_markdown(
             // producer said the two runs were one sequence, here nothing said so — and welding
             // across a baseline with no declaration is exactly the disaster `group_key`'s
             // "absence is never a group" was written against.
-            (None, None, Some(_)) => match (open_line, line_ink) {
-                (Some(line), Some((ink, end, reference)))
-                    if ht.is_none()
-                        && same_line(line, node, reference)
-                        && ink_sequenced(ink, end, reference, node) =>
-                {
-                    Some(
-                        pending_space
-                            || ink.text.ends_with(char::is_whitespace)
-                            || node.text.starts_with(char::is_whitespace),
-                    )
-                }
-                _ => None,
+            // Decision #54: two runs of a line read right to left join where they lie in one
+            // stretch of the ink the page drew, with the space it drew between them.
+            (None, None, Some(prev)) => match read_together(&stretches, prev, node) {
+                Some(together) => (together && ht.is_none()).then(|| {
+                    pending_space
+                        || prev.reading_text().ends_with(char::is_whitespace)
+                        || node.reading_text().starts_with(char::is_whitespace)
+                }),
+                None => match (open_line, line_ink) {
+                    (Some(line), Some((ink, end, reference)))
+                        if ht.is_none()
+                            && same_line(line, node, reference)
+                            && ink_sequenced(ink, end, reference, node) =>
+                    {
+                        Some(
+                            pending_space
+                                || ink.text.ends_with(char::is_whitespace)
+                                || node.text.starts_with(char::is_whitespace),
+                        )
+                    }
+                    _ => None,
+                },
             },
             _ => None,
         };
@@ -2644,7 +2739,7 @@ pub fn to_markdown(
     for (t, plan) in plans.iter().enumerate() {
         if plan.projected && !emitted_tables[t] {
             separate(&mut e, &mut last, Block::Standalone);
-            emit_table(&mut e, plan, &pitch);
+            emit_table(&mut e, plan, &pitch, &stretches);
         }
     }
 
@@ -2985,7 +3080,15 @@ pub(crate) fn cell_runs_abut(
     prev: &crate::Node,
     node: &crate::Node,
     pitch: &PitchReference,
+    stretches: &Stretches<'_>,
 ) -> bool {
+    // Decision #54: two runs of a line read right to left abut where they lie in one stretch of
+    // drawn ink and neither reads a space at the seam.
+    if let Some(together) = read_together(stretches, prev, node) {
+        return together
+            && !prev.reading_text().ends_with(char::is_whitespace)
+            && !node.reading_text().starts_with(char::is_whitespace);
+    }
     let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
         (&prev.native_locator, &node.native_locator)
     else {
@@ -2998,7 +3101,7 @@ pub(crate) fn cell_runs_abut(
         && ink_contiguous(prev, node, pitch)
 }
 
-fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference) {
+fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference, stretches: &Stretches<'_>) {
     e.table(true);
     for row in 0..plan.rows {
         if row > 0 {
@@ -3010,8 +3113,8 @@ fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference) {
             let mut first = true;
             let mut prev: Option<&crate::Node> = None;
             for node in &plan.slots[row * plan.columns + column] {
-                let text = normalize(&node.text);
-                let abuts = prev.is_some_and(|prev| cell_runs_abut(prev, node, pitch));
+                let text = normalize(node.reading_text());
+                let abuts = prev.is_some_and(|prev| cell_runs_abut(prev, node, pitch, stretches));
                 prev = Some(node);
                 if text.is_empty() {
                     continue;
@@ -3331,6 +3434,7 @@ pub(crate) mod tests {
                 italic: false,
                 script: None,
                 furniture: None,
+                reading: None,
             }),
         }
     }
@@ -4942,6 +5046,7 @@ pub(crate) mod tests {
                 italic: false,
                 script: None,
                 furniture: None,
+                reading: None,
             }),
         }
     }
@@ -5054,6 +5159,147 @@ pub(crate) mod tests {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .collect()
+    }
+
+    /// `repr` with the run at each index of `readings` read as that text (decision #54) —
+    /// resealed, since a sealed record is not edited in place.
+    pub(crate) fn with_readings(
+        repr: DocumentRepresentation,
+        readings: &[(usize, &str)],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for &(i, text) in readings {
+            if let NodeAttributes::TextRun(a) = &mut payload.nodes[i].attributes {
+                a.reading = Some(crate::Reading {
+                    text: text.into(),
+                    synthesized: Vec::new(),
+                });
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// `שלום עולם` as a producer that resolved bidi draws it — `םלוע`, a space, `םולש`, left to
+    /// right — in the order the right-to-left rule reads it, each run carrying its reading
+    /// (decision #54). `gap` moves `שלום` and the space after it that much further right.
+    pub(crate) fn line_read_right_to_left(gap: i64) -> DocumentRepresentation {
+        with_readings(
+            repr_of_placed(&[
+                (
+                    "\u{5DD}\u{5D5}\u{5DC}\u{5E9}",
+                    None,
+                    2500 + gap,
+                    7200,
+                    Some(1200),
+                    None,
+                ),
+                (" ", None, 2200 + gap, 7200, Some(300), None),
+                (
+                    "\u{5DD}\u{5DC}\u{5D5}\u{5E2}",
+                    None,
+                    1000,
+                    7200,
+                    Some(1200),
+                    None,
+                ),
+            ]),
+            &[
+                (0, "\u{5E9}\u{5DC}\u{5D5}\u{5DD}"),
+                (1, " "),
+                (2, "\u{5E2}\u{5D5}\u{5DC}\u{5DD}"),
+            ],
+        )
+    }
+
+    /// **A line read right to left is one block of its runs' readings** (decision #54): the run
+    /// read next lies to the left of the one before it, so the joins along a drawn line would
+    /// break between every two, and the stretch of ink the page drew joins them instead.
+    #[test]
+    fn a_line_read_right_to_left_projects_its_readings_as_one_block() {
+        let a = artifact_of(line_read_right_to_left(0));
+        assert_eq!(
+            a.markdown,
+            "\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\n"
+        );
+        let named: Vec<&str> = a
+            .anchor_map
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Source)
+            .map(|s| &a.markdown[s.start..s.end])
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                "\u{5E9}\u{5DC}\u{5D5}\u{5DD}",
+                "\u{5E2}\u{5D5}\u{5DC}\u{5DD}"
+            ],
+            "each run's bytes are its reading, a source segment of their own"
+        );
+    }
+
+    /// **Two stretches of ink are two blocks**, read right to left or not: two cells set on one
+    /// baseline stay apart.
+    #[test]
+    fn two_stretches_of_a_line_read_right_to_left_are_two_blocks() {
+        let a = artifact_of(line_read_right_to_left(17_500));
+        assert_eq!(
+            blocks_of(&a),
+            vec![
+                "\u{5E9}\u{5DC}\u{5D5}\u{5DD}",
+                "\u{5E2}\u{5D5}\u{5DC}\u{5DD}"
+            ]
+        );
+    }
+
+    /// **Two lines read right to left are two blocks**, as two drawn lines are: a stretch never
+    /// reaches past its line's baseline, so the second line's run does not join the first line's
+    /// though it starts, a line lower, where that one's ink ends.
+    #[test]
+    fn two_lines_read_right_to_left_are_two_blocks() {
+        let word = "\u{5DD}\u{5D5}\u{5DC}\u{5E9}";
+        let read = "\u{5E9}\u{5DC}\u{5D5}\u{5DD}";
+        let repr = with_readings(
+            repr_of_placed(&[
+                (word, None, 1000, 7200, Some(1200), None),
+                (word, None, 2200, 9600, Some(1200), None),
+            ]),
+            &[(0, read), (1, read)],
+        );
+        assert_eq!(blocks_of(&artifact_of(repr)), vec![read, read]);
+    }
+
+    /// **The grounding blocks hold the readings too**, one block for the line.
+    #[test]
+    fn a_line_read_right_to_left_is_one_geometric_block_of_its_readings() {
+        let repr = line_read_right_to_left(0);
+        let blocks = geometric_blocks(&repr.payload().nodes, &Default::default());
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(
+            blocks[0].text,
+            "\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}"
+        );
+    }
+
+    /// **Two runs of one word read right to left abut in a cell**: `אב`'s letters, drawn `א` then
+    /// `ב` to its right and read `ב` first, join with no space.
+    #[test]
+    fn two_runs_of_one_stretch_read_right_to_left_abut() {
+        let repr = with_readings(
+            repr_of_placed(&[
+                ("\u{5D1}", None, 1300, 7200, Some(300), None),
+                ("\u{5D0}", None, 1000, 7200, Some(300), None),
+            ]),
+            &[(0, "\u{5D1}"), (1, "\u{5D0}")],
+        );
+        let nodes = &repr.payload().nodes;
+        let pitch = pitch_reference(nodes);
+        let stretches = read_stretches(nodes, &pitch);
+        assert!(cell_runs_abut(&nodes[0], &nodes[1], &pitch, &stretches));
+        assert!(
+            read_stretches(&repr_of_placed(&[]).payload().nodes, &pitch).is_empty(),
+            "no run read right to left, no stretch"
+        );
     }
 
     /// **Body lines keep their lines**, a unit or not (decision #38): a list set without markers,

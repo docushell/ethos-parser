@@ -3500,6 +3500,13 @@ fn self_check(
                     format!("{:?}", b.block),
                 ));
             }
+            if a.reading != b.reading {
+                return Err(differs(
+                    "reading",
+                    format!("{:?}", a.reading),
+                    format!("{:?}", b.reading),
+                ));
+            }
             // The binding: every sequenced run under this engine's own element with the id the
             // writer assigned; every other run exactly as it was.
             match planned.run_mcids.get(i).copied().flatten() {
@@ -5264,6 +5271,7 @@ mod tests {
             italic: false,
             script: None,
             furniture: None,
+            reading: None,
             mcid: None,
             structural: artifact.then_some(ethos_parser_core::StructuralLocator::PdfArtifact(
                 PdfArtifactLocator { mcid: None },

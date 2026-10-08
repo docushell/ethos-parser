@@ -88,6 +88,7 @@ but two; the third row removes those two, a chart's axis labels and one justifie
 3. **ParseBench**: tables measured with `grits_trm_composite`; content faithfulness and visual
    grounding may not fall, since a false table would take text out of the prose.
 4. Every cell's text equals the concatenation of its runs — the invariant every rule already holds.
+   Since decision #54 a run read right to left contributes its reading, in reading order.
 
 A breach of 1 or 2 is not shipped and is the owner's call.
 

@@ -61,6 +61,11 @@ pub struct ShownText {
     pub text: String,
     /// Codes that produced them.
     pub codes: Vec<u32>,
+    /// How many characters each code decoded to, aligned with [`Self::codes`]: a ligature
+    /// code's several, a code its map sends to nothing none. A space this reader inserts after
+    /// the run is a character of [`Self::text`] and of no code. The right-to-left rule
+    /// (`crate::bidi`) reads it to keep each glyph's characters whole.
+    pub code_chars: Vec<usize>,
     /// Baseline origin in **user space**, before the page transform.
     pub origin: (f64, f64),
     /// Advance in user space, or `None` when the font carries no widths.
@@ -91,8 +96,8 @@ pub struct ShownText {
     /// any run holding such a code. `extract.rs`'s `scalar_code_mismatch` is not the test for that:
     /// it compares two counts, so a synthesized space sets it on a run whose codes are all single,
     /// and a code whose `ToUnicode` destination is empty — which `cmap.rs` accepts — decodes to no
-    /// character and can offset one that decodes to several. Nothing here records how many
-    /// characters each code produced.
+    /// character and can offset one that decodes to several. [`Self::code_chars`] records how
+    /// many characters each code produced.
     ///
     /// `Some` only when [`Self::advance`] is `Some`, and then `len() == codes.len()` and the
     /// entries sum to it. The two travel together because a code with no width advances nothing
@@ -1027,6 +1032,7 @@ impl<'a> Interpreter<'a> {
         // undecodable glyph 12 points right of where this engine used to put it.
         let mut dropped = false;
         let mut from_font = false;
+        let mut code_chars = Vec::with_capacity(codes.len());
 
         for code in codes {
             if !dropped {
@@ -1034,6 +1040,7 @@ impl<'a> Interpreter<'a> {
                     Ok(s) => {
                         text.push_str(s);
                         kept_codes.push(code);
+                        code_chars.push(s.chars().count());
                     }
                     // Decision #43: a code the declared map leaves unmapped, where the font itself
                     // states its characters — its declared encoding, a glyph name by rule, or its
@@ -1041,6 +1048,7 @@ impl<'a> Interpreter<'a> {
                     Err(_) if font.fallback.contains_key(&code) => {
                         text.push_str(&font.fallback[&code]);
                         kept_codes.push(code);
+                        code_chars.push(font.fallback[&code].chars().count());
                         from_font = true;
                     }
                     Err(e) => {
@@ -1097,6 +1105,7 @@ impl<'a> Interpreter<'a> {
         self.shown.push(ShownText {
             text,
             codes: kept_codes,
+            code_chars,
             origin,
             advance: advance_known.then_some(advance_total * scale),
             displacement: advance_known

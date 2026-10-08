@@ -312,6 +312,52 @@ fn lay_the_cells_in_one_column(doc: &mut lopdf::Document) {
     );
 }
 
+/// **A tagged cell of right-to-left text reads as its runs do** (decision #54). The tree's
+/// `/TD`s bind runs the right-to-left rule reads, so each cell's text is their readings in reading
+/// order — never their drawn text in that order, which is neither the page's order nor the
+/// reader's. `tagged-table-agrees` with its cells laid in one column, as
+/// [`lay_the_cells_in_one_column`] lays them, each now a Hebrew word drawn as its glyphs sit.
+#[test]
+fn a_tagged_cell_of_right_to_left_text_reads_as_its_runs_do() {
+    let bytes = edited_from("tagged-table-agrees", |doc| {
+        // `a` to `d` are alef to dalet.
+        let cmap = lopdf::Stream::new(
+            Dictionary::new(),
+            b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 4 beginbfchar \
+              <61> <05D0> <62> <05D1> <63> <05D2> <64> <05D3> endbfchar endcmap"
+                .to_vec(),
+        );
+        let cmap = doc.add_object(cmap);
+        let Ok(Object::Dictionary(font)) = doc.get_object_mut((5, 0)) else {
+            panic!("object 5 is the font");
+        };
+        font.set("ToUnicode", Object::Reference(cmap));
+        let Ok(Object::Stream(stream)) = doc.get_object_mut((4, 0)) else {
+            panic!("object 4 is the content stream");
+        };
+        stream.set_plain_content(
+            b"BT /F1 12 Tf \
+              /TD <</MCID 0>> BDC 1 0 0 1 50 94 Tm (dcba) Tj EMC \
+              /TD <</MCID 1>> BDC 1 0 0 1 50 80 Tm (cb) Tj EMC \
+              /TD <</MCID 2>> BDC 1 0 0 1 50 66 Tm (ad) Tj EMC \
+              /TD <</MCID 3>> BDC 1 0 0 1 50 52 Tm (ba) Tj EMC ET"
+                .to_vec(),
+        );
+    });
+    let a = extract_bytes(&bytes).expect("extracts");
+    let cells: Vec<&str> = a
+        .pages
+        .iter()
+        .flat_map(|p| p.tagged_tables.iter())
+        .flat_map(|t| t.cells.iter())
+        .map(|c| c.text.as_str())
+        .collect();
+    assert!(
+        cells.contains(&"\u{5D0}\u{5D1}\u{5D2}\u{5D3}"),
+        "`dcba`, drawn `דגבא`, reads `אבגד`: {cells:?}"
+    );
+}
+
 /// The object ids of every `/StructElem` in the document, in object order: 7, 8, 9.
 fn struct_elems(doc: &lopdf::Document) -> Vec<ObjectId> {
     let mut ids: Vec<ObjectId> = doc

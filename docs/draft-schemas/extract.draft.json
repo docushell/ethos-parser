@@ -268,6 +268,10 @@
           "enum": ["header", "footer"],
           "$comment": "Decision #41, as on the representation's text_run. Absent on every line that is not page furniture."
         },
+        "reading": {
+          "$ref": "urn:ethos-parser:draft-schema:document-representation:0#/$defs/reading",
+          "$comment": "Decision #54, as on the representation's text_run. Absent on every run whose line is not read right to left."
+        },
         "mcid": {
           "type": "integer",
           "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."

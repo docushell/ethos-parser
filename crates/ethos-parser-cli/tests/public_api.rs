@@ -330,6 +330,9 @@ const CORE: &[&str] = &[
     // Decision #46. The figure-region rule id and the record it writes.
     "FIGURE_RULE_V1",
     "FigureRecord",
+    // Decision #54. The right-to-left rule id, and a run as read.
+    "RIGHT_TO_LEFT_RULE_V1",
+    "Reading",
     "SourceIdentity",
     "Stage",
     "StructuralLocator",

@@ -102,7 +102,7 @@ fn slice_of(repr: &DocumentRepresentation, part: &OccurrencePart) -> String {
         .iter()
         .find(|n| n.id.as_str() == part.node.as_str())
         .expect("a part names a node of the representation it came from");
-    node.text
+    node.reading_text()
         .chars()
         .skip(part.char_start as usize)
         .take((part.char_end - part.char_start) as usize)
@@ -129,7 +129,7 @@ fn the_invariants_hold(repr: &DocumentRepresentation, found: &Locations, quote: 
         assert_eq!(
             joined, quote,
             "occurrence {i}'s parts, concatenated, must be the quote — offsets are into each \
-             node's own text, never the block's"
+             node's own text as read, never the block's"
         );
         for part in &occurrence.parts {
             let index = repr
@@ -162,7 +162,7 @@ fn shape(repr: &DocumentRepresentation, found: &Locations) -> Vec<Vec<(String, u
                         .iter()
                         .find(|n| n.id.as_str() == p.node.as_str())
                         .expect("a part names a node");
-                    (node.text.clone(), p.char_start, p.char_end)
+                    (node.reading_text().to_string(), p.char_start, p.char_end)
                 })
                 .collect()
         })
@@ -332,33 +332,32 @@ fn a_synthesized_character_inside_an_occurrence_is_declared() {
     );
 }
 
-/// **T9** — right-to-left text is searched **as it was drawn**, because that is what the run
-/// holds. `rtl-hebrew-visual-order` draws four CIDs in visual order, so the logical word does not
-/// occur and its reversal does.
+/// **T9** — right-to-left text is searched **as it is read** (decision #54).
+/// `rtl-hebrew-visual-order` draws four CIDs in visual order, so the run's `text` is the word
+/// reversed; the right-to-left rule reads the line from the right, and the run's reading — the
+/// word as typed — is what the blocks hold and what `locate` searches. The logical word occurs
+/// and its reversal does not; the part's offsets count into the reading.
 ///
-/// This test records a limitation rather than hiding one: `docs/CAPABILITY.md`'s bidi row states
-/// it, and **since 2026-09-23 the artifact states it too** — `right-to-left-not-reordered`,
-/// document-scoped, counting the runs affected. `locate` itself is unchanged and still matches on
-/// scalars exactly; what changed is that a caller getting an empty answer here can now see from
-/// the representation why. A reader who wants the logical word needs a bidi reordering this engine does
-/// not do.
+/// Until decision #54 this test recorded the opposite, a limitation: the drawn order was searched
+/// and the logical word not found, with `right-to-left-not-reordered` declaring why. The run's
+/// `text` still holds the drawn order — `Extracted`, untouched — so a quote copied out of a viewer
+/// still matches the record; it is the search that reads the line as its reader does.
 #[test]
-fn right_to_left_text_is_searched_as_the_page_drew_it() {
+fn right_to_left_text_is_searched_as_it_is_read() {
     let repr = pdf_repr("rtl-hebrew-visual-order");
     // Shin, lamed, vav, final mem — the word as it is typed and stored.
     let logical = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
     // The same four scalars in the order the content stream paints them, which is the run's text.
     let as_drawn = "\u{5dd}\u{5d5}\u{5dc}\u{5e9}";
 
-    assert!(
-        found_in(&repr, logical).occurrences.is_empty(),
-        "the logical word is not in the run, and inventing it would be a reordering nobody asked \
-         this engine for"
-    );
-    let found = found_in(&repr, as_drawn);
-    assert_eq!(shape(&repr, &found), vec![vec![(as_drawn.into(), 0, 4)]]);
+    let found = found_in(&repr, logical);
+    assert_eq!(shape(&repr, &found), vec![vec![(logical.into(), 0, 4)]]);
     assert_eq!(found.quote_scalars, 4);
-    the_invariants_hold(&repr, &found, as_drawn);
+    the_invariants_hold(&repr, &found, logical);
+    assert!(
+        found_in(&repr, as_drawn).occurrences.is_empty(),
+        "the blocks hold the line as read, so the drawn order is no longer a string they contain"
+    );
 }
 
 /// **T18** — an office representation answers too, with geometry **typed absent** rather than

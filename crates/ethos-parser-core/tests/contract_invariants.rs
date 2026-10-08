@@ -637,8 +637,9 @@ fn every_backend_component_is_the_version_the_lock_file_resolves() {
             named += 1;
         }
     }
-    // Guard the guard: three on the PDF profile and two on each of seven package profiles.
-    assert_eq!(named, 17, "the profiles name {named} components");
+    // Guard the guard: four on the PDF profile — `unicode-bidi` since decision #54 — and two on
+    // each of seven package profiles.
+    assert_eq!(named, 18, "the profiles name {named} components");
 }
 
 /// No verification concept has leaked in (`docs/07-VERIFY-BOUNDARY.md`).

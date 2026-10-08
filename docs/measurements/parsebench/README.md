@@ -643,6 +643,36 @@ where each sits on a track of its own (`docs/31-TABLE-TRACKS-SCOPE.md` §17). Ta
 2 pages up and none down; every other dimension unchanged on every page; opendataloader-bench
 unchanged. Overall 44.61.
 
+### After a right-to-left line read right to left (`right-to-left-lines-v1`, decision #54, 2026-10-08)
+
+The multilingual pages in Hebrew, Arabic and Farsi scored 0.26 to 0.31 on content: their producers
+draw each glyph where it sits, left to right, so every word came out reversed and every line in the
+order its runs were drawn. `right-to-left-lines-v1` reads a line whose right-to-left letters
+outnumber its left-to-right ones right to left, glyph by glyph — each code's characters whole, so a
+lam-alef ligature keeps its two letters' order — with numbers and Latin inside left to right, and
+each run carries its reading beside the text it was drawn with; the projections read the reading.
+
+| Dimension | After | Before |
+| --- | ---: | ---: |
+| Content faithfulness | 0.6657 | 0.6633 |
+| Semantic formatting | 0.4365 | 0.4356 |
+| Tables | 0.5026 | 0.5026 |
+| Charts | 0.1035 | 0.1035 |
+| Visual grounding | 0.5253 | 0.5253 |
+
+3 content pages rise and none falls: `text_multilang__arabic` 0.29 -> 0.89, `text_multilang__hebrew`
+0.31 -> 0.86, `text_multilang__farsi` 0.26 -> 0.32, whose fonts map several glyphs to Latin letters
+and to doubled letters, so its lines often hold more left-to-right letters than right-to-left and
+stay as drawn. One formatting page rises, `text_multilang__hebrew` 0.00 -> 0.42; no page moves on
+tables, charts or grounding. opendataloader-bench and the tree-stripped gate documents carry no
+right-to-left text and are unchanged byte for byte. Overall 44.61 -> 44.67.
+
+Measured before it, at the adapter and not used: reversing each line's characters after the
+projection — content 0.6648, Arabic only 0.46, because a ligature's two letters were reversed with
+the rest; and moving an Indic vowel sign drawn before its consonant after it, which gained 0.005 on
+one Hindi page where the sign was unambiguous and broke a Bengali page already in logical order
+(0.71 -> 0.33) where it was moved regardless.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

@@ -31,6 +31,7 @@
     "layout_unit_rule",
     "furniture_rule",
     "figure_rule",
+    "right_to_left_rule",
     "form_annotation_rule",
     "observation_rule",
     "raster_dpi",
@@ -62,7 +63,7 @@
         },
         "components": {
           "type": "object",
-          "description": "Crate name to the version Cargo.lock resolves (decision #35, review 2026-09-26 N14): flate2, read-fonts and skrifa on the PDF profile; flate2 and quick-xml on the seven package profiles; empty on RTF. A bump of any of them moves profile_sha256.",
+          "description": "Crate name to the version Cargo.lock resolves (decision #35, review 2026-09-26 N14): flate2, read-fonts, skrifa and (decision #54) unicode-bidi on the PDF profile; flate2 and quick-xml on the seven package profiles; empty on RTF. A bump of any of them moves profile_sha256.",
           "additionalProperties": {
             "type": "string",
             "minLength": 1
@@ -266,6 +267,14 @@
         "figure-regions-v1"
       ]
     },
+    "right_to_left_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the right-to-left rule in force (decision #54). `right-to-left-lines-v1`: a line — runs consecutive in reading order, in one region, on one baseline give or take a point and a half — whose right-to-left letters (Bidi_Class R or AL) outnumber its left-to-right ones is read right to left: its glyphs (each code's characters, kept whole, and each space the reader inserted) are taken where the page draws them, left to right, and the Unicode Bidirectional Algorithm (unicode-bidi, named in backend.components) gives the order they are read in, a number or a Latin word inside left to right. Each run takes its place in reading order where its first glyph is read and carries its glyphs as read in text_run.reading; its text, char_codes and synthesized keep the order the page drew. A line where a run's glyphs would not be read together, or holding a run of several right-to-left glyphs whose pen states no direction, is left as drawn and counted by right-to-left-not-reordered. Runs on every document, declared or not. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "examples": [
+        "right-to-left-lines-v1"
+      ]
+    },
     "markdown_rule": {
       "type": "string",
       "minLength": 1,
@@ -462,7 +471,8 @@
         "components": {
           "flate2": "1.1.9",
           "read-fonts": "0.36.0",
-          "skrifa": "0.39.0"
+          "skrifa": "0.39.0",
+          "unicode-bidi": "0.3.18"
         },
         "name": "lopdf",
         "version": "0.44.0"
@@ -509,6 +519,7 @@
         "mode": "not_emitted"
       },
       "reading_order_rule": "gutter-columns-v4",
+      "right_to_left_rule": "right-to-left-lines-v1",
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
         "charts": "bar-labels-v1",

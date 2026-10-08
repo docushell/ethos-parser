@@ -152,6 +152,11 @@ pub struct TextRun {
     /// lines; absent elsewhere.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub furniture: Option<ethos_parser_core::Furniture>,
+    /// The run as read, where its line is read right to left (decision #54, `crate::bidi`) — as
+    /// the representation's `text_run.reading`. Set before reading order is applied, on every run
+    /// of such a line; absent elsewhere. [`Self::text`] keeps the order the page drew.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading: Option<ethos_parser_core::Reading>,
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
@@ -184,6 +189,13 @@ pub struct TextRun {
 }
 
 impl TextRun {
+    /// The run's text in the order it is read: its reading where its line is read right to left
+    /// (decision #54), its text everywhere else. Text assembled from runs in reading order is
+    /// assembled from this, so a line read right to left never mixes the two orders.
+    pub(crate) fn reading_text(&self) -> &str {
+        self.reading.as_ref().map_or(&self.text, |r| &r.text)
+    }
+
     /// Whether the scalar count and code count actually disagree.
     ///
     /// Recomputed rather than trusted, so the stored flag can be checked against the data.
@@ -300,6 +312,7 @@ mod tests {
             italic: false,
             script: None,
             furniture: None,
+            reading: None,
             text: text.to_string(),
             char_codes: codes,
             scalar_code_mismatch: false,

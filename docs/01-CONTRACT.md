@@ -460,7 +460,8 @@ bytes, not UTF-16 code units (a JavaScript `text.length`), and not character cod
 inclusive and `char_end` exclusive, so `element.text` sliced by scalars over `char_start..char_end`
 is exactly `span.text`, which is the rule the consuming validator applies. Every member of the
 element counts, a run with no box included, because the element's text is every member's
-concatenated; a space the reader synthesized is a character of its run's text and counts as one
+concatenated — each member's text as read, which since decision #54 is a run's `reading` where its
+line is read right to left and its `text` everywhere else; a space the reader synthesized is a character of its run's text and counts as one
 (§10; PDF 32000-1 §9.4.3 — a `TJ` number shows no glyph, so a code index would be wrong). Both are
 present on every span exactly when `capabilities.char_offsets` is true, and an artifact claims that
 capability only while it carries spans.

@@ -57,6 +57,8 @@ pub mod limitations;
 #[cfg(test)]
 pub(crate) mod accuracy;
 pub(crate) mod afm;
+// Decision #54. Right-to-left lines read right to left, each glyph kept whole.
+pub(crate) mod bidi;
 pub(crate) mod blocks;
 pub(crate) mod budget;
 pub(crate) mod charts;

@@ -288,6 +288,8 @@ pub fn to_representation(
                     script: run.script,
                     // Decision #41: set after layout units, on an undeclared document's lines.
                     furniture: run.furniture,
+                    // Decision #54: set before reading order, on a right-to-left line's runs.
+                    reading: run.reading.clone(),
                     // v1-S6. Carried through unchanged. The node is here because the run is
                     // here; a finding never decides whether it gets projected.
                     findings: run.findings.clone(),

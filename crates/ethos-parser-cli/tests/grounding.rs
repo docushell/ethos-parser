@@ -461,6 +461,22 @@ fn turned_text_grounds_and_an_off_axis_run_is_omitted() {
     schema_subset::validate(&as_value(&p.source)).expect("the artifact validates");
 }
 
+/// **A run read right to left grounds as read** (decision #54): `rtl-hebrew-visual-order` draws
+/// `שלום` as its glyphs sit, and its element and span hold the word as written — the text a
+/// verifier matches a quote against — with the offsets counting into it.
+#[test]
+fn a_run_read_right_to_left_grounds_as_read() {
+    let p = ground(&engine_fx("rtl-hebrew-visual-order"));
+    let read = "\u{5E9}\u{5DC}\u{5D5}\u{5DD}";
+    assert_eq!(p.source.elements.len(), 1);
+    assert_eq!(p.source.elements[0].text.as_deref(), Some(read));
+    let spans = p.source.spans.as_ref().expect("spans");
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].text, read);
+    assert_eq!((spans[0].char_start, spans[0].char_end), (Some(0), Some(4)));
+    schema_subset::validate(&as_value(&p.source)).expect("the artifact validates");
+}
+
 /// The omission **selects**, proved inside a single artifact with mixed geometry.
 ///
 /// The version of this test that compared two all-or-nothing documents proved nothing: an emitter

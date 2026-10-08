@@ -113,6 +113,43 @@ build is not comparable with a 0.63.0 one**.
   nothing decodes is still refused, and so is one drawing with a predefined CJK CMap, whose code
   widths this profile cannot read.
 
+### Right-to-left lines read right to left (`right-to-left-lines-v1`, decision #54)
+
+A new profile field, `right_to_left_rule`, `right-to-left-lines-v1` (the office profiles name it
+`not-run-for-this-format`), and `unicode-bidi` 0.3.18 in `backend.components`, so
+`profile_sha256` moves (`sha256:fbc11839…` -> `sha256:a6c1cb67…`).
+
+- **A line whose right-to-left letters outnumber its left-to-right ones is read right to left.** A
+  producer whose layout engine resolved bidi draws Hebrew and Arabic glyphs where they sit, left to
+  right, so a run's text is the word reversed. The rule takes a line's glyphs where the page draws
+  them — each code's characters whole, so a lam-alef ligature keeps its two letters' order, and each
+  space the reader inserted a glyph of its own — and the Unicode Bidirectional Algorithm gives the
+  order they are read in, numbers and Latin inside left to right. A line is runs consecutive in
+  reading order, in one region, within a point and a half of one baseline.
+- **Beside the drawn text, never over it.** Each run of such a line takes its place in reading
+  order where its first glyph is read and carries `text_run.reading`: `text`, the same characters
+  in reading order, and `synthesized`, the characters the reader inserted where they are read.
+  `text`, `char_codes` and `synthesized` keep the order the page drew, and the record is refused
+  where a reading holds other characters or flags others. A build that denies unknown keys —
+  0.63.0 and earlier — refuses this build's extract of a document with one.
+- **Markdown, HTML, grounding and `locate` read the reading**: a quote typed in logical order is
+  found, its offsets counting into the reading, and a quote copied out of a viewer still matches
+  `text`. A line read right to left is one block where its runs lie in one stretch of the ink the
+  page drew, and a cell's text, ruled or tagged, is its runs' readings. No projection rule id moves:
+  a representation without a reading projects as before.
+- **`right-to-left-not-reordered` counts only the runs left unread**: on a line mostly left to
+  right, on one where a run's glyphs would not be read together — a number begun in one run and
+  finished in a run beside one of its letters — or on one holding a run of several right-to-left
+  glyphs whose pen states no direction. A mirrored glyph, a bracket, keeps the character its font
+  maps it to.
+- **Measured** on ParseBench: content faithfulness 0.6633 -> 0.6657 (Arabic 0.29 -> 0.89, Hebrew
+  0.31 -> 0.86, Farsi 0.26 -> 0.32, none down), semantic formatting 0.4356 -> 0.4365 (Hebrew
+  0.00 -> 0.42); tables, charts and visual grounding unchanged on every page; overall 44.61 ->
+  44.67. opendataloader-bench and the tree-stripped gate documents unchanged byte for byte. Not
+  used: reversing each line after the projection (Arabic 0.46, a ligature's letters reversed with
+  the rest), and moving an Indic vowel sign drawn before its consonant after it (0.005 on one page,
+  and a Bengali page already in logical order broken).
+
 ### Layout units: lines joined by their own spacing (decision #38)
 
 A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles name it

@@ -6761,22 +6761,23 @@ fn the_empty_destination_offsets_a_ligature() {
 // Right-to-left text: what this engine does with it, measured (B9)
 // -------------------------------------------------------------------------------------------
 
-/// **Right-to-left text is reported in the order the page draws it, and nothing is reordered.**
+/// **Right-to-left text keeps the order the page draws it, and is read right to left beside it**
+/// (decision #54).
 ///
 /// `rtl-hebrew-visual-order` draws the four letters of `שלום` — ש ל ו ם in logical order, read
 /// right to left — as `<0004000300020001>`, which is the order their glyphs sit on the page for a
-/// producer whose layout engine has already resolved bidi. Every such producer writes it this way,
-/// and this is what the engine says about it: one run, the codes in the page's order, and the text
-/// the logical word reversed.
+/// producer whose layout engine has already resolved bidi. Every such producer writes it this way.
+/// The run's `text` and `char_codes` are what the page draws, the logical word reversed, exactly
+/// as before the rule: `Extracted`, and nothing overwrites them. Beside them, `right-to-left-lines-v1`
+/// reads the line right to left — its glyphs taken where they sit and read from the right — and
+/// the run's `reading` is the word as written, `Computed`.
 ///
-/// **This is a statement, not a defect.** The engine reports what the document draws; applying the
-/// Unicode bidi algorithm would reorder characters the document did not, and a reordered string is
-/// not what any byte of the page says. The consequence is real and belongs to the consumer: a
-/// quote copied out of a viewer matches this run, and a quote typed in logical order does not.
-/// **The artifact declares that as of 2026-09-23** — `right-to-left-not-reordered`, asserted
-/// below, which is the owner decision `docs/OPEN-WORK.md` §4 held open until then.
+/// So a quote copied out of a viewer still matches `text`, and a quote typed in logical order now
+/// matches the reading, which is what the projections and `locate` search. The artifact declared
+/// the drawn order as `right-to-left-not-reordered` from 2026-09-23; since the rule, that
+/// declaration counts only runs it leaves unread, and here it reads every one.
 #[test]
-fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
+fn right_to_left_text_keeps_the_order_the_page_draws_and_is_read_beside_it() {
     let a = extract_ok(engine_fx("rtl-hebrew-visual-order"));
     let run = runs(&a);
     assert_eq!(run.len(), 1, "one string, one run");
@@ -6796,10 +6797,22 @@ fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
         !run[0].scalar_code_mismatch,
         "four codes, four scalars: nothing about right-to-left text sets this flag"
     );
+    let reading = run[0]
+        .reading
+        .as_ref()
+        .expect("the line is read right to left");
+    assert_eq!(
+        reading.text, logical,
+        "read from the right, the word as written"
+    );
+    assert!(
+        reading.synthesized.is_empty(),
+        "the reader inserted nothing"
+    );
 
     // The four glyphs are 500 glyph units each at 12 pt: 6 pt, 2 400 centipoints in total, and
     // the box grows to the RIGHT from the origin, as it does for left-to-right text — the page's
-    // own geometry, not a reading direction this engine inferred.
+    // own geometry, untouched by the reading.
     assert_eq!(run[0].locator.advance, Some(2400));
     match &run[0].geometry {
         GeometryPresence::Measured(r) => {
@@ -6809,24 +6822,87 @@ fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
         GeometryPresence::Absent(reason) => panic!("the fixture has metrics: {reason:?}"),
     }
 
-    // And the artifact says so. Before this code the consequence above lived only in
-    // `CAPABILITY.md` and in this test — true, and unreadable by anything consuming the artifact.
-    let declared: Vec<_> = a
-        .assurance
-        .limitations
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED),
+        "every right-to-left run here is read, so nothing is left in the page's order alone"
+    );
+}
+
+/// **A cell of right-to-left text reads as its runs do** (decision #54). `ruled-table-grid`'s
+/// grid, each cell holding a Hebrew word drawn as its glyphs sit, left to right: the cell's text
+/// is its runs' readings in reading order, the concatenation a cell's text has always been, of
+/// the text each run is read as — and each run still holds the order the page drew.
+#[test]
+fn a_ruled_cell_of_right_to_left_text_reads_as_its_runs_do() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream(
+            b"1 w 40 120 100 40 re S 140 120 100 40 re S 240 120 100 40 re S \
+              40 80 100 40 re S 140 80 100 40 re S 240 80 100 40 re S \
+              40 40 100 40 re S 140 40 100 40 re S 240 40 100 40 re S \
+              BT /F1 12 Tf 1 0 0 1 50 134 Tm (dcba) Tj 1 0 0 1 150 134 Tm (cb) Tj \
+              1 0 0 1 250 134 Tm (ed) Tj 1 0 0 1 50 94 Tm (ba) Tj 1 0 0 1 150 94 Tm (dc) Tj \
+              1 0 0 1 250 94 Tm (ae) Tj 1 0 0 1 50 54 Tm (cab) Tj 1 0 0 1 150 54 Tm (eb) Tj \
+              1 0 0 1 250 54 Tm (da) Tj ET",
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 97 /LastChar 101 \
+           /Widths [500 500 500 500 500] /ToUnicode 6 0 R >>"
+            .to_vec(),
+        // `a` to `e` are alef to he.
+        stream(
+            b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 5 beginbfchar \
+              <61> <05D0> <62> <05D1> <63> <05D2> <64> <05D3> <65> <05D4> endbfchar endcmap",
+        ),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    let page = &a.pages[0];
+    let table = page.tables.first().expect("the grid is a table");
+    for cell in &table.cells {
+        let read: String = cell
+            .run_indices
+            .iter()
+            .map(|&i| {
+                page.runs[i]
+                    .reading
+                    .as_ref()
+                    .expect("every line here is read")
+            })
+            .map(|r| r.text.as_str())
+            .collect();
+        assert_eq!(cell.text, read, "a cell's text is its runs' readings");
+    }
+    // `dcba` is drawn `דגבא` and read `אבגד`.
+    let first = page
+        .runs
         .iter()
-        .filter(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED)
-        .collect();
-    assert_eq!(declared.len(), 1, "declared once: {declared:?}");
+        .find(|r| r.text == "\u{5D3}\u{5D2}\u{5D1}\u{5D0}")
+        .expect("the run keeps the order the page drew");
     assert_eq!(
-        declared[0].scope,
-        ethos_parser_core::LimitationScope::Document,
-        "document-scoped: the condition is measurable, so it is a fact about THIS document"
+        first.reading.as_ref().map(|r| r.text.as_str()),
+        Some("\u{5D0}\u{5D1}\u{5D2}\u{5D3}")
     );
     assert!(
-        declared[0].detail.starts_with("1 run(s)"),
-        "the count is runs, and this fixture has one: {}",
-        declared[0].detail
+        table
+            .cells
+            .iter()
+            .any(|c| c.text == "\u{5D0}\u{5D1}\u{5D2}\u{5D3}"),
+        "{:?}",
+        table.cells.iter().map(|c| &c.text).collect::<Vec<_>>()
     );
 }
 
@@ -6909,6 +6985,10 @@ fn a_document_without_right_to_left_text_declares_nothing_about_it() {
 /// **An astral right-to-left scalar is declared too** (review 2026-09-26 N44). The block test read
 /// three BMP ranges, so Adlam, Hanifi Rohingya, Imperial Aramaic or the Arabic mathematical
 /// alphabet declared nothing, where the declaration's absence reads as *no right-to-left text*.
+///
+/// Since decision #54 the declaration counts the runs the right-to-left rule leaves unread, so the
+/// Adlam letter is drawn here with three Latin ones: a line mostly left to right, which the rule
+/// does not read.
 #[test]
 fn an_astral_right_to_left_scalar_is_declared() {
     let stream = |data: &[u8]| {
@@ -6925,16 +7005,21 @@ fn an_astral_right_to_left_scalar_is_declared() {
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
            >> >> /Contents 4 0 R >>"
             .to_vec(),
-        stream(b"BT /F1 24 Tf 72 72 Td (A) Tj ET"),
+        stream(b"BT /F1 24 Tf 72 72 Td (ABCD) Tj ET"),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R >>".to_vec(),
-        // U+1E900, ADLAM CAPITAL LETTER ALIF, as its UTF-16 surrogate pair.
+        // U+1E900, ADLAM CAPITAL LETTER ALIF, as its UTF-16 surrogate pair, then `bcd`.
         stream(
-            b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 1 beginbfchar \
-              <41> <D83ADD00> endbfchar endcmap",
+            b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 4 beginbfchar \
+              <41> <D83ADD00> <42> <0062> <43> <0063> <44> <0064> endbfchar endcmap",
         ),
     ]);
     let a = extracted(&bytes).expect("reads");
-    assert_eq!(runs(&a)[0].text, "\u{1E900}");
+    assert_eq!(runs(&a)[0].text, "\u{1E900}bcd");
+    assert_eq!(
+        runs(&a)[0].reading,
+        None,
+        "a line mostly left to right is not read"
+    );
     assert!(
         a.assurance
             .limitations

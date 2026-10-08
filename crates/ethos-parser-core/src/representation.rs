@@ -1509,6 +1509,19 @@ pub enum Furniture {
     Footer,
 }
 
+/// A run's text as read, beside the order the page drew it: see [`TextRunAttributes::reading`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Reading {
+    /// The run's characters, its glyphs in the order they are read.
+    pub text: String,
+    /// The characters of [`Self::text`] this reader inserted, by index counted in `char`s: each of
+    /// those [`TextRunAttributes::synthesized`] names in the drawn text, where it is read, for the
+    /// same reason. Empty where the reader inserted none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub synthesized: Vec<u32>,
+}
+
 /// Format-specific facts about a node that do not fit the common fields.
 ///
 /// Kept as a typed struct rather than an open map: an open map is a place for a future field to
@@ -1661,6 +1674,18 @@ pub struct TextRunAttributes {
     /// id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub furniture: Option<Furniture>,
+    /// The run as read, where its line is read right to left (decision #54): its own characters
+    /// with its glyphs in the order a reader takes them — right to left, a number or a Latin word
+    /// inside left to right — each glyph's characters kept whole, none added and none dropped.
+    ///
+    /// `Computed` under the profile's `right_to_left_rule`, beside the `Extracted` text it
+    /// reorders: **`text`, `char_codes` and `synthesized` keep the order the page drew**, so a
+    /// quote copied out of a viewer still matches the one and a quote typed in reading order
+    /// matches this. Set on every run of a line the rule reads, where the run's place in reading
+    /// order is the rule's too; the projections and `locate` read it in place of `text`
+    /// ([`Node::reading_text`]). PDF only. **Absent** on every other run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading: Option<Reading>,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -2136,6 +2161,21 @@ pub struct Node {
     pub derivation: DerivationClass,
     /// Facts only this node's kind has. Its tag must agree with [`Self::kind`].
     pub attributes: NodeAttributes,
+}
+
+impl Node {
+    /// The node's text in the order it is read: a text run's [`TextRunAttributes::reading`] where
+    /// its line is read right to left (decision #54), and [`Self::text`] everywhere else. The same
+    /// characters either way.
+    pub fn reading_text(&self) -> &str {
+        match &self.attributes {
+            NodeAttributes::TextRun(TextRunAttributes {
+                reading: Some(read),
+                ..
+            }) => &read.text,
+            _ => &self.text,
+        }
+    }
 }
 
 /// Geometry for one node, carried **outside** the fingerprinted payload.
@@ -2673,7 +2713,56 @@ impl DocumentRepresentation {
         self.check_geometry_matches_its_declaration()?;
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
         self.check_attributes_agree_with_kind()?;
+        self.check_readings_move_characters()?;
 
+        Ok(())
+    }
+
+    /// Every run's reading holds exactly its `text`'s characters, and flags exactly the ones its
+    /// `synthesized` flags (decision #54).
+    ///
+    /// The reading moves glyphs and nothing else. A reading holding a character the page did not
+    /// draw — or missing one it did — would put text in every projection that no byte of the
+    /// document states, under a field whose whole claim is that it is the same characters; and a
+    /// character the reader inserted must be flagged wherever it is written (contract §10).
+    fn check_readings_move_characters(&self) -> Result<(), EngineError> {
+        for node in &self.representation.nodes {
+            let NodeAttributes::TextRun(attrs) = &node.attributes else {
+                continue;
+            };
+            let Some(read) = &attrs.reading else {
+                continue;
+            };
+            let sorted = |chars: Vec<char>| {
+                let mut chars = chars;
+                chars.sort_unstable();
+                chars
+            };
+            let drawn: Vec<char> = node.text.chars().collect();
+            let read_chars: Vec<char> = read.text.chars().collect();
+            let inserted = |chars: &[char], at: &mut dyn Iterator<Item = usize>| {
+                at.map(|i| chars.get(i).copied())
+                    .collect::<Option<Vec<char>>>()
+            };
+            let drawn_inserted = inserted(
+                &drawn,
+                &mut attrs.synthesized.iter().map(|s| s.char_index as usize),
+            );
+            let read_inserted = inserted(
+                &read_chars,
+                &mut read.synthesized.iter().map(|&i| i as usize),
+            );
+            if sorted(read_chars.clone()) != sorted(drawn.clone())
+                || read_inserted.is_none()
+                || drawn_inserted.map(sorted) != read_inserted.map(sorted)
+            {
+                return Err(Self::malformed(format!(
+                    "node `{}` reads `{}` for its text `{}`; a run's reading is its own \
+                     characters in another order, never others, and flags the ones it inserted",
+                    node.id, read.text, node.text
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -3078,6 +3167,7 @@ mod tests {
                 italic: false,
                 script: None,
                 furniture: None,
+                reading: None,
             }),
         }
     }
@@ -3146,6 +3236,51 @@ mod tests {
             GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
         );
         seal(vec![n], vec![p], vec![g]).unwrap()
+    }
+
+    /// **A reading is the run's own characters, and flags the ones it inserted** (decision #54).
+    #[test]
+    fn a_reading_with_other_characters_or_other_flags_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let p = page(&mut alloc, 1);
+        let mut n = node(&mut alloc, &p.id, 1, 1);
+        let sealed = |n: &Node| {
+            let g = geom(
+                n,
+                GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+            );
+            seal(vec![n.clone()], vec![p.clone()], vec![g])
+        };
+        let read = |n: &mut Node, text: &str, synthesized: Vec<u32>| {
+            if let NodeAttributes::TextRun(a) = &mut n.attributes {
+                a.reading = Some(Reading {
+                    text: text.into(),
+                    synthesized,
+                });
+            }
+        };
+        read(&mut n, "olleh", Vec::new());
+        sealed(&n).expect("its own characters in another order");
+        read(&mut n, "hallo", Vec::new());
+        let err = sealed(&n).unwrap_err();
+        assert!(err.to_string().contains("never others"), "{err}");
+
+        n.text = "hello ".into();
+        if let NodeAttributes::TextRun(a) = &mut n.attributes {
+            a.synthesized = vec![SynthesizedAt {
+                char_index: 5,
+                reason: "tj-gap".into(),
+            }];
+        }
+        read(&mut n, " olleh", vec![0]);
+        sealed(&n).expect("the inserted space, flagged where it is read");
+        read(&mut n, " olleh", Vec::new());
+        assert!(
+            sealed(&n).is_err(),
+            "an inserted space the reading leaves unflagged"
+        );
+        read(&mut n, " olleh", vec![1]);
+        assert!(sealed(&n).is_err(), "a flag on a letter the page drew");
     }
 
     // ---------------------------------------------------------------------------------------

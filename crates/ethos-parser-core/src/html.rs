@@ -423,6 +423,7 @@ pub fn to_html(
     // v2.2-S5. The undeclared fallback, from `crate::markdown` so the two projections cannot
     // drift: a document that reads as one block there must read as one `<p>` here.
     let pitch = crate::markdown::pitch_reference(&payload.nodes);
+    let stretches = crate::markdown::read_stretches(&payload.nodes, &pitch);
     let wrapped = crate::markdown::wrapped_labels(repr);
     let mut open_line: Option<crate::markdown::LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
@@ -453,7 +454,7 @@ pub fn to_html(
                 emitted_tables[t] = true;
                 flush_block(&mut e, &mut open_block);
                 list.close_to(&mut e, 0);
-                emit_table(&mut e, &plans[t], &pitch);
+                emit_table(&mut e, &plans[t], &pitch, &stretches);
                 open_item = None;
             }
             open_group = None;
@@ -464,7 +465,7 @@ pub fn to_html(
             continue;
         }
 
-        let text = normalize(&node.text);
+        let text = normalize(node.reading_text());
         if text.is_empty() {
             // v2.2-S1. The space the page drew, which this `continue` used to destroy. The block
             // stays open: a space inside a marked-content sequence does not end it.
@@ -515,7 +516,9 @@ pub fn to_html(
                 let abuts = i
                     .checked_sub(1)
                     .and_then(|at| payload.nodes.get(at))
-                    .is_some_and(|prev| crate::markdown::cell_runs_abut(prev, node, &pitch));
+                    .is_some_and(|prev| {
+                        crate::markdown::cell_runs_abut(prev, node, &pitch, &stretches)
+                    });
                 if !abuts {
                     e.syntax(" ");
                 }
@@ -539,12 +542,14 @@ pub fn to_html(
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
                 let drew_space = pending_space
-                    || prev.text.ends_with(char::is_whitespace)
-                    || node.text.starts_with(char::is_whitespace);
+                    || prev.reading_text().ends_with(char::is_whitespace)
+                    || node.reading_text().starts_with(char::is_whitespace);
                 let broke_a_line = crate::markdown::on_different_lines(prev, node);
                 if drew_space || broke_a_line {
                     Some(true)
-                } else if crate::markdown::ink_contiguous(prev, node, &pitch) {
+                } else if crate::markdown::read_together(&stretches, prev, node)
+                    .unwrap_or_else(|| crate::markdown::ink_contiguous(prev, node, &pitch))
+                {
                     Some(false)
                 } else {
                     None
@@ -552,20 +557,30 @@ pub fn to_html(
             }
             // v2.2-S5. Neither run carries a declaration; geometry along one baseline is the
             // whole licence. The clauses are `crate::markdown`'s, called rather than restated.
-            (None, None, Some(_)) => match (open_line, line_ink) {
-                (Some(line), Some((ink, end, reference)))
-                    if ht.is_none()
-                        && Some(line) == crate::markdown::line_key(node)
-                        && crate::markdown::ink_sequenced(ink, end, reference, node) =>
-                {
-                    Some(
+            // Decision #54: `crate::markdown`'s join for a line read right to left, as there.
+            (None, None, Some(prev)) => {
+                match crate::markdown::read_together(&stretches, prev, node) {
+                    Some(together) => (together && ht.is_none()).then(|| {
                         pending_space
-                            || ink.text.ends_with(char::is_whitespace)
-                            || node.text.starts_with(char::is_whitespace),
-                    )
+                            || prev.reading_text().ends_with(char::is_whitespace)
+                            || node.reading_text().starts_with(char::is_whitespace)
+                    }),
+                    None => match (open_line, line_ink) {
+                        (Some(line), Some((ink, end, reference)))
+                            if ht.is_none()
+                                && Some(line) == crate::markdown::line_key(node)
+                                && crate::markdown::ink_sequenced(ink, end, reference, node) =>
+                        {
+                            Some(
+                                pending_space
+                                    || ink.text.ends_with(char::is_whitespace)
+                                    || node.text.starts_with(char::is_whitespace),
+                            )
+                        }
+                        _ => None,
+                    },
                 }
-                _ => None,
-            },
+            }
             _ => None,
         };
 
@@ -672,7 +687,7 @@ pub fn to_html(
     // wrote in it.
     for (t, plan) in plans.iter().enumerate() {
         if plan.projected && !emitted_tables[t] {
-            emit_table(&mut e, plan, &pitch);
+            emit_table(&mut e, plan, &pitch, &stretches);
         }
     }
 
@@ -713,7 +728,12 @@ pub fn to_html(
 /// **A hole is still a cell.** A slot no cell originates in and no merge reaches comes out as
 /// `<td></td>`: the document drew that position and wrote nothing in it, and truncating it to
 /// tidy the row is the competitor erasure A14 names.
-fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &crate::markdown::PitchReference) {
+fn emit_table(
+    e: &mut Emit,
+    plan: &TablePlan,
+    pitch: &crate::markdown::PitchReference,
+    stretches: &crate::markdown::Stretches<'_>,
+) {
     e.table(true);
     e.syntax("<table>\n");
     for row in 0..plan.rows {
@@ -744,9 +764,10 @@ fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &crate::markdown::PitchRefe
             let mut first = true;
             let mut prev: Option<&crate::Node> = None;
             for node in &plan.slots[index] {
-                let text = normalize(&node.text);
-                let abuts =
-                    prev.is_some_and(|prev| crate::markdown::cell_runs_abut(prev, node, pitch));
+                let text = normalize(node.reading_text());
+                let abuts = prev.is_some_and(|prev| {
+                    crate::markdown::cell_runs_abut(prev, node, pitch, stretches)
+                });
                 prev = Some(node);
                 if text.is_empty() {
                     continue;
@@ -795,6 +816,17 @@ mod tests {
             &profile.html_rule,
         )
         .expect("projects")
+    }
+
+    /// **A line read right to left is one paragraph of its runs' readings** (decision #54) —
+    /// `crate::markdown`'s stretches, so the two projections read the line alike.
+    #[test]
+    fn a_line_read_right_to_left_is_one_paragraph() {
+        let html = artifact_of(crate::markdown::tests::line_read_right_to_left(0)).html;
+        assert!(
+            html.contains("<p>\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}</p>"),
+            "{html}"
+        );
     }
 
     /// **A heading set on two lines is one `<h1>`, and body lines keep their elements** (decision

@@ -1079,6 +1079,23 @@ pub const FURNITURE_RULE_V1: &str = "margin-bands-v1";
 /// (`docs/measurements/parsebench/README.md`).
 pub const FIGURE_RULE_V1: &str = "figure-regions-v1";
 
+/// The right-to-left rule decision #54 ships: **a right-to-left line read right to left**, each
+/// glyph's characters kept whole.
+///
+/// A line is a stretch of runs consecutive in reading order, in one region, on one baseline give
+/// or take a point and a half. Where its right-to-left letters (`Bidi_Class` R or AL) outnumber
+/// its left-to-right ones, its glyphs — each code's characters, and each space the reader
+/// inserted — are taken where the page draws them, left to right, and the Unicode Bidirectional
+/// Algorithm (`unicode-bidi`, which [`BackendIdentity::components`] names) resolves the order they
+/// are read in: right to left, a number or a Latin word inside left to right. Each run takes its
+/// place in reading order where its first glyph is read, and its glyphs as read are its
+/// [`crate::TextRunAttributes::reading`]; its `text` and `char_codes` keep the order the page
+/// drew. A line where a run's glyphs would not be read together, or where a run of several
+/// right-to-left glyphs states no direction, is left as drawn, and
+/// `right-to-left-not-reordered` counts its runs. Measured before it shipped, on ParseBench's
+/// right-to-left pages (`docs/measurements/parsebench/README.md`).
+pub const RIGHT_TO_LEFT_RULE_V1: &str = "right-to-left-lines-v1";
+
 /// The forms-and-annotations rule v1-S4 ships.
 ///
 /// On the profile because it decides which nodes exist. Which flag bits are named, how a
@@ -1168,8 +1185,8 @@ pub struct BackendIdentity {
     /// The profile named `lopdf` alone, so a bump of the crates under it moved output with
     /// `profile_sha256` unchanged: Dependabot #40, skrifa 0.39 -> 0.47, passed all 32 checks,
     /// cross-OS digests included, while skrifa's metrics size every PDF text box. Each profile
-    /// names the crates its own reader runs — the PDF profile `flate2`, `read-fonts` and `skrifa`;
-    /// the seven package formats `flate2`, which inflates their ZIP entries, and `quick-xml`; RTF
+    /// names the crates its own reader runs — the PDF profile `flate2`, `read-fonts`, `skrifa` and,
+    /// since decision #54, `unicode-bidi`; the seven package formats `flate2`, which inflates their ZIP entries, and `quick-xml`; RTF
     /// none — and `contract_invariants.rs` holds every version to what `Cargo.lock` resolves, so
     /// a bump fails there until identity moves with it.
     pub components: std::collections::BTreeMap<String, String>,
@@ -1183,6 +1200,9 @@ const QUICK_XML_VERSION: &str = "0.41.0";
 const READ_FONTS_VERSION: &str = "0.36.0";
 /// `skrifa`, as `Cargo.lock` resolves it: the metrics under every PDF text box.
 const SKRIFA_VERSION: &str = "0.39.0";
+/// `unicode-bidi`, as `Cargo.lock` resolves it: the bidi classes and algorithm the right-to-left
+/// rule reads a line with (decision #54).
+const UNICODE_BIDI_VERSION: &str = "0.3.18";
 
 /// [`BackendIdentity::components`] from `(crate, version)` pairs.
 fn components(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
@@ -1219,6 +1239,7 @@ impl Default for BackendIdentity {
                 ("flate2", FLATE2_VERSION),
                 ("read-fonts", READ_FONTS_VERSION),
                 ("skrifa", SKRIFA_VERSION),
+                ("unicode-bidi", UNICODE_BIDI_VERSION),
             ]),
         }
     }
@@ -2031,6 +2052,12 @@ pub struct Profile {
     /// See [`FIGURE_RULE_V1`]. Its own field for `layout_unit_rule`'s reason: it runs only where
     /// the document declares no structure. Refused, not defaulted, when absent.
     pub figure_rule: String,
+    /// Version id of the right-to-left rule in force (decision #54).
+    ///
+    /// See [`RIGHT_TO_LEFT_RULE_V1`]. Its own field because it reads evidence no other rule
+    /// reads — the direction of the letters a line holds — and runs on every document, declared
+    /// or not. Refused, not defaulted, when absent.
+    pub right_to_left_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
     /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V12`]. On the profile because it decides what
@@ -2124,6 +2151,7 @@ impl Default for Profile {
             layout_unit_rule: LAYOUT_UNIT_RULE_V3.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
+            right_to_left_rule: RIGHT_TO_LEFT_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V12.to_string(),
@@ -2219,6 +2247,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2296,6 +2325,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2367,6 +2397,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2442,6 +2473,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2504,6 +2536,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2572,6 +2605,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2639,6 +2673,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2709,6 +2744,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -2833,6 +2869,7 @@ mod tests {
                 layout_unit_rule,
                 furniture_rule,
                 figure_rule,
+                right_to_left_rule,
                 markdown_rule,
                 html_rule,
                 locate_rule,
@@ -2996,6 +3033,7 @@ mod tests {
             layout_unit_rule: _,
             furniture_rule: _,
             figure_rule: _,
+            right_to_left_rule: _,
             markdown_rule: _,
             html_rule: _,
             locate_rule: _,
@@ -3097,6 +3135,11 @@ mod tests {
                 // Mutated toward `false`: the PDF profile infers figure regions.
                 "capabilities.figures",
                 Box::new(|p: &mut Profile| p.capabilities.figures = false),
+            ),
+            (
+                // Decision #54. Which lines are read right to left.
+                "right_to_left_rule",
+                Box::new(|p: &mut Profile| p.right_to_left_rule = "other-right-to-left-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -3265,12 +3308,13 @@ mod tests {
         // forty since its `layout_unit_rule`. Forty-one since decision #41, which added
         // `furniture_rule` the same way, and forty-two since decision #42, which added
         // `table_detection.charts` the same way. Forty-four since decision #46, which added
-        // `figure_rule` and `capabilities.figures` the same way.
+        // `figure_rule` and `capabilities.figures` the same way, and forty-five since decision
+        // #54, which added `right_to_left_rule` the same way.
         assert_eq!(
             mutations.len(),
-            44,
-            "{} single-field mutation(s); forty-four is the number at decision #46, which added \
-             `figure_rule` and `capabilities.figures` with their mutations",
+            45,
+            "{} single-field mutation(s); forty-five is the number at decision #54, which added \
+             `right_to_left_rule` with its mutation",
             mutations.len()
         );
 
@@ -3325,7 +3369,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v10","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v10","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4429,11 +4473,16 @@ mod tests {
              else.\n\n\
              Moved for decision #53, `sha256:b28dabd3…` -> `sha256:fbc11839…`: \
              `table_detection.tracks` `whitespace-tracks-v9` -> `-v10`, which reads a cell of \
-             several numbers as as many cells. Nothing else."
+             several numbers as as many cells. Nothing else.\n\n\
+             Moved for decision #54, `sha256:fbc11839…` -> `sha256:a6c1cb67…`: the new \
+             `right_to_left_rule`, `right-to-left-lines-v1`, which reads a right-to-left line \
+             right to left with each glyph kept whole, and `unicode-bidi` 0.3.18 in \
+             `backend.components`, whose tables decide that order. The office profiles name the \
+             rule `not-run-for-this-format`. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:fbc11839feef33939da46d57d0a7d3484c627d5b66d03e7e24ec4dba6109c5a7"
+            "sha256:a6c1cb67f479564767c27c13db6576164267a0f88858aa514e46b8c45ca166f6"
         );
     }
 

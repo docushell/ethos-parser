@@ -781,7 +781,7 @@ fn project_within(
         for &i in &block.members {
             let node = &payload.nodes[i];
             let start = scalars;
-            scalars += node.text.chars().count();
+            scalars += node.reading_text().chars().count();
             let presence = repr
                 .geometry_at(i)
                 .ok_or_else(|| malformed(format!("node {i} has no geometry row")))?;
@@ -851,7 +851,9 @@ fn project_within(
                 id: node.id.as_str().to_string(),
                 page: page_id.clone(),
                 bbox: bbox.to_array(),
-                text: node.text.clone(),
+                // Decision #54: as the element's text reads it — a run read right to left in
+                // its reading, the rest as drawn.
+                text: node.reading_text().to_string(),
                 element: Some(element_id.clone()),
                 // Present exactly when the record claims offsets: the consuming validator
                 // requires `offsets_present == capabilities.char_offsets` on every span.
@@ -1349,6 +1351,7 @@ mod schema_limit_tests {
                     italic: false,
                     script: None,
                     furniture: None,
+                    reading: None,
                 }),
             };
             geometry.push(NodeGeometry {
@@ -1428,6 +1431,7 @@ mod schema_limit_tests {
                         italic: false,
                         script: None,
                         furniture: None,
+                        reading: None,
                     }),
                 };
                 geometry.push(NodeGeometry {

@@ -222,8 +222,9 @@ fn declared_len(count: usize) -> u32 {
 /// [`crate::limitations::right_to_left_not_reordered`].
 ///
 /// **A block test, deliberately, and named so.** Unicode's `Bidi_Class` is the property that
-/// actually answers *is this character right-to-left*, and this engine carries no Unicode
-/// character database — so this reads the ranges the right-to-left scripts occupy instead:
+/// actually answers *is this character right-to-left*, and the right-to-left rule reads it
+/// (`crate::bidi`, decision #54); this count, which predates the rule, keeps reading the ranges the
+/// right-to-left scripts occupy instead, the wider net for a statement of what was left undone:
 /// `U+0590`–`U+08FF` is Hebrew through Arabic Extended-A (Syriac, Thaana, NKo, Samaritan and
 /// Mandaic among them), and the two presentation-form ranges follow. The two astral ranges are the
 /// ones Unicode reserves for right-to-left scripts, whose unassigned code points default to
@@ -578,6 +579,10 @@ fn extract_page(
     // `whitespace-tracks-v5`: where each run's last inked character ends, beside `ems` and aligned
     // with `runs` as it is, until the tracks pass reads it. Never on a `TextRun`.
     let mut ink_ends: Vec<Option<i64>> = Vec::new();
+    // Decision #54: how many characters each of a run's codes decoded to, aligned with `runs` in
+    // content order until the right-to-left rule reads it, before `reorder_page`. Never on a
+    // `TextRun`.
+    let mut code_chars: Vec<Vec<usize>> = Vec::new();
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
@@ -656,6 +661,7 @@ fn extract_page(
         let mut runs = Vec::with_capacity(shown_runs.len());
         op_indices.reserve(shown_runs.len());
         ems.reserve(shown_runs.len());
+        code_chars.reserve(shown_runs.len());
         for shown in shown_runs {
             if shown.text.is_empty() {
                 continue;
@@ -793,6 +799,8 @@ fn extract_page(
                 _ => None,
             });
 
+            code_chars.push(shown.code_chars);
+
             let synthesized: Vec<SynthesizedChar> = shown
                 .synthesized_indices
                 .iter()
@@ -827,6 +835,7 @@ fn extract_page(
                 italic: shown.font.italic,
                 script: None,
                 furniture: None,
+                reading: None,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -1174,6 +1183,7 @@ fn extract_page(
         // neither cares — but a table's box is what makes its runs one atom, and it does not
         // exist until detection has accepted one. Running the rule first would let a cut fall
         // through a grid before anything knew it was a grid.
+        let mut order: Vec<usize> = (0..runs.len()).collect();
         if profile.capabilities.multi_column_reading_order {
             let geometry: Vec<crate::reading_order::RunGeometry> = runs
                 .iter()
@@ -1209,14 +1219,49 @@ fn extract_page(
             for (run, block) in runs.iter_mut().zip(&blocks) {
                 run.block = *block;
             }
+            order = arranged.order;
+        }
 
-            reorder_page(
-                &mut runs,
-                &mut tables,
-                &mut op_indices,
-                &mut ems,
-                &arranged.order,
-            );
+        // Decision #54. A right-to-left line read right to left: its runs take their places in
+        // the order above where their glyphs are read, and each carries its glyphs as read. Here,
+        // on the runs in content order, so `code_chars` still lines up with them and each
+        // reading travels with its run through `reorder_page`, as `region` and `block` do.
+        if profile.right_to_left_rule == ethos_parser_core::RIGHT_TO_LEFT_RULE_V1 {
+            let (read, readings) = {
+                let seen: Vec<crate::bidi::Seen<'_>> = runs
+                    .iter()
+                    .zip(&code_chars)
+                    .map(|(r, chars)| crate::bidi::Seen {
+                        text: &r.text,
+                        code_chars: chars,
+                        x: r.locator.origin_x,
+                        y: r.locator.origin_y,
+                        advance: r.locator.advance,
+                        region: r.region,
+                    })
+                    .collect();
+                crate::bidi::read(&seen, &order)
+            };
+            for (run, reading) in runs.iter_mut().zip(readings) {
+                run.reading = reading;
+            }
+            order = read;
+        }
+        drop(code_chars);
+
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &mut ems, &order);
+
+        // Decision #54. A cell holding a run read right to left reads as its runs do: their
+        // readings, in reading order — the concatenation a cell's text has always been, of the
+        // text each run is read as.
+        for cell in tables.iter_mut().flat_map(|t| t.cells.iter_mut()) {
+            if cell.run_indices.iter().any(|&i| runs[i].reading.is_some()) {
+                cell.text = cell
+                    .run_indices
+                    .iter()
+                    .map(|&i| runs[i].reading_text())
+                    .collect();
+            }
         }
         debug_assert_eq!(
             op_indices.len(),
@@ -1282,9 +1327,11 @@ fn extract_page(
                         .collect();
                     idx.sort_unstable();
                     idx.dedup();
+                    // Decision #54: each run as read, so a cell of right-to-left text reads as
+                    // its runs do.
                     let mut text = String::new();
                     for &i in &idx {
-                        text.push_str(&runs[i].text);
+                        text.push_str(runs[i].reading_text());
                     }
                     (idx, text)
                 } else {
@@ -2145,7 +2192,9 @@ fn extract_counted(
         let mut replacement_runs: u32 = 0;
         for page in &pages {
             for run in &page.runs {
-                if run.text.chars().any(is_right_to_left_block) {
+                // Decision #54: a run the right-to-left rule read carries its reading, so only one
+                // it left as drawn counts.
+                if run.reading.is_none() && run.text.chars().any(is_right_to_left_block) {
                     rtl_runs = rtl_runs.saturating_add(1);
                 }
                 if run.text.contains('\u{FFFD}') {
@@ -3430,6 +3479,7 @@ mod tests {
                 italic: false,
                 script: None,
                 furniture: None,
+                reading: None,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,
