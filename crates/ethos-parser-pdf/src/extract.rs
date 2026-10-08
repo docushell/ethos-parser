@@ -1007,7 +1007,7 @@ fn extract_page(
         // document declares no author structure**: a tagged document says what is a table, and an
         // inferred one would override a list or a paragraph it declared — and, on a page that
         // declares a `/Table`, take that table's place in the pairing below.
-        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V11
+        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V12
             && no_author_structure(structure.as_ref())
         {
             let track_runs = rule_runs(&runs, &ems, &ink_ends, &tables);

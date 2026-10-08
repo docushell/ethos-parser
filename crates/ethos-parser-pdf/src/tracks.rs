@@ -137,7 +137,11 @@
 //!    at all; so is a page set in columns — a directory, a schedule, a newspaper in a script with
 //!    no letter case — and the column of numbers is what a table of values has and those do not.
 //!    **Nor is it waived where the columns divide into two groups each written row by row**: a
-//!    table beside a column of text is two flows side by side, whatever the text's letters say.
+//!    table beside a column of text is two flows side by side, whatever the text's letters say —
+//!    **unless the first column alone is the one group and it is the table's labels** (`-v12`,
+//!    [`label_column`]): a cell in every row, each shorter than a line of prose. A spreadsheet's
+//!    export writes its labels as one block before its values row by row, and the table was
+//!    refused with the flows.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -1248,8 +1252,23 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
         && columns >= MIN_COLUMNS_UNORDERED
         && (0..columns).any(|k| numbers(&column(k)))
         && (0..columns).all(|k| !running_text(&column(k)))
-        && !(1..columns)
-            .any(|k| written_row_by_row(rows, 0..k) && written_row_by_row(rows, k..columns))
+        && !(1..columns).any(|k| {
+            written_row_by_row(rows, 0..k)
+                && written_row_by_row(rows, k..columns)
+                && !(k == 1 && label_column(rows, runs))
+        })
+}
+
+/// Whether the first column is the table's labels (`-v12`): a cell in every row, each shorter than
+/// a line of prose. A spreadsheet's export writes its labels as one block before its values row by
+/// row, the order of a column of text beside a table; a column of text runs its lines long, and a
+/// label column names every row.
+fn label_column(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    rows.iter().all(|r| {
+        let text = cell_text(&r.cells[0], runs);
+        let text = text.trim();
+        !text.is_empty() && text.chars().count() < PROSE_LINE_CHARS
+    })
 }
 
 /// Whether the content stream wrote the cells of `columns` row by row: every run of a row in them
@@ -1470,7 +1489,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V11.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V12.to_string(),
     }))
 }
 
@@ -2151,7 +2170,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V11);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V12);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate
@@ -2309,6 +2328,54 @@ mod tests {
         let mut by_row = runs.clone();
         by_row.sort_by_key(|r| (r.y, r.x));
         assert_eq!(tables(&by_row)[0].columns, 4, "the premise");
+    }
+
+    /// **A label column written as one block is the table's** (`-v12`): a spreadsheet's export writes
+    /// `North` to `West` first and then each row's figures, the order of a column of text beside a
+    /// table, and the grid stands; a column of notes written so, each line past thirty characters
+    /// and none opening lower-case, or a label column missing a row's label, is still two flows.
+    #[test]
+    fn a_label_column_written_as_one_block_is_the_table_s() {
+        let block = |labels: [&'static str; 5]| -> Vec<TrackRun<'static>> {
+            let mut runs: Vec<TrackRun<'static>> = labels
+                .iter()
+                .enumerate()
+                .filter(|(_, text)| !text.is_empty())
+                .map(|(k, &text)| run(100, 100 + 20 * k as i64, 40, text))
+                .collect();
+            for (k, (a, b)) in [
+                ("7.5", "112.0"),
+                ("18.25", "9.1"),
+                ("4.0", "65.5"),
+                ("12.0", "70.25"),
+                ("3.5", "8.0"),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let y = 100 + 20 * k as i64;
+                runs.extend([run(250, y, 20, a), run(340, y, 30, b)]);
+            }
+            runs
+        };
+        let found = tables(&block(["North", "South", "East", "West", "Central"]));
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(texts(&found[0])[1], ["South", "18.25", "9.1"]);
+        assert!(
+            tables(&block([
+                "Sales rose in every region but one",
+                "Prices held through the third quarter",
+                "Costs fell as the new plant opened",
+                "Margins widened in the second half",
+                "Outlook for next year remains firm",
+            ]))
+            .is_empty(),
+            "a column of notes"
+        );
+        assert!(
+            tables(&block(["North", "South", "East", "", "Central"])).is_empty(),
+            "a row with no label"
+        );
     }
 
     /// **A currency sign set alone is its amount's sign**: a `$` flush left in the column and the

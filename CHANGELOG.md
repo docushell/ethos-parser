@@ -662,6 +662,13 @@ release.
   pages up and none down; visual grounding 0.5253 -> 0.5258; every other dimension unchanged;
   overall 44.67 -> 44.76. On the gate documents three tables of contents `-v10` read as tables are
   none now; the other 539 tables are unchanged.
+- **A label column written as one block before its values is the table's** (`-v12`, decision
+  #56): the guard that refuses a grid whose columns divide into two groups each written row by row
+  — a table beside a column of text — stands aside where the two groups are the first column and
+  the rest, and the first column holds a cell in every row, each shorter than a line of prose. A
+  spreadsheet's export writes its labels so. ParseBench tables 0.5066 -> 0.5128, 7 pages up and
+  none down; every other dimension unchanged; overall 44.76 -> 44.89. opendataloader-bench TEDS
+  0.5122 -> 0.5339, one document's table back; the gate documents' tables unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

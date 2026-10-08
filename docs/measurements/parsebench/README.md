@@ -684,6 +684,15 @@ run long, and reads titles drawn with leaders over page numbers as contents
 grounding 0.5253 -> 0.5258, 3 up and none down; content, formatting and charts unchanged on every
 page; opendataloader-bench unchanged. Overall 44.67 -> 44.76.
 
+### After a label column written as one block (`whitespace-tracks-v12`, decision #56, 2026-10-08)
+
+On seven table pages scoring nothing the tracks rule had grown the whole table and refused it at its
+last guard: the label column was written as one block before the values row by row, the order of a
+table beside a column of text. `whitespace-tracks-v12` lets the guard stand aside where the first
+column alone is the one group and holds a short label in every row (`docs/31-TABLE-TRACKS-SCOPE.md`
+§19). Tables 0.5066 -> 0.5128, 7 pages up and none down; every other dimension unchanged on every
+page; opendataloader-bench TEDS 0.5122 -> 0.5339, one document's table back. Overall 44.76 -> 44.89.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

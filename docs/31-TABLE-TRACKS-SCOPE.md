@@ -255,6 +255,8 @@ opendataloader-bench that is the whole of the waiver's gain there (TEDS 0.4471 b
 document from 0.16 to 0.86 among them). The variant without the last guard is measured above, and
 taking its bound-3 breach for those tables is the owner's call. **Declined 2026-10-04** (decision
 #39); it reopens on a test that tells a label column written as one block from a column of text.
+**Reopened 2026-10-08** (decision #56, §19): a first column holding a cell in every row, each
+shorter than a line of prose, is the table's.
 
 Five of the documents that gained a table on text and layout pages under the numbers guard were read
 by hand. Under the shipped rule two lose theirs — a table of contents set in two pairs of columns,
@@ -749,3 +751,30 @@ Every bound of §4 holds.
 **Measured and not used.** The rows above with no first-track clause (tables 0.5017, 7 pages down);
 the leader cut opening a cell after every leader run (`JNPR` p50 0.40 → 0); contents read from
 leaders alone, without a letter in the title (`SERFF_CA` p283 0.06 → 0, `1653739079` p39 down).
+
+## 19. `whitespace-tracks-v12`: a label column written as one block (2026-10-08, decision #56)
+
+**What `-v11` missed.** Told "Refused ruled grids", the ParseBench table pages that score nothing
+were read for what refused their table. Where the ruled rule refused a grid the refusal was right: a
+box of one column, a form whose merged cells its lines do not bound. But on seven pages this rule had
+grown the whole table and refused it at its last guard (§7), its columns dividing into two groups
+each written row by row — and the two groups were the label column and the rest. A spreadsheet's
+export writes its labels as one block and then its values row by row, the order of a table beside a
+column of text; §7 stated that cost when it shipped the guard, and decision #39 kept the guard until
+a test told such a label column from a column of text.
+
+**The change.** The guard stands aside where the two groups are the first column and the rest, and
+the first column holds a cell in every row, each shorter than a line of prose (thirty characters, as
+the header band counts one). A column of text runs its lines long, and a label column names every
+row. Two groups of several columns each, or a first column with a row left empty or a line of prose
+in it, are still two flows.
+
+**Measured**, with the shipped build on all 2,078 pages, against `9d47dcb`: ParseBench tables
+**0.5066 → 0.5128**, 7 pages up and none down (`SERFF_CA` p1377 0 → 0.49; `BRWS` p987, p990, p1017
+and p1028 0 → 0.45–0.48; `JNPR.2010` p167 0 → 0.44; `BRWS` p953 0 → 0.29); content, formatting,
+charts and visual grounding unchanged on every page; overall 44.76 → 44.89. On opendataloader-bench
+one document moved, `01030000000180`, whose revision history comes back as a table (TEDS 0 → 0.91,
+NID 0.91 → 0.97, MHS 0.91 → 0.96): TEDS 0.5122 → 0.5339, NID 0.8843 → 0.8846, MHS 0.5454 → 0.5459,
+and no table on a document without one. On the tree-stripped gate documents all 539 tables are
+unchanged cell for cell, and the heading bounds read as under `-v11` on all 11 documents. Every bound
+of §4 holds.
