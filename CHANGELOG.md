@@ -669,6 +669,15 @@ release.
   spreadsheet's export writes its labels so. ParseBench tables 0.5066 -> 0.5128, 7 pages up and
   none down; every other dimension unchanged; overall 44.76 -> 44.89. opendataloader-bench TEDS
   0.5122 -> 0.5339, one document's table back; the gate documents' tables unchanged.
+- **A bar chart is read from bars drawn with their corners twice, from groups read off their
+  gaps, from bars coloured one per category, and named by a legend set beyond its categories**
+  (`bar-labels-v2`, decision #57): a filled path whose corners repeat is a bar, in a list only the
+  chart rule reads; where no period of colours holds, a gap more than twice the widest narrow one
+  ends a group and each bar's colour names its series; three bars or more, each its own colour,
+  are one series and take no title; and a legend's distance is measured from the chart and the
+  labels it read. ParseBench charts 0.1035 -> 0.1179, 13 pages up and none down; every other
+  dimension unchanged; overall 44.89 -> 45.17. opendataloader-bench's reading order moves on two
+  documents whose charts became correct tables (NID 0.8846 -> 0.8841), the trade decision #42 took.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

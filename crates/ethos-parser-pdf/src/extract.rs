@@ -1062,11 +1062,11 @@ fn extract_page(
         // Decision #42. Then a bar chart's printed labels, as its table
         // (`docs/32-CHART-LABELS-SCOPE.md`): on the runs no table above holds, under the tracks
         // rule's gate, and kept only where it overlaps no table already found.
-        if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V1
+        if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V2
             && no_author_structure(structure.as_ref())
         {
-            let mut bars = Vec::with_capacity(interp.filled.len());
-            for f in &interp.filled {
+            let mut bars = Vec::with_capacity(interp.filled.len() + interp.filled_repeated.len());
+            for f in interp.filled.iter().chain(&interp.filled_repeated) {
                 let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
                 let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
                 bars.push(crate::charts::Bar {

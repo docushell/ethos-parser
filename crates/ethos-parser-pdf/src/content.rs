@@ -342,6 +342,11 @@ pub struct Interpreter<'a> {
     /// [`Interpreter::rects`] drops a form's ink: a chart is often drawn as a form, and its bars are
     /// not the page furniture the ruled rule keeps out.
     pub filled: Vec<FilledRect>,
+    /// The rectangles a fill painted with a corner named twice in a row (`bar-labels-v2`): a
+    /// producer's rounded corner of radius nought draws a bar so. Kept apart from
+    /// [`Interpreter::filled`], which the ruled rule's padding test reads, so every other rule
+    /// reads exactly what it read before; the chart rule reads both.
+    pub filled_repeated: Vec<FilledRect>,
     /// The rectangles a fill alone painted white (`ruled-rects-v10`), also in
     /// [`Interpreter::rects`]. On white paper they draw no line a reader sees, so a grid's merged
     /// cells are never read from their edges. Dropped with a form's ink, as `rects` is.
@@ -366,6 +371,9 @@ pub struct Interpreter<'a> {
     subpath: Subpath,
     /// Rectangles from the current path, pending a painting operator.
     pending: Vec<PathRect>,
+    /// Rectangles from the current path drawn with a corner named twice in a row, pending a fill:
+    /// for [`Interpreter::filled_repeated`] alone (`bar-labels-v2`).
+    pending_filled: Vec<PathRect>,
     /// Segments from the current path, pending a painting operator (v1-S8).
     pending_segments: Vec<PathSegment>,
     /// How many runs were dropped because a font could not map one of their codes.
@@ -454,9 +462,11 @@ impl<'a> Interpreter<'a> {
             painted: Vec::new(),
             path_box: None,
             filled: Vec::new(),
+            filled_repeated: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
             pending: Vec::new(),
+            pending_filled: Vec::new(),
             pending_segments: Vec::new(),
             dropped_runs: 0,
             fallback_runs: 0,
@@ -545,6 +555,7 @@ impl<'a> Interpreter<'a> {
                 self.inset.clear();
                 self.segments.clear();
                 self.pending.clear();
+                self.pending_filled.clear();
                 self.subpath = Subpath::default();
                 self.dropped_runs = 0;
                 Err(e)
@@ -632,16 +643,13 @@ impl<'a> Interpreter<'a> {
             }
             return;
         }
-        if pts.len() < 4 || pts.len() > 5 {
-            return;
+        if let Some(rect) = rectangle(pts) {
+            self.pending.push(rect);
+        } else if let Some(rect) = rectangle(&once_each(pts)) {
+            // `bar-labels-v2`: every corner named twice — a rounded corner of radius nought — still
+            // draws the rectangle, and a fill makes it a bar. Only the chart rule reads it.
+            self.pending_filled.push(rect);
         }
-        let xs: Vec<f64> = distinct(pts.iter().map(|p| p.0));
-        let ys: Vec<f64> = distinct(pts.iter().map(|p| p.1));
-        if xs.len() != 2 || ys.len() != 2 {
-            return;
-        }
-        self.pending
-            .push(PathRect::from_corners((xs[0], ys[0]), (xs[1], ys[1])));
     }
 
     /// The exhaustive match. **No wildcard arm.**
@@ -911,7 +919,13 @@ impl<'a> Interpreter<'a> {
                     let fill = self.gs.fill;
                     self.filled
                         .extend(self.pending.iter().map(|&rect| FilledRect { rect, fill }));
+                    self.filled_repeated.extend(
+                        self.pending_filled
+                            .iter()
+                            .map(|&rect| FilledRect { rect, fill }),
+                    );
                 }
+                self.pending_filled.clear();
                 self.rects.append(&mut self.pending);
                 self.segments.append(&mut self.pending_segments);
             }
@@ -921,6 +935,7 @@ impl<'a> Interpreter<'a> {
                 self.path_box = None;
                 self.subpath = Subpath::default();
                 self.pending.clear();
+                self.pending_filled.clear();
                 self.pending_segments.clear();
             }
             // A clip path bounds what is visible; it draws nothing. Treating one as a table edge
@@ -928,6 +943,7 @@ impl<'a> Interpreter<'a> {
             Clip | ClipEvenOdd => {
                 self.subpath = Subpath::default();
                 self.pending.clear();
+                self.pending_filled.clear();
                 self.pending_segments.clear();
             }
             // v1-S6. `Do` names an XObject in the page's resources. An `/Image` is a placement
@@ -1360,6 +1376,31 @@ fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < COORD_EPSILON
 }
 
+/// The rectangle four or five points draw — a fifth closing on the first — where they hold two
+/// distinct `x`s and two distinct `y`s.
+fn rectangle(pts: &[(f64, f64)]) -> Option<PathRect> {
+    if pts.len() < 4 || pts.len() > 5 {
+        return None;
+    }
+    let xs: Vec<f64> = distinct(pts.iter().map(|p| p.0));
+    let ys: Vec<f64> = distinct(pts.iter().map(|p| p.1));
+    (xs.len() == 2 && ys.len() == 2).then(|| PathRect::from_corners((xs[0], ys[0]), (xs[1], ys[1])))
+}
+
+/// The points with each point named again at once dropped: `m a l a l b` is `a`, `b`.
+fn once_each(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut out: Vec<(f64, f64)> = Vec::with_capacity(pts.len());
+    for &p in pts {
+        if !out
+            .last()
+            .is_some_and(|q| approx_eq(q.0, p.0) && approx_eq(q.1, p.1))
+        {
+            out.push(p);
+        }
+    }
+    out
+}
+
 /// The distinct values in an iterator, within [`COORD_EPSILON`], sorted.
 fn distinct(values: impl Iterator<Item = f64>) -> Vec<f64> {
     let mut out: Vec<f64> = Vec::new();
@@ -1634,6 +1675,30 @@ mod tests {
             "every painted rectangle is still a ruled-table rectangle"
         );
         assert!(white.is_white() && !rgb.is_white());
+    }
+
+    /// **A rectangle drawn with each corner named twice is a bar, and no ruling**
+    /// (`bar-labels-v2`): a producer's rounded corner of radius nought names every corner twice.
+    /// Filled, it is a bar the chart rule reads; stroked, or not a rectangle, it is nothing new;
+    /// and the ruled rule reads exactly the rectangles it read before.
+    #[test]
+    fn a_rectangle_drawn_with_its_corners_twice_is_a_bar_only() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0.5 g 0 0 m 24 0 l 24 0 l 24 59 l 24 59 l 0 59 l 0 59 l 0 0 l 0 0 l h f \
+             40 0 m 64 0 l 64 0 l 64 30 l 64 30 l 40 30 l 40 30 l 40 0 l 40 0 l h S \
+             80 0 m 90 0 l 90 0 l 90 10 l 90 10 l 85 15 l 80 10 l 80 0 l h f",
+        ))
+        .unwrap();
+        let bars: Vec<(f64, f64, f64, f64)> = i
+            .filled_repeated
+            .iter()
+            .map(|f| (f.rect.x0, f.rect.y0, f.rect.x1, f.rect.y1))
+            .collect();
+        assert_eq!(bars, vec![(0.0, 0.0, 24.0, 59.0)]);
+        assert!(i.filled.is_empty(), "{:?}", i.filled);
+        assert!(i.rects.is_empty(), "{:?}", i.rects);
     }
 
     #[test]

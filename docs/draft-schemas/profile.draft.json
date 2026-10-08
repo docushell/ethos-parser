@@ -238,7 +238,7 @@
         },
         "charts": {
           "type": "string",
-          "description": "Version id of the rule that reads a bar chart's printed labels back as its table (decision #42). `bar-labels-v1`. Bars are rectangles the page filled in a known colour that is not white; columns are bars of one width set end to end in colours that differ; a chart is two or more columns on one base, of one width, side by side, its categories each column or each period of repeating colours. A value is the one number on a bar's segment or just past a single bar's end, a number two cells could read filling neither; a category the one label at the column's base, with the lines it wraps onto, never a number but a year, a label opening with a value, a line of prose or a label set on a bar; a series' name the one label beside a legend swatch of its colour near the chart and nearer it than other bars of that colour, or a one-colour chart's one-line title. A table only where the numbers agree with the bars in order and six bars in ten of a series carry one, no label read twice and no run in two tables; a value is never read off a bar's length and an empty cell is not emitted. Runs after `tracks`, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its label's runs."
+          "description": "Version id of the rule that reads a bar chart's printed labels back as its table (decision #42). `bar-labels-v2`. Bars are rectangles the page filled in a known colour that is not white, a rectangle drawn with its corners named twice among them (decision #57); columns are bars of one width set end to end in colours that differ; a chart is two or more columns on one base, of one width, side by side, its categories each column or each period of repeating colours — where no period holds, each group the gaps between columns set apart, a colour two groups hold a series and a column of another colour the series of its place in a full group; three columns or more each a colour of its own are one series, which takes no title (decision #57). A value is the one number on a bar's segment or just past a single bar's end, a number two cells could read filling neither; a category the one label at the column's base, with the lines it wraps onto, never a number but a year, a label opening with a value, a line of prose or a label set on a bar; a series' name the one label beside a legend swatch of its colour near the chart and the labels it read and nearer it than other bars of that colour, or a one-colour chart's one-line title. A table only where the numbers agree with the bars in order and six bars in ten of a series carry one, no label read twice and no run in two tables; a value is never read off a bar's length and an empty cell is not emitted. Runs after `tracks`, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its label's runs."
         }
       }
     },
@@ -522,7 +522,7 @@
       "right_to_left_rule": "right-to-left-lines-v1",
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
-        "charts": "bar-labels-v1",
+        "charts": "bar-labels-v2",
         "ruled": "ruled-rects-v12",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",

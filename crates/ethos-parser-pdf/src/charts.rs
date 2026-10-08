@@ -157,6 +157,21 @@ struct Chart {
     axis: Axis,
     groups: Vec<Vec<Column>>,
     stacked: bool,
+    /// Where the groups were read from their gaps (`-v2`): the series' colours, and each group's
+    /// columns' series. `None` where a column's place in its group is its series.
+    slots: Option<Slots>,
+    /// Whether its columns are each a colour none of the others is (`-v2`): one series whose
+    /// colours key its categories, so no title is read as the series' name.
+    by_category: bool,
+}
+
+/// The series of a chart whose groups were read from their gaps (`-v2`).
+#[derive(Debug)]
+struct Slots {
+    /// The series' colours, in the order their bars stand in a group.
+    fills: Vec<Fill>,
+    /// For each group, each column's series.
+    of: Vec<Vec<usize>>,
 }
 
 /// What a chart's table holds before it is built: labels by index.
@@ -166,7 +181,7 @@ struct Found {
     rows: Vec<(Vec<usize>, Vec<Option<usize>>)>,
 }
 
-/// Every table `bar-labels-v1` finds on one page, top to bottom.
+/// Every table `bar-labels-v2` finds on one page, top to bottom.
 ///
 /// `page_area` is the page's area in square centipoints: a rectangle a quarter of the page or more
 /// is a background, never a bar.
@@ -458,15 +473,26 @@ fn charts(ink: &[Bar], axis: Axis) -> Vec<Chart> {
                 continue; // every bar one length and one segment: shading, not data
             }
             let colours: Vec<Fill> = run.iter().map(|c| ink[c.segs[0]].fill).collect();
-            if stacked || colours.iter().all(|&f| f.same(colours[0])) {
+            // `-v2`: three columns or more, each a colour none of the others is, are one series
+            // coloured by category.
+            let each_its_own = !stacked
+                && run.len() >= 3
+                && colours
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| colours[..i].iter().all(|g| !g.same(*f)));
+            if stacked || colours.iter().all(|&f| f.same(colours[0])) || each_its_own {
                 out.push(Chart {
                     axis,
                     groups: run.into_iter().map(|c| vec![c]).collect(),
                     stacked,
+                    slots: None,
+                    by_category: each_its_own,
                 });
                 continue;
             }
             // Bars side by side per category: the shortest period whose colours repeat exactly.
+            let before = out.len();
             for n in 2..=run.len() / 2 {
                 let mut distinct = colours[..n].to_vec();
                 distinct.sort_unstable();
@@ -493,18 +519,113 @@ fn charts(ink: &[Bar], axis: Axis) -> Vec<Chart> {
                         axis,
                         groups,
                         stacked: false,
+                        slots: None,
+                        by_category: false,
                     });
                 }
                 break;
+            }
+            // `-v2`: no period — a bar left out of a group, or a group set in colours of its own —
+            // and the groups are read from the gaps between them.
+            if out.len() == before {
+                out.extend(gap_groups(run, &colours, axis));
             }
         }
     }
     out
 }
 
+/// The groups of a run of columns read from the gaps between them (`-v2`), where no period of
+/// colours holds: a gap more than twice the widest of the narrow ones — within half the narrowest
+/// again, and half a point — ends a group. Two groups or more, one of two columns or more. A
+/// series is a colour two groups or more hold, its place the mean of its first places there; a
+/// column of another colour takes the series of its place, only in a group holding one column per
+/// series. No group holds two columns of one series.
+fn gap_groups(run: Vec<Column>, colours: &[Fill], axis: Axis) -> Option<Chart> {
+    let gaps: Vec<i64> = run.windows(2).map(|w| w[1].lo - w[0].hi).collect();
+    let narrowest = *gaps.iter().min()?;
+    let inside = narrowest.max(0) * 3 / 2 + SAME_EDGE;
+    let widest_inside = gaps
+        .iter()
+        .copied()
+        .filter(|&g| g <= inside)
+        .max()
+        .unwrap_or(narrowest);
+    let between = gaps.iter().copied().filter(|&g| g > inside).min()?;
+    if between <= 2 * widest_inside.max(SAME_EDGE) {
+        return None;
+    }
+    let mut groups: Vec<Vec<usize>> = vec![vec![0]];
+    for (i, &g) in gaps.iter().enumerate() {
+        if g > inside {
+            groups.push(Vec::new());
+        }
+        groups.last_mut().expect("a group").push(i + 1);
+    }
+    if groups.len() < MIN_BARS || groups.iter().all(|g| g.len() < 2) {
+        return None;
+    }
+    // Each colour: the groups holding it, and the sum of its first places there.
+    let mut seen: Vec<(Fill, usize, usize)> = Vec::new();
+    for g in &groups {
+        for (place, &k) in g.iter().enumerate() {
+            if g[..place].iter().any(|&j| colours[j].same(colours[k])) {
+                continue; // a group counts once
+            }
+            match seen.iter_mut().find(|c| c.0.same(colours[k])) {
+                Some(c) => {
+                    c.1 += 1;
+                    c.2 += place;
+                }
+                None => seen.push((colours[k], 1, place)),
+            }
+        }
+    }
+    let mut series: Vec<(Fill, usize, usize)> = seen.into_iter().filter(|c| c.1 >= 2).collect();
+    if series.len() < 2 {
+        return None;
+    }
+    // By mean place, compared without dividing: a/b against c/d as a·d against c·b.
+    series.sort_by(|a, b| (a.2 * b.1).cmp(&(b.2 * a.1)));
+    let fills: Vec<Fill> = series.iter().map(|s| s.0).collect();
+    let mut of: Vec<Vec<usize>> = Vec::with_capacity(groups.len());
+    for g in &groups {
+        let mut slot = Vec::with_capacity(g.len());
+        for (place, &k) in g.iter().enumerate() {
+            match fills.iter().position(|f| f.same(colours[k])) {
+                Some(s) => slot.push(s),
+                None if g.len() == fills.len() => slot.push(place),
+                None => return None,
+            }
+        }
+        if slot.iter().enumerate().any(|(i, s)| slot[..i].contains(s)) {
+            return None;
+        }
+        of.push(slot);
+    }
+    let mut run: Vec<Option<Column>> = run.into_iter().map(Some).collect();
+    Some(Chart {
+        axis,
+        groups: groups
+            .iter()
+            .map(|g| {
+                g.iter()
+                    .map(|&k| run[k].take().expect("each column once"))
+                    .collect()
+            })
+            .collect(),
+        stacked: false,
+        slots: Some(Slots { fills, of }),
+        by_category: false,
+    })
+}
+
 /// A chart's series: the stack's colours from the base out, the period's positions, or its one
 /// colour.
 fn series(chart: &Chart, ink: &[Bar]) -> Vec<Fill> {
+    if let Some(slots) = &chart.slots {
+        return slots.fills.clone();
+    }
     if chart.stacked {
         let mut out: Vec<Fill> = Vec::new();
         for c in chart.groups.iter().flatten() {
@@ -577,6 +698,8 @@ fn table(
                         .iter()
                         .position(|f| f.same(ink[s].fill))
                         .expect("every colour is a series")
+                } else if let Some(slots) = &chart.slots {
+                    slots.of[gi][ci]
                 } else {
                     ci
                 };
@@ -634,12 +757,15 @@ fn table(
     for (col, &colour) in series.iter().enumerate() {
         let bars_in = groups
             .iter()
-            .map(|g| {
+            .enumerate()
+            .map(|(gi, g)| {
                 if chart.stacked {
                     g.iter()
                         .flat_map(|c| &c.segs)
                         .filter(|&&s| ink[s].fill.same(colour))
                         .count()
+                } else if let Some(slots) = &chart.slots {
+                    usize::from(slots.of[gi].contains(&col))
                 } else {
                     usize::from(col < g.len())
                 }
@@ -724,11 +850,24 @@ fn table(
     // Headers: the legend's names for the series' colours; a chart of one colour without one takes
     // the title above it.
     let bars = bars_box(chart, ink);
+    // `-v2`: a legend's distance is from the chart and the labels it read, so a legend set beyond
+    // the categories is as near as one set beside the bars.
+    let near = used.iter().fold(bars, |a, &k| {
+        let r = labels[k].rect();
+        QuantRect {
+            x0: a.x0.min(r.x0),
+            y0: a.y0.min(r.y0),
+            x1: a.x1.max(r.x1),
+            y1: a.y1.max(r.y1),
+        }
+    });
     let mut headers: Vec<Option<usize>> = series
         .iter()
-        .map(|&f| legend(f, chart, labels, ink, bars, boxes, &used))
+        .map(|&f| legend(f, chart, labels, ink, (bars, near), boxes, &used))
         .collect();
-    if series.len() == 1 && headers[0].is_none() {
+    // A chart coloured by category takes no title: its colours key its categories, and the line
+    // above it is as often the section's heading (`-v2`).
+    if series.len() == 1 && headers[0].is_none() && !chart.by_category {
         let top = rows
             .iter()
             .flat_map(|(_, v)| v.iter().flatten())
@@ -837,7 +976,7 @@ fn legend(
     chart: &Chart,
     labels: &[Label],
     ink: &[Bar],
-    bars: QuantRect,
+    (bars, near): (QuantRect, QuantRect),
     boxes: &[(QuantRect, Fill)],
     used: &[usize],
 ) -> Option<usize> {
@@ -885,7 +1024,7 @@ fn legend(
         }) {
             continue;
         }
-        let d = dist(bars, sx, sy);
+        let d = dist(near, sx, sy);
         if d > (bars.x1 - bars.x0).max(bars.y1 - bars.y0) {
             continue; // too far to be this chart's
         }
@@ -1206,7 +1345,7 @@ fn build(
         cells,
         check: not_a_lattice(),
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_CHARTS_V1.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_CHARTS_V2.to_string(),
     })
 }
 
@@ -1324,7 +1463,7 @@ mod tests {
             grid(&t[0]),
             vec!["|Solar", "2020|10", "2021|20", "2022|30", "2023|40"]
         );
-        assert_eq!(t[0].rule, ethos_parser_core::TABLE_DETECTION_CHARTS_V1);
+        assert_eq!(t[0].rule, ethos_parser_core::TABLE_DETECTION_CHARTS_V2);
         assert!(matches!(
             t[0].check.outcome,
             CheckStatus::NotApplicable { .. }
@@ -1445,6 +1584,162 @@ mod tests {
         let t = found(&runs, &bars);
         assert_eq!(t.len(), 1, "{t:?}");
         assert_eq!(grid(&t[0])[0], "|", "no name for this chart's colour");
+    }
+
+    /// North, South and East, two series side by side in each — values over the bars, the
+    /// category under the group, a legend for `a` and `b` below — with each group's colours given,
+    /// `None` for a bar left out, `inside` points between a group's bars and `step` between groups.
+    fn pairs(
+        colours: [[Option<Fill>; 2]; 3],
+        inside: i64,
+        step: i64,
+    ) -> (Vec<TrackRun<'static>>, Vec<Bar>) {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let values = [["11", "14"], ["15", "18"], ["19", "22"]];
+        let mut bars = Vec::new();
+        let mut runs = Vec::new();
+        for (k, cat) in ["North", "South", "East"].into_iter().enumerate() {
+            let x = 100 + step * k as i64;
+            for (s, colour) in colours[k].iter().enumerate() {
+                let Some(colour) = colour else { continue };
+                let h = 30 + 20 * k as i64 + 10 * s as i64;
+                let x0 = x + s as i64 * (30 + inside);
+                bars.push(bar(x0, 300 - h, x0 + 30, 300, *colour));
+                runs.push(run(x0 + 5, 300 - h - 3, 18, values[k][s]));
+            }
+            runs.push(run(x + 15 + inside / 2, 312, 30, cat));
+        }
+        bars.push(bar(100, 330, 106, 336, a));
+        runs.push(run(110, 336, 30, "2023"));
+        bars.push(bar(200, 330, 206, 336, b));
+        runs.push(run(210, 336, 30, "2024"));
+        (runs, bars)
+    }
+
+    /// **Grouped bars with a bar left out are read from their gaps** (`-v2`): South prints no
+    /// 2024 bar, so the colours repeat in no period; the gaps still group the bars, and each bar's
+    /// colour names its series.
+    #[test]
+    fn grouped_bars_with_a_bar_left_out_are_read_from_their_gaps() {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let (runs, bars) = pairs(
+            [[Some(a), Some(b)], [Some(a), None], [Some(a), Some(b)]],
+            0,
+            80,
+        );
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2023|2024", "North|11|14", "South|15|", "East|19|22"]
+        );
+    }
+
+    /// **A group set in colours of its own takes the series of its places** (`-v2`): South's
+    /// bars are highlighted in two other colours; a group holding one bar per series reads them by
+    /// where they stand.
+    #[test]
+    fn a_group_in_colours_of_its_own_takes_the_series_of_its_places() {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let (c, d) = (rgb(100, 800, 100), rgb(800, 100, 100));
+        let (runs, bars) = pairs(
+            [[Some(a), Some(b)], [Some(c), Some(d)], [Some(a), Some(b)]],
+            0,
+            80,
+        );
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2023|2024", "North|11|14", "South|15|18", "East|19|22"]
+        );
+        // Highlighted in one colour, twice: a group counts once, and its bars take their places.
+        let (runs, bars) = pairs(
+            [[Some(a), Some(b)], [Some(c), Some(c)], [Some(a), Some(b)]],
+            0,
+            80,
+        );
+        assert_eq!(grid(&found(&runs, &bars)[0])[2], "South|15|18");
+    }
+
+    /// **Groups read from their gaps refuse what they cannot place** (`-v2`): a group holding two
+    /// bars of one series is no chart, nor are groups whose gaps do not stand clearly apart — ten
+    /// points inside a group and eighteen between, where thirty between reads.
+    #[test]
+    fn groups_from_gaps_refuse_what_they_cannot_place() {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let (c, d) = (rgb(100, 800, 100), rgb(800, 100, 100));
+        let (runs, bars) = pairs(
+            [[Some(a), Some(b)], [Some(a), Some(a)], [Some(a), Some(b)]],
+            0,
+            80,
+        );
+        assert!(
+            found(&runs, &bars).is_empty(),
+            "two bars of one series in a group"
+        );
+        let colours = [[Some(a), Some(b)], [Some(c), Some(d)], [Some(a), Some(b)]];
+        let (runs, bars) = pairs(colours, 10, 88);
+        assert!(found(&runs, &bars).is_empty(), "gaps of 10 and 18 points");
+        let (runs, bars) = pairs(colours, 10, 100);
+        assert_eq!(found(&runs, &bars).len(), 1, "gaps of 10 and 30 points");
+    }
+
+    /// **Bars each a colour of its own are one series** (`-v2`): a chart coloured by category,
+    /// whose colours key its categories, so the line above names no series. Two bars of two colours
+    /// say no such thing.
+    #[test]
+    fn bars_each_a_colour_of_their_own_are_one_series() {
+        let (runs, mut bars) = four_years(["10", "20", "30", "40"], [25, 50, 75, 100]);
+        for (k, b) in bars.iter_mut().enumerate() {
+            b.fill = rgb(100 * k as i32, 300, 800);
+        }
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|", "2020|10", "2021|20", "2022|30", "2023|40"]
+        );
+        assert!(found(&runs[..5], &bars[..2]).is_empty(), "two bars");
+    }
+
+    /// **A legend set beyond the categories names its series** (`-v2`): measured from the chart
+    /// and the labels it read, a legend left of long category names is as near as one beside the
+    /// bars; measured from the bars alone, it stood too far.
+    #[test]
+    fn a_legend_beyond_the_categories_names_its_series() {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let mut bars = Vec::new();
+        let mut runs = Vec::new();
+        let cats = [
+            "North America region",
+            "South America region",
+            "Europe and Africa",
+        ];
+        for (k, cat) in cats.into_iter().enumerate() {
+            let y = 100 + 40 * k as i64;
+            let (la, lb) = (40 + 20 * k as i64, 50 + 20 * k as i64);
+            bars.push(bar(300, y, 300 + la, y + 10, a));
+            bars.push(bar(300, y + 10, 300 + lb, y + 20, b));
+            runs.push(run(300 + la + 3, y + 8, 18, ["40", "60", "80"][k]));
+            runs.push(run(300 + lb + 3, y + 18, 18, ["50", "70", "90"][k]));
+            runs.push(run(100, y + 13, 170, cat));
+        }
+        bars.push(bar(40, 230, 46, 236, a));
+        runs.push(run(50, 236, 30, "2023"));
+        bars.push(bar(40, 245, 46, 251, b));
+        runs.push(run(50, 251, 30, "2024"));
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec![
+                "|2023|2024",
+                "North America region|40|50",
+                "South America region|60|70",
+                "Europe and Africa|80|90"
+            ]
+        );
     }
 
     #[test]

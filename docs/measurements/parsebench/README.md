@@ -693,6 +693,15 @@ column alone is the one group and holds a short label in every row (`docs/31-TAB
 §19). Tables 0.5066 -> 0.5128, 7 pages up and none down; every other dimension unchanged on every
 page; opendataloader-bench TEDS 0.5122 -> 0.5339, one document's table back. Overall 44.76 -> 44.89.
 
+### After bars drawn twice-cornered, groups from their gaps and colours by category (`bar-labels-v2`, decision #57, 2026-10-09)
+
+Of the printed chart data points whose value the engine reads as text, most failed on charts the
+bar-label rule read no table from. `bar-labels-v2` reads bars drawn with every corner named twice,
+groups whose colours repeat in no period (a bar left out, a group highlighted), bars coloured one
+per category, and a legend set beyond the categories (`docs/32-CHART-LABELS-SCOPE.md` §7). Charts
+0.1035 -> 0.1179, 13 pages up and none down; every other dimension unchanged on every page.
+Overall 44.89 -> 45.17.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

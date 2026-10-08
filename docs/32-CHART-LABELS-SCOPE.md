@@ -1,6 +1,6 @@
 # A bar chart's printed labels as its table — scope (decision #42)
 
-**Status: shipped 2026-10-04 as `bar-labels-v1`.** A bar chart that prints its numbers states a
+**Status: shipped 2026-10-04 as `bar-labels-v1`; `bar-labels-v2` since 2026-10-09 (§7, decision #57).** A bar chart that prints its numbers states a
 table; this rule reads that table back. It never reads a value off a bar's length: a bar that carries
 no number leaves its cell empty, and a chart that prints none yields no table.
 
@@ -131,3 +131,57 @@ on that page returned to its score before the rule.
   this engine refuses.
 - **Tagged documents**: the rule follows the tracks rule's gate. A tagged document's chart is a
   `/Figure`, and whether a figure's printed data may become a table there is its own decision.
+
+## 7. `bar-labels-v2`: corners drawn twice, groups from their gaps, colours by category, a legend beyond the categories (2026-10-09, decision #57)
+
+**What `-v1` missed.** Told "Charts, round 2", the chart data points were read for why each failed.
+3,569 of the 4,864 ask for a value read off a bar's length, which this engine refuses; the printed
+ones cap a perfect reading at 0.34 against `-v1`'s 0.1035. Of the printed points that failed while
+the engine read their value as text, most sat on charts this rule read no table from, and the
+reasons were many and each small:
+
+- a producer that names every corner of a bar twice — a rounded corner of radius nought — drew no
+  rectangle the interpreter read (`Earnings_Presentation` slides);
+- grouped bars with a bar left out — a zero drawn as no bar — or one group highlighted in colours of
+  its own matched no period of colours, and bars coloured one per category matched none either;
+- a legend set beyond long category labels stood further from the bars than the chart's own size.
+
+**The change.**
+
+- **Corners named twice.** The interpreter drops a point named again at once and reads the
+  rectangle that leaves into a list of its own, which only this rule reads: the ruled rule, and
+  `ruled-rects-v12`'s padding test, read exactly the rectangles they read before.
+- **Groups from their gaps.** Where no period of colours holds, a gap more than twice the widest of
+  the narrow ones ends a group: two groups or more, one of them two columns or more. A series is a
+  colour two groups or more hold, its place the mean of its first places there; a column of another
+  colour takes the series of its place, only in a group holding one column per series; and no group
+  holds two columns of one series.
+- **Colours by category.** Three columns or more, each a colour none of the others is, are one
+  series, and such a chart takes no title as its series' name: its colours key its categories, and
+  the line above it is as often a section's heading. Measured with the title, a visual grounding
+  page lost its heading to the table's header (`AXP_2023_2024_ESG_Report` p46, 0.34 → 0.31), and no
+  chart page needed it.
+- **A legend's distance** is measured from the chart and the labels it read, not from its bars
+  alone.
+
+**Measured**, with the shipped build on all 2,078 pages, against `8cfffd9`: ParseBench charts
+**0.1035 → 0.1179**, 13 pages up and none down (`Earnings_Presentation` FY25 Q4 p19 and FY26 Q1
+p19 0 → 1.0, `US_Professional_Services_Partner_Compensation_Survey` p19 0 → 1.0, `She-figures` p105
+0 → 0.9); tables, content, formatting and visual grounding unchanged on every page; overall
+44.89 → 45.17. No chart table on a table or text page, the gate documents' 539 tables unchanged, and
+the heading bounds read as before on all 11 documents. opendataloader-bench TEDS unchanged; two
+documents whose charts became tables, both right against their drawings (`01030000000071`,
+`-072`), read in a new order — NID 0.8846 → 0.8841, MHS 0.5459 → 0.5457 — the trade decision #42
+took, on two documents more.
+
+**Measured and not used.** Rounded bars read from their straight sides (no page up;
+`Digital_News-Report_2022` p17 0.75 → 0.5, a rounded mark of a series' colour taking its legend's
+name); a highlighted bar inside a run of one colour read as that colour's; a title over the
+chart's left half; numbers with a sign after the currency sign, and the units `b`, `t`, `mn`, `tn`;
+a label of numbers joined across bars split run by run (one page up, one down). Each moved nothing,
+or as much down as up.
+
+**Still not read.** Values drawn one glyph per run that join their neighbours' with no gap
+(`ADL_Future_of_automotive_mobility` p13: `3.73.6`); small multiples, whose data points name a panel
+as well as a category and a series; categories in two tiers; bars hanging below a base; a line
+drawn over the bars; pies and lines (§6).
