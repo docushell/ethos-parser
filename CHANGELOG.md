@@ -678,6 +678,14 @@ release.
   labels it read. ParseBench charts 0.1035 -> 0.1179, 13 pages up and none down; every other
   dimension unchanged; overall 44.89 -> 45.17. opendataloader-bench's reading order moves on two
   documents whose charts became correct tables (NID 0.8846 -> 0.8841), the trade decision #42 took.
+- **A header's last line, read as the table's first row, is the header's** (`-v13`, decision #58):
+  a header set on two lines whose lower line has a cell on every column opened the table itself,
+  and the band above took only the upper line. Where the band names more than half the tracks on
+  its own, a first row whose cells on the columns of numbers hold no digit, run shorter than a line
+  of prose and repeat no value of their columns joins the header row; a row of placeholders (one
+  word in three cells or more) stays a row. ParseBench tables 0.5128 -> 0.5280, 31 pages up and one
+  down; every other dimension unchanged; overall 45.17 -> 45.48. opendataloader-bench and the gate
+  documents' tables unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

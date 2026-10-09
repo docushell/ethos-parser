@@ -702,6 +702,14 @@ per category, and a legend set beyond the categories (`docs/32-CHART-LABELS-SCOP
 0.1035 -> 0.1179, 13 pages up and none down; every other dimension unchanged on every page.
 Overall 44.89 -> 45.17.
 
+### After a header's last line read as the first row (`whitespace-tracks-v13`, decision #58, 2026-10-09)
+
+A header set on two lines whose lower line has a cell on every column opened the table itself, and
+the band took only the upper line: the header row read `Number of` where the column is `Number of
+Shares`. `whitespace-tracks-v13` joins such a first row to the header row
+(`docs/31-TABLE-TRACKS-SCOPE.md` §20). Tables 0.5128 -> 0.5280, 31 pages up and one down; every
+other dimension unchanged on every page; opendataloader-bench unchanged. Overall 45.17 -> 45.48.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

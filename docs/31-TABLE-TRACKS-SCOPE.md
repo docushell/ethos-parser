@@ -778,3 +778,38 @@ NID 0.91 → 0.97, MHS 0.91 → 0.96): TEDS 0.5122 → 0.5339, NID 0.8843 → 0.
 and no table on a document without one. On the tree-stripped gate documents all 539 tables are
 unchanged cell for cell, and the heading bounds read as under `-v11` on all 11 documents. Every bound
 of §4 holds.
+
+## 20. `whitespace-tracks-v13`: a header's last line read as the first row (2026-10-09, decision #58)
+
+**What `-v12` missed.** Told "Table headers, round 4", the ParseBench tables whose header text lies
+just above ours and that the scorer matched on no column were read again — 122 of them, the band
+stopping for many reasons, none of them most. One pattern ran across them instead: a header set on
+two lines whose lower line has a cell on every column opens the table itself — `Shares` and
+`Exercise Price` under `Number of` and `Weighted Average` (`Home Depot 10-k` p71), `Years`,
+`Incurred Loss` and `Incurred Count` under `BI Earned Car` and the rest (`BRWS` filings), `December
+31,` under `Year Ending` (`Kimco` p41) — and the band above takes only the upper line. The header
+row read `Number of` where the column is `Number of Shares`, and the lower line stood as the first
+row of data. Of the tables the scorer matched on no column, 31 had a first row so made and would
+match once it joined the header.
+
+**The change.** Where the band names more than half the tracks on its own, a first row joins the
+header row — each column's lines top to bottom — when a column of the rows below holds a digit in
+half its rows or more and, on every such column, its cell holds no digit, runs shorter than a line
+of prose and repeats no value of the column. A first row saying one word in
+three cells or more past the first — `NA` across every column — is a row of placeholders and stays
+a row.
+
+**Measured**, with the shipped build on all 2,078 pages, against `d47784c`: ParseBench tables
+**0.5128 → 0.5280**, 31 pages up and one down (`BRWS` p1017, p1028, p1087 and p938 0.45–0.49 → 1.0,
+`Goldman Sachs 10-k` p1 0.45 → 0.97, `USPS 10-k` p49 0.43 → 0.82; `FBLB` p106 0.489 → 0.477, whose
+band already set its year headings a column off); content, formatting, charts and visual grounding
+unchanged on every page; overall 45.17 → 45.48. opendataloader-bench unchanged, its Markdown byte for
+byte, no table on a document without one. The gate documents' 539 tables are unchanged cell for cell,
+and the heading bounds read as before on all 11 documents. Every bound of §4 holds.
+
+**Measured and not used.** The first row joining under any band, the band's naming more than half
+the tracks not asked (tables 0.5287, 44 up and 11 down: a caption — `Exhibit V`, a surcharge's name —
+over a single-line header read into it, `SERFF_TX` p455 and `BRWS` p875 1.0 → 0.79); no guard for
+placeholders (`SERFF_TX` p1036 0.72 → 0.70, a row of `NA` read as a header line); the placeholder test
+over the columns of numbers alone (`BRWS` p938 and p1028 back to 0.49 and 0.46: four columns ending on
+`Relativity`, a header's last line, said one word).

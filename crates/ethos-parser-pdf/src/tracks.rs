@@ -68,6 +68,14 @@
 //! with — a cell of it, two column names closer than an em, covering a neighbour's column — is
 //! none: the rows stand as they would without it.
 //!
+//! **A header's last line read as the first row is the header's** (`-v13`,
+//! [`header_last_line`]): a header set on two lines whose lower line has a cell on every column
+//! opens the table itself — `Shares` and `Exercise Price` under `Number of` and `Weighted Average`
+//! — and the band above takes only the upper. Where the band names more than half the tracks on
+//! its own, a first row whose cells on the columns of numbers hold no digit, run shorter than a
+//! line of prose and repeat no value of their columns — and that says not one word in every
+//! column — joins the header row, each column's lines top to bottom.
+//!
 //! **Two numbers set closer than an em are two cells** (`-v8`, [`split_number_pair`]): a line the
 //! table would end at, a cell of which holds two numbers — cut at the widest gap between its runs,
 //! each half on a track of its own, left before right — joins as the row it is with them split. A
@@ -286,10 +294,27 @@ pub(crate) fn detect(
                 let tracks = tracks_of(&rows);
                 let top = header_band(&lines, floor, first, &tracks, &rows, runs);
                 let mut headed = false;
+                let mut joined: Option<Row> = None;
                 if top < first {
-                    let header = header_row(&lines[top..first], &tracks);
+                    let mut header = header_row(&lines[top..first], &tracks);
                     let named = header.cells.iter().filter(|c| !c.runs.is_empty()).count();
                     if 2 * named > tracks.len() {
+                        // `-v13`: the header's last line, read as the first row, is the header's.
+                        if header_last_line(&rows, runs) {
+                            let row = rows.remove(0);
+                            for (cell, c) in header.cells.iter_mut().zip(&row.cells) {
+                                if c.runs.is_empty() {
+                                    continue;
+                                }
+                                if cell.runs.is_empty() {
+                                    (cell.x0, cell.x1) = (c.x0, c.x1);
+                                } else {
+                                    (cell.x0, cell.x1) = (cell.x0.min(c.x0), cell.x1.max(c.x1));
+                                }
+                                cell.runs.extend(&c.runs);
+                            }
+                            joined = Some(row);
+                        }
                         rows.insert(0, header);
                         headed = true;
                     }
@@ -298,6 +323,9 @@ pub(crate) fn detect(
                 // A header the table cannot be built with is none (`-v7`): the rows stand alone.
                 if table.is_none() && headed {
                     rows.remove(0);
+                    if let Some(row) = joined.take() {
+                        rows.insert(0, row);
+                    }
                     table = build(page, &rows, runs, alloc)?;
                 }
                 if let Some(table) = table {
@@ -467,6 +495,38 @@ fn header_band(
         top -= 1;
     }
     top
+}
+
+/// Whether a table's first row is its header's last line (`-v13`): a column whose rows below hold
+/// a digit in half of them or more; on every such column a cell with no digit in it, shorter than
+/// a line of prose and repeating no value of its column; and not one word said in three cells or
+/// more past the first, which is a row of placeholders — `NA` across every column — and no
+/// header. A first row opens its tracks, so it holds a cell on each; and a table under a band holds
+/// three rows or more, since two stand only clear of every line within four ems above them.
+fn header_last_line(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    let text = |r: &Row, k: usize| cell_text(&r.cells[k], runs).trim().to_string();
+    let columns = rows[0].cells.len();
+    let numeric: Vec<usize> = (1..columns)
+        .filter(|&k| {
+            let digits = rows[1..]
+                .iter()
+                .filter(|r| text(r, k).chars().any(|c| c.is_ascii_digit()))
+                .count();
+            2 * digits >= rows.len() - 1
+        })
+        .collect();
+    let said: Vec<String> = (1..columns)
+        .map(|k| text(&rows[0], k))
+        .filter(|t| !t.is_empty())
+        .collect();
+    !numeric.is_empty()
+        && (said.len() < 3 || said.iter().any(|t| *t != said[0]))
+        && numeric.iter().all(|&k| {
+            let head = text(&rows[0], k);
+            !head.chars().any(|c| c.is_ascii_digit())
+                && head.chars().count() < PROSE_LINE_CHARS
+                && rows[1..].iter().all(|r| text(r, k) != head)
+        })
 }
 
 /// The track each of `line`'s cells heads: the one it sits on, clear of its neighbours, where every
@@ -1489,7 +1549,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V12.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V13.to_string(),
     }))
 }
 
@@ -1602,6 +1662,146 @@ mod tests {
         assert_eq!((found[0].rows, found[0].columns), (5, 3));
         assert_eq!(texts(&found[0])[0], ["Line", "Type", "Most Recent Year"]);
         assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+    }
+
+    /// **A header's last line read as the first row is the header's** (`-v13`): `Units` and
+    /// `Price`, a row's pitch above the first row of figures, open the table themselves, and the
+    /// band takes only `Number of` and `Average` above them; they join the header row, each
+    /// column's lines top to bottom. Two columns may end on one word.
+    #[test]
+    fn a_header_s_last_line_read_as_the_first_row_is_the_header_s() {
+        let lines = |a: &'static str, b: &'static str| {
+            under(vec![
+                run(235, 172, 35, "Number of "),
+                run(335, 172, 35, "Average "),
+                run(100, 184, 40, "Region"),
+                run(245, 184, 25, a),
+                run(345, 184, 25, b),
+            ])
+        };
+        let found = lines("Units", "Price");
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Region", "Number of Units", "Average Price"]
+        );
+        assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+        assert_eq!(
+            texts(&lines("Factor", "Factor")[0])[0],
+            ["Region", "Number of Factor", "Average Factor"],
+            "two columns ending on one word"
+        );
+        // A header that cannot be built with its last line leaves that line the first row again.
+        let found = under(vec![
+            run(105, 172, 25, "Line"),
+            run(190, 172, 240, "Units and price"),
+            run(100, 184, 40, "Region"),
+            run(245, 184, 25, "Units"),
+            run(345, 184, 25, "Price"),
+        ]);
+        assert_eq!(texts(&found[0])[0], ["Region", "Units", "Price"]);
+        assert_eq!(found[0].rows, 5);
+    }
+
+    /// A four-column ledger with `first` as its first row a row's pitch above its figures, under a
+    /// band naming its three columns of numbers — or only the last, a caption's worth. South's
+    /// change is `None`.
+    fn ledger(band: bool, first: [&'static str; 4]) -> Vec<DetectedTable> {
+        let mut runs = if band {
+            vec![
+                run(235, 172, 35, "Current "),
+                run(315, 172, 35, "Prior "),
+                run(395, 172, 35, "Change "),
+            ]
+        } else {
+            vec![run(395, 172, 35, "Change ")]
+        };
+        let x = [100, 240, 320, 400];
+        let width = |k: usize| if k == 0 { 40 } else { 30 };
+        for (k, text) in first.into_iter().enumerate() {
+            runs.push(run(x[k], 184, width(k), text));
+        }
+        let rows = [
+            ["North", "7.5", "112.0", "1.5"],
+            ["South", "18.25", "9.1", "None"],
+            ["East", "4.0", "65.5", "2.25"],
+            ["West", "12.0", "70.25", "0.5"],
+        ];
+        for (j, row) in rows.into_iter().enumerate() {
+            for (k, text) in row.into_iter().enumerate() {
+                runs.push(run(x[k], 200 + 16 * j as i64, width(k), text));
+            }
+        }
+        tables(&runs)
+    }
+
+    /// **A first row is the header's only where it reads as one** (`-v13`): a row of placeholders,
+    /// a cell repeating a value of its column, a digit, or a cell as long as a line of prose on a
+    /// column of numbers stays a row; so does any first row under a band that names
+    /// a column of four — a caption, whose first row is the header itself — and the first row of a
+    /// table of words, which has no column of numbers to tell a header by.
+    #[test]
+    fn a_first_row_is_the_header_s_only_where_it_reads_as_one() {
+        let found = ledger(true, ["Region", "Units", "Price", "Delta"]);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Region", "Current Units", "Prior Price", "Change Delta"]
+        );
+        for (first, why) in [
+            (["Region", "NA", "NA", "NA"], "placeholders"),
+            (
+                ["Region", "Units", "Price", "None"],
+                "a value of its column",
+            ),
+            (["Region", "Units", "2024", "Delta"], "a digit"),
+            (
+                [
+                    "Region",
+                    "Units sold over the whole quarter",
+                    "Price",
+                    "Delta",
+                ],
+                "a line of prose",
+            ),
+        ] {
+            let found = ledger(true, first);
+            assert_eq!(
+                texts(&found[0])[0],
+                ["", "Current ", "Prior ", "Change "],
+                "{why}"
+            );
+            assert_eq!(texts(&found[0])[1], first, "{why}");
+        }
+        let first = ["Region", "Units", "Price", "Delta"];
+        assert_eq!(texts(&ledger(false, first)[0])[0], first, "a caption");
+        let mut words = vec![
+            run(235, 172, 35, "Current "),
+            run(335, 172, 35, "Planned "),
+            run(100, 184, 40, "Region"),
+            run(240, 184, 30, "Status"),
+            run(340, 184, 30, "Phase"),
+        ];
+        for (j, row) in [
+            ["North", "Open", "One"],
+            ["South", "Shut", "Two"],
+            ["East", "Held", "Six"],
+            ["West", "Done", "Ten"],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 200 + 16 * j as i64;
+            words.extend([
+                run(100, y, 40, row[0]),
+                run(240, y, 30, row[1]),
+                run(340, y, 30, row[2]),
+            ]);
+        }
+        assert_eq!(
+            texts(&tables(&words)[0])[1],
+            ["Region", "Status", "Phase"],
+            "a table of words"
+        );
     }
 
     /// **The band is a header's and nothing else's**: more than a row and a half above the rows it
@@ -2170,7 +2370,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V12);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V13);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate
