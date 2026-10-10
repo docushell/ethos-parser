@@ -813,3 +813,67 @@ over a single-line header read into it, `SERFF_TX` p455 and `BRWS` p875 1.0 → 
 placeholders (`SERFF_TX` p1036 0.72 → 0.70, a row of `NA` read as a header line); the placeholder test
 over the columns of numbers alone (`BRWS` p938 and p1028 back to 0.49 and 0.46: four columns ending on
 `Relativity`, a header's last line, said one word).
+
+## 21. `whitespace-tracks-v14`: two flows of numbers side by side (2026-10-10, decision #60)
+
+**What `-v13` missed.** Told "Tables never found", the 52 ParseBench table pages that got no table
+were read for why, page by page, with a scratch build naming where each candidate stopped and what
+refused it. Six documents are refused outright — the `Apple Def 14a` pages draw every glyph from a
+CID-keyed CFF program under `Adobe-Identity-0`, which names none — and four are scans. On the other
+42 a rule found a candidate and refused it, and the reasons were many and each small: a sparse grid
+whose rows fill different columns of a header of 28 days (`synthetic_invoice`), header names set
+closer than an em and read as one cell (`HDHP 3000HDHP 5000`, `SERFF_CA` p96), ruled grids with a
+boundary not traced end to end, two-row fragments of tables stopped by a line off their tracks. One
+shape recurred and was this rule's own refusal: two tables set side by side — a schedule's two
+panels (`fqr-retail-blackrock…` p4 and p8, `Security | Shares | Value` twice), a two-column page's
+tables level with each other (`Goldman Sachs 10-k` p84) — written one panel and then the other.
+Each panel is written row by row and the whole is not, the shape §7 names two flows, a table beside
+a column of text, and refuses.
+
+**The change.** Where a candidate divides into two flows of two columns or more, each written row
+by row and holding a column of numbers none of which ends in dot leaders, with no column of running
+text, each flow is read on its own: the page from the last table's end down, cut at the gutter
+between them. Neither flow is text, so the refusal's reason is absent; each side then stands or
+falls by every clause of this rule on its own, its header band included. §10 measured accepting
+such flows as one table and refused it on bound 3 — a property-facts block beside a tenant table,
+two columns of a contents page; this reads them as two, and a contents list's page numbers, drawn
+with leaders, are no column of values.
+
+**Measured**, with the shipped build on all 2,078 pages, against `81d6f75`: ParseBench tables
+**0.5280 → 0.5312**, 6 pages up and none down (`Goldman Sachs 10-k` p84 0.07 → 0.72,
+`fqr-retail-blackrock…` p8 0 → 0.43 and p4 0 → 0.33, `synthetic_duplicate_tables` 0.21 → 0.36,
+`Goldman Sachs 10-k` p118 0.32 → 0.35); visual grounding 0.5266 → 0.5268, 2 pages up and none
+down; content, formatting and charts unchanged on every page; overall 45.53 → 45.60.
+opendataloader-bench unchanged, its Markdown byte for byte, no table on a document without one. The
+gate documents' 539 tables are unchanged cell for cell, and the heading bounds read as before on all
+11 documents. Every bound of §4 holds.
+
+**Measured and not used.**
+
+- **A line of nothing but spaces read as no line** where the lines around it stand within a row and
+  a half's pitch — the spacer a producer draws between rows at a size of its own, which ends a table
+  at a line of no cells (`CINF` p93 0.11 → 0.63; tables +0.0014). It also let a director's biography
+  be read as a three-by-three table of prose (`pdf_d47bf4ce95f6` p71, visual grounding 0.61 → 0.52),
+  carried a header band past a spacer into a spanning header (`01030000000064`, TEDS 1.0 → 0.96), and
+  grew and merged the two-column lists of `nist-sp-800-53Ar5`. Read as no line at any distance, it
+  also merged two tables set an empty line apart (`SERFF_CA` p2005 0.67 → 0.11,
+  `IBM_Annual_Report_2018` p17 0.69 → 0.33).
+- **Each flow read only to the candidate's last line**: a side whose table runs on below where the
+  other's ended the candidate was cut in two (`CSR-2024-25-Full-Report` p20, visual grounding 0.65 →
+  0.59; `Goldman Sachs 10-k` p118 0.32 → 0.23).
+- **Numbers drawn with dot leaders taken for values**: a contents list set in two panels,
+  `07.... | About Marico`, read as two tables (`Marico_Annual_Report_FY24` p4, visual grounding
+  0.74 → 0.64 in both its copies).
+- **The candidate's rows split at the gutter**, without reading each side's own lines: neither
+  table kept its header (tables +0.0013, `Goldman Sachs 10-k` p85 0.80 → 0.62).
+- **Two columns, labels beside numbers, waiving the row order as three do**: tables +0.0019, 5 pages
+  up and none down, but a chart's labels beside its values were read as a table before the chart
+  rule could read them (`us-global-outsourcing-survey-2024-report` p13, charts 0.6 → 0.2).
+- **Two flows tested before a reach past the pitch is given up**: no page moved.
+
+**Still not read.** A sparse grid whose rows fill different columns of their header
+(`synthetic_invoice`); header names set closer than an em (`SERFF_CA` p96); ruled grids whose
+lattice is not traced end to end, which `ruled-rects-v12` refuses by design; two-row fragments of
+tables stopped by a line off their tracks; `SERFF_TX` p1124's two panels of ages and rates, each a
+two-column candidate whose first column, numbers of up to three digits, reads as a list's labels;
+the six documents whose fonts name no glyph, and the four scans.

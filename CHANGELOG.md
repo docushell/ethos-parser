@@ -694,6 +694,14 @@ release.
   -> 10,019 on 73. Content faithfulness 0.6657 -> 0.6669, visual grounding 0.5258 -> 0.5266 (one
   page down: its restored quotation marks close a gap the block rule read as a paragraph break),
   charts 0.1179 -> 0.1184; overall 45.48 -> 45.53.
+- **Two flows of numbers side by side are read as two tables** (`whitespace-tracks-v14`, decision
+  #60): two tables set side by side — a schedule's two panels, a two-column page's tables level
+  with each other — written one panel and then the other were refused as two flows, the shape of a
+  table beside a column of text. Where each flow holds a column of numbers none of which ends in dot
+  leaders, and no column is running text, each is now read on its own, from the last table's end
+  down. ParseBench tables 0.5280 -> 0.5312, 6 pages up and none down; visual grounding 0.5266 ->
+  0.5268; every other dimension unchanged on every page; overall 45.53 -> 45.60.
+  opendataloader-bench and the gate documents' tables unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

@@ -149,7 +149,11 @@
 //!    **unless the first column alone is the one group and it is the table's labels** (`-v12`,
 //!    [`label_column`]): a cell in every row, each shorter than a line of prose. A spreadsheet's
 //!    export writes its labels as one block before its values row by row, and the table was
-//!    refused with the flows.
+//!    refused with the flows. **And where each flow holds a column of numbers, each is read on its
+//!    own** (`-v14`, [`two_tables`]): the page from the last table's end down, cut at the gutter
+//!    between them. A schedule set in two panels, or a two-column page's tables level with each
+//!    other, is two flows each written row by row, and neither is text; a contents list set in two
+//!    panels draws its page numbers with dot leaders, and those are no column of values.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -288,6 +292,31 @@ pub(crate) fn detect(
                 rows.truncate(kept);
                 end = at;
                 stand = stands(&rows, end);
+            }
+            // `-v14`: two flows side by side, each holding a column of numbers, are each read on
+            // their own — the page from the last table's end down, cut at the gutter between them,
+            // since one side's table may run on below where the other's ended this one.
+            if !stand {
+                if let Some(k) = two_tables(&rows, runs) {
+                    let tracks = tracks_of(&rows);
+                    let cut = (tracks[k - 1].1 + tracks[k].0).div_euclid(2);
+                    let top = lines[floor].y;
+                    for left in [true, false] {
+                        let side: Vec<TrackRun<'_>> = runs
+                            .iter()
+                            .map(|r| TrackRun {
+                                claimed: r.claimed
+                                    || r.y < top - LINE_TOLERANCE
+                                    || (r.x < cut) != left,
+                                ..*r
+                            })
+                            .collect();
+                        tables.extend(detect(page, &side, alloc)?);
+                    }
+                    i = end;
+                    floor = end;
+                    continue;
+                }
             }
             if stand {
                 let first = rows_above(&lines, floor, i, &mut rows, runs);
@@ -1319,6 +1348,36 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
         })
 }
 
+/// The column the second of two flows opens at (`-v14`), where a candidate written neither row by
+/// row nor in one flow divides into two groups of two columns or more, each written row by row and
+/// holding a column of numbers none of which ends in dot leaders, with no column of running text:
+/// two tables set side by side. Numbers drawn with leaders are a contents list's page numbers.
+fn two_tables(rows: &[Row], runs: &[TrackRun<'_>]) -> Option<usize> {
+    let columns = rows[0].cells.len();
+    let column = |k: usize| -> Vec<String> {
+        rows.iter()
+            .map(|r| cell_text(&r.cells[k], runs))
+            .filter(|t| !t.trim().is_empty())
+            .collect()
+    };
+    if written_row_by_row(rows, 0..columns)
+        || rows.len() < MIN_ROWS_UNORDERED
+        || (0..columns).any(|k| running_text(&column(k)))
+    {
+        return None;
+    }
+    let values = |c: usize| {
+        let texts = column(c);
+        numbers(&texts) && !texts.iter().any(|t| ends_with_leaders(t))
+    };
+    (MIN_COLUMNS..=columns.saturating_sub(MIN_COLUMNS)).find(|&k| {
+        written_row_by_row(rows, 0..k)
+            && written_row_by_row(rows, k..columns)
+            && (0..k).any(values)
+            && (k..columns).any(values)
+    })
+}
+
 /// Whether the first column is the table's labels (`-v12`): a cell in every row, each shorter than
 /// a line of prose. A spreadsheet's export writes its labels as one block before its values row by
 /// row, the order of a column of text beside a table; a column of text runs its lines long, and a
@@ -1549,7 +1608,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V13.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V14.to_string(),
     }))
 }
 
@@ -2370,7 +2429,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V13);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V14);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate
@@ -2576,6 +2635,212 @@ mod tests {
             tables(&block(["North", "South", "East", "", "Central"])).is_empty(),
             "a row with no label"
         );
+    }
+
+    /// Two panels of `columns` side by side, each a header and four rows, the left panel written
+    /// whole before the right: two flows, each written row by row.
+    fn panels(left: [&'static str; 5], right: [&'static str; 5]) -> Vec<TrackRun<'static>> {
+        let mut runs = Vec::new();
+        for (x, column) in [(100, left), (300, right)] {
+            for (k, text) in column.into_iter().enumerate() {
+                let y = 100 + 16 * k as i64;
+                let figure = ["Rate", "$195.70", "$201.40", "$208.15", "$214.90"][k];
+                runs.extend([run(x, y, 40, text), run(x + 70, y, 35, figure)]);
+            }
+        }
+        runs
+    }
+
+    /// **Two flows of numbers side by side are two tables** (`-v14`): a schedule set in two panels,
+    /// written one panel and then the other, is read as each panel's table — and still as none
+    /// where one panel's first column is running text or a column of words beside no numbers.
+    #[test]
+    fn two_flows_of_numbers_side_by_side_are_two_tables() {
+        const AGES: [&str; 5] = ["Age", "65", "66", "67", "68"];
+        let found = tables(&panels(AGES, ["Age", "75", "76", "77", "78"]));
+        assert_eq!(found.len(), 2);
+        assert_eq!((found[0].rows, found[0].columns), (5, 2));
+        assert_eq!(texts(&found[1])[1], ["75", "$195.70"]);
+
+        let words = |x: i64| -> Vec<TrackRun<'static>> {
+            ["Name", "Avery", "Blake", "Casey", "Drew"]
+                .into_iter()
+                .zip(["City", "Leeds", "Hull", "York", "Bath"])
+                .enumerate()
+                .flat_map(|(k, (name, city))| {
+                    let y = 100 + 16 * k as i64;
+                    [run(x, y, 40, name), run(x + 70, y, 40, city)]
+                })
+                .collect()
+        };
+        let mut left_words = words(100);
+        left_words.extend(panels(AGES, AGES).into_iter().filter(|r| r.x >= 30000));
+        assert!(
+            tables(&left_words).is_empty(),
+            "words beside no numbers, left"
+        );
+        let mut right_words: Vec<TrackRun<'static>> = panels(AGES, AGES)
+            .into_iter()
+            .filter(|r| r.x < 30000)
+            .collect();
+        right_words.extend(words(300));
+        assert!(
+            tables(&right_words).is_empty(),
+            "words beside no numbers, right"
+        );
+
+        let prose = panels(
+            ["Age", "rates rise", "with age", "and term", "of cover"],
+            AGES,
+        );
+        assert!(tables(&prose).is_empty(), "running text");
+    }
+
+    /// **A contents list set in two panels is no table** (`-v14`): its page numbers, drawn with dot
+    /// leaders, are no column of values, and the two panels stay two flows.
+    #[test]
+    fn a_contents_list_in_two_panels_is_no_table() {
+        let mut runs = Vec::new();
+        for (x, entries) in [
+            (
+                100,
+                [
+                    ("07....", "About us"),
+                    ("24....", "Footprint"),
+                    ("26....", "Message"),
+                    ("30....", "Leadership"),
+                    ("34....", "Strategy"),
+                ],
+            ),
+            (
+                300,
+                [
+                    ("72....", "Board"),
+                    ("74....", "Engagement"),
+                    ("78....", "Investors"),
+                    ("82....", "Consumers"),
+                    ("88....", "Community"),
+                ],
+            ),
+        ] {
+            for (k, (page, title)) in entries.into_iter().enumerate() {
+                let y = 100 + 16 * k as i64;
+                runs.extend([run(x, y, 30, page), run(x + 70, y, 50, title)]);
+            }
+        }
+        assert!(tables(&runs).is_empty());
+    }
+
+    /// **One side's table runs on below where the other's ended** (`-v14`): a note under the left
+    /// panel ends the candidate across both, and the right panel's rows below it are still its
+    /// table's — each side is read from the last table's end down.
+    #[test]
+    fn a_side_s_table_runs_on_below_the_other_s() {
+        let side = |x: i64, ages: &[&'static str]| -> Vec<TrackRun<'static>> {
+            ages.iter()
+                .zip([
+                    "Rate", "$195.70", "$201.40", "$208.15", "$214.90", "$221.65", "$228.40",
+                ])
+                .enumerate()
+                .flat_map(|(k, (&age, rate))| {
+                    let y = 100 + 16 * k as i64;
+                    [run(x, y, 40, age), run(x + 70, y, 35, rate)]
+                })
+                .collect()
+        };
+        let mut runs = side(100, &["Age", "65", "66", "67", "68"]);
+        runs.push(run(100, 180, 130, "Source: rate filing"));
+        runs.extend(side(300, &["Age", "75", "76", "77", "78", "79", "80"]));
+        let found = tables(&runs);
+        assert_eq!(found.len(), 2);
+        assert_eq!((found[0].rows, found[1].rows), (5, 7));
+    }
+
+    /// **Two flows are read apart only where each could be a table** (`-v14`): two rows of two
+    /// panels are too few to tell two tables from two flows of anything; a list's bullets beside a
+    /// table set level with it stay the list's, the candidate written row by row; and a table beside
+    /// a single column of numbers leaves that column no table of its own to be.
+    #[test]
+    fn two_flows_are_read_apart_only_where_each_could_be_a_table() {
+        let mut runs = Vec::new();
+        for (x, plan) in [(100, "Basic"), (300, "Plus")] {
+            runs.extend([
+                run(x, 100, 40, "Plan"),
+                run(x + 70, 100, 25, "2023"),
+                run(x + 130, 100, 25, "2024"),
+            ]);
+            runs.extend([
+                run(x, 116, 40, plan),
+                run(x + 70, 116, 20, "7.5"),
+                run(x + 130, 116, 20, "8.0"),
+            ]);
+        }
+        assert!(tables(&runs).is_empty(), "two rows");
+
+        let rows = [
+            ("1,200", "North", "7.5"),
+            ("950", "South", "18.25"),
+            ("2,400", "East", "4.0"),
+            ("610", "West", "12.0"),
+            ("1,075", "Central", "3.5"),
+        ];
+        let bullets: Vec<TrackRun<'static>> = rows
+            .iter()
+            .enumerate()
+            .flat_map(|(k, &(count, region, figure))| {
+                let y = 100 + 16 * k as i64;
+                [
+                    run(100, y, 5, "•"),
+                    run(130, y, 30, count),
+                    run(250, y, 40, region),
+                    run(320, y, 25, figure),
+                ]
+            })
+            .collect();
+        assert!(tables(&bullets).is_empty(), "a list's bullets");
+
+        let mut beside: Vec<TrackRun<'static>> = rows
+            .iter()
+            .enumerate()
+            .flat_map(|(k, &(_, region, figure))| {
+                let y = 100 + 16 * k as i64;
+                [run(100, y, 40, region), run(170, y, 25, figure)]
+            })
+            .collect();
+        beside.extend(
+            ["12", "15", "18", "21", "24"]
+                .into_iter()
+                .enumerate()
+                .map(|(k, n)| run(300, 100 + 16 * k as i64, 15, n)),
+        );
+        assert!(tables(&beside).is_empty(), "a single column of numbers");
+    }
+
+    /// **Each side is read from the last table's end** (`-v14`): a panel's own first line, set a
+    /// little off the other panel's baseline, opens no table across the page, and is still the
+    /// first row of its panel's.
+    #[test]
+    fn each_side_is_read_from_the_last_table_s_end() {
+        let side = |x: i64, top: i64| -> Vec<TrackRun<'static>> {
+            let mut runs = vec![run(x, top, 40, "Plan"), run(x + 70, top, 35, "Monthly")];
+            runs.extend(
+                ["Age", "65", "66", "67", "68"]
+                    .into_iter()
+                    .zip(["Rate", "$195.70", "$201.40", "$208.15", "$214.90"])
+                    .enumerate()
+                    .flat_map(|(k, (age, rate))| {
+                        let y = 100 + 16 * k as i64;
+                        [run(x, y, 40, age), run(x + 70, y, 35, rate)]
+                    }),
+            );
+            runs
+        };
+        let mut runs = side(100, 84);
+        runs.extend(side(300, 86));
+        let found = tables(&runs);
+        assert_eq!(found.len(), 2);
+        assert_eq!((found[0].rows, found[1].rows), (6, 6));
+        assert_eq!(texts(&found[0])[0], ["Plan", "Monthly"]);
     }
 
     /// **A currency sign set alone is its amount's sign**: a `$` flush left in the column and the

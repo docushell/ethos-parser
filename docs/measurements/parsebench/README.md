@@ -718,6 +718,15 @@ Runs whose font names a glyph the profile's table did not hold — `/minus`, `/e
 Content faithfulness 0.6657 -> 0.6669, visual grounding 0.5258 -> 0.5266, charts 0.1179 -> 0.1184;
 tables and formatting unchanged. Overall 45.48 -> 45.53.
 
+### After two flows of numbers read side by side (`whitespace-tracks-v14`, decision #60, 2026-10-10)
+
+Two tables set side by side — a schedule's two panels, a two-column page's tables level with each
+other — written one panel and then the other were refused as two flows, the shape of a table beside
+a column of text. `whitespace-tracks-v14` reads each flow on its own where each holds a column of
+numbers and none is text (`docs/31-TABLE-TRACKS-SCOPE.md` §21). Tables 0.5280 -> 0.5312, 6 pages up
+and none down; visual grounding 0.5266 -> 0.5268; every other dimension unchanged on every page;
+opendataloader-bench unchanged. Overall 45.53 -> 45.60.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
