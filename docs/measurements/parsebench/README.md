@@ -710,6 +710,14 @@ Shares`. `whitespace-tracks-v13` joins such a first row to the header row
 (`docs/31-TABLE-TRACKS-SCOPE.md` §20). Tables 0.5128 -> 0.5280, 31 pages up and one down; every
 other dimension unchanged on every page; opendataloader-bench unchanged. Overall 45.17 -> 45.48.
 
+### After the Adobe Glyph List (decision #59, 2026-10-10)
+
+Runs whose font names a glyph the profile's table did not hold — `/minus`, `/ellipsis`, Slovak
+`/ccaron` — were dropped. The Adobe Glyph List is vendored and reads them
+(`docs/33-UNMAPPED-CODES-SCOPE.md` §6): runs omitted 10,895 on 143 documents -> 10,019 on 73.
+Content faithfulness 0.6657 -> 0.6669, visual grounding 0.5258 -> 0.5266, charts 0.1179 -> 0.1184;
+tables and formatting unchanged. Overall 45.48 -> 45.53.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

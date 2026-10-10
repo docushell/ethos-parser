@@ -49,11 +49,49 @@ licence is present in this repository and CI is green, because no tool here can
 check it. The review is decision #22, this notice, and vendor/afm/README.md.
 
 --------------------------------------------------------------------------------
+Adobe Glyph List (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+vendor/agl/glyphlist.txt is Adobe's Glyph List, table version 2.0, unmodified,
+vendored by decision #59 of docs/00-NORTH-STAR.md (source and checksum in
+vendor/agl/README.md). The engine embeds it verbatim with include_str! and reads
+it at runtime. It carries this notice, reproduced here as its licence requires
+for distributions in binary form:
+
+  Copyright 2002-2019 Adobe (http://www.adobe.com/).
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+  Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+  Neither the name of Adobe nor the names of its contributors may be used to
+  endorse or promote products derived from this software without specific
+  prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
 Adobe CMap resources: NOT PRESENT
 --------------------------------------------------------------------------------
 
 No Adobe CMap resource files (.bcmap or otherwise) are present in this
-repository, so no Adobe BSD 3-Clause notice is currently required.
+repository, so no notice for them is currently required (the Adobe Glyph List
+above carries its own).
 
 The M3 plan called for vendoring the ~168 predefined CJK CMaps. They are not
 here, and that is a declared decision rather than an oversight: nothing in the

@@ -28,8 +28,8 @@
 //! 2. **A glyph name, by the Adobe Glyph List specification's rules that need no list**
 //!    ([`glyph_text`]): a suffix after the first full stop is dropped, components joined by
 //!    underscores are read one by one, and each is `uniXXXX…` (four upper-case hex digits per
-//!    character), `uXXXX` to `uXXXXXX`, or a name this profile's glyph table holds. The full list
-//!    stays unvendored, so a name only it knows stays unmapped.
+//!    character), `uXXXX` to `uXXXXXX`, or a name this profile's glyph table or the Adobe Glyph
+//!    List holds (decision #59, [`crate::agl`]).
 //! 3. **An embedded TrueType program's own tables** ([`from_program`]): the glyph a code selects —
 //!    a composite font's CID through its `/CIDToGIDMap`, a symbolic simple font's code through the
 //!    program's symbol cmap — read back through the program's Unicode cmap, the lowest codepoint
@@ -54,7 +54,8 @@ pub(crate) enum Glyphs<'a> {
     Symbol,
 }
 
-/// A glyph name's characters, by the Adobe Glyph List specification's rules that need no list.
+/// A glyph name's characters, by the Adobe Glyph List specification's rules — the list itself
+/// among them since decision #59.
 pub(crate) fn glyph_text(name: &str) -> Option<String> {
     let base = name.split('.').next().unwrap_or("");
     if base.is_empty() {
@@ -93,7 +94,7 @@ fn scalar(hex: &str) -> Option<char> {
 }
 
 /// Whether text is characters a reader can use: some, and no control or private-use value.
-fn plain(text: &str) -> bool {
+pub(crate) fn plain(text: &str) -> bool {
     !text.is_empty()
         && !text
             .chars()
@@ -189,10 +190,15 @@ mod tests {
         assert_eq!(glyph_text("f_i.alt").as_deref(), Some("fi"));
         assert_eq!(glyph_text("u1F600").as_deref(), Some("😀"));
         assert_eq!(glyph_text("A").as_deref(), Some("A"));
-        // Lower-case hex, a surrogate, a private-use value, a name only the full list knows, a
-        // number, and nothing at all: no characters.
+        assert_eq!(
+            glyph_text("scedilla.sc").as_deref(),
+            Some("\u{15F}"),
+            "the full list"
+        );
+        // Lower-case hex, a surrogate, a private-use value, a name no list knows, a number,
+        // and nothing at all: no characters. A name only the full list knows reads through it.
         for no in [
-            "uni0e3f", "uniD800", "uniE001", "scedilla", "g123", "1", ".notdef", "", "uni093",
+            "uni0e3f", "uniD800", "uniE001", "g123", "1", ".notdef", "", "uni093",
         ] {
             assert_eq!(glyph_text(no), None, "{no}");
         }
@@ -203,12 +209,12 @@ mod tests {
         use crate::encoding::BaseEncoding;
         let mut d = BTreeMap::new();
         d.insert(33u8, "uni0915".to_string());
-        d.insert(34u8, "scedilla".to_string());
+        d.insert(34u8, "g123".to_string());
         let map = from_encoding(&SimpleEncoding::new(BaseEncoding::MacRoman, d));
         assert_eq!(map.get(&33).map(String::as_str), Some("क"));
         assert!(
             !map.contains_key(&34),
-            "a name only the full list knows stays unmapped"
+            "a name no list knows stays unmapped"
         );
         assert!(
             !map.contains_key(&0x2C),

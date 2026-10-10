@@ -1,6 +1,6 @@
 # Codes a font's declared map leaves unmapped — scope (decision #43)
 
-**Status: shipped 2026-10-05 as `declared-font-codes-v3`.** A run's codes become characters through
+**Status: shipped 2026-10-05 as `declared-font-codes-v3`; the Adobe Glyph List read since 2026-10-10 (§6, decision #59).** A run's codes become characters through
 the font's `/ToUnicode` CMap, or its simple encoding where it has none. Where neither maps a code,
 `-v2` omitted the run and counted it under `broken-font-encoding`. `-v3` reads such a code through
 what the font itself states, and only such a code: nothing the document declared is overridden.
@@ -92,8 +92,49 @@ row that holds text, which is what rows the page did not rule look like
 
 ## 5. Not done
 
-- **The full Adobe Glyph List**: still not vendored (`docs/21-STANDARD-14-ASCII-COVERAGE-SCOPE.md`
-  §6); a derived subset would read the names above.
+- **The full Adobe Glyph List**: vendored by decision #59 (§6).
 - **CFF and Type 1 programs**: `skrifa` reads TrueType and OpenType; a bare CFF's glyph names are
   not read.
 - **Logical order for complex scripts.**
+
+## 6. The Adobe Glyph List (2026-10-10, decision #59)
+
+**Why.** Told "Glyph names", the runs the engine drops were counted by cause before any code. Across
+ParseBench's 2,037 documents and opendataloader-bench's 200, 15,506 runs dropped. Most come from
+fonts that state nothing this engine could read: an incomplete `/ToUnicode` over a TrueType program
+stripped of its cmap and its glyph names (5,184 runs), a CID-keyed CFF program, which names no
+glyph (6,519). Only OCR reads those. But 666 runs on 68 documents dropped for a `/Differences` name
+Adobe's Glyph List carries — `/minus` alone 410, then `/ellipsis`, `/bullet`, `/plusminus`,
+`/quotedblleft`, the Greek capitals, Slovak `/ccaron` and `/ncaron`. A glyph name is the document
+naming its glyph, and §2 already read `uniXXXX` names by the same specification's rules; the list
+is the rest of that specification.
+
+**The change.** `vendor/agl/glyphlist.txt` — the list's table version 2.0, unmodified, under Adobe's
+BSD-3-Clause licence (`NOTICE`, `vendor/agl/README.md`) — is embedded with `include_str!` and read
+once ([`crates/ethos-parser-pdf/src/agl.rs`](../crates/ethos-parser-pdf/src/agl.rs)). A glyph name
+the profile's own table does not hold is read as the list gives it: a `/Differences` name, a
+`MacRomanEncoding` name above ASCII, a font program's `post` name, a Core-14 AFM glyph's name for
+its width. The table wins where both hold a name — `/fi` stays two letters, the list's U+FB01 is
+not taken — and the list's 192 private-use entries, small capitals and old-style figures, read as
+nothing. `cmap_data_version` `annex-d-encodings-3` → `-4`.
+
+**Measured**, with the shipped build on all 2,078 pages, against `8168060`: runs omitted for an
+unmapped code 10,895 on 143 ParseBench documents → 10,019 on 73. Content faithfulness
+**0.6657 → 0.6669** (`text_simple__boldwords` 0.54 → 0.98, a Slovak invoice whose `č` and `ň` were
+dropped; `text_multilang__turkish` 0.80 → 0.90), visual grounding 0.5258 → 0.5266, charts 0.1179 →
+0.1184 (`World_Inequality_Report_2026` p118 0.67 → 1.0, its minus signs read); tables and
+formatting unchanged on every page; overall 45.48 → 45.53. opendataloader-bench: one document
+changes, `01030000000145`, which gains `∞` (`n→∞`); NID and TEDS unchanged, MHS 0.5457 unchanged at
+four places (that document 0.6812 → 0.6811). The gate documents' 539 tables are unchanged and the
+heading bounds read as before.
+
+**The trade, recorded.** One visual-grounding page falls: `2002.07386v3` p3, 0.59 → 0.55. Its
+quotation marks were dropped, and with them the words they held — “fails”, “failing”, “Health”.
+Read now, the line they sit on closes a gap the block rule took for a paragraph break, and two
+paragraphs read as one block: the block rule's limit — it reads vertical whitespace, not an indent —
+uncovered by text that is now right. `text_multicolumns__3cols`'s content moves by 0.00001.
+
+**Still omitted** (10,019 runs on ParseBench): fonts that state nothing. Two kinds state glyph names
+this change does not read — a simple CFF program behind an incomplete `/ToUnicode` (1,794 runs on
+27 documents across both benchmarks) and a Type 1 program's own encoding (297 on 15): `skrifa`
+reads neither, and both would read through this list.

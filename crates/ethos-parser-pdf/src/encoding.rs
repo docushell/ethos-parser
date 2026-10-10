@@ -26,20 +26,22 @@
 //! tables were *"written out as data under `vendor/encodings/`"* until v2-S13.3, and the doc on
 //! `WIN_ANSI` said the same thing in fewer words. `vendor/README.md` has been right about it the
 //! whole time and says why: a 256-entry lookup table in a separate file is the same bytes with a
-//! parser in front. `vendor/` holds one tracked file, that README.
+//! parser in front. `vendor/` holds data files instead: the Core-14 AFMs and the Adobe Glyph List.
 //!
-//! **Not vendored:** the Adobe predefined CJK CMaps (`UniJIS-UCS2-H` and its ~167 siblings) and
-//! the full Adobe Glyph List. Neither is decoded approximately — `docs/01-CONTRACT.md` §8, because
-//! approximate text is worse than no text here: a citation can be verified against it and appear
-//! to hold. What that costs a document differs by which one it needs, and this paragraph said
-//! *"refused with a named error"* of both until v2-S13.3. A document drawing text with a font
-//! that names a predefined CMap is genuinely **refused**, at the first string shown with that
-//! font; one a page lists and never draws with refuses nothing (tracker I8). An `/Identity-H`
-//! font with no `/ToUnicode` is the exception since 2026-10-03: its codes split and advance as
-//! the document says, so each run shown with it is dropped and counted instead. A `/Differences`
-//! name outside the subset drops **that run** and is counted into `broken-font-encoding`; only a
-//! document that decodes nothing is refused outright, which is v0.1's decision that failing a
-//! whole document over one glyph was more than the evidence required.
+//! **The Adobe Glyph List** is vendored since decision #59 — `vendor/agl/glyphlist.txt`,
+//! unmodified, read by [`crate::agl`] for any name the small table below does not hold.
+//!
+//! **Not vendored:** the Adobe predefined CJK CMaps (`UniJIS-UCS2-H` and its ~167 siblings). They
+//! are not decoded approximately — `docs/01-CONTRACT.md` §8, because approximate text is worse
+//! than no text here: a citation can be verified against it and appear to hold. A document drawing
+//! text with a font that names a predefined CMap is genuinely **refused**, at the first string
+//! shown with that font; one a page lists and never draws with refuses nothing (tracker I8). An
+//! `/Identity-H` font with no `/ToUnicode` is the exception since 2026-10-03: its codes split and
+//! advance as the document says, so each run shown with it is dropped and counted instead. A
+//! `/Differences` name neither the table nor the list carries — a font's own `/g123` — drops
+//! **that run** and is counted into `broken-font-encoding`; only a document that decodes nothing
+//! is refused outright, which is v0.1's decision that failing a whole document over one glyph was
+//! more than the evidence required.
 //!
 //! This is a declared limitation, not an oversight. It reaches a consumer as the limitation code
 //! `predefined-cmaps-not-vendored` in `assurance.limitations`, so the gap is stated rather than
@@ -142,9 +144,9 @@ impl SimpleEncoding {
             return glyph_name_to_str(name).ok_or_else(|| EngineError::Unsupported {
                 what: "glyph name".into(),
                 detail: format!(
-                    "/Differences maps code {code} to /{name}, which is not in this profile's \
-                     glyph table. The full Adobe Glyph List is not vendored; a document needing \
-                     it is refused rather than decoded approximately."
+                    "/Differences maps code {code} to /{name}, which neither this profile's \
+                     glyph table nor the Adobe Glyph List carries; a run needing it is refused \
+                     rather than decoded approximately."
                 ),
             });
         }
@@ -616,9 +618,10 @@ const fn build_standard() -> [Option<&'static str>; 256] {
 
 /// Glyph names this profile can resolve, for `/Differences`.
 ///
-/// A deliberately small table: the names the fixture corpus uses plus the obvious Latin set. The
-/// full Adobe Glyph List is not vendored, and an unresolvable name is an error rather than a
-/// dropped character.
+/// A small table first — the names the fixture corpus uses plus the obvious Latin set, and the
+/// ligatures as their letters — then the Adobe Glyph List (decision #59, [`crate::agl`]) for any
+/// name the table does not hold. A name neither carries is an error rather than a dropped
+/// character.
 pub(crate) fn glyph_name_to_str(name: &str) -> Option<&'static str> {
     Some(match name {
         "space" => " ",
@@ -689,7 +692,7 @@ pub(crate) fn glyph_name_to_str(name: &str) -> Option<&'static str> {
             // Single-letter names are their own character: /a, /Z.
             return single_ascii(n.as_bytes()[0]);
         }
-        _ => return None,
+        n => return crate::agl::characters(n),
     })
 }
 
@@ -805,12 +808,12 @@ mod tests {
     #[test]
     fn an_unknown_glyph_name_is_refused_with_a_reason() {
         let mut d = BTreeMap::new();
-        d.insert(0x41u8, "afii57636".to_string()); // a real AGL name we do not carry
+        d.insert(0x41u8, "g123".to_string()); // a font's own name, no list's
         let e = SimpleEncoding::new(BaseEncoding::WinAnsi, d);
         let err = e.decode(0x41).unwrap_err();
         assert_eq!(err.code(), "unsupported");
         assert!(
-            err.to_string().contains("afii57636"),
+            err.to_string().contains("g123"),
             "the error must name the glyph so the gap is actionable: {err}"
         );
     }

@@ -106,9 +106,9 @@
     "cmap_data_version": {
       "type": "string",
       "minLength": 1,
-      "description": "Identity of the vendored character-decoding data. Names what is actually vendored rather than what was planned: at M3 that is the PDF 32000-1 Annex D encoding tables, not the Adobe predefined CJK CMaps, whose absence is a declared limitation.",
+      "description": "Identity of the vendored character-decoding data. Names what is actually vendored rather than what was planned: at M3 that is the PDF 32000-1 Annex D encoding tables, not the Adobe predefined CJK CMaps, whose absence is a declared limitation. Since decision #59 (`annex-d-encodings-4`) the Adobe Glyph List, table version 2.0, is vendored too.",
       "examples": [
-        "annex-d-encodings-3"
+        "annex-d-encodings-4"
       ]
     },
     "font_metrics_data_version": {
@@ -494,7 +494,7 @@
         "tables": true
       },
       "classify_sample_pages": 8,
-      "cmap_data_version": "annex-d-encodings-3",
+      "cmap_data_version": "annex-d-encodings-4",
       "coordinate_system": {
         "origin": "top-left",
         "unit": "centipoint"

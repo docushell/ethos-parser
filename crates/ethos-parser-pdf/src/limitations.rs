@@ -309,8 +309,8 @@ pub fn unmapped_codes_read_from_font(runs: u32) -> Limitation {
              entry in its `/ToUnicode` CMap, a `/Differences` glyph name outside this profile's \
              glyph table, or no map at all — and were read through what the font itself states: \
              its declared encoding behind the `/ToUnicode`, a glyph name by the Adobe Glyph List \
-             specification's rules that need no list (`uniXXXX`, `uXXXX`, components joined by \
-             underscores, a suffix after a full stop dropped), or an embedded TrueType program's \
+             or its specification's rules (`uniXXXX`, `uXXXX`, components joined by underscores, \
+             a suffix after a full stop dropped), or an embedded TrueType program's \
              own cmap and glyph names. Only codes the declared map leaves unmapped are read this \
              way, so nothing the document declared is overridden; no character is supplied that \
              the font does not state, and a control or private-use value is refused. A run with a \

@@ -109,8 +109,9 @@ argument in §4."*
 and 0.52.0 is that table.
 
 **It emits nothing unless three independent sources agree.** This repository's own `WIN_ANSI`
-code-to-text column; Adobe's Glyph List, passed in by path and **not vendored**, because it is a
-tool used once rather than data the build reads; and the glyph repertoire of `vendor/afm/`, which
+code-to-text column; Adobe's Glyph List, passed in by path and **not vendored** then, because it
+was a tool used once rather than data the build reads (decision #59 has since vendored it, in
+`vendor/agl/`, for the build to read); and the glyph repertoire of `vendor/afm/`, which
 decides which of the AGL's several names for one codepoint to carry and proves the chosen name is
 a real Adobe glyph rather than a plausible-looking typo. A name no AFM carries is not emitted. A
 name whose AGL codepoint disagrees with `WIN_ANSI` is a hard failure, because that means two

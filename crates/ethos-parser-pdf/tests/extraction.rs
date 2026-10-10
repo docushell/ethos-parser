@@ -4142,7 +4142,7 @@ fn a_forms_tj_gaps_are_never_written_onto_the_pages_runs() {
         // A font whose `/Differences` names a glyph this profile cannot map: its runs are dropped,
         // and their gaps have no run of the form's to go on.
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << /Differences \
-           [65 /afii57636] >> >>"
+           [65 /g123] >> >>"
             .to_vec(),
     ]);
     let a = extracted(&bytes).expect("reads");

@@ -1214,7 +1214,14 @@ pub const FORM_ANNOTATION_RULE_V2: &str = "form-annotations-v2";
 /// Ghostscript give one glyph name, and its 0x27 and 0x60 are `quotesingle` and `grave` rather
 /// than `StandardEncoding`'s curly quotes. Page text changes wherever a simple font names that
 /// encoding: a run holding such a code was omitted and counted, and is now read.
-pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-3";
+///
+/// `-4` (0.64.0, decision #59): the Adobe Glyph List, table version 2.0, joins the vendored data —
+/// `vendor/agl/glyphlist.txt`, unmodified, under Adobe's BSD-3-Clause licence. A glyph name the
+/// profile's own table does not hold — a `/Differences` name, a `MacRomanEncoding` name above
+/// ASCII, a font program's `post` name — is read as the list gives it, never as a private-use or
+/// control value. Page text changes wherever a font names such a glyph: a run holding one was
+/// omitted and counted, and is now read.
+pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-4";
 
 /// Identity of the vendored **font metric** data — Adobe's Core-14 AFMs in `vendor/afm/`.
 ///
@@ -3439,7 +3446,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v2","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v13","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-4","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v3","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v2","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v13","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4563,11 +4570,15 @@ mod tests {
              category, and a legend set beyond the categories. Nothing else.\n\n\
              Moved for decision #58, `sha256:384837fc…` -> `sha256:eae2bae3…`: \
              `table_detection.tracks` `whitespace-tracks-v12` -> `-v13`, which reads a header's \
-             last line, read as the table's first row, as the header's. Nothing else."
+             last line, read as the table's first row, as the header's. Nothing else.\n\n\
+             Moved for decision #59, `sha256:eae2bae3…` -> `sha256:832c3d33…`: \
+             `cmap_data_version` `annex-d-encodings-3` -> `-4`, which vendors the Adobe Glyph \
+             List and reads a glyph name the profile's table does not hold as the list gives it. \
+             Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:eae2bae3530c4d4d1c5171ca33fe076b8d293780f1449458af5de72365068a43"
+            "sha256:832c3d33f410d09b7c66cae5c40851c6216fc3d3bb0192e1c42b68df138fd3fc"
         );
     }
 

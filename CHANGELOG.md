@@ -686,6 +686,14 @@ release.
   word in three cells or more) stays a row. ParseBench tables 0.5128 -> 0.5280, 31 pages up and one
   down; every other dimension unchanged; overall 45.17 -> 45.48. opendataloader-bench and the gate
   documents' tables unchanged.
+- **A glyph name is read by the Adobe Glyph List** (decision #59, `cmap_data_version`
+  `annex-d-encodings-4`): the list, table version 2.0, is vendored unmodified under Adobe's
+  BSD-3-Clause licence (`vendor/agl/`, `NOTICE`); a `/Differences`, `MacRomanEncoding` or
+  font-program glyph name the profile's own table does not hold is read as the list gives it, never
+  as a private-use value. Runs omitted for an unmapped code on ParseBench: 10,895 on 143 documents
+  -> 10,019 on 73. Content faithfulness 0.6657 -> 0.6669, visual grounding 0.5258 -> 0.5266 (one
+  page down: its restored quotation marks close a gap the block rule read as a paragraph break),
+  charts 0.1179 -> 0.1184; overall 45.48 -> 45.53.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 
