@@ -108,6 +108,10 @@
             270
           ]
         },
+        "visible": {
+          "$ref": "#/$defs/quant_rect",
+          "$comment": "Decision #62. The box a viewer shows, {x0, y0, x1, y1} in integer centipoints, the declared top-left system: the /CropBox clipped to the media box, where it is narrower than the page. OMITTED where the page shows the whole of its media box."
+        },
         "runs": {
           "type": "array",
           "items": {

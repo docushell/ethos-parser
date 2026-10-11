@@ -105,6 +105,7 @@ fn five_thousand_and_one_pages() -> DocumentRepresentation {
             width: 61200,
             height: 79200,
             rotation: 0,
+            visible: None,
         })
         .collect();
     payload.nodes.clear();

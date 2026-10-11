@@ -190,6 +190,7 @@ fn the_same_document_with_a_page_seals_and_projects() {
         width: 30000,
         height: 14400,
         rotation: 0,
+        visible: None,
     };
     let node = text_node(&mut alloc, &page.id);
     let geometry = NodeGeometry {

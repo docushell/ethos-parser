@@ -721,6 +721,14 @@ release.
   trade); content one page down by 0.00003; formatting, tables and charts unchanged on every page;
   overall 45.73 -> 45.82. opendataloader-bench, the gate documents' tables and the heading bounds
   unchanged.
+- **A page states the box a viewer shows** (decision #62): each page record gains `visible`, the
+  page's `/CropBox` clipped to its media box in the declared system, written only where it is
+  narrower than the page; every coordinate stays in the media box's frame, which `width` and
+  `height` describe, and the seal refuses a visible box past its page. A consumer that draws the
+  page shows that box alone; the ParseBench adapter now places its items on it, as the benchmark's
+  picture of the page holds them. Additive, folded into the unreleased schema `0.8.0`. ParseBench
+  visual grounding 0.5316 -> 0.5367, the 7 pages that crop up and none down (`Preview` 0.03 ->
+  0.70); every other dimension unchanged; overall 45.82 -> 45.92.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

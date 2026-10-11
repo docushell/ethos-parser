@@ -9,7 +9,8 @@ Text dimensions read `markdown`, its pipe tables converted to HTML as every loca
 except a table holding a merged cell, which GFM cannot carry: that one is the engine's own HTML
 projection of it, `rowspan` and `colspan` kept. Visual Grounding reads the engine's own units with their boxes:
 its `layout_unit`s (each `ground` element where a run carries none), each table, each image and
-each figure region, labelled only from what the record states — a run's page `furniture`, a tagged
+each figure region, placed on the page's visible box where the record states one (decision #62),
+labelled only from what the record states — a run's page `furniture`, a tagged
 role path, an `inferred_heading` run, a detected table, a drawn image, a figure region (decision
 #46) — and `Text` otherwise. Nothing here infers a role or a unit the engine did not.
 
@@ -143,7 +144,7 @@ def _layout(extract: dict, grounding: dict) -> dict:
         geometry = figure.get("geometry") or {}
         if geometry.get("state") == "measured":
             items.append({"page": page_of.get(figure.get("page"), 1), "bbox": geometry["value"], "label": "Picture", "text": ""})
-    pages = [{"index": p["index"], "width": p["width"], "height": p["height"]} for p in rep["pages"]]
+    pages = [{"index": p["index"], "width": p["width"], "height": p["height"], "visible": p.get("visible")} for p in rep["pages"]]
     return {"pages": pages, "items": items}
 
 
@@ -234,11 +235,18 @@ class EthosProvider(Provider):
         layout_pages = []
         for page in layout["pages"]:
             width, height = float(page["width"]), float(page["height"])
+            # The benchmark draws the page it scores: where the record states the box a viewer shows
+            # (decision #62), the items are placed on that box, as the page's picture holds them.
+            dx = dy = 0.0
+            if page.get("visible"):
+                vx0, vy0, vx1, vy1 = page["visible"]
+                dx, dy, width, height = float(vx0), float(vy0), float(vx1 - vx0), float(vy1 - vy0)
             items = []
             for item in layout["items"]:
                 if item["page"] != page["index"]:
                     continue
                 x0, y0, x1, y1 = item["bbox"]
+                x0, y0, x1, y1 = x0 - dx, y0 - dy, x1 - dx, y1 - dy
                 if x1 <= x0 or y1 <= y0:
                     continue
                 segment = LayoutSegmentIR(

@@ -216,6 +216,10 @@ pub struct PageExtract {
     pub height: i64,
     /// Page rotation as declared: 0, 90, 180 or 270.
     pub rotation: i64,
+    /// The box a viewer shows, in the declared system, where it is narrower than the page
+    /// (decision #62): the `/CropBox` clipped to the media box.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<crate::tables::QuantRect>,
     /// Runs in reading order.
     pub runs: Vec<TextRun>,
     /// Ruled tables detected on this page (v1-S1).

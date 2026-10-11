@@ -228,6 +228,9 @@ pub fn to_representation(
             width: page.width,
             height: page.height,
             rotation: page.rotation,
+            visible: page
+                .visible
+                .and_then(|v| ethos_parser_core::QRect::new(v.x0, v.y0, v.x1, v.y1).ok()),
         });
 
         for (i, run) in page.runs.iter().enumerate() {

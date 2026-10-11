@@ -2130,6 +2130,13 @@ pub struct PageRecord {
     pub height: i64,
     /// Page rotation as declared: 0, 90, 180 or 270.
     pub rotation: i64,
+    /// **The box a viewer shows** (decision #62): the page's `/CropBox` clipped to its media box,
+    /// in the declared system, wherever it is narrower than the page. [`Self::width`] and
+    /// [`Self::height`] are the media box's, the frame every coordinate here is in; a consumer that
+    /// draws the page shows this box alone, and places this representation's boxes on its picture
+    /// by it. Absent where the page shows the whole of its media box.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<QRect>,
 }
 
 /// One ordered, typed node.
@@ -2634,6 +2641,22 @@ impl DocumentRepresentation {
             if pages_by_id.insert(page.id.as_str(), page).is_some() {
                 return Err(Self::malformed(format!("duplicate page id `{}`", page.id)));
             }
+            // Decision #62: the box a viewer shows is part of the page, never past it.
+            if let Some(v) = page.visible {
+                if v.x0() < 0 || v.y0() < 0 || v.x1() > page.width || v.y1() > page.height {
+                    return Err(Self::malformed(format!(
+                        "page `{}` states a visible box [{}, {}, {}, {}] outside the page \
+                         [0, 0, {}, {}]; the box a viewer shows is part of the page",
+                        page.id,
+                        v.x0(),
+                        v.y0(),
+                        v.x1(),
+                        v.y1(),
+                        page.width,
+                        page.height
+                    )));
+                }
+            }
         }
 
         // **v2-S2: which family of document this is, decided by the nodes' own addresses.**
@@ -3137,6 +3160,7 @@ mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            visible: None,
         }
     }
 
@@ -3752,6 +3776,29 @@ mod tests {
             msg.contains(d.fingerprint().as_str()),
             "the failure must name both digests: {msg}"
         );
+    }
+
+    /// **The box a viewer shows is part of the page** (decision #62): stated inside it, it seals and
+    /// travels; stated past it, the artifact is refused as any box past its page is.
+    #[test]
+    fn a_visible_box_is_part_of_its_page() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let mut p = page(&mut alloc, 1);
+        let n = node(&mut alloc, &p.id, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Measured(QRect::new(100, 100, 200, 200).unwrap()),
+        );
+        p.visible = Some(QRect::new(500, 400, 29000, 14000).unwrap());
+        let sealed = DocumentRepresentation::seal(
+            payload(vec![n.clone()], vec![p.clone()]),
+            vec![g.clone()],
+        )
+        .expect("a visible box inside the page seals");
+        assert_eq!(sealed.payload().pages[0].visible, p.visible);
+        p.visible = Some(QRect::new(500, 400, 30001, 14000).unwrap());
+        let err = DocumentRepresentation::seal(payload(vec![n], vec![p]), vec![g]).unwrap_err();
+        assert!(err.to_string().contains("visible box"), "{err}");
     }
 
     #[test]

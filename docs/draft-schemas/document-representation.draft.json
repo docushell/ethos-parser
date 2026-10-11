@@ -122,7 +122,14 @@
         },
         "width": { "type": "integer", "minimum": 1, "$comment": "Integer centipoints, AFTER rotation." },
         "height": { "type": "integer", "minimum": 1 },
-        "rotation": { "type": "integer", "enum": [0, 90, 180, 270] }
+        "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
+        "visible": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 4,
+          "maxItems": 4,
+          "$comment": "Decision #62. The box a viewer shows, [x0, y0, x1, y1] in the declared system: the page's /CropBox clipped to its media box, where it is narrower than the page. width and height are the media box's, the frame every coordinate is in; a consumer that draws the page shows this box alone and places boxes on its picture by it. OMITTED where the page shows the whole of its media box."
+        }
       }
     },
 

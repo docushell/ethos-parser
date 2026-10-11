@@ -3447,6 +3447,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -3556,6 +3557,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -3636,6 +3638,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -3708,6 +3711,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = texts
             .iter()
@@ -5124,6 +5128,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -5784,6 +5789,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                visible: None,
             };
             // Median glyph 250, so a word gap of 62: `M` and `ission` abut, `ready` is 300 on.
             let nodes: Vec<Node> = [
@@ -5925,6 +5931,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                visible: None,
             };
             let mut specs = corroborating(2);
             specs.push(("FUTURE", None, 7200, 7200, Some(4930), None));
@@ -5988,6 +5995,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            visible: None,
         };
         let mut nodes = Vec::new();
         let mut geometry = Vec::new();
@@ -6398,6 +6406,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            visible: None,
         };
         let mut nodes: Vec<Node> = Vec::new();
         // Two corroborating runs so the pitch reference exists, then the pair under test.
@@ -6454,6 +6463,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -6575,6 +6585,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            visible: None,
         };
         let nodes: Vec<Node> = [("Yar", 7200i64), ("row", 8200)]
             .iter()

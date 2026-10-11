@@ -750,6 +750,14 @@ a unit of its own. `line-units-v4` joins a script to the line it is set in. Visu
 0.00003; every other dimension unchanged on every page; opendataloader-bench unchanged. Overall
 45.73 -> 45.82.
 
+### After a page states the box a viewer shows (decision #62, 2026-10-11)
+
+Seven visual-grounding pages crop: their `/CropBox` is narrower than their media box, the benchmark
+draws and labels the crop box, and this engine's coordinates are in the media box's frame by design.
+Each page record now states `visible`, the crop box in the declared system, and the adapter places
+its items on it. Visual grounding 0.5316 -> 0.5367, the 7 pages up and none down; every other
+dimension unchanged. Overall 45.82 -> 45.92.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

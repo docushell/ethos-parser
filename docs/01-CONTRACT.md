@@ -447,7 +447,7 @@ fields and nothing else:
 | `producer` | ✓ | `{name, version}` |
 | `capabilities` | ✓ | `{spans, char_offsets, tables}` |
 | `coordinate_system` | ✓ | `{unit: "centipoint", origin: "top-left"}` |
-| `pages` | ✓ | `[{id, index≥1, width, height, rotation}]`, **1-indexed** — empty for page-less documents |
+| `pages` | ✓ | `[{id, index≥1, width, height, rotation, visible?}]`, **1-indexed** — empty for page-less documents; `visible` is the box a viewer shows, the `/CropBox` clipped to the media box, where it is narrower than the page (decision #62) |
 | `elements` | ✓ | `[{id, page, bbox, kind, text?}]` |
 | `spans` | optional | `[{id, page, bbox, text, element?, char_start?, char_end?}]` |
 | `tables` | optional | `[{id, page, bbox, cells:[…]}]` |

@@ -1317,6 +1317,7 @@ mod schema_limit_tests {
             width: 60000,
             height: 80000,
             rotation: 0,
+            visible: None,
         };
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
         for (i, text) in texts.iter().enumerate() {
@@ -1390,6 +1391,7 @@ mod schema_limit_tests {
             width: 60000,
             height: 80000,
             rotation: 0,
+            visible: None,
         };
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
         let mut k = 0usize;

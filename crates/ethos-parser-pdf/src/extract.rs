@@ -1526,6 +1526,17 @@ fn extract_page(
             }
         }
 
+        let width = quantize(geom.display_width, QUANTUM_PER_POINT).map_err(quantize_err)?;
+        let height = quantize(geom.display_height, QUANTUM_PER_POINT).map_err(quantize_err)?;
+        // Decision #62: the box a viewer shows, where the page crops — the frame a consumer that
+        // draws the page places its boxes in. Clipped to the media box already, so on the page.
+        let shown = crate::tables::quantize_rect(visible.x0, visible.y0, visible.x1, visible.y1)?;
+        let shown = crate::tables::QuantRect {
+            x0: shown.x0.max(0),
+            y0: shown.y0.max(0),
+            x1: shown.x1.min(width),
+            y1: shown.y1.min(height),
+        };
         page_extract = PageExtract {
             tables,
             tagged_tables: page_tagged_tables,
@@ -1533,9 +1544,11 @@ fn extract_page(
             objects,
             images,
             index: page_number,
-            width: quantize(geom.display_width, QUANTUM_PER_POINT).map_err(quantize_err)?,
-            height: quantize(geom.display_height, QUANTUM_PER_POINT).map_err(quantize_err)?,
+            width,
+            height,
             rotation: geom.rotation,
+            visible: (shown.x0 > 0 || shown.y0 > 0 || shown.x1 < width || shown.y1 < height)
+                .then_some(shown),
             runs,
         };
     }

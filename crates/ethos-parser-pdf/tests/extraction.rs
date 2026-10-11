@@ -748,12 +748,17 @@ fn a_rotated_page_puts_the_box_on_the_side_the_glyph_tops_point() {
 
 /// One page of Helvetica runs, 5 pt a glyph at 10 pt, turned by `/Rotate` `rotate`, drawing `stream`.
 fn helvetica_page(rotate: u32, stream: &[u8]) -> ExtractArtifact {
+    helvetica_page_with(rotate, "", stream)
+}
+
+/// [`helvetica_page`] with `extra` entries in the page dictionary, a `/CropBox` say.
+fn helvetica_page_with(rotate: u32, extra: &str, stream: &[u8]) -> ExtractArtifact {
     let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
     let objects: Vec<Vec<u8>> = vec![
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
         format!(
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Rotate {rotate} \
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Rotate {rotate} {extra} \
              /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
         )
         .into_bytes(),
@@ -827,6 +832,50 @@ fn a_travel_off_the_declared_x_or_backward_keeps_its_unrotated_length() {
     );
     assert_eq!(mirrored.pages[0].runs[0].text, "AB");
     assert_eq!(mirrored.pages[0].runs[0].locator.advance, Some(1000));
+}
+
+/// **A page states the box a viewer shows** (decision #62): a `/CropBox` narrower than the media
+/// box, in the declared system — turned with the page — and no box where the page shows the whole
+/// of its media box. Every coordinate stays in the media box's frame.
+#[test]
+fn a_page_that_crops_states_the_box_a_viewer_shows() {
+    let a = extract_ok(engine_fx("crop-box-smaller-than-media"));
+    let visible = a.pages[0].visible.expect("the fixture crops");
+    assert_eq!(
+        [visible.x0, visible.y0, visible.x1, visible.y1],
+        [5000, 5000, 25000, 15000],
+        "/CropBox [50 50 250 150] on /MediaBox [0 0 300 200], top-left"
+    );
+    let rep = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("seals");
+    assert_eq!(
+        rep.payload().pages[0]
+            .visible
+            .map(|v| [v.x0(), v.y0(), v.x1(), v.y1()]),
+        Some([5000, 5000, 25000, 15000])
+    );
+
+    let turned = helvetica_page_with(
+        90,
+        "/CropBox [20 30 180 270]",
+        b"BT /F1 10 Tf 60 60 Td (AB) Tj ET",
+    );
+    let page = &turned.pages[0];
+    assert_eq!((page.width, page.height), (30000, 20000));
+    let visible = page.visible.expect("it crops");
+    assert_eq!(
+        [visible.x0, visible.y0, visible.x1, visible.y1],
+        [3000, 2000, 27000, 18000],
+        "a quarter turn lays user y along the declared x"
+    );
+
+    let whole = helvetica_page(0, b"BT /F1 10 Tf 60 60 Td (AB) Tj ET");
+    assert_eq!(whole.pages[0].visible, None);
+    let cropped_to_itself = helvetica_page_with(
+        0,
+        "/CropBox [0 0 200 300]",
+        b"BT /F1 10 Tf 60 60 Td (AB) Tj ET",
+    );
+    assert_eq!(cropped_to_itself.pages[0].visible, None);
 }
 
 #[test]
