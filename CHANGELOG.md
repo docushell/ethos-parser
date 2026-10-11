@@ -702,6 +702,15 @@ release.
   down. ParseBench tables 0.5280 -> 0.5312, 6 pages up and none down; visual grounding 0.5266 ->
   0.5268; every other dimension unchanged on every page; overall 45.53 -> 45.60.
   opendataloader-bench and the gate documents' tables unchanged.
+- **A run's advance is its travel along the declared x** (decision #61, `docs/22-WORD-BOXES-SCOPE.md`
+  §9 item 2's open half): `PdfLocator::advance` was measured along the text matrix's x before any
+  rotation, so text a producer turns upright with its text matrix on a `/Rotate 90` page advanced
+  0, and the Markdown and HTML projections set every run of its lines as a block of its own. It is
+  now the pen's travel in the declared system wherever that runs forward along the x axis, as the
+  run's box already was; upright text on an unturned page is unchanged bit for bit. ParseBench
+  content faithfulness 0.6669 -> 0.6696, semantic formatting 0.4365 -> 0.4402, no page down on any
+  dimension; overall 45.60 -> 45.73. opendataloader-bench, the gate documents' tables and the
+  heading bounds unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 

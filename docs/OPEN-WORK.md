@@ -249,7 +249,7 @@ boxes, which doc 22 refused.
 
 | Defect | Where it is recorded |
 | --- | --- |
-| `advance` on a CTM- or `/Rotate`-turned page is measured before the rotation, so it disagrees with the box and with the contract's "after page rotation" | `PdfLocator::advance` rustdoc; doc 22 amendments |
+| `advance` on a CTM- or `/Rotate`-turned page is measured before the rotation, so it disagrees with the box and with the contract's "after page rotation" — **fixed 2026-10-11 (decision #61) where the travel runs forward along the declared x**; still open for travel off that axis or backward along it | `PdfLocator::advance` rustdoc; doc 22 amendments |
 | Office markdown and html stamp the PDF default profile's `profile_sha256`, not the profile that produced the representation | `409102d` commit message |
 | ~~An ODT or ODP heading is on the wire as a heading and projects as a **paragraph**~~ — **fixed 2026-09-20**, see §5 | [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md) §6.2, amended |
 | On `nist-sp-800-53Ar5` page 47, 23 characters of a turned table header (`Assessor /`, `Assessment Team`) are absent from the extract | `docs/measurements/rotated-text/README.md` |

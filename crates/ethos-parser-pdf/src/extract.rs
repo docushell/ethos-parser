@@ -680,8 +680,23 @@ fn extract_page(
             let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
             let origin_x = quantize(ox_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
             let origin_y = quantize(oy_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
-            let advance = shown
-                .advance
+            // Decision #61, `docs/22-WORD-BOXES-SCOPE.md` §9 item 2's open half: the locator's
+            // advance is the pen's travel in the declared system wherever that travel runs forward
+            // along its x axis — across it by less than the artifact can express — as the run's
+            // box already is. Measured along the text matrix's x alone, a run a producer turned
+            // upright with its text matrix on a turned page advanced 0, and every projection that
+            // reads the advance read its line one glyph apart. Upright text on an unturned page is
+            // the same number bit for bit; a travel off the x axis, or backward along it, keeps
+            // the text matrix's length.
+            let travel = shown
+                .displacement
+                .map(|(dx, dy)| geom.to_top_left_linear(dx, dy))
+                .filter(|&(along, across)| {
+                    along > 0.0 && across.abs() < crate::content::COORD_EPSILON
+                })
+                .map(|(along, _)| along);
+            let advance = travel
+                .or(shown.advance)
                 .map(|a| quantize(a, QUANTUM_PER_POINT))
                 .transpose()
                 .map_err(quantize_err)?;

@@ -256,7 +256,7 @@
         "origin_y": { "type": "integer" },
         "advance": {
           "type": "integer",
-          "$comment": "OMITTED, not zero, when the document carries no widths. Absent means the reader does not know."
+          "$comment": "OMITTED, not zero, when the document carries no widths. Absent means the reader does not know. The pen's travel in the declared system where it runs forward along the x axis (decision #61); otherwise its length along the text matrix's x before any rotation."
         }
       }
     },

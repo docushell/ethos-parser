@@ -727,6 +727,17 @@ numbers and none is text (`docs/31-TABLE-TRACKS-SCOPE.md` §21). Tables 0.5280 -
 and none down; visual grounding 0.5266 -> 0.5268; every other dimension unchanged on every page;
 opendataloader-bench unchanged. Overall 45.53 -> 45.60.
 
+### After a run's advance read along the declared x (decision #61, 2026-10-11)
+
+Told "Content on readable pages", the text pages were scored beside PyMuPDF's plain text, run out
+of tree as an instrument (decision #14), page by page. Two pages it read and this engine did not —
+`text_simple__slide2` and `text_ocr__bg` — are `/Rotate 90` pages whose producer turns every run
+upright with its text matrix: each run advanced 0, and the Markdown projection set each run as a
+paragraph of its own. The advance is now the run's travel along the declared x
+(`docs/22-WORD-BOXES-SCOPE.md`, decision #61). Content faithfulness 0.6669 -> 0.6696, semantic
+formatting 0.4365 -> 0.4402, tables 0.5312 -> 0.5313; no page down on any dimension;
+opendataloader-bench unchanged. Overall 45.60 -> 45.73.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
@@ -745,6 +756,18 @@ them:
 
 ## What it found that is not fixed
 
+- **Content on readable pages** (decision #61's census, 2026-10-11). Of the content lost on text
+  pages with a text layer, most is order rules whose sentence is not found at all: text no font
+  states (`text_misc__marks` draws its words as outlines and an image), OCR layers that are
+  themselves wrong, and ground-truth conventions — `text_simple__caldera`'s index entries quote
+  their names and write underscores as spaces. Measured and not used: a flagged space at every
+  word-sized pen move between two runs on a baseline, the `TJ` rule's 0.18 em applied between
+  strings (content +0.0003, 13 pages up and 30 down: a letter-spaced heading, each letter its own
+  string, reads `L U N C H T I M E`). Kept: `<sup>` and `<sub>` (decision #40) cost 59 order rules,
+  because the scorer turns a tag into a space inside the word it marks. And the scorer reads an
+  empty Markdown as no output at all and a page of whitespace as text: a blank page scores 0 here
+  and 0.38 for a reader that prints the page's spaces. This engine prints none, and will not print
+  whitespace for a score.
 - **Tables.** Phrases before the unruled fold do not recover them; see
   [`../opendataloader-bench/tables-why-zero.md`](../opendataloader-bench/tables-why-zero.md), the
   2026-10-03 amendment.

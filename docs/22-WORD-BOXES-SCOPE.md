@@ -33,6 +33,18 @@ to is recorded below with the version it ships in.
   only `/Rotate` text measured, conformance `rotation-90`, turns 1.04 pt past its page, so it becomes
   `measured_off_page` and loses its horizontal grounding element instead of gaining a box.
   `PdfLocator::advance` still measures before rotation, a known defect left open.
+- **`PdfLocator::advance` along the declared x — fixed 2026-10-11, decision #61.** The advance is
+  the pen's travel in the declared system wherever that travel runs forward along its x axis —
+  across it by less than a centipoint — as the run's box already was; a travel off the x axis, or
+  backward along it, keeps its value measured before any rotation, the half still open. Upright text
+  on an unturned page is the same number bit for bit. Found by ParseBench's content census:
+  `text_simple__slide2` and `text_ocr__bg` are `/Rotate 90` pages whose producer turns every run
+  upright with its text matrix, so every run advanced 0, and the Markdown projection, which joins
+  runs by their advance, set each run of a line as a paragraph of its own. Measured with the shipped
+  build: ParseBench content faithfulness 0.6669 → 0.6696 and semantic formatting 0.4365 → 0.4402
+  (those two pages 0.29 → 0.98 and 0.31 → 0.98 on content), tables 0.5312 → 0.5313 on five
+  `SERFF` pages, no page down on any dimension; opendataloader-bench's Markdown byte for byte, the
+  gate documents' tables and the heading bounds unchanged.
 - **§9 item 3, word spacing on two-byte codes — fixed for 0.58.0.** `Tw` now reaches only a simple
   font's code 32: every composite font this engine advances is Identity-H or Identity-V, whose codes
   are all two bytes. p26 advances 1500, not 2500. Against the build before it, over 327 PDFs (the

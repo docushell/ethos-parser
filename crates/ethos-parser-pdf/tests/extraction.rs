@@ -746,6 +746,89 @@ fn a_rotated_page_puts_the_box_on_the_side_the_glyph_tops_point() {
     );
 }
 
+/// One page of Helvetica runs, 5 pt a glyph at 10 pt, turned by `/Rotate` `rotate`, drawing `stream`.
+fn helvetica_page(rotate: u32, stream: &[u8]) -> ExtractArtifact {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Rotate {rotate} \
+             /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+        )
+        .into_bytes(),
+        format!("<< /Length {} >>\nstream\n", stream.len())
+            .into_bytes()
+            .into_iter()
+            .chain(stream.iter().copied())
+            .chain(b"\nendstream".iter().copied())
+            .collect(),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    ];
+    let profile = Profile::default();
+    let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+    ethos_parser_pdf::extract(&d, &profile).expect("extracts")
+}
+
+/// **Text a producer turns upright on a turned page advances along its line** (decision #61,
+/// `docs/22-WORD-BOXES-SCOPE.md` §9 item 2's open half). A `/Rotate 90` page whose text matrix
+/// turns its text a quarter back draws it upright. Measured along the text matrix's x alone, each
+/// run advanced 0, and the Markdown projection, which reads the advance, set every run of the line
+/// as a paragraph of its own. Its travel along the declared x is its advance, as it is its box's.
+#[test]
+fn text_turned_upright_on_a_turned_page_advances_along_its_line() {
+    let a = helvetica_page(
+        90,
+        b"BT /F1 10 Tf 0 1 -1 0 60 50 Tm (AB) Tj 0 1 -1 0 60 60 Tm (CD) Tj ET",
+    );
+    let page = &a.pages[0].runs;
+    assert_eq!(
+        page.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["AB", "CD"]
+    );
+    for r in page {
+        assert_eq!(
+            r.locator.advance,
+            Some(1000),
+            "{}: two 5 pt glyphs along the declared x",
+            r.text
+        );
+    }
+    let profile = Profile::default();
+    let rep = ethos_parser_pdf::to_representation(&a, &profile).expect("projects");
+    let md = ethos_parser_core::to_markdown(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects")
+    .markdown;
+    assert_eq!(md.trim(), "ABCD", "one line, its runs abutting");
+}
+
+/// **A travel off the declared x, or backward along it, keeps the value measured before any
+/// rotation** (decision #61): text turned 30° on a quarter-turned page, which advances 5 pt along
+/// the declared x and 8.66 along the text matrix's, and text mirrored by its CTM, which runs back.
+#[test]
+fn a_travel_off_the_declared_x_or_backward_keeps_its_unrotated_length() {
+    let turned = helvetica_page(
+        90,
+        b"BT /F1 10 Tf 0.866025 0.5 -0.5 0.866025 60 50 Tm (AB) Tj ET",
+    );
+    assert_eq!(turned.pages[0].runs[0].locator.advance, Some(866));
+    let mirrored = helvetica_page(
+        0,
+        b"-1 0 0 1 200 0 cm BT /F1 10 Tf 1 0 0 1 50 60 Tm (AB) Tj ET",
+    );
+    assert_eq!(mirrored.pages[0].runs[0].text, "AB");
+    assert_eq!(mirrored.pages[0].runs[0].locator.advance, Some(1000));
+}
+
 #[test]
 fn unrotated_pages_report_rotation_zero() {
     let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
@@ -5245,9 +5328,9 @@ fn turned_text_gets_a_box_along_its_baseline() {
     let (bt, bo) = (rect("Turned"), rect("Rolled"));
     assert_eq!([bt[0] + dx, bt[1] + dy, bt[2] + dx, bt[3] + dy], bo);
 
-    // The wire advance keeps its 0.57.0 value, measured along the text matrix's x before any
-    // rotation. Re-expressing it in the declared frame is left open — a known defect recorded in
-    // docs/22 — and not decided here.
+    // Decision #61: the wire advance is the travel along the declared x where the run travels
+    // along it. These all travel off it — up, down, backward, diagonally — so each keeps its
+    // length along the text matrix's x before any rotation, the half docs/22 still leaves open.
     for (text, advance) in [
         ("Upright", 4200),
         ("Turned", 0),
