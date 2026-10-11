@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! **Layout units: lines joined by their own spacing** — decision #38's paragraph-like blocks,
-//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V3`.
+//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V4`.
 //!
 //! A page's lines — the runs sharing one band, one `/Artifact` state and one baseline, the heading
 //! rule's own unit — are read in reading order, and a line joins the unit above it when
@@ -39,6 +39,15 @@
 //! [`HARD_BREAK_FIT`] times over between where the line above ends and the unit's right edge. The
 //! measure did not break that line, so its author did — the end of a paragraph, an entry of a
 //! contents list, an item of a list set without markers. A heading unit is not cut.
+//!
+//! **And a line set smaller inside the line before it is that line's** (`line-units-v4`,
+//! [`is_script`]): a subscript, a superscript or a footnote mark sits on a baseline of its own —
+//! the `k` of `Qₖ`, the `2` of `CO₂`, a raised `1` — and was a line of its own, inside its unit's
+//! box rather than below it, so a unit of its own, and the line around it went on as several. A
+//! line set under [`SCRIPT_HEIGHT_TWENTIETHS`] twentieths of the line before it in reading order,
+//! its baseline within half that line's height of that line's, lying inside that line's extent past
+//! its start, is that line's. A smaller line stacked under a figure, opening where the figure
+//! opens, is a line of its own, as are two lines of one size.
 //!
 //! **Where, never what.** A unit says these lines read as one piece of text; it is not the
 //! author's paragraph, and nothing reads a role from it — decision #19's rule for `region` and
@@ -75,6 +84,45 @@ pub(crate) struct Piece {
 /// A line's first word must fit this many times over in the room the line above leaves before its
 /// unit's right edge for the break between them to be the author's (`line-units-v3`).
 pub const HARD_BREAK_FIT: i64 = 2;
+
+/// A line set under this many twentieths of the line before it is that line's script, where it
+/// also sits within and beside it (`line-units-v4`): a script is set at about two thirds of its
+/// line, and two lines of one size set in different faces differ by less than three twentieths.
+pub const SCRIPT_HEIGHT_TWENTIETHS: i64 = 17;
+
+/// A line's box and baseline as the script join reads them: `x0, y0, x1, y1`, top-left system, and
+/// its first run's baseline, centipoints.
+pub(crate) type LineBox = (i64, i64, i64, i64, i64);
+
+/// Whether the line boxed `line` is a script of the line boxed `base` before it in reading order
+/// (`line-units-v4`): set clearly smaller, its baseline within half the base line's height of the
+/// base line's, and lying inside the base line's extent past its start.
+pub(crate) fn is_script(base: LineBox, line: LineBox) -> bool {
+    let (base_height, height) = (base.3 - base.1, line.3 - line.1);
+    20 * height < SCRIPT_HEIGHT_TWENTIETHS * base_height
+        && 2 * (line.4 - base.4).abs() < base_height
+        && line.0 > base.0
+        && line.2 <= base.2
+}
+
+/// `lines` in reading order with each script joined to the line before it (`line-units-v4`):
+/// `boxes` holds each line's own box, and a script is read against the box of the line it joins
+/// as that line was drawn, never as the scripts already joined to it widen it.
+pub(crate) fn join_scripts(lines: Vec<Vec<usize>>, boxes: &[Option<LineBox>]) -> Vec<Vec<usize>> {
+    let mut out: Vec<(Vec<usize>, Option<LineBox>)> = Vec::with_capacity(lines.len());
+    for (line, &own) in lines.into_iter().zip(boxes) {
+        let script = out
+            .last()
+            .and_then(|(_, base)| *base)
+            .zip(own)
+            .is_some_and(|(base, own)| is_script(base, own));
+        match out.last_mut() {
+            Some((base, _)) if script => base.extend(line),
+            _ => out.push((line, own)),
+        }
+    }
+    out.into_iter().map(|(line, _)| line).collect()
+}
 
 /// One line as the rule reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,6 +341,20 @@ pub(crate) fn assign(page: &mut PageExtract) {
         .filter(|line| line.iter().any(|&i| !page.runs[i].text.trim().is_empty()))
         .collect();
     lines.sort_unstable_by_key(|line| line[0]);
+    // `-v4`: each script joins the line it is set in.
+    let boxes: Vec<Option<LineBox>> = lines
+        .iter()
+        .map(|line| {
+            line.iter()
+                .map(|&i| &page.runs[i])
+                .filter(|run| !run.text.trim().is_empty())
+                .filter_map(|run| run.geometry.measured())
+                .map(|b| (b.x0(), b.y0(), b.x1(), b.y1()))
+                .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+                .map(|r| (r.0, r.1, r.2, r.3, page.runs[line[0]].locator.origin_y))
+        })
+        .collect();
+    let lines = join_scripts(lines, &boxes);
     let read: Vec<UnitLine> = lines
         .iter()
         .map(|line| {
@@ -618,5 +680,73 @@ mod tests {
         assert_eq!(first_word("Alpha Gamma", 1_100), 600);
         assert_eq!(first_word("  Alpha Gamma  ", 1_100), 600);
         assert_eq!(first_word("", 1_100), 0);
+    }
+
+    /// A line from `x0` to `x1` points, `height` points tall above its baseline at `baseline`.
+    fn script_box(x0: i64, x1: i64, baseline: i64, height: i64) -> LineBox {
+        let descent = height / 5;
+        (
+            x0 * 100,
+            (baseline - height + descent) * 100,
+            x1 * 100,
+            (baseline + descent) * 100,
+            baseline * 100,
+        )
+    }
+
+    /// **A script is part of the line it is set in** (`line-units-v4`): smaller, its baseline
+    /// within half the line's height, inside the line past its start — lowered or raised.
+    #[test]
+    fn a_line_set_smaller_inside_its_line_is_that_line_s() {
+        let base = script_box(100, 500, 110, 10);
+        assert!(is_script(base, script_box(200, 206, 113, 7)), "a subscript");
+        assert!(
+            is_script(base, script_box(300, 330, 106, 7)),
+            "a superscript"
+        );
+        assert!(
+            !is_script(base, script_box(300, 330, 105, 7)),
+            "raised half the line or more"
+        );
+        assert!(
+            !is_script(base, script_box(300, 330, 106, 9)),
+            "not clearly smaller"
+        );
+        assert!(
+            !is_script(base, script_box(100, 150, 113, 7)),
+            "opening where the line opens: stacked under it, not set in it"
+        );
+        assert!(
+            !is_script(base, script_box(480, 520, 113, 7)),
+            "running past its end"
+        );
+    }
+
+    /// **A script is read against its line as drawn**: two scripts of one line both join it, and a
+    /// line that would be a script only of the taller box the pair makes of it stays a line, as does
+    /// one running past the line's own end.
+    #[test]
+    fn scripts_are_read_against_their_line_as_drawn() {
+        let lines = vec![vec![0], vec![1], vec![2], vec![3], vec![4]];
+        let boxes = [
+            Some(script_box(100, 300, 110, 10)),
+            Some(script_box(200, 206, 113, 7)),
+            Some(script_box(250, 290, 106, 7)),
+            Some(script_box(150, 200, 112, 9)),
+            Some(script_box(290, 310, 113, 7)),
+        ];
+        assert_eq!(
+            join_scripts(lines, &boxes),
+            [vec![0, 1, 2], vec![3], vec![4]],
+            "nine points is no script of ten, though of the fourteen the scripts reach"
+        );
+        assert_eq!(
+            join_scripts(
+                vec![vec![0], vec![1]],
+                &[None, Some(script_box(200, 206, 113, 7))]
+            ),
+            [vec![0], vec![1]],
+            "an unmeasured line holds no script"
+        );
     }
 }

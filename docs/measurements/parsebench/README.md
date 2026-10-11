@@ -738,6 +738,18 @@ paragraph of its own. The advance is now the run's travel along the declared x
 formatting 0.4365 -> 0.4402, tables 0.5312 -> 0.5313; no page down on any dimension;
 opendataloader-bench unchanged. Overall 45.60 -> 45.73.
 
+### After a script joins the line it is set in (`line-units-v4`, decision #63, 2026-10-11)
+
+Told "Grounding: text blocks", the `Text` elements visual grounding could not place were counted
+by why (`target`-side census, the scorer's own per-element numbers): nothing of ours over them
+0.052, a bigger item of ours covering them 0.041 (figure regions 0.030 — every variant that dropped
+the ones holding text scored lower — tables 0.013, text units 0.013), one item barely over them
+0.024, several smaller ones 0.014. On mathematics and chemistry each subscript and superscript was
+a unit of its own. `line-units-v4` joins a script to the line it is set in. Visual grounding
+0.5268 -> 0.5316, 40 pages up and 10 down (the owner took the trade); content one page down by
+0.00003; every other dimension unchanged on every page; opendataloader-bench unchanged. Overall
+45.73 -> 45.82.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

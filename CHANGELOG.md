@@ -711,6 +711,16 @@ release.
   content faithfulness 0.6669 -> 0.6696, semantic formatting 0.4365 -> 0.4402, no page down on any
   dimension; overall 45.60 -> 45.73. opendataloader-bench, the gate documents' tables and the
   heading bounds unchanged.
+- **A script is part of the line it is set in** (`line-units-v4`, decision #63): a subscript, a
+  superscript or a footnote mark sits on a baseline of its own — the `k` of `Qₖ`, the `2` of `CO₂`
+  — and was a line, and a layout unit, of its own, so the line around it went on as several units.
+  A line set under seventeen twentieths of the line before it in reading order, its baseline within
+  half that line's height, inside that line's extent past its start, is now that line's.
+  `layout_unit_rule` moves `line-units-v3` -> `line-units-v4`, so `profile_sha256` moves.
+  ParseBench visual grounding 0.5268 -> 0.5316, 40 pages up and 10 down (the owner took the
+  trade); content one page down by 0.00003; formatting, tables and charts unchanged on every page;
+  overall 45.73 -> 45.82. opendataloader-bench, the gate documents' tables and the heading bounds
+  unchanged.
 - **The ParseBench adapter reports a table once**: a `ground` element whose runs a reported table
   holds is no longer an item of its own as well. The headline grounding score does not move.
 
