@@ -306,6 +306,16 @@ fn trailing_whitespace_advance(
 
 type HeadingLines = Vec<(Vec<usize>, crate::headings::Line)>;
 
+/// How much heavier than its page's body a run's weight class must be for the heading rule to read
+/// it as bold (`type-size-v7`, decision #64): one class, the step between Light and Regular or
+/// Regular and Medium.
+const WEIGHT_STEP: u32 = 100;
+
+/// A weight class to the nearest hundred, as fonts state them.
+fn weight_class(weight: u32) -> u32 {
+    (weight + 50) / 100 * 100
+}
+
 /// One page's candidate heading lines (decision #29), and its share of the body em.
 ///
 /// **The line is formed here and never in `headings.rs`.** A line is the runs sharing one band,
@@ -329,6 +339,26 @@ fn page_heading_lines(
         .flat_map(|t| t.cells.iter())
         .flat_map(|c| c.run_indices.iter().copied())
         .collect();
+    // `type-size-v7` (decision #64): a run set a weight class or more heavier than the class most of
+    // its page's characters are set in — Medium over Light — is set apart as a bold one is, and the
+    // rule reads it so. The run's own `bold` is untouched: the projections still emphasise only what
+    // its font calls bold.
+    let mut by_weight: std::collections::BTreeMap<u32, u64> = std::collections::BTreeMap::new();
+    for run in runs {
+        if let Some(weight) = run.weight {
+            *by_weight.entry(weight_class(weight)).or_default() +=
+                run.text.trim().chars().count() as u64;
+        }
+    }
+    let body_weight = by_weight
+        .iter()
+        .max_by_key(|&(&weight, &chars)| (chars, std::cmp::Reverse(weight)))
+        .map(|(&weight, _)| weight);
+    let heavier = |run: &TextRun| {
+        run.weight
+            .zip(body_weight)
+            .is_some_and(|(weight, body)| weight_class(weight) >= body + WEIGHT_STEP)
+    };
     let typed: Vec<Typed> = runs
         .iter()
         .zip(ems)
@@ -342,7 +372,7 @@ fn page_heading_lines(
                 Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
             ),
             table_owned: owned.contains(&i),
-            bold: run.bold,
+            bold: run.bold || heavier(run),
         })
         .collect();
 
@@ -586,7 +616,7 @@ fn extract_page(
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V6
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V7
         && no_author_structure(structure.as_ref());
     let mut heading_lines: HeadingLines = Vec::new();
     let mut em_tally = crate::headings::EmTally::default();
@@ -848,6 +878,7 @@ fn extract_page(
                 // which is how a writer with no bold face of a font draws its glyphs bold.
                 bold: shown.font.bold || matches!(shown.render_mode, 2 | 6),
                 italic: shown.font.italic,
+                weight: shown.font.weight,
                 script: None,
                 furniture: None,
                 reading: None,
@@ -3505,6 +3536,7 @@ mod tests {
                 inferred_heading_level: None,
                 bold: false,
                 italic: false,
+                weight: None,
                 script: None,
                 furniture: None,
                 reading: None,

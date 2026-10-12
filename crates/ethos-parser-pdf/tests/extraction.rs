@@ -4014,6 +4014,92 @@ fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
     );
 }
 
+/// **A line set a weight heavier than its page's text reads as a bold one does** (`type-size-v7`,
+/// decision #64): a `Medium` line alone in its block over `Regular` prose is a heading, and one set
+/// inside a paragraph a label — while the runs stay unemphasised, since no font calls itself bold.
+/// The text's weight is the class most of the page is set in, not a light caption's; set in it,
+/// the same lines are neither.
+#[test]
+fn a_line_set_heavier_than_its_text_reads_as_a_bold_one() {
+    let page = |body_face: &str, heading_face: &str| {
+        let mut content = String::new();
+        let mut line = |font: &str, y: i32, text: &str| {
+            content.push_str(&format!("BT /{font} 10 Tf 20 {y} Td ({text}) Tj ET\n"));
+        };
+        line("F3", 392, "Caption in a light face");
+        for (i, y) in (0..8).map(|i| (i, 380 - 12 * i)) {
+            line(
+                "F1",
+                y,
+                &format!("Plain body text that runs across the page, line {i}"),
+            );
+        }
+        line("F2", 266, "Methods");
+        for (i, y) in (0..8).map(|i| (i, 236 - 12 * i)) {
+            if i == 3 {
+                line("F2", y, "Medium lead line");
+            } else {
+                line(
+                    "F1",
+                    y,
+                    &format!("More plain body text across the page, line {i}"),
+                );
+            }
+        }
+        let stream = [
+            format!("<< /Length {} >>\nstream\n", content.len()).into_bytes(),
+            content.into_bytes(),
+            b"\nendstream".to_vec(),
+        ]
+        .concat();
+        let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+        let font = |name: &str| {
+            format!(
+                "<< /Type /Font /Subtype /Type1 /BaseFont /{name} /FirstChar 32 /LastChar 126 \
+                 /Widths [{widths}] /FontDescriptor << /Type /FontDescriptor /FontName /{name} \
+                 /Flags 32 /Ascent 718 /Descent -207 /ItalicAngle 0 /StemV 80 \
+                 /FontBBox [0 -200 1000 900] >> >>"
+            )
+            .into_bytes()
+        };
+        let bytes = pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Resources << /Font << \
+               /F1 5 0 R /F2 6 0 R /F3 7 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream,
+            font(body_face),
+            font(heading_face),
+            font("Face-Light"),
+        ]);
+        extracted(&bytes).expect("reads")
+    };
+    let headings = |a: &ExtractArtifact| -> Vec<(String, Option<u8>)> {
+        runs(a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| (r.text.clone(), r.inferred_heading_level))
+            .collect()
+    };
+    let heavier = page("Face-Regular", "Face-Medium");
+    assert_eq!(
+        headings(&heavier),
+        [
+            ("Methods".to_string(), None),
+            ("Medium lead line".to_string(), Some(7))
+        ]
+    );
+    assert!(
+        runs(&heavier).iter().all(|r| !r.bold),
+        "no font calls itself bold, so no run is emphasised"
+    );
+    assert!(
+        headings(&page("Face-Regular", "Face-Regular")).is_empty(),
+        "the text's own weight, a light caption above it"
+    );
+}
+
 /// **A numbered bold line set tight over its text is a heading; the same line unnumbered is a
 /// label** (decision #38, `type-size-v4`; decision #47, `type-size-v5`). Plain prose on a 12pt
 /// leading; 30 points of space; then a bold line and, a leading below it, the prose it heads.

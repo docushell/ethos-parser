@@ -143,6 +143,10 @@ pub struct TextRun {
     /// The run's font declares itself italic — as the representation's `text_run.italic`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub italic: bool,
+    /// The weight class of the run's font, as its font states it (decision #64) — what the heading
+    /// rule reads beside [`Self::bold`]. Never on the wire.
+    #[serde(skip)]
+    pub weight: Option<u32>,
     /// The run is set as a superscript or a subscript (decision #40, `crate::scripts`) — as the
     /// representation's `text_run.script`. Absent on a run set on its line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -314,6 +318,7 @@ mod tests {
             inferred_heading_level: None,
             bold: false,
             italic: false,
+            weight: None,
             script: None,
             furniture: None,
             reading: None,

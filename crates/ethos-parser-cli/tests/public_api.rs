@@ -320,6 +320,7 @@ const CORE: &[&str] = &[
     "HEADING_INFERENCE_RULE_V4",
     "HEADING_INFERENCE_RULE_V5",
     "HEADING_INFERENCE_RULE_V6",
+    "HEADING_INFERENCE_RULE_V7",
     // Decision #38. The layout-unit rule id.
     "LAYOUT_UNIT_RULE_V1",
     "LAYOUT_UNIT_RULE_V2",

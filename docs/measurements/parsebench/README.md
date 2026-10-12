@@ -758,6 +758,20 @@ Each page record now states `visible`, the crop box in the declared system, and 
 its items on it. Visual grounding 0.5316 -> 0.5367, the 7 pages up and none down; every other
 dimension unchanged. Overall 45.82 -> 45.92.
 
+### After a weight heavier than the text read as bold (`type-size-v7`, decision #64, 2026-10-11)
+
+Told "Headings on layout pages", the section headers visual grounding finds and we read as text
+were counted by what sets them apart: 320 are short lines set within 15% of the text's size in no
+bold face, 258 of those in a face other than the text's, commonest the text's own family a weight
+heavier (`NewFrank-Medium` over `NewFrank-Light`). `type-size-v7` reads each font's weight class and
+counts a run a class or more heavier than its page's text as bold for the heading rule, labels
+included (`docs/measurements/headings/README.md` §13). Visual grounding 0.5367 -> 0.5435, 43 pages
+up and 18 down (the owner took the trade: 49 text elements now read as headings, navigation tabs
+and lists set a weight up); content one page down by 0.028, a heading broken after a hyphen now
+two `#` lines; formatting, tables and charts unchanged on every page; opendataloader-bench MHS
+0.5457 -> 0.5854, 6 documents up and none down. Overall 45.92 -> 46.06. Not used: the weight read
+only where a line stands apart, labels as before (0.5389, 19 pages up and 4 down).
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

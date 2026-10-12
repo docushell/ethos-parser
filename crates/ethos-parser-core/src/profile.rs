@@ -1075,6 +1075,29 @@ pub const HEADING_INFERENCE_RULE_V5: &str = "type-size-v5";
 /// elements as headings they are not, and the owner shipped it with that trade.
 pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 
+/// [`HEADING_INFERENCE_RULE_V6`] **with a run set a weight heavier than its page's body read as
+/// bold** (decision #64).
+///
+/// **What `-v6` missed.** Told "Headings on layout pages", the section headers ParseBench's visual
+/// grounding found we read as text were counted by what sets them apart: 320 are short lines set
+/// within 15% of the text's size in no bold face, and 258 of those in another face than the
+/// text's, commonest the text's own family a weight heavier: `NewFrank-Medium` over
+/// `NewFrank-Light`, `Graphik-Medium` over `Graphik-Regular`. The bold clause reads a face bold
+/// only from a weight class of 600, so a medium heading over a light text stood out to a reader and
+/// not to the rule.
+///
+/// **The change.** Each font's weight class is read — its descriptor's `/FontWeight`, its embedded
+/// program's `OS/2` class, or a weight word in its name's style — and a run set a class or more
+/// heavier than the class most of its page's characters are set in counts as bold for the bold
+/// clause and the label tier. The run's own `bold` is untouched, so no projection emphasises it.
+///
+/// **Measured** (`docs/measurements/headings/README.md` §13): the `#` headings of the heading
+/// bounds' eleven documents read as under `-v6`, line for line; the label tier reads 20 more lines
+/// on `cfpb-home-loan-toolkit`, 12 of them against its tags; against ParseBench's ground truth it
+/// reads 199 more section headers as headings and 49 text elements as headings they are not, and
+/// the owner shipped it with that trade.
+pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
+
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.
 ///
 /// On a document that declares no author structure, each page's lines — the runs sharing one
@@ -2131,7 +2154,7 @@ pub struct Profile {
     pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V6`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V7`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -2252,7 +2275,7 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V6.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
             layout_unit_rule: LAYOUT_UNIT_RULE_V4.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
@@ -3474,7 +3497,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-4","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v6","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v4","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v2","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v14","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-4","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v4","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v2","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v14","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4608,11 +4631,14 @@ mod tests {
              numbers set side by side each on its own. Nothing else.\n\n\
              Moved for decision #63, `sha256:1a744492…` -> `sha256:dcfd6050…`: \
              `layout_unit_rule` `line-units-v3` -> `-v4`, which joins a script to the line it is \
-             set in. Nothing else."
+             set in. Nothing else.\n\n\
+             Moved for decision #64, `sha256:dcfd6050…` -> `sha256:3e5e6b07…`: \
+             `heading_inference_rule` `type-size-v6` -> `-v7`, which reads a run set a weight \
+             heavier than its page's body as bold. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:dcfd6050c10bea03a2186403dab36cd3dc6285fb95b2881dc39c5c187fa6bb13"
+            "sha256:3e5e6b071bcd48fe56258799c7a7e7b519579fdadd1049f7c4717182d11fd3aa"
         );
     }
 

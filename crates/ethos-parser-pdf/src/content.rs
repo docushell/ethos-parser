@@ -1596,6 +1596,7 @@ mod tests {
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
                 bold: false,
                 italic: false,
+                weight: None,
                 fallback: Default::default(),
             }),
         );
@@ -1626,6 +1627,7 @@ mod tests {
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
                 bold: false,
                 italic: false,
+                weight: None,
                 fallback: Default::default(),
             }),
         );

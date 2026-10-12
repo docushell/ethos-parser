@@ -597,3 +597,37 @@ them where a new label now covers part of the paragraph it heads. On opendataloa
 included — the same grounding, but nine pages fell where five do, a content page fell 0.049
 (`text_dense__underline`), and the same opendataloader-bench document fell to 0.0575, the size
 clause reading lines set larger than the text as headings.
+
+## 13. `type-size-v7` — a weight heavier than the text (2026-10-11)
+
+On ParseBench's visual-grounding pages, 320 of the elements its ground truth calls section headers
+and we read as text are short lines — 60 characters at most — set within 15% of the text's size and
+mostly in no bold face. 258 of them are set in a face other than the text's, and the commonest pairs
+are the text's own family a weight heavier: `NewFrank-Medium` over `NewFrank-Light` (38),
+`Graphik-Medium` over `Graphik-Regular` (24), `Lato-Medium` over `Lato-Regular` (17),
+`RobotoCondensed-Regular` over `RobotoCondensed-Light` (14). The bold clause reads a face bold only
+from a weight class of 600 (`page-observations-v4`), so a Medium heading over Light text stood out
+to a reader and not to the rule.
+
+**The rule**: each font's weight class is read — its descriptor's `/FontWeight`, else its embedded
+program's `OS/2` class, else a weight word in the `/BaseFont`'s style, after its last `-` or `,`
+(`-Medium` 500, URW's `-Medi` 500, `,Bold` 700) — and a run whose class, to the nearest hundred, is
+one or more above the class most of its page's characters are set in counts as bold for the bold
+clause and the label tier. The run's own `bold` does not move, so the projections emphasise only a
+face its font calls bold, and the class is never on the wire. A heading set in the text's own
+weight — an italic, a second family of the same class — stays unread.
+
+**The bounds**: the `#` headings read as under `-v6` on all eleven documents, line for line. The
+label tier fires on 20 more lines, every one on `cfpb-home-loan-toolkit` (16 → 36), 12 of them
+against its tags (10 → 22); over the eleven, fired 719 → 739, right 375 → 375, against the author's
+tags 340 → 352. Against ParseBench's ground truth, of the elements whose verdict moved: 199 section
+headers now read as headings (185 we read as text, 14 we had not placed); 49 text elements read as
+headings they are not — a report's navigation tabs set in its heading face (`A year in review`,
+`Appendix` on `giv-2024-integrated-report`), a company's values listed a weight up
+(`FedEx_2025_CR_Report` p32), a key figure's lead-in; and 16 text elements that passed lose the
+item that placed them. On opendataloader-bench MHS rises 0.5457 → 0.5854, six documents up and none
+down. The owner shipped it with the label tier's trade (decision #64).
+
+**Measured beside it and not used:** the heavier weight read only where a line stands apart, the
+label tier as under `-v6` — both tiers of the bounds identical to `-v6`'s, but visual grounding
+0.5389 (19 pages up and 4 down) against 0.5435 (43 up and 18 down).

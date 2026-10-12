@@ -5269,6 +5269,7 @@ mod tests {
             inferred_heading_level: None,
             bold: false,
             italic: false,
+            weight: None,
             script: None,
             furniture: None,
             reading: None,

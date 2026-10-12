@@ -187,6 +187,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line set a weight heavier than its text is read as a bold one (`type-size-v7`, decision #64)
+
+`heading_inference_rule` moves `type-size-v6` -> `type-size-v7`, so `profile_sha256` moves.
+
+- **A heading set a weight heavier than its text is set apart as a bold one**: 320 of the section
+  headers ParseBench's visual grounding finds and this engine read as text are short lines set
+  within 15% of the text's size in no bold face, 258 of them in a face other than the text's —
+  commonest the text's own family a weight heavier, `NewFrank-Medium` over `NewFrank-Light`. The
+  bold clause read a face bold only from a weight class of 600. Each font's weight class is now
+  read — its descriptor's `/FontWeight`, its embedded program's `OS/2` class, or a weight word in
+  its name's style (`-Medium`, `,Bold`, URW's `-Medi`) — and a run set a class or more heavier than
+  the class most of its page's characters are set in counts as bold for the bold clause and the
+  label tier. The run's own `bold` does not move, so no projection emphasises it, and the class is
+  never on the wire.
+- **The trade, taken by the owner**: the `#` headings of the eleven tagged documents read as under
+  `-v6`, line for line, but the label tier reads 20 more lines on `cfpb-home-loan-toolkit`, 12 of
+  them against its tags. Against ParseBench's ground truth it reads 199 more section headers as
+  headings and 49 text elements as headings they are not — a report's navigation tabs set in its
+  heading face, a list of values set a weight up.
+- **Measured** on ParseBench: visual grounding 0.5367 -> 0.5435, 43 pages up and 18 down; content
+  faithfulness 0.6696 -> 0.6695, one page down 0.028 where a heading broken after a hyphen became
+  two `#` lines (`Care throughout the COVID-` over `19 pandemic`); formatting, tables and charts
+  unchanged on every page; overall 45.92 -> 46.06. opendataloader-bench MHS 0.5457 -> 0.5854, 6
+  documents up and none down; NID up on 5 documents and down on none, 0.8841 at four places; TEDS
+  and the gate documents' tables unchanged.
+
 ### A bold body set as display type keeps its text's labels (`type-size-v6`, decision #50)
 
 `heading_inference_rule` moves `type-size-v5` -> `type-size-v6`, so `profile_sha256` moves.

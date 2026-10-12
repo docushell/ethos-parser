@@ -202,6 +202,9 @@ pub struct Font {
     pub bold: bool,
     /// Whether the font declares itself italic, as [`font_style`] reads it.
     pub italic: bool,
+    /// The weight class the font states, 100 to 900, as [`font_style`] reads it (decision #64), or
+    /// `None` where it states none.
+    pub weight: Option<u32>,
     /// What the font itself states for codes its decoder leaves unmapped (decision #43): its
     /// declared encoding behind a `/ToUnicode`, its `/Differences` glyph names by rule, and an
     /// embedded TrueType program's own tables — [`crate::font_fallback`]. Consulted only where the
@@ -750,7 +753,7 @@ fn load_font(
         _ => None,
     };
 
-    let (bold, italic) = font_style(doc, fd);
+    let (bold, italic, weight) = font_style(doc, fd);
     let fallback = Arc::new(fallback_map(doc, fd, &subtype));
     Ok(Font {
         id: id.to_string(),
@@ -761,6 +764,7 @@ fn load_font(
         ink,
         bold,
         italic,
+        weight,
         fallback,
     })
 }
@@ -828,10 +832,34 @@ fn fallback_map(
 
 /// Style words a `/BaseFont` uses for a bold weight, in the case font names write them.
 const BOLD_NAMES: [&str; 5] = ["Bold", "Black", "Heavy", "Semibold", "Demibold"];
+/// Weight words a `/BaseFont`'s style uses, with the weight class each names (decision #64), the
+/// longer before any they hold: `ExtraLight` before `Light`, `SemiBold` before `Bold`. `Medi` and
+/// `Regu` are URW's spellings.
+const WEIGHT_NAMES: [(&str, u32); 18] = [
+    ("thin", 100),
+    ("hairline", 100),
+    ("extralight", 200),
+    ("ultralight", 200),
+    ("light", 300),
+    ("semibold", 600),
+    ("demibold", 600),
+    ("extrabold", 800),
+    ("ultrabold", 800),
+    ("black", 900),
+    ("heavy", 900),
+    ("bold", 700),
+    ("medium", 500),
+    ("medi", 500),
+    ("regular", 400),
+    ("roman", 400),
+    ("book", 400),
+    ("regu", 400),
+];
 /// Style words a `/BaseFont` uses for a slanted face.
 const ITALIC_NAMES: [&str; 2] = ["Italic", "Oblique"];
 
-/// Whether a font declares itself bold and italic (`page-observations-v4`).
+/// Whether a font declares itself bold and italic (`page-observations-v4`), and its weight class
+/// (decision #64).
 ///
 /// Read from the font dictionary: the descriptor's `/FontWeight` of 600 or more or its ForceBold
 /// flag (PDF 32000-1 Table 123, bit 19) for bold, its Italic flag (bit 7) for italic, and either one
@@ -841,7 +869,12 @@ const ITALIC_NAMES: [&str; 2] = ["Italic", "Oblique"];
 /// is estimated from stem widths or glyph outlines. It is a statement about the typeface the
 /// document chose, and the projections render it as emphasis; it says nothing about why the author
 /// chose it.
-fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool) {
+///
+/// **The weight class** is the descriptor's `/FontWeight`, else the embedded program's `OS/2`
+/// weight class, else the one a weight word in the `/BaseFont`'s style names ([`weight_word`]):
+/// what the heading rule reads where a heading is set a weight heavier than its text yet lighter
+/// than bold.
+fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool, Option<u32>) {
     // Type 0 fonts hold their descriptor, and their real name, on the descendant.
     let descendant = resolve_array(doc, fd.get(b"DescendantFonts").ok())
         .and_then(|arr| arr.first().and_then(|o| resolve_dict(doc, Some(o))));
@@ -869,16 +902,41 @@ fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool) {
             .or_else(|| resolve_stream(doc, d.get(b"FontFile3").ok()))
     });
     // A program whose filters do not decode states nothing, as for its ink metrics.
-    let stated = program
-        .and_then(|s| crate::budget::decoded(&s, crate::budget::MAX_DECODED_BYTES).ok())
-        .and_then(|bytes| program_style(&bytes));
+    let decoded =
+        program.and_then(|s| crate::budget::decoded(&s, crate::budget::MAX_DECODED_BYTES).ok());
+    let stated = decoded.as_deref().and_then(program_style);
     let bold = flags & (1 << 18) != 0
         || number(b"FontWeight").is_some_and(|w| w >= 600.0)
         || named(&BOLD_NAMES)
         || stated.is_some_and(|(bold, _)| bold);
     let italic =
         flags & (1 << 6) != 0 || named(&ITALIC_NAMES) || stated.is_some_and(|(_, italic)| italic);
-    (bold, italic)
+    let weight = number(b"FontWeight")
+        .filter(|w| (1.0..=1000.0).contains(w))
+        .map(|w| w as u32)
+        .or_else(|| decoded.as_deref().and_then(program_weight))
+        .or_else(|| names.iter().find_map(|n| weight_word(n)));
+    (bold, italic, weight)
+}
+
+/// The weight class a font name's style names (decision #64): the first of [`WEIGHT_NAMES`] the
+/// style holds, the style being what follows the name's last `-` or `,` — a subset tag holds
+/// neither. `None` where it holds none, or the name has no style part.
+fn weight_word(name: &str) -> Option<u32> {
+    let (_, style) = name.rsplit_once(['-', ','])?;
+    let style = style.to_ascii_lowercase();
+    WEIGHT_NAMES
+        .iter()
+        .find(|(word, _)| style.contains(word))
+        .map(|&(_, w)| w)
+}
+
+/// The weight class an embedded TrueType or OpenType program states in `OS/2` (decision #64), as
+/// `skrifa` reads it; `None` for a program it does not open.
+fn program_weight(bytes: &[u8]) -> Option<u32> {
+    let font = skrifa::FontRef::new(bytes).ok()?;
+    let weight = skrifa::MetadataProvider::attributes(&font).weight.value();
+    (1.0..=1000.0).contains(&weight).then_some(weight as u32)
 }
 
 /// What an embedded TrueType or OpenType program states about its own style (`page-observations-v4`):
@@ -1359,7 +1417,8 @@ mod tests {
         font.set("Type", lopdf::Object::Name(b"Font".to_vec()));
         font.set("BaseFont", lopdf::Object::Name(b"AAAAAA+Face".to_vec()));
         font.set("FontDescriptor", lopdf::Object::Reference(desc));
-        font_style(&doc, &font)
+        let (bold, italic, _) = font_style(&doc, &font);
+        (bold, italic)
     }
 
     /// **The program a font embeds speaks for its style** (`page-observations-v4`), as
@@ -1382,6 +1441,60 @@ mod tests {
         );
     }
 
+    /// **A font states its weight class** (decision #64): its descriptor's `/FontWeight` first, its
+    /// program's `OS/2` class next, a weight word in its name's style last — the longer word
+    /// before the one it holds, and nothing from a name with no style part.
+    #[test]
+    fn a_font_states_its_weight_class() {
+        for (name, weight) in [
+            ("AAAAAA+NewFrank-Medium", Some(500)),
+            ("Graphik-Regular", Some(400)),
+            ("NimbusRomNo9L-Medi", Some(500)),
+            ("NimbusRomNo9L-Regu", Some(400)),
+            ("Lato-SemiBold", Some(600)),
+            ("Poppins-ExtraLight", Some(200)),
+            ("Helvetica-BoldOblique", Some(700)),
+            ("Arial,Bold", Some(700)),
+            ("Roboto-LightItalic", Some(300)),
+            ("Face-Italic", None),
+            ("Futura", None),
+        ] {
+            assert_eq!(weight_word(name), weight, "{name}");
+        }
+        let weight_of = |program: Option<Vec<u8>>, stated: Option<i64>, name: &str| {
+            let mut doc = lopdf::Document::with_version("1.7");
+            let mut desc = lopdf::Dictionary::new();
+            desc.set("Type", lopdf::Object::Name(b"FontDescriptor".to_vec()));
+            desc.set("Flags", lopdf::Object::Integer(32));
+            if let Some(w) = stated {
+                desc.set("FontWeight", lopdf::Object::Integer(w));
+            }
+            if let Some(program) = program {
+                let id = doc.add_object(lopdf::Stream::new(lopdf::Dictionary::new(), program));
+                desc.set("FontFile2", lopdf::Object::Reference(id));
+            }
+            let desc = doc.add_object(desc);
+            let mut font = lopdf::Dictionary::new();
+            font.set("Type", lopdf::Object::Name(b"Font".to_vec()));
+            font.set("BaseFont", lopdf::Object::Name(name.as_bytes().to_vec()));
+            font.set("FontDescriptor", lopdf::Object::Reference(desc));
+            font_style(&doc, &font).2
+        };
+        let medium = sfnt(&[(b"OS/2", os2(500, 0))]);
+        assert_eq!(
+            weight_of(Some(medium.clone()), Some(300), "Face-Bold"),
+            Some(300),
+            "the descriptor"
+        );
+        assert_eq!(
+            weight_of(Some(medium), None, "Face-Bold"),
+            Some(500),
+            "the program"
+        );
+        assert_eq!(weight_of(None, None, "Face-Bold"), Some(700), "the name");
+        assert_eq!(weight_of(None, None, "Face"), None);
+    }
+
     /// `OS/2` speaks for the program where it has one, and `head` only where it has none — as
     /// `skrifa` reads them; a program that is no font states nothing.
     #[test]
@@ -1402,6 +1515,7 @@ mod tests {
             ink,
             bold: false,
             italic: false,
+            weight: None,
             fallback: Default::default(),
         }
     }
