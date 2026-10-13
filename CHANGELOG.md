@@ -187,6 +187,29 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line read where the reading order reads it, and its words where the page set them apart (`line-units-v5`, decision #67)
+
+`layout_unit_rule` moves `line-units-v4` -> `line-units-v5`, so `profile_sha256` moves.
+
+- **A line is read where the reading order reads it.** On a page the reading order did not divide,
+  a line was every run on its baseline across the page, read where its first run was: a paragraph
+  whose baselines a byline or a caption in the next column shares was read where that column was,
+  and fell into several units (a ten-line newspaper paragraph read as five). Each line is now cut
+  into its pieces before any unit is read, and a line as the units read it is the pieces of one
+  line that follow each other in reading order.
+- **A word gap the page set by moving its pen reads as a space** where the rule reads a line's
+  text: wherever two runs' boxes stand a tenth of the line's height apart or more. A bullet set
+  apart by its position, with no space drawn after it, now opens a list item, and the hard-break
+  cut reads a line's first word as a word rather than as the whole line.
+- **Measured** on ParseBench: visual grounding 0.5435 -> 0.5575, 119 pages up and 8 down; content
+  one page up by 0.0003; tables, charts and formatting unchanged on every page; overall 46.42 ->
+  46.70. opendataloader-bench, the fabrication check and the gate documents' tables unchanged.
+- **The trade, taken by the owner**: the line spanning two columns gave each unit a far right edge,
+  and that edge cut some units by accident — a contents list's entries (`Marico_Annual_Report_FY24`
+  p4, twice in the set), a paragraph's last line, a label's — which now join; a bullet list the
+  ground truth keeps as one block (`entire-full-report-basf-ar24` p17) is a unit per bullet; and a
+  chart's labels join the text beside them, so its picture holds no text.
+
 ### A line chart's printed values read as its table (`point-labels-v1`), and a panel's title names its numbers (`bar-labels-v3`), decision #66
 
 A new profile field, `table_detection.lines` = `point-labels-v1` (office profiles:

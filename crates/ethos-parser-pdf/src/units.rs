@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! **Layout units: lines joined by their own spacing** — decision #38's paragraph-like blocks,
-//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V4`.
+//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V5`.
 //!
 //! A page's lines — the runs sharing one band, one `/Artifact` state and one baseline, the heading
 //! rule's own unit — are read in reading order, and a line joins the unit above it when
@@ -49,6 +49,17 @@
 //! its start, is that line's. A smaller line stacked under a figure, opening where the figure
 //! opens, is a line of its own, as are two lines of one size.
 //!
+//! **And a line is read where the reading order reads it, its words where the page set them
+//! apart** (`line-units-v5`, [`lines_read`], [`spaced`]). On a page the reading order did not
+//! divide, a line was every run on its baseline across the page, read where its first run was: a
+//! paragraph whose baselines a byline or a caption in the next column shares was read where that
+//! column was, and fell into several units, each matching nothing. Each line is now cut into its
+//! pieces first, and a line as the units read it is the pieces of one line that follow each other
+//! in reading order. And the text the list-marker clause and the first word are read from has a
+//! space wherever two runs stand [`SPACE_GAP_TENTHS`] tenths of the line's height apart: a page that
+//! sets its words by moving its pen draws no space between them, so a bullet set apart that way
+//! opened no list item, and a line's first word was the whole line.
+//!
 //! **Where, never what.** A unit says these lines read as one piece of text; it is not the
 //! author's paragraph, and nothing reads a role from it — decision #19's rule for `region` and
 //! `block` holds here too. A table's runs and an `/Artifact`'s get no unit, nor does a line of
@@ -57,6 +68,7 @@
 //! heading clauses each added to it (`docs/measurements/parsebench/README.md`).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
 
 use crate::nodes::PageExtract;
 
@@ -90,6 +102,12 @@ pub const HARD_BREAK_FIT: i64 = 2;
 /// line, and two lines of one size set in different faces differ by less than three twentieths.
 pub const SCRIPT_HEIGHT_TWENTIETHS: i64 = 17;
 
+/// Two runs of a line whose boxes stand this many tenths of the line's height apart, or more, have a
+/// space between them as the rule reads the line's text (`line-units-v5`): about a tenth of an em,
+/// well under the narrowest word space, a quarter of one, and over the kerning between two pieces
+/// of one word.
+pub const SPACE_GAP_TENTHS: i64 = 1;
+
 /// A line's box and baseline as the script join reads them: `x0, y0, x1, y1`, top-left system, and
 /// its first run's baseline, centipoints.
 pub(crate) type LineBox = (i64, i64, i64, i64, i64);
@@ -122,6 +140,42 @@ pub(crate) fn join_scripts(lines: Vec<Vec<usize>>, boxes: &[Option<LineBox>]) ->
         }
     }
     out.into_iter().map(|(line, _)| line).collect()
+}
+
+/// The lines the rule reads (`line-units-v5`): `of` holds, for each piece in reading order, the
+/// line it was cut from, and each line read is the range of the pieces of one line that follow each
+/// other there. A baseline the reading order reads in two places — a paragraph's line and a
+/// byline's beside it, in a column the reading order did not divide from it — is two lines, each
+/// read where it is read.
+pub(crate) fn lines_read(of: &[usize]) -> Vec<Range<usize>> {
+    let mut start = 0;
+    of.chunk_by(|a, b| a == b)
+        .map(|line| {
+            start += line.len();
+            start - line.len()..start
+        })
+        .collect()
+}
+
+/// A line's text as the rule reads it (`line-units-v5`): `runs` holds each run's text and, where it
+/// is inked and measured, its box's left and right edges, in the order they are read, and a space
+/// is read wherever a box opens [`SPACE_GAP_TENTHS`] tenths of `height` or more past where the box
+/// before it ended — a word gap the page set by moving its pen, and drew no space for.
+pub(crate) fn spaced(runs: &[(&str, Option<(i64, i64)>)], height: i64) -> String {
+    let mut text = String::new();
+    let mut end: Option<i64> = None;
+    for &(run, ink) in runs {
+        if let (Some(end), Some((x0, _))) = (end, ink) {
+            if height > 0 && 10 * (x0 - end) >= SPACE_GAP_TENTHS * height {
+                text.push(' ');
+            }
+        }
+        text.push_str(run);
+        if let Some((_, x1)) = ink {
+            end = Some(x1);
+        }
+    }
+    text
 }
 
 /// One line as the rule reads it.
@@ -355,64 +409,81 @@ pub(crate) fn assign(page: &mut PageExtract) {
         })
         .collect();
     let lines = join_scripts(lines, &boxes);
-    let read: Vec<UnitLine> = lines
+    let ink = |i: usize| {
+        let run = &page.runs[i];
+        (!run.text.trim().is_empty())
+            .then(|| run.geometry.measured())
+            .flatten()
+            .map(|b| (b.x0(), b.y0(), b.x1(), b.y1()))
+    };
+    let join = |a: Rect, b: Rect| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3));
+    // `-v5`: each line is cut into its pieces before any unit is read, each piece placed by its
+    // first run, and a line as the units read it is the pieces of one line that follow each other
+    // in reading order.
+    let mut cut: Vec<(usize, Option<Rect>, Vec<usize>)> = Vec::new();
+    for (l, line) in lines.iter().enumerate() {
+        let height = line
+            .iter()
+            .filter_map(|&i| ink(i))
+            .reduce(join)
+            .map_or(0, |r| r.3 - r.1);
+        let placed: Vec<(i64, Option<Rect>)> = line
+            .iter()
+            .map(|&i| (page.runs[i].locator.origin_x, ink(i)))
+            .collect();
+        for (rect, at) in pieces_of(&placed, height) {
+            cut.push((l, rect, at.iter().map(|&k| line[k]).collect()));
+        }
+    }
+    cut.sort_unstable_by_key(|(_, _, runs)| runs.iter().copied().min());
+    let read = lines_read(&cut.iter().map(|(l, _, _)| *l).collect::<Vec<_>>());
+    let text = |runs: &[usize], height: i64| {
+        let runs: Vec<(&str, Option<(i64, i64)>)> = runs
+            .iter()
+            .map(|&i| (page.runs[i].text.as_str(), ink(i).map(|b| (b.0, b.2))))
+            .collect();
+        spaced(&runs, height)
+    };
+    let unit_lines: Vec<UnitLine> = read
         .iter()
-        .map(|line| {
-            let inked: Vec<&crate::nodes::TextRun> = line
+        .map(|range| {
+            let members: BTreeSet<usize> = cut[range.clone()]
+                .iter()
+                .flat_map(|(_, _, runs)| runs.iter().copied())
+                .collect();
+            let line: Vec<usize> = lines[cut[range.start].0]
+                .iter()
+                .copied()
+                .filter(|i| members.contains(i))
+                .collect();
+            let rect = line.iter().filter_map(|&i| ink(i)).reduce(join);
+            let heading = line
                 .iter()
                 .map(|&i| &page.runs[i])
-                .filter(|run| !run.text.trim().is_empty())
-                .collect();
-            let rect = inked
-                .iter()
-                .filter_map(|run| run.geometry.measured())
-                .map(|b| (b.x0(), b.y0(), b.x1(), b.y1()))
-                .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)));
-            let heading = inked
-                .first()
+                .find(|run| !run.text.trim().is_empty())
                 .filter(|run| run.inferred_heading)
                 .map(|run| run.inferred_heading_level.unwrap_or(1));
-            let text: String = line.iter().map(|&i| page.runs[i].text.as_str()).collect();
             UnitLine {
                 rect,
                 heading,
-                marker: opens_with_marker(&text),
+                marker: opens_with_marker(&text(&line, rect.map_or(0, |r| r.3 - r.1))),
             }
         })
         .collect();
-    // Each piece with the runs it holds, ordered by its first run: reading order.
-    let mut placed_pieces: Vec<(usize, Piece, Vec<usize>)> = Vec::new();
-    for ((line, unit), read) in lines.iter().zip(units(&read)).zip(&read) {
-        let height = read.rect.map_or(0, |r| r.3 - r.1);
-        let placed: Vec<(i64, Option<Rect>)> = line
-            .iter()
-            .map(|&i| {
-                let run = &page.runs[i];
-                let b = (!run.text.trim().is_empty())
-                    .then(|| run.geometry.measured())
-                    .flatten()
-                    .map(|b| (b.x0(), b.y0(), b.x1(), b.y1()));
-                (run.locator.origin_x, b)
-            })
-            .collect();
-        for (rect, at) in pieces_of(&placed, height) {
-            let runs: Vec<usize> = at.iter().map(|&k| line[k]).collect();
-            let first = runs.iter().copied().min().unwrap_or(usize::MAX);
-            let text: String = runs.iter().map(|&i| page.runs[i].text.as_str()).collect();
-            let piece = Piece {
-                rect,
+    let mut pieces = Vec::with_capacity(cut.len());
+    for ((range, unit), line) in read.iter().zip(units(&unit_lines)).zip(&unit_lines) {
+        let height = line.rect.map_or(0, |r| r.3 - r.1);
+        for (_, rect, runs) in &cut[range.clone()] {
+            pieces.push(Piece {
+                rect: *rect,
                 unit,
-                first_word: rect.map_or(0, |r| first_word(&text, r.2 - r.0)),
-                heading: read.heading.is_some(),
-            };
-            placed_pieces.push((first, piece, runs));
+                first_word: rect.map_or(0, |r| first_word(&text(runs, height), r.2 - r.0)),
+                heading: line.heading.is_some(),
+            });
         }
     }
-    placed_pieces.sort_unstable_by_key(|(first, _, _)| *first);
-    let pieces: Vec<Piece> = placed_pieces.iter().map(|(_, piece, _)| *piece).collect();
-    let members: Vec<&Vec<usize>> = placed_pieces.iter().map(|(_, _, runs)| runs).collect();
     let short = cut_after_short_pieces(&pieces);
-    for (runs, unit) in members.into_iter().zip(cut_at_hard_breaks(&pieces, &short)) {
+    for ((_, _, runs), unit) in cut.iter().zip(cut_at_hard_breaks(&pieces, &short)) {
         for &i in runs {
             page.runs[i].layout_unit = Some(unit);
         }
@@ -748,5 +819,64 @@ mod tests {
             [vec![0], vec![1]],
             "an unmeasured line holds no script"
         );
+    }
+
+    /// **A line is read where the reading order reads it** (`line-units-v5`): the pieces of one line
+    /// that follow each other in reading order are one line, and a line read in two places is two.
+    #[test]
+    fn a_line_read_in_two_places_is_two_lines() {
+        // A paragraph's last two baselines (lines 0 and 1) are a byline's too, beside it, and the
+        // byline is read first: each piece is a line of its own, read where it is read.
+        assert_eq!(lines_read(&[0, 1, 2, 0, 1]), [0..1, 1..2, 2..3, 3..4, 4..5]);
+        // A line's pieces read together stay one line.
+        assert_eq!(lines_read(&[0, 0, 1, 1, 1, 0]), [0..2, 2..5, 5..6]);
+        assert_eq!(lines_read(&[]), Vec::<Range<usize>>::new());
+        // So the byline is a unit and the paragraph another.
+        let lines = [
+            body(112, 400, 480),
+            body(124, 400, 480),
+            body(100, 72, 300),
+            body(112, 72, 300),
+            body(124, 72, 300),
+        ];
+        assert_eq!(units(&lines), [1, 1, 2, 2, 2]);
+    }
+
+    /// **A word gap the page set by moving its pen reads as a space** (`line-units-v5`): from a
+    /// tenth of the line's height, and not under it, so a bullet set apart by its position opens a
+    /// list item and a line's first word is a word, while two kerned pieces of a word stay one.
+    #[test]
+    fn a_gap_a_tenth_of_the_line_high_reads_as_a_space() {
+        // A line 1,000 high: a bullet 300 short of its item, then `ite` and `m` kerned 20 apart.
+        let item = [
+            ("•", Some((0, 400))),
+            ("First", Some((700, 2_000))),
+            ("ite", Some((2_300, 2_900))),
+            ("m", Some((2_920, 3_200))),
+        ];
+        assert_eq!(spaced(&item, 1_000), "• First item");
+        assert!(opens_with_marker(&spaced(&item, 1_000)));
+        assert!(!opens_with_marker("•Firstitem"), "as written, no marker");
+        // The boundary: a gap of a tenth is a space, a centipoint less is none.
+        assert_eq!(
+            spaced(&[("a", Some((0, 100))), ("b", Some((200, 300)))], 1_000),
+            "a b"
+        );
+        assert_eq!(
+            spaced(&[("a", Some((0, 100))), ("b", Some((199, 300)))], 1_000),
+            "ab"
+        );
+        // A run with no box reads as written and moves nothing; a line with no height reads none.
+        let drawn = [("a", Some((0, 100))), (" ", None), ("b", Some((150, 300)))];
+        assert_eq!(spaced(&drawn, 1_000), "a b");
+        assert_eq!(
+            spaced(&[("a", Some((0, 100))), ("b", Some((900, 1_000)))], 0),
+            "ab"
+        );
+        // `Cash flow` over 5,200: its first word and space are 2,888, where read as written,
+        // `Cashflow`, its first word was the whole line and a character more.
+        let entry = [("Cash", Some((0, 2_800))), ("flow", Some((3_100, 5_200)))];
+        assert_eq!(first_word(&spaced(&entry, 1_000), 5_200), 2_888);
+        assert_eq!(first_word("Cashflow", 5_200), 5_850);
     }
 }
