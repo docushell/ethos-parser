@@ -212,9 +212,10 @@
         "stroke_ruled",
         "tagged",
         "tracks",
-        "charts"
+        "charts",
+        "lines"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38 and six since decision #42: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42 and seven since decision #66: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -238,7 +239,11 @@
         },
         "charts": {
           "type": "string",
-          "description": "Version id of the rule that reads a bar chart's printed labels back as its table (decision #42). `bar-labels-v2`. Bars are rectangles the page filled in a known colour that is not white, a rectangle drawn with its corners named twice among them (decision #57); columns are bars of one width set end to end in colours that differ; a chart is two or more columns on one base, of one width, side by side, its categories each column or each period of repeating colours — where no period holds, each group the gaps between columns set apart, a colour two groups hold a series and a column of another colour the series of its place in a full group; three columns or more each a colour of its own are one series, which takes no title (decision #57). A value is the one number on a bar's segment or just past a single bar's end, a number two cells could read filling neither; a category the one label at the column's base, with the lines it wraps onto, never a number but a year, a label opening with a value, a line of prose or a label set on a bar; a series' name the one label beside a legend swatch of its colour near the chart and the labels it read and nearer it than other bars of that colour, or a one-colour chart's one-line title. A table only where the numbers agree with the bars in order and six bars in ten of a series carry one, no label read twice and no run in two tables; a value is never read off a bar's length and an empty cell is not emitted. Runs after `tracks`, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its label's runs."
+          "description": "Version id of the rule that reads a bar chart's printed labels back as its table (decision #42). `bar-labels-v3`. Bars are rectangles the page filled in a known colour that is not white, a rectangle drawn with its corners named twice among them (decision #57); columns are bars of one width set end to end in colours that differ; a chart is two or more columns on one base, of one width, side by side, its categories each column or each period of repeating colours — where no period holds, each group the gaps between columns set apart, a colour two groups hold a series and a column of another colour the series of its place in a full group; three columns or more each a colour of its own are one series, which takes no title (decision #57). A value is the one number on a bar's segment or just past a single bar's end, a number two cells could read filling neither; a category the one label at the column's base, with the lines it wraps onto, never a number but a year, a label opening with a value, a line of prose or a label set on a bar; a series' name the one label beside a legend swatch of its colour near the chart and the labels it read and nearer it than other bars of that colour, or a one-colour chart's one-line title — since `bar-labels-v3` (decision #66), the one series that prints numbers, whatever else is drawn beside it. A table only where the numbers agree with the bars in order and six bars in ten of a series carry one, no label read twice and no run in two tables; a value is never read off a bar's length and an empty cell is not emitted. Runs after `tracks`, on runs no other rule's table holds, only on a document that declares no author structure; a cell holds only its label's runs."
+        },
+        "lines": {
+          "type": "string",
+          "description": "Version id of the rule that reads the numbers a line chart prints at its points back as its table (decision #66). `point-labels-v1`. A series is a line the page stroked whose every point stands right of the one before, not all at one height — a line drawn twice read once — or three or more small marks of one colour and size so set; a line drawn through a run of marks is that run. Each number goes to the one point it is set over, under or beside, unless another series' point stands nearly as near (within one and a half times the distance), and each point keeps its nearest number; a number set on a bar is the bar's. A series keeps its numbers where six points in ten carry one and a point higher on the page never carries a smaller number; its categories are the first row of labels below the plot holding one label under eight points in ten, no label twice and at most half of them numbers but years. Series reading one row are one table, each named by the block of lines beside a legend swatch of its colour — a small mark or a short level stroke — or a lone series by the one-line title over it. A value is never read off a point's height and an empty cell is not emitted. Runs after `charts`, on runs no other rule's table holds, only on a document that declares no author structure."
         }
       }
     },
@@ -523,7 +528,8 @@
       "right_to_left_rule": "right-to-left-lines-v1",
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
-        "charts": "bar-labels-v2",
+        "charts": "bar-labels-v3",
+        "lines": "point-labels-v1",
         "ruled": "ruled-rects-v12",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1",

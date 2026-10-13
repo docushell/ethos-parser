@@ -187,6 +187,33 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line chart's printed values read as its table (`point-labels-v1`), and a panel's title names its numbers (`bar-labels-v3`), decision #66
+
+A new profile field, `table_detection.lines` = `point-labels-v1` (office profiles:
+`not-run-for-this-format`), and `table_detection.charts` `bar-labels-v2` -> `-v3`, so
+`profile_sha256` moves. `docs/32-CHART-LABELS-SCOPE.md` §8 and §9 are the rules.
+
+- **A line chart that prints a number at each point is a table**: a stroked line rising left to
+  right, or a run of three or more small marks of one colour, is a series; each number goes to the
+  one point it is set over, under or beside, unless another series' point stands nearly as near; a
+  year is never a value; a series keeps its numbers where six points in ten carry one and a higher
+  point never carries a smaller number; its categories are the first row of labels under the plot.
+  Series sharing that row are one table, each named by its legend swatch (a small mark or a short
+  stroke of its colour) or, alone, by the title over it. A value is never read off a point's
+  height.
+- **The interpreter carries the stroke colour** (`G`, `RG`, `K`, `SC`, `SCN`, reset by `CS`, saved
+  by `q`) and records each stroked subpath's points and each small filled mark with its colour;
+  only the line rule reads them.
+- **`bar-labels-v3`**: the title over a chart names the one series that prints numbers, whatever
+  else is drawn beside it — a progress bar's track no longer leaves its numbers unnamed.
+- **Measured** on ParseBench: charts 0.1184 -> 0.1248, 7 pages up and none down (`She-figures` p88
+  and `E-Government_Survey` p78 0 -> 1.0); tables, content, formatting and visual grounding
+  unchanged on every page; overall 46.29 -> 46.42. No line table on a table or text page; the gate
+  documents' tables unchanged.
+- **The trade, taken by the owner**: opendataloader-bench `01030000000078`'s line, read right
+  against its drawing, reorders that document's labels — its NID 0.8786 -> 0.8099 and TEDS 0.8667 ->
+  0.7086 (bench NID 0.8841 -> 0.8838, TEDS 0.5339 -> 0.5301), as decision #42's bar tables did.
+
 ### A heading's section number and its title are one line, and a label's lines one block (decision #65)
 
 Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule id

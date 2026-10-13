@@ -1,6 +1,6 @@
 # A bar chart's printed labels as its table — scope (decision #42)
 
-**Status: shipped 2026-10-04 as `bar-labels-v1`; `bar-labels-v2` since 2026-10-09 (§7, decision #57).** A bar chart that prints its numbers states a
+**Status: shipped 2026-10-04 as `bar-labels-v1`; `bar-labels-v2` since 2026-10-09 (§7, decision #57); `bar-labels-v3` and a line chart's rule, `point-labels-v1`, since 2026-10-13 (§8, §9, decision #66).** A bar chart that prints its numbers states a
 table; this rule reads that table back. It never reads a value off a bar's length: a bar that carries
 no number leaves its cell empty, and a chart that prints none yields no table.
 
@@ -125,7 +125,8 @@ on that page returned to its score before the rule.
 ## 6. Not done
 
 - **Line charts**: markers and polylines as the witness, measured in the prototype at +0.002 with
-  more ways to go wrong; not in this rule.
+  more ways to go wrong; not in this rule. **Read since decision #66** by a rule of their own,
+  `point-labels-v1` (§9).
 - **Pie charts, rotated labels, charts in images.**
 - **Charts that print no numbers**: reading a value off a bar's length would be estimating, which
   this engine refuses.
@@ -185,3 +186,83 @@ or as much down as up.
 (`ADL_Future_of_automotive_mobility` p13: `3.73.6`); small multiples, whose data points name a panel
 as well as a category and a series; categories in two tiers; bars hanging below a base; a line
 drawn over the bars; pies and lines (§6).
+
+## 8. `bar-labels-v3`: the title over a chart names its one series that prints numbers (2026-10-13, decision #66)
+
+`-v2` read the title over a chart as its series' name only where the chart was drawn in one colour.
+A chart of bars drawn over a full-length track — a progress bar, one colour printing its numbers
+and one printing none — kept two series, and its one column of numbers went unnamed, though the
+panel's title over it names it (`(Web_version)_E-Government_Survey_2024` p78, three panels each
+titled). `-v3` reads the title for the one series that carries numbers, whatever else is drawn
+beside it, and a series with no number is still no column. Measured alone: ParseBench charts
+0.1184 → 0.1202, that page 0 → 1.0, nothing else moved.
+
+**Measured beside it and not used:** rounded bars read as bars (one page given a table, and it
+still scored nothing without its legend's dots — as `-v2` measured them, §7); panels sharing a
+category axis merged into one table (at most fifteen pages and 66 points, each needing the panel's
+title and the legend as well).
+
+## 9. `point-labels-v1`: a line chart's printed values (2026-10-13, decision #66)
+
+**Why.** Told "Charts, round 3", the 846 chart data points that print their value and still failed
+were read for why: 284 sat on pages where the bar rule found no bars at all — line charts, pies,
+charts drawn as images — 328 on pages whose bars it refused, and 234 on pages whose table missed
+them, the reasons many and each small. The largest coherent piece left was a line chart that prints
+a number at each point: about eight pages. Round 1's prototype read lines and measured +0.002; its
+reasons were found and mended before this rule was written (below).
+
+**The rule.** Its own profile field, `table_detection.lines`, beside the bar rule's: the evidence —
+stroked lines, small marks, their colours, and the labels set at their points — is its own. It runs
+after `bar-labels-v3`, on runs no other rule's table holds, only on a document that declares no
+author structure, and keeps a table only where it overlaps none already found.
+
+1. **Strokes and marks.** The interpreter carries the stroke colour as it carries the fill (`G`,
+   `RG`, `K`, `SC`, `SCN`, reset by `CS`, saved by `q`), and records each subpath a stroke paints —
+   every point a line or a curve ends at — with it, and the box of each filled path a point to
+   fifteen points each way and near square, with its fill. Nothing else reads either.
+2. **A series** is a stroked line of three points or more, each standing more than half a point
+   right of the one before it, not all at one height — a line drawn twice read once — or three
+   marks or more of one colour and size so set. A line drawn through a run of marks is that run;
+   marks all on a longer line are the line.
+3. **A value** is a number set at one point: centred over or under it within a line and a half, or
+   beside it on its height within a line and a fifth. Every number goes to its nearest point over
+   every series of the page, and **is no one's where another series' point stands nearly as near**
+   (within one and a half times the distance and a third of a point) — round 1 asked each series
+   alone, so two lines running close read each other's numbers as ambiguous and neither kept any.
+   Each point keeps its nearest number. **A year is never a value**: a timeline's dates set at its
+   marks, or a year axis set along a line, read so were a table of dates. A number set on a bar is
+   the bar's.
+4. **A series keeps its numbers** only where six points in ten carry one, and **a point clearly
+   higher on the page never carries a smaller number** (by half a line).
+5. **Categories** are the first row of labels below the plot — below the lowest point of every
+   series set at the same places, of the forty rows below it — holding one label under eight points
+   in ten, no label twice and at most half of them numbers but years. Round 1 looked twelve rows
+   below each series' own lowest point, under which a chart's other series print their numbers,
+   and refused a tenor's `3M` as a number.
+6. **A table** is every series reading one row of categories, a row per category in the order its
+   points stand, a column per series, each named by the block of lines beside a legend swatch of its
+   colour — a small mark or a short level stroke, its name read line by line up to the next swatch
+   — or, alone, by the one-line title over it, measured from its highest number. A cell holds
+   exactly its label's runs; an empty cell is not emitted; a value is never read off a point's
+   height.
+
+**Measured**, with the shipped build on all 2,078 ParseBench pages and opendataloader-bench's 200,
+against decision #65's: ParseBench charts **0.1184 → 0.1248**, seven pages up and none down
+(`She-figures` p88 and `E-Government_Survey` p78 0 → 1.0, `2022_SPI_Benchmark_Executive_Summary`
+p19 0 → 0.6 and p20 0 → 0.4, `article_thebeatjun2025` p34 0 → 0.3, `Technopak_Industry_Report` p4
+0 → 0.2); tables, content, formatting and visual grounding unchanged on every page; overall 46.29
+→ 46.42. Seventeen line tables on the chart and layout pages — `She-figures` p88, `article_thebeatjun2025`
+p22 and opendataloader-bench `01030000000078` checked against their drawings — none on a table or
+text page; the gate documents' 539 tables unchanged; every cell its runs' text.
+
+**The trade, taken by the owner.** opendataloader-bench `01030000000078` draws ASEAN's remittances
+as bars and the world's as a line over them; the line now reads as its table, right against the
+drawing (`World (left axis)`: 610, 602, 597, 640, 694, 719, 702 for 2014–2020). Its ground truth
+keeps the chart's labels as loose lines, so that document's NID falls 0.8786 → 0.8099 and its
+TEDS 0.8667 → 0.7086 (the bench's NID 0.8841 → 0.8838, TEDS 0.5339 → 0.5301) — the trade decision
+#42 took for bar charts, on one document more, and this time on its table score too.
+
+**Measured and not used.** A series named by a label set on the line itself, at its first or last
+point (moved no page); the transposed reader, for markers set down a column with their categories
+beside them, was not built.
+

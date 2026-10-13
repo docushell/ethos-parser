@@ -788,6 +788,19 @@ columns' headings, folios, column headers and twice-drawn text); headings inferr
 documents that declare none (formatting 0.4573, content down on 15 pages — the owner's call, since
 it changes documents that declare structure).
 
+### After a line chart's printed values (`point-labels-v1`, `bar-labels-v3`, decision #66, 2026-10-13)
+
+Told "Charts, round 3", the chart points that print their value and fail were read for why: 284 of
+846 on pages whose bars the bar rule never found, 328 on pages whose bars it refused, 234 on pages
+whose table missed them, each reason small; the largest coherent piece was a line chart printing a
+number at each point. `point-labels-v1` reads one (`docs/32-CHART-LABELS-SCOPE.md` §9), and
+`bar-labels-v3` names a progress bar's one numbered series by the title over it (§8). Charts
+0.1184 -> 0.1248, 7 pages up and none down; every other dimension unchanged on every page;
+opendataloader-bench NID 0.8841 -> 0.8838 and TEDS 0.5339 -> 0.5301 on one document whose line reads
+right as a table (the owner took the trade). Overall 46.29 -> 46.42. Round 1's line prototype,
+re-run here, measured 0.1192: it judged each series alone and so lost the numbers of lines running
+close, and refused a tenor row's `3M` as a number.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
