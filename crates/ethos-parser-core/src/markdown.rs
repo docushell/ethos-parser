@@ -221,6 +221,11 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// down, content faithfulness unchanged at 0.6633, opendataloader-bench byte-identical. And so is
 /// joining a label's next line where its column wrapped it ([`wrapped_labels`], decision #48) —
 /// semantic formatting 0.4310 -> 0.4347 with no document down, opendataloader-bench byte-identical.
+/// And so are decision #65's two joins: a label's lines in one block ([`label_line_continues`])
+/// and a heading's section number joined to the title it opens across the gap between them
+/// ([`heading_number_continues`], [`HEADING_NUMBER_JOINS`]) — semantic formatting 0.4402 -> 0.4512
+/// and content faithfulness 0.6695 -> 0.6700 with no page down, opendataloader-bench MHS 0.5854 ->
+/// 0.5872.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -320,8 +325,17 @@ pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 /// of inferred headings (decision #38, [`crate::TextRunAttributes::layout_unit`]): a heading set on
 /// two lines, no more than half a line apart. The line break is rendered as one space, and the unit
 /// is this engine's measure, not the producer's word, so it is counted apart from both baseline
-/// joins. Body text keeps its lines; see [`unit_continues`].
+/// joins. Body text keeps its lines; see [`unit_continues`]. Decision #65 counts a label's next
+/// line here too, where it keeps its line break but joins the label's block
+/// ([`label_line_continues`]): the block boundary is what the unit erased.
 pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
+
+/// A heading's section number or marker joined to the title it opens, across the gap the page set
+/// between them on one line (decision #65, [`heading_number_continues`]): `2.1.2` and `Open Source
+/// Software Tools`, a tab apart, were two headings. One space is written for the gap. The licence
+/// is the heading rule's own line and the number's shape, neither the producer's word nor the ink
+/// geometry the baseline joins read, so it is counted apart from all three.
+pub const HEADING_NUMBER_JOINS: &str = "heading-number-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
 /// as a paragraph (v2.4).
@@ -1081,6 +1095,57 @@ pub(crate) fn unit_continues(
         && (!label || wrapped.contains(node.id.as_str()))
 }
 
+/// Whether `node` continues, on a line of its own, the label `prev` belongs to (decision #65): both
+/// labels — level 7 — of one layout unit on one page, `node` opening a new line that its column did
+/// not wrap ([`unit_continues`] joins those). The lines stay lines, each written bold as before, in
+/// one block: `IN THE MATTER OF THE` over `PETITION OF Erika Kristina` reads as one label, and
+/// `ARTICLE 11` over `DIVIDEND EQUIVALENTS` is still two lines a reader can take one at a time.
+/// Called by both projections.
+pub(crate) fn label_line_continues(prev: &crate::Node, node: &crate::Node) -> bool {
+    let unit = |n: &crate::Node| {
+        text_run_attributes(n)
+            .filter(|a| a.inferred_heading && a.inferred_heading_level.unwrap_or(1) > 6)
+            .and_then(|a| a.layout_unit)
+    };
+    prev.parent == node.parent
+        && unit(prev).is_some()
+        && unit(prev) == unit(node)
+        && on_different_lines(prev, node)
+}
+
+/// Whether `node` continues the heading line whose open block `block` is the section number or
+/// marker of (decision #65): both inferred headings of one level, on the one line the heading rule
+/// read — one line key — `node` drawn after `prev`, and `block` a number, a roman numeral or a
+/// letter closed by `.` or `)`, or a bullet ([`is_label_head`]), and `node` holding a letter — a
+/// title, where a folio's `6` beside its `7` is none. A tab set between `2.1.2` and its
+/// title is wider than any word gap the ink joins bridge, so the two were headings of their own.
+/// Only the gap after the number is bridged: two headings that share a baseline with nothing
+/// numbering one of them — a bilingual page's `INTRODUCTORY NOTE` and `NOTE INTRODUCTIVE` — stay
+/// two. Called by both projections.
+pub(crate) fn heading_number_continues(
+    prev: &crate::Node,
+    node: &crate::Node,
+    block: &str,
+) -> bool {
+    let level = |n: &crate::Node| {
+        text_run_attributes(n)
+            .filter(|a| a.inferred_heading)
+            .map(|a| a.inferred_heading_level)
+    };
+    let drawn_after = match (&prev.native_locator, &node.native_locator) {
+        (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) => b.origin_x > a.origin_x,
+        _ => false,
+    };
+    prev.parent == node.parent
+        && level(prev).is_some()
+        && level(prev) == level(node)
+        && line_key(prev).is_some()
+        && line_key(prev) == line_key(node)
+        && drawn_after
+        && is_label_head(block.trim())
+        && node.text.chars().any(char::is_alphabetic)
+}
+
 /// The runs that open a label's next line where the label's column wrapped it (decision #47,
 /// folded into `-v12`): each names a line [`unit_continues`] joins to the label line above.
 ///
@@ -1184,6 +1249,13 @@ fn opens_with_label(text: &str) -> bool {
     let Some((head, _)) = text.split_once(char::is_whitespace) else {
         return false;
     };
+    is_label_head(head)
+}
+
+/// Whether `head` is a number — `2`, `3.1.`, `(4)` — a roman numeral or a letter closed by `.` or
+/// `)`, or a bullet: what [`opens_with_label`] reads before the whitespace, and what
+/// [`heading_number_continues`] reads as a whole block.
+fn is_label_head(head: &str) -> bool {
     if head.chars().count() == 1 && "•·▪◦‣–—*-".contains(head) {
         return true;
     }
@@ -2421,6 +2493,9 @@ pub fn to_markdown(
     let mut open_group: Option<GroupKey> = None;
     let mut open_prev: Option<&crate::Node> = None;
     let mut pending_space = false;
+    // Decision #65: the open block's text, which [`heading_number_continues`] reads for a section
+    // number standing alone.
+    let mut block_text = String::new();
 
     // v2.2-S5. The undeclared fallback. `open_line` is the line the open block was drawn on and
     // `line_ink` is how far along it the ink has reached — the run that last extended it, the x
@@ -2633,14 +2708,28 @@ pub fn to_markdown(
         // Decision #38. A heading's next line, set in its layout unit, continues the heading line
         // with one space for the line break. `hyphen_tail` never closes a word up in a heading,
         // so there is no broken word to rejoin here.
-        if joining.is_none()
-            && key.is_none()
-            && open_group.is_none()
-            && open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped))
+        // Decision #65. A label's next line, set in its unit, continues the label's block on a line
+        // of its own; a heading's section number takes the title it opens across the gap between
+        // them. Both, like the unit join, only where nothing declared a group.
+        let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
+            None
+        } else if open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped)) {
+            Some((" ", LAYOUT_UNIT_LINE_JOINS))
+        } else if open_prev.is_some_and(|prev| label_line_continues(prev, node)) {
+            Some(("\n", LAYOUT_UNIT_LINE_JOINS))
+        } else if ht.is_none()
+            && open_prev.is_some_and(|prev| heading_number_continues(prev, node, &block_text))
         {
-            e.syntax(" ");
+            Some((" ", HEADING_NUMBER_JOINS))
+        } else {
+            None
+        };
+        if let Some((separator, code)) = continues {
+            e.syntax(separator);
             e.source(&text, node.id.as_str());
-            *erasures.entry(LAYOUT_UNIT_LINE_JOINS).or_insert(0) += 1;
+            block_text.push_str(separator);
+            block_text.push_str(&text);
+            *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
             open_prev = Some(node);
             open_line = line_key(node);
@@ -2669,6 +2758,10 @@ pub fn to_markdown(
                     // two abutting `source` segments naming different nodes.
                     e.source(&text, node.id.as_str());
                 }
+                if space {
+                    block_text.push(' ');
+                }
+                block_text.push_str(&text);
                 let code = if declared {
                     MCID_RUN_JOINS
                 } else if space {
@@ -2687,6 +2780,8 @@ pub fn to_markdown(
             }
             None => {
                 separate(&mut e, &mut last, Block::Standalone);
+                block_text.clear();
+                block_text.push_str(&text);
                 open_group = key;
                 open_prev = Some(node);
                 pending_space = false;
@@ -2716,6 +2811,8 @@ pub fn to_markdown(
         // become one `source` segment naming both runs, no separator goes between them, and the
         // hyphen that is no longer in the string is counted — see `HYPHENATION_REJOIN_DROPPED`.
         if let Some((tail, joined)) = ht {
+            block_text.clear();
+            block_text.push_str(&joined);
             e.joined_source(&joined, node.id.as_str(), tail.id.as_str());
             let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
             b.0 += 1;
@@ -5327,9 +5424,10 @@ pub(crate) mod tests {
             .any(|e| e.code == LAYOUT_UNIT_LINE_JOINS));
     }
 
-    /// **A label keeps its lines** (decision #47): two labels set one under the other in one unit,
-    /// in a column with room for the second's first word after the first, are two bold lines,
-    /// never joined as a heading set on two lines is.
+    /// **A label keeps its lines, in one block** (decisions #47 and #65): two labels set one under
+    /// the other in one unit, in a column with room for the second's first word after the first,
+    /// are two bold lines, never joined into one as a heading set on two lines is — and one block,
+    /// where `-v12` before decision #65 set a blank line between them.
     #[test]
     fn two_labels_in_one_unit_keep_their_lines() {
         let base = with_inferred_headings(
@@ -5352,7 +5450,7 @@ pub(crate) mod tests {
             })
             .collect();
         for (level, want, joined) in [
-            (7u8, "**ARTICLE 11**\n\n**DIVIDENDS**\n\nBody text\n", false),
+            (7u8, "**ARTICLE 11**\n**DIVIDENDS**\n\nBody text\n", true),
             (6, "###### ARTICLE 11 DIVIDENDS\n\nBody text\n", true),
         ] {
             let mut payload = base.payload().clone();
@@ -5363,6 +5461,22 @@ pub(crate) mod tests {
                 }
             }
             let repr = DocumentRepresentation::seal(payload, geometry.clone()).unwrap();
+            if level == 7 {
+                let profile = Profile::default();
+                let h = crate::html::to_html(
+                    &repr,
+                    &profile.parser_version,
+                    &profile.profile_sha256().unwrap(),
+                    &profile.html_rule,
+                )
+                .expect("projects");
+                assert!(
+                    h.html
+                        .contains("<p><strong>ARTICLE 11</strong>\n<strong>DIVIDENDS</strong></p>"),
+                    "{}",
+                    h.html
+                );
+            }
             let a = artifact_of(repr);
             assert_eq!(a.markdown, want, "level {level}");
             assert_eq!(
@@ -5373,6 +5487,176 @@ pub(crate) mod tests {
                 joined,
                 "level {level}"
             );
+        }
+    }
+
+    /// **A heading's section number takes the title it opens, across the gap between them**
+    /// (decision #65): `2.1` and `Methods` on one line, a tab apart, are one heading in both
+    /// projections, counted under [`HEADING_NUMBER_JOINS`]. Each change below parts them: no
+    /// number, a number with no title after it, two levels, a title drawn before its number, or
+    /// two lines.
+    #[test]
+    fn a_heading_number_and_its_title_are_one_line() {
+        let project = |runs: &[(&str, i64, i64, Option<u8>, u32)]| {
+            let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+            let page = PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index: 1,
+                width: 61200,
+                height: 79200,
+                rotation: 0,
+                visible: None,
+            };
+            let mut nodes = Vec::new();
+            let mut geometry = Vec::new();
+            for (i, &(text, x, y, level, unit)) in runs.iter().enumerate() {
+                let width = 600 * text.chars().count() as i64;
+                let mut node = placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    text,
+                    None,
+                    x,
+                    y,
+                    Some(width),
+                    None,
+                );
+                if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                    a.inferred_heading = level.is_some();
+                    a.inferred_heading_level = level.filter(|&l| l > 1);
+                    a.bold = level == Some(7);
+                    a.layout_unit = Some(unit);
+                }
+                geometry.push(NodeGeometry {
+                    node: node.id.clone(),
+                    presence: GeometryPresence::Measured(
+                        QRect::new(x, y - 2400, x + width, y).unwrap(),
+                    ),
+                });
+                nodes.push(node);
+            }
+            let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+            let profile = Profile::default();
+            let html = crate::html::to_html(
+                &repr,
+                &profile.parser_version,
+                &profile.profile_sha256().unwrap(),
+                &profile.html_rule,
+            )
+            .expect("projects");
+            let a = artifact_of(repr);
+            let joins = a
+                .coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == HEADING_NUMBER_JOINS)
+                .map_or(0, |e| e.count);
+            (a.markdown, html.html, joins)
+        };
+        let body = ("Body text set under it", 2000, 12000, None, 11);
+        let (md, html, joins) = project(&[
+            ("Text set above it", 2000, 4000, None, 12),
+            ("2.1", 2000, 8000, Some(2), 13),
+            ("Methods", 9000, 8000, Some(2), 14),
+            body,
+        ]);
+        assert_eq!(
+            md,
+            "Text set above it\n\n## 2.1 Methods\n\nBody text set under it\n"
+        );
+        assert!(html.contains("<h2>2.1 Methods</h2>"), "{html}");
+        assert_eq!(joins, 1);
+        // The number has its title already: the next heading across a gap is a heading of its own.
+        let (md, _, joins) = project(&[
+            ("2.1 ", 2000, 8000, Some(2), 15),
+            ("Methods", 4400, 8000, Some(2), 16),
+            ("Overview", 30000, 8000, Some(2), 17),
+            body,
+        ]);
+        assert_eq!(
+            md,
+            "## 2.1 Methods\n\n## Overview\n\nBody text set under it\n"
+        );
+        assert_eq!(joins, 0);
+        let (md, html, _) = project(&[
+            ("I.", 2000, 8000, Some(7), 18),
+            ("The Story", 9000, 8000, Some(7), 19),
+            body,
+        ]);
+        assert_eq!(md, "**I. The Story**\n\nBody text set under it\n");
+        assert!(html.contains("<strong>I. The Story</strong>"), "{html}");
+        // Labels: one unit's next line continues the block; another unit's, or one on the same
+        // line, does not.
+        let (md, _, _) = project(&[
+            ("Loan terms", 2000, 8000, Some(7), 30),
+            ("and conditions", 2000, 10000, Some(7), 30),
+            body,
+        ]);
+        assert_eq!(
+            md,
+            "**Loan terms**\n**and conditions**\n\nBody text set under it\n"
+        );
+        // A heading over a label of its unit: the heading is no label, and ends its block.
+        let (md, _, _) = project(&[
+            ("Chapter", 2000, 8000, Some(2), 30),
+            ("Loan terms", 2000, 10000, Some(7), 30),
+            body,
+        ]);
+        assert_eq!(
+            md,
+            "## Chapter\n\n**Loan terms**\n\nBody text set under it\n"
+        );
+        for (second, why) in [
+            (("and conditions", 2000, 10000, Some(7), 31), "another unit"),
+            (("and conditions", 30000, 8000, Some(7), 30), "one line"),
+        ] {
+            let (md, _, _) = project(&[("Loan terms", 2000, 8000, Some(7), 30), second, body]);
+            assert_eq!(
+                md, "**Loan terms**\n\n**and conditions**\n\nBody text set under it\n",
+                "{why}"
+            );
+        }
+        for (runs, why) in [
+            (
+                [
+                    ("Revenue", 2000, 8000, Some(2), 20),
+                    ("Costs", 30000, 8000, Some(2), 21),
+                ],
+                "no number",
+            ),
+            (
+                [
+                    ("6", 2000, 8000, Some(2), 22),
+                    ("7", 30000, 8000, Some(2), 23),
+                ],
+                "no title",
+            ),
+            (
+                [
+                    ("2.1", 2000, 8000, Some(2), 24),
+                    ("Methods", 9000, 8000, Some(3), 25),
+                ],
+                "two levels",
+            ),
+            (
+                [
+                    ("2.1", 9000, 8000, Some(2), 26),
+                    ("Methods", 2000, 8000, Some(2), 27),
+                ],
+                "drawn before",
+            ),
+            (
+                [
+                    ("2.1", 2000, 8000, Some(2), 28),
+                    ("Methods", 9000, 10000, Some(2), 29),
+                ],
+                "two lines",
+            ),
+        ] {
+            let (md, _, joins) = project(&[runs[0], runs[1], body]);
+            assert_eq!(joins, 0, "{why}: {md}");
+            assert_eq!(md.matches("\n\n").count(), 2, "{why}: {md}");
         }
     }
 

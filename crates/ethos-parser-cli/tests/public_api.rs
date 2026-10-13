@@ -343,6 +343,8 @@ const CORE: &[&str] = &[
     "BASELINE_RUN_JOINS_SPACED",
     // Decision #38. Two lines of one layout unit, joined.
     "LAYOUT_UNIT_LINE_JOINS",
+    // Decision #65. A heading's number joined to its title.
+    "HEADING_NUMBER_JOINS",
     "GFM_CELL_NOT_PLACED",
     "GFM_CELL_RUN_CLAIMED_TWICE",
     "GFM_LIST_ITEM_RUN_JOINS",

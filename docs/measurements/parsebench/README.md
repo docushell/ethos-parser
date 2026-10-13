@@ -772,6 +772,22 @@ two `#` lines; formatting, tables and charts unchanged on every page; opendatalo
 0.5457 -> 0.5854, 6 documents up and none down. Overall 45.92 -> 46.06. Not used: the weight read
 only where a line stands apart, labels as before (0.5389, 19 pages up and 4 down).
 
+### After a heading's number joined to its title (decision #65, 2026-10-12)
+
+Told "Formatting titles", the title checks on the formatting pages were read for why each fails:
+of 1,872, 812 pass and 247 sit on pages with no text layer; a title's words absent or changed in
+our text (an OCR layer's errors, a curly apostrophe, a broken ligature) 311; a title set on several
+lines whose first only is a heading or a bold line, about 150; a section number and its title set
+a tab apart, written as two headings; and 235 on 75 tagged documents whose tree tags every title
+`/P` and declares no heading. Both projections now join a heading's title to its section number
+across the gap where the heading rule read one line, and write a label's lines in one block.
+Semantic formatting 0.4402 -> 0.4512, 20 documents up and none down; content 0.6695 -> 0.6700, 9
+up and none down; every other dimension unchanged on every page; opendataloader-bench MHS 0.5854
+-> 0.5872. Overall 46.06 -> 46.29. Not used: the join across any gap (46.40; it welds two
+columns' headings, folios, column headers and twice-drawn text); headings inferred on tagged
+documents that declare none (formatting 0.4573, content down on 15 pages — the owner's call, since
+it changes documents that declare structure).
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

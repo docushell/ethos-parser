@@ -187,6 +187,36 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A heading's section number and its title are one line, and a label's lines one block (decision #65)
+
+Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule id
+and no `profile_sha256` moves.
+
+- **A heading's section number takes the title it opens**: a numbered heading set with a tab
+  between its number and its title — `2.1.2` then `Open Source Software Tools`, `1.1` then `The
+  software architecture of an AI agent` — was two headings, the gap wider than any word gap the
+  ink joins bridge. Both projections now join the title to the number with one space where both
+  are inferred headings of one level on the one line the heading rule read, the open block is the
+  number or marker alone (`2.1.2`, `I.`, `A.`, a bullet), and the title is drawn after it and holds
+  a letter. Counted as the new structural erasure `heading-number-joins-v1`. Two headings that
+  share a baseline with nothing numbering one of them — a bilingual page's `INTRODUCTORY NOTE` and
+  `NOTE INTRODUCTIVE` — stay two.
+- **A label's lines are one block**: a label set on several lines its column did not wrap kept
+  each line as a block of its own; its lines now stay lines, each bold as before, in one block —
+  `**IN THE MATTER OF THE**` over `**PETITION OF Erika Kristina**` — counted under
+  `layout-unit-line-joins-v1`. A label its column wrapped is still written on one line (decision
+  #48).
+- **Measured** on ParseBench: semantic formatting 0.4402 -> 0.4512, 20 documents up and none down;
+  content faithfulness 0.6695 -> 0.6700, 9 pages up and none down; tables, charts and visual
+  grounding unchanged on every page; overall 46.06 -> 46.29. opendataloader-bench MHS 0.5854 ->
+  0.5872, one document 0.6762 -> 0.8680 and its NID up, none down; the gate documents' tables and
+  the heading bounds unchanged.
+- **Measured and not used**: joining every run of a heading line across any gap (overall 46.40)
+  welds runs that only share a baseline — two columns' headings, a folio's numbers, a table's
+  column headers, text a page draws twice — and moved 13 content pages and one formatting page
+  down; writing every label's lines with line breaks, wrapped ones included, lost 10 formatting
+  documents, the title hierarchy reading a title line by line.
+
 ### A line set a weight heavier than its text is read as a bold one (`type-size-v7`, decision #64)
 
 `heading_inference_rule` moves `type-size-v6` -> `type-size-v7`, so `profile_sha256` moves.

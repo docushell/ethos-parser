@@ -154,8 +154,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
 /// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
-/// heading levels, a layout unit's lines as one element — and decision #40's `<sup>` and `<sub>`
-/// this id carries too.
+/// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
+/// decision #65's label lines in one `<p>` and heading number joined to its title, this id carries
+/// too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -419,6 +420,8 @@ pub fn to_html(
     let mut open_group: Option<crate::markdown::GroupKey> = None;
     let mut open_prev: Option<&crate::Node> = None;
     let mut pending_space = false;
+    // Decision #65: the open block's text, as `crate::markdown` keeps it.
+    let mut block_text = String::new();
 
     // v2.2-S5. The undeclared fallback, from `crate::markdown` so the two projections cannot
     // drift: a document that reads as one block there must read as one `<p>` here.
@@ -585,17 +588,32 @@ pub fn to_html(
         };
 
         // Decision #38. `crate::markdown`'s heading-unit join, from the same predicate, so a heading
-        // set on two lines is one element here as it is one line there.
-        if joining.is_none()
-            && key.is_none()
-            && open_group.is_none()
-            && open_prev.is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
+        // set on two lines is one element here as it is one line there. Decision #65: its label
+        // and heading-number joins too, from the same predicates, so a label's lines are one `<p>`
+        // here as they are one block there.
+        let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
+            None
+        } else if open_prev
+            .is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
         {
-            e.syntax(" ");
+            Some((" ", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
+        } else if open_prev.is_some_and(|prev| crate::markdown::label_line_continues(prev, node)) {
+            Some(("\n", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
+        } else if ht.is_none()
+            && open_prev.is_some_and(|prev| {
+                crate::markdown::heading_number_continues(prev, node, &block_text)
+            })
+        {
+            Some((" ", crate::markdown::HEADING_NUMBER_JOINS))
+        } else {
+            None
+        };
+        if let Some((separator, code)) = continues {
+            e.syntax(separator);
             escaped_source(&mut e, &text, node.id.as_str());
-            *erasures
-                .entry(crate::markdown::LAYOUT_UNIT_LINE_JOINS)
-                .or_insert(0) += 1;
+            block_text.push_str(separator);
+            block_text.push_str(&text);
+            *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
             open_prev = Some(node);
             open_line = crate::markdown::line_key(node);
@@ -609,8 +627,10 @@ pub fn to_html(
         if let Some(space) = joining {
             if space {
                 e.syntax(" ");
+                block_text.push(' ');
             }
             escaped_source(&mut e, &text, node.id.as_str());
+            block_text.push_str(&text);
             let code = if key.is_some() {
                 crate::markdown::MCID_RUN_JOINS
             } else if space {
@@ -630,6 +650,8 @@ pub fn to_html(
 
         flush_block(&mut e, &mut open_block);
         list.close_to(&mut e, 0);
+        block_text.clear();
+        block_text.push_str(&text);
         open_group = key;
         open_prev = Some(node);
         pending_space = false;
@@ -658,6 +680,8 @@ pub fn to_html(
 
         // The same join, from the same predicate. See `crate::markdown::hyphen_tail`.
         if let Some((tail, joined)) = ht {
+            block_text.clear();
+            block_text.push_str(&joined);
             e.joined_source_encoded(
                 &escape(&joined),
                 joined.chars().count(),
