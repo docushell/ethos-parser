@@ -3713,6 +3713,147 @@ fn a_contents_list_is_cut_where_the_next_entry_would_have_fit() {
     );
 }
 
+/// One US Letter page drawing `content` in Helvetica at its own widths, WinAnsi-encoded, so `\225`
+/// is a bullet.
+fn helvetica_letter_page(content: &str) -> ExtractArtifact {
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+           /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+            .to_vec(),
+    ];
+    let profile = Profile::default();
+    let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+    ethos_parser_pdf::extract(&d, &profile).expect("extracts")
+}
+
+/// **A line is read where the reading order reads it, and its words where the page set them
+/// apart** (`line-units-v5`), end to end, on four pages the reading order does not divide.
+///
+/// A paragraph whose last two baselines a byline beside it shares, the byline drawn first, is one
+/// unit: read where the byline was, it fell in two. Beside a bulleted aside drawn before it, the
+/// paragraph is still one unit and each bullet opens an item: read with its baseline's runs, each
+/// of its lines opened with the aside's bullet. Bullets set apart by their position, with no
+/// space drawn after them, each open an item. And a contents list whose words are set by moving the
+/// pen is cut before `Cash`, whose first word fits twice over after the entry above once it is read
+/// as a word — read as the whole line, it never fit.
+#[test]
+fn a_line_is_read_where_the_reading_order_reads_it_and_its_words_where_they_stand() {
+    let units = |content: &str| -> Vec<(String, u32)> {
+        let a = helvetica_letter_page(content);
+        let inked: Vec<&TextRun> = runs(&a)
+            .into_iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .collect();
+        assert!(
+            inked.iter().all(|r| r.region.is_none()),
+            "the reading order divides none of these pages"
+        );
+        inked
+            .iter()
+            .map(|r| {
+                (
+                    r.text.clone(),
+                    r.layout_unit.expect("every line has a unit"),
+                )
+            })
+            .collect()
+    };
+    let of = |units: &[(String, u32)]| units.iter().map(|(_, u)| *u).collect::<Vec<_>>();
+
+    // A title across the whole page leaves no gutter for the reading order to divide it at.
+    let byline = units(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over both of its columns) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 400 686 Tm (BY A WRITER) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 400 672 Tm (AND ANOTHER) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 700 Tm (The first line of a paragraph set across) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 686 Tm (the measure of its column, and its second) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 672 Tm (line, and a third one ending the paragraph.) Tj ET",
+    );
+    assert_eq!(of(&byline), [1, 2, 2, 3, 3, 3], "{byline:?}");
+    let aside = units(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over both of its columns) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 400 686 Tm (\\225) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 414 686 Tm (A point aside) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 400 672 Tm (\\225) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 414 672 Tm (Another point) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 700 Tm (The first line of a paragraph set across) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 686 Tm (the measure of its column, and its second) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 672 Tm (line, and a third one ending the paragraph.) Tj ET",
+    );
+    assert_eq!(of(&aside), [1, 2, 2, 3, 3, 4, 4, 4], "{aside:?}");
+
+    let mut list = String::from(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm (A paragraph line over a list set tight under it.) Tj ET\n",
+    );
+    for (y, item) in [(686, "First"), (672, "Second"), (658, "Third")] {
+        list += &format!(
+            "BT /F1 12 Tf 1 0 0 1 72 {y} Tm (\\225) Tj ET\n\
+             BT /F1 12 Tf 1 0 0 1 86 {y} Tm ({item} item of the list) Tj ET\n"
+        );
+    }
+    let list = units(&list);
+    assert_eq!(of(&list), [1, 2, 2, 3, 3, 4, 4], "{list:?}");
+
+    // Each word drawn on its own, 3 points after the one before it ends, and no space drawn.
+    let mut contents = String::new();
+    for (y, words) in [
+        (
+            700,
+            [
+                (72.0, "Statement"),
+                (129.7, "of"),
+                (142.71, "comprehensive"),
+                (227.07, "income"),
+                (268.75, "and"),
+                (291.77, "expense"),
+            ],
+        ),
+        (
+            686,
+            [
+                (72.0, "Balance"),
+                (118.36, "sheet"),
+                (150.71, "and"),
+                (173.73, "its"),
+                (188.73, "notes"),
+                (221.08, "here"),
+            ],
+        ),
+        (
+            672,
+            [
+                (72.0, "Cash"),
+                (103.01, "flow"),
+                (127.35, "statement"),
+                (183.04, "and"),
+                (206.06, "related"),
+                (245.74, "notes"),
+            ],
+        ),
+    ] {
+        for (x, word) in words {
+            contents += &format!("BT /F1 12 Tf 1 0 0 1 {x} {y} Tm ({word}) Tj ET\n");
+        }
+    }
+    let contents = units(&contents);
+    assert_eq!(
+        of(&contents),
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2],
+        "{contents:?}"
+    );
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.

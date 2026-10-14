@@ -788,6 +788,41 @@ columns' headings, folios, column headers and twice-drawn text); headings inferr
 documents that declare none (formatting 0.4573, content down on 15 pages — the owner's call, since
 it changes documents that declare structure).
 
+### After a line chart's printed values (`point-labels-v1`, `bar-labels-v3`, decision #66, 2026-10-13)
+
+Told "Charts, round 3", the chart points that print their value and fail were read for why: 284 of
+846 on pages whose bars the bar rule never found, 328 on pages whose bars it refused, 234 on pages
+whose table missed them, each reason small; the largest coherent piece was a line chart printing a
+number at each point. `point-labels-v1` reads one (`docs/32-CHART-LABELS-SCOPE.md` §9), and
+`bar-labels-v3` names a progress bar's one numbered series by the title over it (§8). Charts
+0.1184 -> 0.1248, 7 pages up and none down; every other dimension unchanged on every page;
+opendataloader-bench NID 0.8841 -> 0.8838 and TEDS 0.5339 -> 0.5301 on one document whose line reads
+right as a table (the owner took the trade). Overall 46.29 -> 46.42. Round 1's line prototype,
+re-run here, measured 0.1192: it judged each series alone and so lost the numbers of lines running
+close, and refused a tenor row's `3M` as a number.
+
+### After a line read where the reading order reads it (`line-units-v5`, decision #67, 2026-10-13)
+
+Told "Grounding: text, round 2", the `Text` elements visual grounding could not place were counted
+again by how our items sit on them: split across several of ours 811 (0.051 of the score), nothing
+of ours over them 520 (0.032 — pages drawn as images, figure regions, panels read as ruled tables),
+one item of ours far bigger 483 (0.023), ours covering under half 182 (0.015). The largest split
+was a page the reading order did not divide, where a line was every run on its baseline across the
+page: a newspaper paragraph sharing its baselines with a byline in the next column was read where
+the byline was, and fell into five units. `line-units-v5` reads as a line the pieces of one line
+that follow each other in reading order, and reads a space where two runs stand a tenth of the
+line's height apart, so a bullet set apart by its position opens an item and a first word is a word
+on pages that set their words by moving the pen. Visual grounding 0.5435 -> 0.5575, 119 pages up
+and 8 down (the owner took the trade); content one page up by 0.0003; every other dimension
+unchanged on every page; opendataloader-bench and the gate documents' tables unchanged. Overall
+46.42 -> 46.70. The split bucket fell 811 -> 646 with the lines alone. Measured on the way: the
+lines alone 0.5546 (109 up, 12 down — the falls were cuts the across-columns edge made by
+accident); with the bullets 0.5561; the space read for the first word too, at a quarter of the
+line's height 0.5564, at a tenth 0.5575, at a twentieth 0.5577 (2 pages up and 2 down against a
+tenth, so the tenth stands). Left as found: newspaper pages whose columns the stream draws row by
+row (the reading order reads across them), and Markdown that writes such a page one word per
+block — 71 content pages are mostly one-word blocks.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

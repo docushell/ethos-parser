@@ -273,6 +273,16 @@ pub struct FilledRect {
     pub fill: Fill,
 }
 
+/// One line a page **stroked** (`point-labels-v1`): its points in order, in user space, and the
+/// colour it was stroked in.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Polyline {
+    /// Where each segment ends, the first point where the subpath began.
+    pub points: Vec<(f64, f64)>,
+    /// The stroke colour in force when it was painted.
+    pub stroke: Fill,
+}
+
 /// One open marked-content sequence (v1-S3).
 ///
 /// v0 tracked only the id, which was enough to copy an `/MCID` onto a run and not enough for
@@ -297,6 +307,9 @@ struct MarkedContent {
 struct Subpath {
     points: Vec<(f64, f64)>,
     disqualified: bool,
+    /// Every point the subpath reaches — where a line or a curve ends — for
+    /// [`Interpreter::polylines`] (`point-labels-v1`).
+    vertices: Vec<(f64, f64)>,
 }
 
 /// Interprets one page's content stream.
@@ -360,6 +373,16 @@ pub struct Interpreter<'a> {
     /// form's paths kept (`figure-regions-v1`, decision #46) — the figure rule's only input. A
     /// path ended with `n` painted nothing and is not here.
     pub painted: Vec<PathRect>,
+    /// The lines a stroke painted (`point-labels-v1`): each subpath's points in order — where a
+    /// curve ends, not its control points — in user space, with the stroke colour in force. A line
+    /// chart's series are such lines, and a legend's short strokes name them. Read by the line
+    /// rule alone.
+    pub polylines: Vec<Polyline>,
+    /// The small marks a fill painted (`point-labels-v1`): the box of each filled path a point to
+    /// fifteen points each way and near square — a dot, a diamond, a triangle, a small square —
+    /// with its fill colour. A line chart sets its points so, and a legend its swatches. Read by
+    /// the line rule alone.
+    pub marks: Vec<FilledRect>,
     /// The box of the path being built: every point and control point it has named so far.
     path_box: Option<PathRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
@@ -376,6 +399,8 @@ pub struct Interpreter<'a> {
     pending_filled: Vec<PathRect>,
     /// Segments from the current path, pending a painting operator (v1-S8).
     pending_segments: Vec<PathSegment>,
+    /// The current path's subpaths as lines, pending a painting operator (`point-labels-v1`).
+    pending_polylines: Vec<Vec<(f64, f64)>>,
     /// How many runs were dropped because a font could not map one of their codes.
     ///
     /// Separate from [`Interpreter::undecodable`]'s length: one run can carry several
@@ -460,6 +485,8 @@ impl<'a> Interpreter<'a> {
             white: Vec::new(),
             inset: Vec::new(),
             painted: Vec::new(),
+            polylines: Vec::new(),
+            marks: Vec::new(),
             path_box: None,
             filled: Vec::new(),
             filled_repeated: Vec::new(),
@@ -468,6 +495,7 @@ impl<'a> Interpreter<'a> {
             pending: Vec::new(),
             pending_filled: Vec::new(),
             pending_segments: Vec::new(),
+            pending_polylines: Vec::new(),
             dropped_runs: 0,
             fallback_runs: 0,
             props_by_name: 0,
@@ -556,6 +584,9 @@ impl<'a> Interpreter<'a> {
                 self.segments.clear();
                 self.pending.clear();
                 self.pending_filled.clear();
+                self.pending_polylines.clear();
+                self.polylines.clear();
+                self.marks.clear();
                 self.subpath = Subpath::default();
                 self.dropped_runs = 0;
                 Err(e)
@@ -622,6 +653,9 @@ impl<'a> Interpreter<'a> {
     /// else — an L, a triangle, a polyline, a curve — is discarded rather than approximated.
     fn flush_subpath(&mut self) {
         let sub = std::mem::take(&mut self.subpath);
+        if sub.vertices.len() >= 2 {
+            self.pending_polylines.push(sub.vertices.clone());
+        }
         if sub.disqualified || !self.ctm_is_axis_aligned() {
             return;
         }
@@ -808,8 +842,11 @@ impl<'a> Interpreter<'a> {
             // Line and colour state:
             LineWidth | LineCap | LineJoin | MiterLimit | DashPattern | RenderingIntent
             | Flatness | ExtGState => {}
-            StrokeColorSpace | StrokeColor | StrokeColorN | StrokeGray | StrokeRgb | StrokeCmyk => {
+            // `point-labels-v1`: the stroke colour, read as the fill colour is.
+            StrokeColor | StrokeColorN | StrokeGray | StrokeRgb | StrokeCmyk => {
+                self.gs.stroke = crate::text_state::Fill::of(operands)
             }
+            StrokeColorSpace => self.gs.stroke = crate::text_state::Fill::UNKNOWN,
             // Decision #42: the fill colour, which a chart's bars are told apart by. Operands that
             // are not numbers set a colour this reader does not know rather than stopping the parse:
             // a page that parsed before still parses. Naming a space resets the colour to one not
@@ -848,13 +885,17 @@ impl<'a> Interpreter<'a> {
                 if self.ctm_is_axis_aligned() {
                     self.pending.push(PathRect::from_corners(a, b));
                 }
-                self.subpath = Subpath::default();
+                let before = std::mem::take(&mut self.subpath);
+                if before.vertices.len() >= 2 {
+                    self.pending_polylines.push(before.vertices);
+                }
             }
             MoveTo => {
                 self.flush_subpath();
                 let p = self.gs.ctm.apply(num(operands, 0)?, num(operands, 1)?);
                 self.grow_path_box(p);
                 self.subpath.points.push(p);
+                self.subpath.vertices.push(p);
             }
             LineTo => {
                 let p = self.gs.ctm.apply(num(operands, 0)?, num(operands, 1)?);
@@ -867,6 +908,7 @@ impl<'a> Interpreter<'a> {
                     }
                 }
                 self.subpath.points.push(p);
+                self.subpath.vertices.push(p);
             }
             ClosePath => self.flush_subpath(),
             // **Curves are never tessellated into ruling lines.** Flattening a Bézier would
@@ -876,15 +918,19 @@ impl<'a> Interpreter<'a> {
             // The figure rule reads a curve's box from its points and control points, which hold
             // the curve: a Bézier lies inside the hull of its four.
             CurveTo | CurveToV | CurveToY => {
+                let mut end = None;
                 for i in (0..operands.len() / 2).map(|k| 2 * k) {
                     // Read where it can be, and skipped where it cannot: a curve was never
                     // refused for its operands before this rule read them.
                     if let (Ok(x), Ok(y)) = (num(operands, i), num(operands, i + 1)) {
                         let p = self.gs.ctm.apply(x, y);
                         self.grow_path_box(p);
+                        end = Some(p);
                     }
                 }
                 self.subpath.disqualified = true;
+                // `point-labels-v1`: where the curve ends is a point of the line it draws.
+                self.subpath.vertices.extend(end);
             }
 
             // --- painting: ink reached the page, so the pending rectangles are real ----------
@@ -898,8 +944,28 @@ impl<'a> Interpreter<'a> {
             | CloseFillStroke
             | CloseFillStrokeEvenOdd => {
                 self.flush_subpath();
+                let strokes = !matches!(op, Fill | FillObsolete | FillEvenOdd);
+                let fills = !matches!(op, Stroke | CloseStroke);
                 if let Some(b) = self.path_box.take() {
                     self.painted.push(b);
+                    // `point-labels-v1`: a small, near-square filled path is a mark.
+                    let (w, h) = (b.x1 - b.x0, b.y1 - b.y0);
+                    if fills
+                        && (1.0..=15.0).contains(&w)
+                        && (1.0..=15.0).contains(&h)
+                        && 20.0 * (w - h).abs() <= 7.0 * w.max(h)
+                    {
+                        self.marks.push(FilledRect {
+                            rect: b,
+                            fill: self.gs.fill,
+                        });
+                    }
+                }
+                let stroke = self.gs.stroke;
+                let lines = std::mem::take(&mut self.pending_polylines);
+                if strokes {
+                    self.polylines
+                        .extend(lines.into_iter().map(|points| Polyline { points, stroke }));
                 }
                 if matches!(op, Fill | FillObsolete | FillEvenOdd) {
                     let fill = self.gs.fill;
@@ -937,6 +1003,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_segments.clear();
+                self.pending_polylines.clear();
             }
             // A clip path bounds what is visible; it draws nothing. Treating one as a table edge
             // would find a grid in every document that clips to its margins.
@@ -945,6 +1012,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_segments.clear();
+                self.pending_polylines.clear();
             }
             // v1-S6. `Do` names an XObject in the page's resources. An `/Image` is a placement
             // this profile records; a `/Form` is content the page draws, run where the `Do`
@@ -1648,6 +1716,68 @@ mod tests {
         let r = i.rects[0];
         assert!(approx_eq(r.x0, 40.0) && approx_eq(r.y0, 80.0));
         assert!(approx_eq(r.x1, 140.0) && approx_eq(r.y1, 120.0));
+    }
+
+    /// **A stroked line carries its points and the stroke colour it was painted in**
+    /// (`point-labels-v1`): every point a line or a curve ends at, in user space; the colour `RG`
+    /// set, `Q` restoring the one `q` saved; nothing where the path was filled alone, ended with `n`
+    /// or made a clip.
+    #[test]
+    fn a_stroked_line_carries_its_points_and_its_stroke_colour() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0.2 0.4 0.6 RG 10 10 m 20 30 l 30 20 40 25 50 40 c S \
+             q 1 0 0 RG 0 0 m 5 5 l S Q 60 60 m 70 70 l S \
+             0 0 m 9 9 l f 0 0 m 9 9 l n 0 0 m 9 9 l W n",
+        ))
+        .unwrap();
+        let rgb = Fill {
+            components: [200, 400, 600, 0],
+            count: 3,
+        };
+        let red = Fill {
+            components: [1000, 0, 0, 0],
+            count: 3,
+        };
+        let lines: Vec<(Vec<(f64, f64)>, Fill)> = i
+            .polylines
+            .iter()
+            .map(|p| (p.points.clone(), p.stroke))
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                (vec![(10.0, 10.0), (20.0, 30.0), (50.0, 40.0)], rgb),
+                (vec![(0.0, 0.0), (5.0, 5.0)], red),
+                (vec![(60.0, 60.0), (70.0, 70.0)], rgb),
+            ]
+        );
+    }
+
+    /// **A small filled shape near square is a mark** (`point-labels-v1`), with its fill colour —
+    /// a dot drawn with curves as a square one is — and a shape too large, too small, too long or
+    /// only stroked is none.
+    #[test]
+    fn a_small_filled_shape_is_a_mark() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0 0 1 rg 10 10 4 4 re f 20 20 m 24 20 l 24 24 l 20 24 l h f \
+             30 30 m 34 30 34 34 30 34 c f 40 40 16 16 re f 60 60 0.5 0.5 re f \
+             70 70 4 2 re f 80 80 4 4 re S",
+        ))
+        .unwrap();
+        let blue = Fill {
+            components: [0, 0, 1000, 0],
+            count: 3,
+        };
+        let marks: Vec<(i64, i64, Fill)> = i
+            .marks
+            .iter()
+            .map(|m| (m.rect.x0 as i64, m.rect.y0 as i64, m.fill))
+            .collect();
+        assert_eq!(marks, vec![(10, 10, blue), (20, 20, blue), (30, 30, blue)]);
     }
 
     #[test]

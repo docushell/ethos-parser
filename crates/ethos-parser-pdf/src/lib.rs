@@ -80,6 +80,7 @@ pub(crate) mod freed;
 mod furniture;
 pub(crate) mod headings;
 pub(crate) mod images;
+pub(crate) mod lines;
 pub(crate) mod magic;
 pub(crate) mod metrics;
 pub(crate) mod nodes;

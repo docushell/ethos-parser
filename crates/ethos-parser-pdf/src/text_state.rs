@@ -127,6 +127,9 @@ pub struct GraphicsState {
     pub ctm: Matrix,
     /// The colour the next fill paints in.
     pub fill: Fill,
+    /// The colour the next stroke paints in (`point-labels-v1`), set and compared as
+    /// [`Self::fill`] is: a line chart's series are told apart by it.
+    pub stroke: Fill,
 }
 
 impl Default for GraphicsState {
@@ -134,6 +137,7 @@ impl Default for GraphicsState {
         Self {
             ctm: Matrix::IDENTITY,
             fill: Fill::BLACK,
+            stroke: Fill::BLACK,
         }
     }
 }

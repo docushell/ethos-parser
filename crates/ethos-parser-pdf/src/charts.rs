@@ -91,31 +91,31 @@ pub(crate) struct Bar {
 
 /// Runs joined along a baseline: what a chart prints as one label.
 #[derive(Debug)]
-struct Label {
+pub(crate) struct Label {
     /// Its inked runs left to right, then the spaces drawn between them.
-    runs: Vec<usize>,
-    x0: i64,
-    y0: i64,
-    x1: i64,
-    y1: i64,
+    pub(crate) runs: Vec<usize>,
+    pub(crate) x0: i64,
+    pub(crate) y0: i64,
+    pub(crate) x1: i64,
+    pub(crate) y1: i64,
     /// The line's height: the median height of its runs' boxes.
-    h: i64,
+    pub(crate) h: i64,
     /// The baseline.
-    base: i64,
+    pub(crate) base: i64,
     /// What it reads as: the runs' text, a space between two that stand apart with none drawn.
-    text: String,
+    pub(crate) text: String,
 }
 
 impl Label {
-    fn cx(&self) -> i64 {
+    pub(crate) fn cx(&self) -> i64 {
         (self.x0 + self.x1).div_euclid(2)
     }
 
-    fn cy(&self) -> i64 {
+    pub(crate) fn cy(&self) -> i64 {
         (self.y0 + self.y1).div_euclid(2)
     }
 
-    fn rect(&self) -> QuantRect {
+    pub(crate) fn rect(&self) -> QuantRect {
         QuantRect {
             x0: self.x0,
             y0: self.y0,
@@ -233,6 +233,18 @@ pub(crate) fn detect(
     Ok(tables)
 }
 
+/// The bars of every chart the rule finds on a page, whether or not it reads a table from them
+/// (`point-labels-v1`): a number set on a bar is the bar's, never a line's.
+pub(crate) fn chart_bars(bars: &[Bar], page_area: i128) -> Vec<QuantRect> {
+    let ink = ink(bars, page_area);
+    [Axis::Vertical, Axis::Horizontal]
+        .into_iter()
+        .flat_map(|axis| charts(&ink, axis))
+        .flat_map(|c| c.groups.into_iter().flatten().flat_map(|col| col.segs))
+        .map(|s| ink[s].rect)
+        .collect()
+}
+
 /// The labels a table reads: headers, categories, values.
 fn cells_of(f: &Found) -> Vec<usize> {
     let mut out: Vec<usize> = f.headers.iter().flatten().copied().collect();
@@ -245,7 +257,7 @@ fn cells_of(f: &Found) -> Vec<usize> {
 
 /// The page's labels: upright runs no other rule's table holds, by line, joined wherever less than
 /// half the line's height separates one run's ink from the next.
-fn labels(runs: &[TrackRun<'_>]) -> Vec<Label> {
+pub(crate) fn labels(runs: &[TrackRun<'_>]) -> Vec<Label> {
     let mut order: Vec<usize> = (0..runs.len())
         .filter(|&i| {
             !runs[i].claimed && !runs[i].text.trim().is_empty() && crate::tracks::upright(&runs[i])
@@ -865,20 +877,24 @@ fn table(
         .iter()
         .map(|&f| legend(f, chart, labels, ink, (bars, near), boxes, &used))
         .collect();
-    // A chart coloured by category takes no title: its colours key its categories, and the line
-    // above it is as often the section's heading (`-v2`).
-    if series.len() == 1 && headers[0].is_none() && !chart.by_category {
-        let top = rows
-            .iter()
-            .flat_map(|(_, v)| v.iter().flatten())
-            .map(|&k| labels[k].y0)
-            .fold(bars.y0, i64::min);
-        headers[0] = title(labels, QuantRect { y0: top, ..bars }, &used);
-    }
     // A series with no number printed in it is no column.
     let keep: Vec<usize> = (0..series.len())
         .filter(|&c| rows.iter().any(|(_, v)| v[c].is_some()))
         .collect();
+    // A chart coloured by category takes no title: its colours key its categories, and the line
+    // above it is as often the section's heading (`-v2`). `-v3`: the one series that carries
+    // numbers takes the title, whatever else is drawn beside it — a progress bar's track, a colour
+    // that prints none.
+    if let [only] = keep[..] {
+        if headers[only].is_none() && !chart.by_category {
+            let top = rows
+                .iter()
+                .flat_map(|(_, v)| v.iter().flatten())
+                .map(|&k| labels[k].y0)
+                .fold(bars.y0, i64::min);
+            headers[only] = title(labels, QuantRect { y0: top, ..bars }, &used);
+        }
+    }
     Some(Found {
         headers: keep.iter().map(|&c| headers[c]).collect(),
         rows: rows
@@ -1103,7 +1119,7 @@ fn wrapped_name(labels: &[Label], first: usize, ink: &[Bar]) -> Vec<usize> {
 /// The title of a chart of one colour: the block of lines nearest above it, within four lines,
 /// each the only label on its line over the chart and spanning its centre, ending in no full stop
 /// and holding no number but a year.
-fn title(labels: &[Label], chart: QuantRect, used: &[usize]) -> Option<usize> {
+pub(crate) fn title(labels: &[Label], chart: QuantRect, used: &[usize]) -> Option<usize> {
     let cx = (chart.x0 + chart.x1).div_euclid(2);
     let above: Vec<usize> = (0..labels.len())
         .filter(|&k| {
@@ -1151,7 +1167,7 @@ fn only_years(text: &str) -> bool {
 
 /// A number as charts print one, exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Value {
+pub(crate) struct Value {
     /// The digits, signed, with the decimals' digits after them.
     mantissa: i128,
     /// How many of them are decimals.
@@ -1176,7 +1192,7 @@ impl Ord for Value {
 /// `text` as a number: an optional sign or bracket, an optional currency sign, digits — grouped in
 /// threes by commas, or not at all — an optional decimal part, an optional unit (`%`, `x`, `k`,
 /// `m`, `bn`, `pp`) and an optional closing bracket. Anything else is not a number.
-fn number(text: &str) -> Option<Value> {
+pub(crate) fn number(text: &str) -> Option<Value> {
     let s: Vec<char> = text.chars().collect();
     let mut i = 0;
     let lead = s.first().copied().filter(|c| "(-−–+".contains(*c));
@@ -1239,7 +1255,7 @@ fn number(text: &str) -> Option<Value> {
 }
 
 /// A year: four digits, 19xx or 20xx.
-fn is_year(text: &str) -> bool {
+pub(crate) fn is_year(text: &str) -> bool {
     text.len() == 4
         && text.chars().all(|c| c.is_ascii_digit())
         && (text.starts_with("19") || text.starts_with("20"))
@@ -1281,6 +1297,34 @@ fn build(
     runs: &[TrackRun<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<DetectedTable, EngineError> {
+    let headers: Vec<Vec<usize>> = f
+        .headers
+        .iter()
+        .map(|h| h.iter().copied().collect())
+        .collect();
+    chart_table(
+        page,
+        &headers,
+        &f.rows,
+        labels,
+        runs,
+        alloc,
+        ethos_parser_core::TABLE_DETECTION_CHARTS_V3,
+    )
+}
+
+/// A chart's table from what it printed (`bar-labels-v1`, and `point-labels-v1`'s too): a header
+/// row of its series' names — each the labels of one name, or none — then a row per category, a
+/// cell for each label and none where nothing was printed.
+pub(crate) fn chart_table(
+    page: u32,
+    headers: &[Vec<usize>],
+    rows: &[(Vec<usize>, Vec<Option<usize>>)],
+    labels: &[Label],
+    runs: &[TrackRun<'_>],
+    alloc: &mut IdAllocator,
+    rule: &str,
+) -> Result<DetectedTable, EngineError> {
     let id = alloc.next(IdKind::Table)?;
     let mut cells = Vec::new();
     let mut place = |row: usize, column: usize, ks: &[usize]| {
@@ -1313,12 +1357,12 @@ fn build(
             text,
         });
     };
-    for (c, h) in f.headers.iter().enumerate() {
-        if let Some(k) = h {
-            place(0, c + 1, &[*k]);
+    for (c, h) in headers.iter().enumerate() {
+        if !h.is_empty() {
+            place(0, c + 1, h);
         }
     }
-    for (r, (category, values)) in f.rows.iter().enumerate() {
+    for (r, (category, values)) in rows.iter().enumerate() {
         place(r + 1, 0, category);
         for (c, v) in values.iter().enumerate() {
             if let Some(k) = v {
@@ -1340,12 +1384,12 @@ fn build(
         id,
         page,
         rect,
-        rows: f.rows.len() as u32 + 1,
-        columns: f.headers.len() as u32 + 1,
+        rows: rows.len() as u32 + 1,
+        columns: headers.len() as u32 + 1,
         cells,
         check: not_a_lattice(),
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_CHARTS_V2.to_string(),
+        rule: rule.to_string(),
     })
 }
 
@@ -1463,7 +1507,7 @@ mod tests {
             grid(&t[0]),
             vec!["|Solar", "2020|10", "2021|20", "2022|30", "2023|40"]
         );
-        assert_eq!(t[0].rule, ethos_parser_core::TABLE_DETECTION_CHARTS_V2);
+        assert_eq!(t[0].rule, ethos_parser_core::TABLE_DETECTION_CHARTS_V3);
         assert!(matches!(
             t[0].check.outcome,
             CheckStatus::NotApplicable { .. }
@@ -1763,6 +1807,38 @@ mod tests {
         let t = found(&runs, &bars);
         assert_eq!(t.len(), 1, "{t:?}");
         assert_eq!(grid(&t[0]), vec!["|Yes|No", "Men|40|60", "Women|60|40"]);
+    }
+
+    /// **A progress bar's one numbered series takes the title over it** (`bar-labels-v3`): each
+    /// value drawn over a track running on to the full length, only the values printing numbers,
+    /// the panel's title above — the track is no column, and the title names the one that is.
+    #[test]
+    fn a_progress_bar_s_numbers_take_the_title_over_it() {
+        let (value, track) = (rgb(0, 300, 800), rgb(850, 850, 850));
+        let mut bars = Vec::new();
+        let mut runs = vec![run(180, 92, 140, "Organizational framework")];
+        for (k, (cat, v)) in [("Portal", 95), ("Officer", 81), ("Links", 75)]
+            .into_iter()
+            .enumerate()
+        {
+            let y = 100 + 30 * k as i64;
+            let split = 100 + 3 * v;
+            bars.push(bar(100, y, split, y + 20, value));
+            bars.push(bar(split, y, 400, y + 20, track));
+            runs.push(run(140, y + 14, 16, ["95", "81", "75"][k]));
+            runs.push(run(40, y + 14, 50, cat));
+        }
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec![
+                "|Organizational framework",
+                "Portal|95",
+                "Officer|81",
+                "Links|75"
+            ]
+        );
     }
 
     #[test]

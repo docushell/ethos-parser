@@ -1108,24 +1108,68 @@ fn extract_page(
         // Decision #42. Then a bar chart's printed labels, as its table
         // (`docs/32-CHART-LABELS-SCOPE.md`): on the runs no table above holds, under the tracks
         // rule's gate, and kept only where it overlaps no table already found.
-        if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V2
+        let mut bars = Vec::with_capacity(interp.filled.len() + interp.filled_repeated.len());
+        for f in interp.filled.iter().chain(&interp.filled_repeated) {
+            let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
+            let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
+            bars.push(crate::charts::Bar {
+                rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
+                fill: f.fill,
+            });
+        }
+        let q = f64::from(QUANTUM_PER_POINT);
+        let page_area = (geom.display_width * q) as i128 * (geom.display_height * q) as i128;
+        if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V3
             && no_author_structure(structure.as_ref())
         {
-            let mut bars = Vec::with_capacity(interp.filled.len() + interp.filled_repeated.len());
-            for f in interp.filled.iter().chain(&interp.filled_repeated) {
-                let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
-                let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
-                bars.push(crate::charts::Bar {
-                    rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
-                    fill: f.fill,
-                });
-            }
-            let q = f64::from(QUANTUM_PER_POINT);
-            let page_area = (geom.display_width * q) as i128 * (geom.display_height * q) as i128;
             let chart_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
             for table in
                 crate::charts::detect(page_number, &chart_runs, &bars, page_area, &mut alloc)?
             {
+                if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
+                    tables.push(table);
+                }
+            }
+        }
+
+        // Decision #66. Then the numbers a line chart prints at its points, as its table
+        // (`docs/32-CHART-LABELS-SCOPE.md` §9): on the runs no table above holds, under the tracks
+        // rule's gate, and kept only where it overlaps no table already found.
+        if profile.table_detection.lines == ethos_parser_core::TABLE_DETECTION_LINES_V1
+            && no_author_structure(structure.as_ref())
+        {
+            let mut strokes = Vec::with_capacity(interp.polylines.len());
+            for p in &interp.polylines {
+                let mut points = Vec::with_capacity(p.points.len());
+                for &(x, y) in &p.points {
+                    let (ax, ay) = geom.to_top_left(x, y);
+                    let r = crate::tables::quantize_rect(ax, ay, ax, ay)?;
+                    points.push((r.x0, r.y0));
+                }
+                strokes.push(crate::lines::Stroke {
+                    points,
+                    colour: p.stroke,
+                });
+            }
+            let mut marks = Vec::with_capacity(interp.marks.len());
+            for m in &interp.marks {
+                let (ax, ay) = geom.to_top_left(m.rect.x0, m.rect.y0);
+                let (bx, by) = geom.to_top_left(m.rect.x1, m.rect.y1);
+                marks.push(crate::lines::Mark {
+                    rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
+                    colour: m.fill,
+                });
+            }
+            let chart_bars = crate::charts::chart_bars(&bars, page_area);
+            let line_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            for table in crate::lines::detect(
+                page_number,
+                &line_runs,
+                &strokes,
+                &marks,
+                &chart_bars,
+                &mut alloc,
+            )? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
                 }
@@ -2214,7 +2258,7 @@ fn extract_counted(
     // Decision #38. Layout units, after headings — a heading line never shares a unit with body
     // text — and only where the document declares no author structure, whose own structure wins
     // there as it does for headings.
-    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V4
+    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V5
         && no_author_structure(structure.as_ref())
     {
         for page in pages.iter_mut() {

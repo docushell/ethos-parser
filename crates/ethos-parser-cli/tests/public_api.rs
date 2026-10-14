@@ -326,6 +326,7 @@ const CORE: &[&str] = &[
     "LAYOUT_UNIT_RULE_V2",
     "LAYOUT_UNIT_RULE_V3",
     "LAYOUT_UNIT_RULE_V4",
+    "LAYOUT_UNIT_RULE_V5",
     // Decision #41. The page-furniture rule id, and the edge a furniture run stands apart at.
     "FURNITURE_RULE_V1",
     "Furniture",
@@ -363,6 +364,9 @@ const CORE: &[&str] = &[
     "MARKDOWN_SCHEMA_VERSION",
     "TABLE_DETECTION_CHARTS_V1",
     "TABLE_DETECTION_CHARTS_V2",
+    // Decision #66.
+    "TABLE_DETECTION_CHARTS_V3",
+    "TABLE_DETECTION_LINES_V1",
     "TABLE_DETECTION_STROKE_V1",
     "TABLE_DETECTION_TAGGED_V1",
     "TABLE_DETECTION_TRACKS_V3",

@@ -1613,7 +1613,10 @@ pub struct TextRunAttributes {
     /// and value can be two units — and since `line-units-v3` before a body line whose first word
     /// would have fit twice over after the line above, so a contents list is a unit per entry. Since
     /// `line-units-v4` a script — a subscript, a superscript, a footnote mark, on a baseline of its
-    /// own — is part of the line it is set in.
+    /// own — is part of the line it is set in. Since `line-units-v5` a line is the pieces of one
+    /// baseline that follow each other in reading order, so a baseline running across columns the
+    /// reading order reads apart is a line per column, and its text has a space where its words
+    /// stand apart with none drawn, so a bullet set apart by its position opens a list item.
     ///
     /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
     /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a
