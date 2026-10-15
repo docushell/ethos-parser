@@ -187,6 +187,31 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Words a page set apart by moving its pen are one block (decision #68)
+
+Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule id
+and no `profile_sha256` moves.
+
+- **The runs of one layout unit on one line join across the gap between them**, with one space, in
+  both projections, counted under the new structural erasure `layout-unit-gap-joins-v1`
+  (`LAYOUT_UNIT_GAP_JOINS`, re-exported, in both draft schemas). A page that places each word by
+  moving its pen draws no space between them, the reader's `TJ` rule has none to read, and the ink
+  joins break at every gap a word space wide, so such a page projected one word per block: 71 of
+  ParseBench's text pages were mostly one-word blocks, OCR text layers among them, and a staff
+  report of 431 blocks is now 35. Another unit's run, another line's, one drawn before or set over
+  the run before it, and a run with no unit still start a block.
+- **Measured** on ParseBench: semantic formatting 0.4512 -> 0.4572, 15 pages up and none down
+  (`text_simple__staffrepport` 0 -> 0.54, `text_simple__revision` 0.39 -> 0.81); tables, charts
+  and visual grounding unchanged on every page; overall 46.70 -> 46.81. opendataloader-bench MHS
+  0.5872 -> 0.5895, 4 documents up and none down, NID up on 5 and down on none; the gate documents'
+  tables unchanged.
+- **The trade, taken by the owner**: content faithfulness 0.6700 -> 0.6696, 28 pages up and 87
+  down — most on OCR text layers, by 0.035 at most on a page, and 0.012 at most elsewhere. The
+  scorer reads a page's sentences from its lines of two words or more, so one-word blocks hid an
+  OCR layer's misreads, and inline mathematics its ground truth writes otherwise, from it; joined
+  lines show them. Measured and not used: the join bounded at the line's height (formatting
+  0.4569: `Item 1.` and `Business`, a tab apart, were two titles again).
+
 ### A line read where the reading order reads it, and its words where the page set them apart (`line-units-v5`, decision #67)
 
 `layout_unit_rule` moves `line-units-v4` -> `line-units-v5`, so `profile_sha256` moves.

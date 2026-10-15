@@ -346,6 +346,7 @@ const CORE: &[&str] = &[
     "LAYOUT_UNIT_LINE_JOINS",
     // Decision #65. A heading's number joined to its title.
     "HEADING_NUMBER_JOINS",
+    "LAYOUT_UNIT_GAP_JOINS",
     "GFM_CELL_NOT_PLACED",
     "GFM_CELL_RUN_CLAIMED_TWICE",
     "GFM_LIST_ITEM_RUN_JOINS",

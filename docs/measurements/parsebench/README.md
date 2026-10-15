@@ -823,6 +823,21 @@ tenth, so the tenth stands). Left as found: newspaper pages whose columns the st
 row (the reading order reads across them), and Markdown that writes such a page one word per
 block — 71 content pages are mostly one-word blocks.
 
+### After words set apart by position joined into one block (decision #68, 2026-10-15)
+
+Told "Markdown: one word per block", the pages whose Markdown is mostly one-word blocks were read
+for why: 71 of the text pages, OCR text layers among them, where the page places each word by
+moving its pen and draws no space. Of the 8,587 places two runs of one line fell into two blocks
+there, 5,549 had both runs in one layout unit with a word gap between them; 967 were gaps wider
+than a line, 956 runs drawn over the one before, 610 runs of two units. Both projections now join
+the runs of one unit on one line across the gap, with one space (`layout-unit-gap-joins-v1`).
+Semantic formatting 0.4512 -> 0.4572, 15 documents up and none down; content 0.6700 -> 0.6696, 28
+up and 87 down (the owner took the trade: content's sentence check reads only lines of two words
+or more, so one-word blocks hid OCR misreads and inline mathematics from it); tables, charts and
+visual grounding unchanged on every page; opendataloader-bench MHS 0.5872 -> 0.5895. Overall
+46.70 -> 46.81. Not used: the join bounded at the line's height (formatting 0.4569; it parts a
+10-K's `Item 1.` from `Business`, a tab apart).
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

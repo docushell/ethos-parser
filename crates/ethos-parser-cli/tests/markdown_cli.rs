@@ -584,15 +584,16 @@ fn lists_come_from_the_tree_and_nowhere_else() {
 /// 0.44.0 slice recorded, and this is the tripwire for it.
 ///
 /// Three runs abut exactly — `Yar`+`ro`+`w` at 12 points per glyph — and the fourth starts 40
-/// points after the third ends, so the gap the page drew still breaks the block. The census names
-/// the two joins under the geometric code and not under `mcid-run-joins-v1`, because nothing in
-/// the document declared them.
+/// points after the third ends, a gap the ink joins do not bridge. The census names the two joins
+/// under the geometric code and not under `mcid-run-joins-v1`, because nothing in the document
+/// declared them. Since decision #68 the gap, inside the one layout unit the line is, is written
+/// as one space and counted as `layout-unit-gap-joins-v1`: no word is welded either way.
 #[test]
 fn runs_the_document_declared_nothing_about_join_along_one_baseline() {
     let dir = scratch("undeclared-join");
     let repr = extract_to(&dir, &engine_fixture("untagged-shredded-line"));
     let a = markdown_of(&repr);
-    assert_eq!(a["markdown"].as_str().unwrap(), "Yarrow\n\nSeparate\n");
+    assert_eq!(a["markdown"].as_str().unwrap(), "Yarrow Separate\n");
 
     let erasure = |code: &str| {
         a["coverage"]["structural_erasures"]
@@ -605,6 +606,7 @@ fn runs_the_document_declared_nothing_about_join_along_one_baseline() {
     };
     assert_eq!(erasure("baseline-run-joins-abutted-v1"), 2);
     assert_eq!(erasure("baseline-run-joins-spaced-v1"), 0);
+    assert_eq!(erasure("layout-unit-gap-joins-v1"), 1);
     assert_eq!(
         erasure("mcid-run-joins-v1"),
         0,
