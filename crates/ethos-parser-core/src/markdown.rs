@@ -225,7 +225,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// and a heading's section number joined to the title it opens across the gap between them
 /// ([`heading_number_continues`], [`HEADING_NUMBER_JOINS`]) — semantic formatting 0.4402 -> 0.4512
 /// and content faithfulness 0.6695 -> 0.6700 with no page down, opendataloader-bench MHS 0.5854 ->
-/// 0.5872.
+/// 0.5872. And so is decision #68's: the runs of one layout unit on one line take the gap between
+/// them as one space ([`unit_gap_continues`], [`LAYOUT_UNIT_GAP_JOINS`]), where a page placed its
+/// words by moving its pen — semantic formatting 0.4512 -> 0.4572 with no page down, content
+/// faithfulness 0.6700 -> 0.6696, opendataloader-bench MHS 0.5872 -> 0.5895.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -336,6 +339,13 @@ pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
 /// is the heading rule's own line and the number's shape, neither the producer's word nor the ink
 /// geometry the baseline joins read, so it is counted apart from all three.
 pub const HEADING_NUMBER_JOINS: &str = "heading-number-joins-v1";
+
+/// Runs of one line joined into one block across the gap between them, because the PDF reader set
+/// them in one layout unit (decision #68, [`unit_gap_continues`]): a page that places its words by
+/// moving its pen draws no space between them, and every word was a block of its own. One space is
+/// written for the gap. The unit is this engine's measure, not the producer's word nor ink the page
+/// drew next, so it is counted apart from the baseline joins.
+pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
 /// as a paragraph (v2.4).
@@ -1144,6 +1154,34 @@ pub(crate) fn heading_number_continues(
         && drawn_after
         && is_label_head(block.trim())
         && node.text.chars().any(char::is_alphabetic)
+}
+
+/// Whether `node` continues `prev`'s block across the gap between them on one line (decision #68):
+/// both runs of one layout unit on one page — the units rule's reading that they are one piece of
+/// text — `node` on `prev`'s line ([`same_line`], measured by `prev`'s font), drawn after it and
+/// set over it by no more than one of its glyphs. A gap the ink joins bridge never reaches here,
+/// and a gap the units rule reads as two pieces of text is two units already. Called by both
+/// projections.
+pub(crate) fn unit_gap_continues(
+    prev: &crate::Node,
+    node: &crate::Node,
+    pitch: &PitchReference,
+) -> bool {
+    let unit = |n: &crate::Node| text_run_attributes(n).and_then(|a| a.layout_unit);
+    let (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) =
+        (&prev.native_locator, &node.native_locator)
+    else {
+        return false;
+    };
+    let Some((reach, measure)) = ink_reach(prev, pitch) else {
+        return false;
+    };
+    prev.parent == node.parent
+        && unit(prev).is_some()
+        && unit(prev) == unit(node)
+        && line_key(prev).is_some_and(|line| same_line(line, node, measure))
+        && b.origin_x > a.origin_x
+        && b.origin_x - reach >= -measure.pitch
 }
 
 /// The runs that open a label's next line where the label's column wrapped it (decision #47,
@@ -2710,7 +2748,9 @@ pub fn to_markdown(
         // so there is no broken word to rejoin here.
         // Decision #65. A label's next line, set in its unit, continues the label's block on a line
         // of its own; a heading's section number takes the title it opens across the gap between
-        // them. Both, like the unit join, only where nothing declared a group.
+        // them. Both, like the unit join, only where nothing declared a group. Decision #68: runs
+        // of one unit on one line take the gap between them as one space, where a page placed its
+        // words by moving its pen and the ink joins above break at every word.
         let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
             None
         } else if open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped)) {
@@ -2721,6 +2761,10 @@ pub fn to_markdown(
             && open_prev.is_some_and(|prev| heading_number_continues(prev, node, &block_text))
         {
             Some((" ", HEADING_NUMBER_JOINS))
+        } else if ht.is_none()
+            && open_prev.is_some_and(|prev| unit_gap_continues(prev, node, &pitch))
+        {
+            Some((" ", LAYOUT_UNIT_GAP_JOINS))
         } else {
             None
         };
@@ -5607,16 +5651,25 @@ pub(crate) mod tests {
             md,
             "## Chapter\n\n**Loan terms**\n\nBody text set under it\n"
         );
-        for (second, why) in [
-            (("and conditions", 2000, 10000, Some(7), 31), "another unit"),
-            (("and conditions", 30000, 8000, Some(7), 30), "one line"),
-        ] {
-            let (md, _, _) = project(&[("Loan terms", 2000, 8000, Some(7), 30), second, body]);
-            assert_eq!(
-                md, "**Loan terms**\n\n**and conditions**\n\nBody text set under it\n",
-                "{why}"
-            );
-        }
+        let (md, _, _) = project(&[
+            ("Loan terms", 2000, 8000, Some(7), 30),
+            ("and conditions", 2000, 10000, Some(7), 31),
+            body,
+        ]);
+        assert_eq!(
+            md, "**Loan terms**\n\n**and conditions**\n\nBody text set under it\n",
+            "another unit"
+        );
+        // One unit's labels on one line are the gap join's (decision #68), not a line join.
+        let (md, _, _) = project(&[
+            ("Loan terms", 2000, 8000, Some(7), 30),
+            ("and conditions", 30000, 8000, Some(7), 30),
+            body,
+        ]);
+        assert_eq!(
+            md,
+            "**Loan terms and conditions**\n\nBody text set under it\n"
+        );
         for (runs, why) in [
             (
                 [
@@ -5657,6 +5710,120 @@ pub(crate) mod tests {
             let (md, _, joins) = project(&[runs[0], runs[1], body]);
             assert_eq!(joins, 0, "{why}: {md}");
             assert_eq!(md.matches("\n\n").count(), 2, "{why}: {md}");
+        }
+    }
+
+    /// **Words a page set apart by moving its pen are one block** (decision #68): runs of one layout
+    /// unit on one line, with no space drawn between them, join with one space in both projections,
+    /// counted, across a tab as across a word gap; another unit's, another line's, one drawn before,
+    /// one set over it, and a run with no unit each stay a block of their own.
+    #[test]
+    fn words_a_page_set_apart_by_position_are_one_block() {
+        // A run: its text, its origin, its heading level and its layout unit.
+        type Run<'a> = (&'a str, i64, i64, Option<u8>, Option<u32>);
+        let project = |runs: &[Run<'_>]| {
+            let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+            let page = PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index: 1,
+                width: 61200,
+                height: 79200,
+                rotation: 0,
+                visible: None,
+            };
+            let mut nodes = Vec::new();
+            let mut geometry = Vec::new();
+            for (i, &(text, x, y, level, unit)) in runs.iter().enumerate() {
+                let width = 600 * text.chars().count() as i64;
+                let mut node = placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    text,
+                    None,
+                    x,
+                    y,
+                    Some(width),
+                    None,
+                );
+                if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                    a.inferred_heading = level.is_some();
+                    a.inferred_heading_level = level.filter(|&l| l > 1);
+                    a.layout_unit = unit;
+                }
+                geometry.push(NodeGeometry {
+                    node: node.id.clone(),
+                    presence: GeometryPresence::Measured(
+                        QRect::new(x, y - 2400, x + width, y).unwrap(),
+                    ),
+                });
+                nodes.push(node);
+            }
+            let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+            let profile = Profile::default();
+            let html = crate::html::to_html(
+                &repr,
+                &profile.parser_version,
+                &profile.profile_sha256().unwrap(),
+                &profile.html_rule,
+            )
+            .expect("projects");
+            let a = artifact_of(repr);
+            let joins = a
+                .coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == LAYOUT_UNIT_GAP_JOINS)
+                .map_or(0, |e| e.count);
+            (a.markdown, html.html, joins)
+        };
+        // Six glyphs of 600 end `Annual` at 5600; `Report` opens 300 on, past this font's word gap
+        // of a quarter glyph, so the ink joins break there.
+        let (md, html, joins) = project(&[
+            ("Annual", 2000, 8000, None, Some(1)),
+            ("Report", 5900, 8000, None, Some(1)),
+        ]);
+        assert_eq!(md, "Annual Report\n");
+        assert!(html.contains("<p>Annual Report</p>"), "{html}");
+        assert_eq!(joins, 1);
+        let (md, html, _) = project(&[
+            ("Annual", 2000, 8000, Some(2), Some(1)),
+            ("Report", 5900, 8000, Some(2), Some(1)),
+        ]);
+        assert_eq!(md, "## Annual Report\n");
+        assert!(html.contains("<h2>Annual Report</h2>"), "{html}");
+        // A word broken across the line keeps first refusal: its head opens a block, so the two
+        // halves close up, as before the join.
+        let (md, _, _) = project(&[
+            ("Annual", 2000, 8000, None, Some(1)),
+            ("Re-", 5900, 8000, None, Some(1)),
+            ("port", 2000, 10500, None, Some(1)),
+        ]);
+        assert_eq!(md, "Annual\n\nReport\n");
+        // A run drawn again at the origin of a one-glyph run is set over it, not after it, though
+        // it overlaps by no more than that glyph: the ink joins refuse an overprint too.
+        let (md, _, joins) = project(&[
+            ("I", 2000, 8000, None, Some(1)),
+            ("I", 2000, 8000, None, Some(1)),
+        ]);
+        assert_eq!((md.as_str(), joins), ("I\n\nI\n", 0));
+        // A tab within the unit joins too: `Item 1.` and `Business` are one heading's.
+        let (md, _, _) = project(&[
+            ("Annual", 2000, 8000, None, Some(1)),
+            ("Report", 30000, 8000, None, Some(1)),
+        ]);
+        assert_eq!(md, "Annual Report\n");
+        for (second, why) in [
+            (("Report", 5900, 8000, None, Some(2)), "another unit"),
+            (("Report", 5900, 8000, None, None), "no unit"),
+            (("Report", 5900, 8100, None, Some(1)), "another line"),
+            (("Report", 1000, 8000, None, Some(1)), "drawn before"),
+            (("Report", 4900, 8000, None, Some(1)), "set over it"),
+        ] {
+            let first = ("Annual", 2000, 8000, None, second.4.map(|_| 1));
+            let (md, _, joins) = project(&[first, second]);
+            assert_eq!(joins, 0, "{why}: {md}");
+            assert_eq!(md.matches("\n\n").count(), 1, "{why}: {md}");
         }
     }
 

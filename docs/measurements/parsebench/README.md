@@ -823,6 +823,35 @@ tenth, so the tenth stands). Left as found: newspaper pages whose columns the st
 row (the reading order reads across them), and Markdown that writes such a page one word per
 block — 71 content pages are mostly one-word blocks.
 
+### After words set apart by position joined into one block (decision #68, 2026-10-15)
+
+Told "Markdown: one word per block", the pages whose Markdown is mostly one-word blocks were read
+for why: 71 of the text pages, OCR text layers among them, where the page places each word by
+moving its pen and draws no space. Of the 8,587 places two runs of one line fell into two blocks
+there, 5,549 had both runs in one layout unit with a word gap between them; 967 were gaps wider
+than a line, 956 runs drawn over the one before, 610 runs of two units. Both projections now join
+the runs of one unit on one line across the gap, with one space (`layout-unit-gap-joins-v1`).
+Semantic formatting 0.4512 -> 0.4572, 15 documents up and none down; content 0.6700 -> 0.6696, 28
+up and 87 down (the owner took the trade: content's sentence check reads only lines of two words
+or more, so one-word blocks hid OCR misreads and inline mathematics from it); tables, charts and
+visual grounding unchanged on every page; opendataloader-bench MHS 0.5872 -> 0.5895. Overall
+46.70 -> 46.81. Not used: the join bounded at the line's height (formatting 0.4569; it parts a
+10-K's `Item 1.` from `Business`, a tab apart).
+
+### After a header read further off its table (`whitespace-tracks-v15`, decision #69, 2026-10-15)
+
+Told "Tables: census round", the table loss (0.469 of the score's 1) was read by where it falls,
+with the scorer's own per-table details: the table-record score's share is 0.246, and of the 518
+ground-truth tables whose records fail, the column headers sit just above our table for 148 (0.090),
+in our first row with the records failing anyway for 108 (0.048), and 127 are paired with no table
+of ours. Marking header rows `<th>` in the adapter alone moved tables by -0.0015 (row 0) and +0.0037
+(leading spanned rows too). Of the 148, 131 are `whitespace-tracks` tables whose header band
+stopped, for many small reasons; told "Header too far above", its first line's reach was measured:
+three ems, two and a half rows' pitch, where two were allowed. Tables 0.5313 -> 0.5326, 5 pages up
+and none down; every other dimension unchanged on every page; opendataloader-bench unchanged.
+Overall 46.81 -> 46.83. Not used: three and four rows' pitch (0.5324 each, a title read as a
+header), and any band line reaching four ems where it sits one cell to a track (0.5312).
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

@@ -830,8 +830,5 @@ fn runs_the_document_declared_nothing_about_join_into_one_paragraph() {
     let dir = scratch("undeclared-join-html");
     let repr = extract_to(&dir, &engine_fixture("untagged-shredded-line"));
     let a = html_of(&repr);
-    assert_eq!(
-        a["html"].as_str().unwrap(),
-        "<p>Yarrow</p>\n<p>Separate</p>\n"
-    );
+    assert_eq!(a["html"].as_str().unwrap(), "<p>Yarrow Separate</p>\n");
 }

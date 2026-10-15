@@ -877,3 +877,30 @@ lattice is not traced end to end, which `ruled-rects-v12` refuses by design; two
 tables stopped by a line off their tracks; `SERFF_TX` p1124's two panels of ages and rates, each a
 two-column candidate whose first column, numbers of up to three digits, reads as a list's labels;
 the six documents whose fonts name no glyph, and the four scans.
+
+## 22. `whitespace-tracks-v15`: a header further off its table (2026-10-15, decision #69)
+
+**What `-v14` missed.** Told "Tables: census round", the ParseBench table loss was read by where
+it falls: of the 0.469 lost, half the table-record score's share is tables whose records fail, and
+for 148 of those the ground truth's column headers sit in our text just above our table, outside it
+— 131 of them this rule's. A scratch build naming where each header band stopped found the stops
+many and each small: the first line further above the table than the band's reach (47), a cell long
+enough to read as prose or repeating its column's value (38), a line whose cells sit on no track
+(22), a group header spanning columns (18), columns merged under it (8). Told "Header too far
+above", the reach was measured.
+
+**The change.** The band's first line may stand two and a half rows' pitch above the table —
+three ems — where `-v7` allowed two; the lines above it still climb a row and a half at most. A rate
+table's `CLASS CODE`, `RATE` and `MIN. PREM. L/C CODE`, set off its rows by a rule and its padding,
+were bold paragraphs over a table headed by its first row of figures, and are its header.
+
+**Measured**, with the shipped build on all 2,078 pages, against `fc9022c`: ParseBench tables
+**0.5313 → 0.5326**, 5 pages up and none down (`SERFF_CA_random_pages 1` p316 0.08 → 0.66, three
+pages of `myco hierarchical table header`); content, formatting, charts and visual grounding
+unchanged on every page; overall 46.81 → 46.83. opendataloader-bench unchanged, no table on a
+document without one, every cell its runs' text; the gate documents' 539 tables unchanged cell for
+cell. Every bound of §4 holds. **Measured and not used**: a reach of three rows' pitch and of four
+(0.5324 each: `xl-re-europe-se-sfcr-2024` p19 0.40 → 0.23, its title read as a header); any
+line of the band reaching four ems where its cells sit one to a track clear of their neighbours and
+name more than half the tracks (0.5312, three pages down).
+

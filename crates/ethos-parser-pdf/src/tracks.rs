@@ -64,7 +64,7 @@
 //! set flush right, a year over its column of numbers — gives each cell the track whose centre is
 //! nearest its own, where they come out in order, one to a track. And the band's first line may
 //! stand two rows' pitch above the table, where a rule and its padding set a header off its first
-//! row; the lines above it still climb a row and a half at most. A header the table cannot be built
+//! row — two and a half since `-v15` — and the lines above it still climb a row and a half at most. A header the table cannot be built
 //! with — a cell of it, two column names closer than an em, covering a neighbour's column — is
 //! none: the rows stand as they would without it.
 //!
@@ -468,7 +468,8 @@ fn tracks_of(rows: &[Row]) -> Vec<(i64, i64)> {
 
 /// The first of the lines above a table's first row that are its header: climbing from `start`
 /// to no lower than `floor`, each line within a row and a half's pitch of the line below it — the
-/// first line within two rows' pitch of the table (`-v7`) — whose cells [`header_tracks`] gives a
+/// first line within two and a half rows' pitch of the table (`-v15`; two since `-v7`) — whose
+/// cells [`header_tracks`] gives a
 /// track each, no two on one track, each holding fewer than [`PROSE_LINE_CHARS`] characters — a
 /// caption or a sentence ends the band, though since `-v11` the stub's heading, on the first track of
 /// a line of two cells or more, may run long — and repeating no value its column holds in `rows`,
@@ -492,9 +493,10 @@ fn header_band(
     let mut top = start;
     while top > floor {
         let (line, below) = (&lines[top - 1], &lines[top]);
-        // Pitches of 1.2 ems, in integers, as in `grow`: 1.5 is 9/5, and 2 is 12/5.
+        // Pitches of 1.2 ems, in integers, as in `grow`: 1.5 is 9/5, and 2.5 is 15/5 (`-v15`; `-v7`
+        // read the first line's at 2, 12/5).
         let em = line.em.max(below.em);
-        let reach = if top == start { 12 } else { 9 };
+        let reach = if top == start { 15 } else { 9 };
         if line.cells.is_empty() || 5 * (below.y - line.y) > reach * em {
             break;
         }
@@ -1608,7 +1610,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V14.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V15.to_string(),
     }))
 }
 
@@ -1863,16 +1865,17 @@ mod tests {
         );
     }
 
-    /// **The band is a header's and nothing else's**: more than a row and a half above the rows it
-    /// is apart from them; a line naming one column of three is a title, not a header; a cell of
+    /// **The band is a header's and nothing else's**: more than two and a half rows' pitch above the
+    /// rows (`-v15`) it is apart from them; a line naming one column of three is a title, not a
+    /// header; a cell of
     /// thirty characters is a caption; a cell repeating a value its column holds is a row the
     /// table did not take. Each leaves the table as it was.
     #[test]
     fn a_band_apart_titled_captioned_or_repeating_is_no_header() {
         for (band, why) in [
             (
-                vec![run(105, 170, 25, "Line"), run(240, 170, 25, "Type")],
-                "thirty points above the first row",
+                vec![run(105, 169, 25, "Line"), run(240, 169, 25, "Type")],
+                "thirty-one points above the first row",
             ),
             (vec![run(340, 186, 20, "Year")], "one column of three named"),
             (
@@ -1940,6 +1943,21 @@ mod tests {
             run(240, 186, 25, "Type"),
         ]);
         assert_eq!(texts(&found[0])[0], ["Line", "Type", ""]);
+    }
+
+    /// **A header's first line may stand two and a half rows' pitch above the table** (`-v15`): 30
+    /// points over 10-point rows, where a rule and its padding set a header further off its first
+    /// row than `-v7`'s two; a point further and it heads nothing.
+    #[test]
+    fn a_header_two_and_a_half_rows_pitch_above_is_the_table_s() {
+        let found = under(vec![run(105, 170, 25, "Line"), run(240, 170, 25, "Type")]);
+        assert_eq!(texts(&found[0])[0], ["Line", "Type", ""]);
+        let found = under(vec![run(105, 169, 25, "Line"), run(240, 169, 25, "Type")]);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["North", "7.5", "112.0"],
+            "31 points above"
+        );
     }
 
     /// **A header the table cannot be built with is none** (`-v7`): `Units and price`, nearest the
@@ -2429,7 +2447,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V14);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V15);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

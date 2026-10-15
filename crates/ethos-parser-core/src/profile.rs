@@ -875,6 +875,21 @@ pub const TABLE_DETECTION_TRACKS_V13: &str = "whitespace-tracks-v13";
 /// gutter between them.
 pub const TABLE_DETECTION_TRACKS_V14: &str = "whitespace-tracks-v14";
 
+/// [`TABLE_DETECTION_TRACKS_V14`] **with a header's first line read up to two and a half rows'
+/// pitch above its table** (decision #69).
+///
+/// **What `-v14` missed.** Told "Tables: census round" and then "Header too far above", the
+/// ParseBench table pages whose records failed were read for where the ground truth's column
+/// headers sat in our output: just above our table, outside it, for 148 tables, 131 of them this
+/// rule's. The header band stopped for scattered reasons, the commonest a header line further above
+/// the table's first row than the band's reach: a rate table's `CLASS CODE` and `RATE` set off its
+/// rows by a rule and its padding were written as bold paragraphs over a table headed by its first
+/// row of figures.
+///
+/// **The change.** The band's first line may stand two and a half rows' pitch above the table —
+/// three ems — where `-v7` allowed two; the lines above it still climb a row and a half at most.
+pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
+
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,
 /// `docs/32-CHART-LABELS-SCOPE.md`).
 ///
@@ -883,7 +898,7 @@ pub const TABLE_DETECTION_TRACKS_V14: &str = "whitespace-tracks-v14";
 /// end, a series the colour — named by the one label beside a legend swatch of that colour, or a
 /// one-colour chart's title line. A table only where the numbers agree with the bars in order and a
 /// series' numbers are on most of its bars; a value is never read off a bar's length. Runs after
-/// [`TABLE_DETECTION_TRACKS_V14`], on runs no other rule's table holds, only on a document that
+/// [`TABLE_DETECTION_TRACKS_V15`], on runs no other rule's table holds, only on a document that
 /// declares no author structure; a cell holds its label's runs, and an empty cell is not emitted.
 pub const TABLE_DETECTION_CHARTS_V1: &str = "bar-labels-v1";
 
@@ -1497,7 +1512,7 @@ impl Default for TableDetection {
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
-            tracks: TABLE_DETECTION_TRACKS_V14.to_string(),
+            tracks: TABLE_DETECTION_TRACKS_V15.to_string(),
             charts: TABLE_DETECTION_CHARTS_V3.to_string(),
             lines: TABLE_DETECTION_LINES_V1.to_string(),
         }
@@ -3562,7 +3577,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-4","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v14","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-4","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4707,11 +4722,14 @@ mod tests {
              as its table. The office profiles name it `not-run-for-this-format`. Nothing else.\n\n\
              Moved for decision #67, `sha256:3976f966…` -> `sha256:e0ffb37d…`: \
              `layout_unit_rule` `line-units-v4` -> `-v5`, which reads each line where the reading \
-             order reads it and its words where the page set them apart. Nothing else."
+             order reads it and its words where the page set them apart. Nothing else.\n\n\
+             Moved for decision #69, `sha256:e0ffb37d…` -> `sha256:397e2e69…`: \
+             `table_detection.tracks` `whitespace-tracks-v14` -> `-v15`, which reads a header's \
+             first line up to two and a half rows' pitch above its table. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:e0ffb37d1a2f8d95af4ac18a4eec88d651c4b0182bc7527858a38601b577b9e9"
+            "sha256:397e2e696120ccb81e7f7018b05ad908466b1a877f59ac65ea4d926c0df9151c"
         );
     }
 
@@ -4768,20 +4786,20 @@ mod tests {
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V12, TABLE_DETECTION_TRACKS_V14),
-            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V14),
-            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V14),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V14),
+            (TABLE_DETECTION_V12, TABLE_DETECTION_TRACKS_V15),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V15),
+            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V15),
+            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V15),
             (TABLE_DETECTION_V12, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_CHARTS_V2),
-            (TABLE_DETECTION_TRACKS_V14, TABLE_DETECTION_CHARTS_V2),
+            (TABLE_DETECTION_TRACKS_V15, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_V12, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_LINES_V1),
-            (TABLE_DETECTION_TRACKS_V14, TABLE_DETECTION_LINES_V1),
+            (TABLE_DETECTION_TRACKS_V15, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_CHARTS_V3, TABLE_DETECTION_LINES_V1),
         ] {
             assert_ne!(
@@ -4794,7 +4812,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v14","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v12","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4917,13 +4935,13 @@ mod tests {
         );
 
         // And a profile from before decision #66 must not acquire the line rule.
-        let pre_lines = r#"{"ruled":"ruled-rects-v12","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v14","charts":"bar-labels-v3"}"#;
+        let pre_lines = r#"{"ruled":"ruled-rects-v12","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","charts":"bar-labels-v3"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(pre_lines).is_err(),
             "a pre-#66 profile must not silently acquire the line rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v12","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v14","charts":"bar-labels-v3","lines":"point-labels-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v12","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","charts":"bar-labels-v3","lines":"point-labels-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

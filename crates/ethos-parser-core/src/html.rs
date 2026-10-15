@@ -155,8 +155,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
 /// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
-/// decision #65's label lines in one `<p>` and heading number joined to its title, this id carries
-/// too.
+/// decision #65's label lines in one `<p>` and heading number joined to its title, and decision
+/// #68's runs of one unit on one line joined across the gap between them, this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -590,7 +590,8 @@ pub fn to_html(
         // Decision #38. `crate::markdown`'s heading-unit join, from the same predicate, so a heading
         // set on two lines is one element here as it is one line there. Decision #65: its label
         // and heading-number joins too, from the same predicates, so a label's lines are one `<p>`
-        // here as they are one block there.
+        // here as they are one block there. Decision #68: its gap join too, so a page's words set
+        // apart by position are one `<p>` here as they are one block there.
         let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
             None
         } else if open_prev
@@ -605,6 +606,10 @@ pub fn to_html(
             })
         {
             Some((" ", crate::markdown::HEADING_NUMBER_JOINS))
+        } else if ht.is_none()
+            && open_prev.is_some_and(|prev| crate::markdown::unit_gap_continues(prev, node, &pitch))
+        {
+            Some((" ", crate::markdown::LAYOUT_UNIT_GAP_JOINS))
         } else {
             None
         };
