@@ -187,6 +187,23 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A header set further off its table is its header (`whitespace-tracks-v15`, decision #69)
+
+`table_detection.tracks` moves `whitespace-tracks-v14` -> `-v15`, so `profile_sha256` moves.
+`docs/31-TABLE-TRACKS-SCOPE.md` §22 is the rule.
+
+- **A header's first line may stand two and a half rows' pitch above its table** — three ems —
+  where `-v7` allowed two; the lines above it still climb a row and a half at most. A rate table's
+  column names, set off its rows by a rule and its padding, were bold paragraphs over a table
+  headed by its first row of figures.
+- **Measured** on ParseBench: tables 0.5313 -> 0.5326, 5 pages up and none down
+  (`SERFF_CA_random_pages 1` p316 0.08 -> 0.66); content, formatting, charts and visual grounding
+  unchanged on every page; overall 46.81 -> 46.83. opendataloader-bench, the fabrication check and
+  the gate documents' tables cell for cell unchanged.
+- **Found on the way** (the census behind it): of the tables whose records fail, 148 have their
+  ground truth's column headers just above ours, and the band stops there for many small reasons;
+  marking header rows `<th>`, tried in the adapter alone, is worth +0.004 at best.
+
 ### Words a page set apart by moving its pen are one block (decision #68)
 
 Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule id
