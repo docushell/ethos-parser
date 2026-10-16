@@ -631,6 +631,13 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 ///   where its travel runs forward along the page's x and its codes are its characters one for
 ///   one. A page that sets a word apart by widening the space before it (`Tw`) draws ` None` from
 ///   where the figure before it ended, its origin in the column before and its ink in its own.
+/// - **A rectangle spanning every face of the grid is its border, however far past it it reaches**
+///   (decision #73, folded in likewise): counted in the page's bands, a box painted behind the
+///   whole page spanned more faces than a grid drawn in rules holds, covered every face, and left
+///   the grid its rectangles for cells, which for rules are none.
+/// - **Tables stacked on their own columns are read apart** (decision #73): where the page
+///   lattice's rows break at whitespace into blocks, two neighbouring ones each drawing a column
+///   line the other does not, the page's lattice is refused and its rectangles read group by group.
 ///
 /// # Measured
 ///
@@ -638,7 +645,9 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// and visual grounding unchanged on every page. opendataloader-bench and the fabrication check
 /// unchanged; the gate documents with their trees stripped gain two real tables and lose none.
 /// With decision #71's placement, tables 0.5405 -> 0.5444, nine pages up and none down, and
-/// nothing else moves.
+/// nothing else moves. With decision #73's, tables 0.5506 -> 0.5555, six pages up and one down,
+/// nothing else on ParseBench moving; opendataloader-bench NID and TEDS up on three documents each
+/// and down on none.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

@@ -892,6 +892,17 @@ visual grounding 0.5575 -> 0.5577; content, formatting and charts unchanged on e
 opendataloader-bench NID and TEDS up on one document each, one heading score 0.5027 -> 0.5025
 (the trade taken). Overall 47.07 -> 47.20.
 
+### After a box behind the page and stacked tables (decision #73, 2026-10-16)
+
+A box painted behind the whole page counted, in the page's bands, as covering every face of a
+grid drawn in rules, and the page's lattice read tables stacked on their own columns as one grid.
+Told "Tables: page box + stacked tables", a rectangle spanning every face of the grid is its border
+however far past it it reaches, and a page lattice whose rows break at whitespace into blocks drawn
+on different column lines is read group by group. Tables 0.5506 -> 0.5555, 6 pages up and 1 down
+(`Coca Cola 10-k` p107 0.095 -> 0.082, the trade taken); every other dimension unchanged on every
+page; opendataloader-bench NID 0.8849 -> 0.8874 and TEDS 0.5426 -> 0.5784, three documents up each
+and none down. Overall 47.20 -> 47.30.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

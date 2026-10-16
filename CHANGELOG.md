@@ -187,6 +187,35 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A box behind the page, and tables stacked on their own columns (decision #73)
+
+Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`
+moves. `docs/31-TABLE-TRACKS-SCOPE.md` §26 is the rule.
+
+- **A rectangle spanning every face of the grid is its border, however far past the grid it
+  reaches.** The face test counted a rectangle's span in the page's bands, so a box painted behind
+  the whole page spanned more faces than a grid drawn in rules holds: it was no border, it covered
+  every face, and the grid took its cells from the rectangles alone, which for rules are none. The
+  test now counts grid faces, as its own executable spec
+  (`tests::the_coverage_grid_is_the_per_pair_scan_by_another_route`) always stated it.
+  `Victoria Secret 10-k` p1, the cover's 2 x 3 table of securities, read no table.
+- **Tables stacked on their own columns are read apart.** The page's lattice is every rectangle's
+  edges at once, so two tables one above the other read as one grid whose cells span columns only
+  the other drew (`FBLB-134215544` p6, a rate table above a schedule, as one 9 x 10). Where the
+  lattice's rows break at whitespace into blocks, two neighbouring ones each drawing a column line the other does
+  not, the page's lattice is now refused and its rectangles read group by group; the refusal,
+  `tables stacked on their own columns`, is the page's only where no group's grid stands. A block
+  drawing a subset of its neighbour's lines is no other table: a heading or total row spanning the
+  columns, rows drawn apart on one table's columns.
+- **Measured** on ParseBench: tables 0.5506 -> 0.5555, 6 pages up and 1 down (`Victoria Secret
+  10-k` p1 0.00 -> 1.00, `JNPR.2011.page_82` 0.05 -> 0.72, `FBLB-134215544` p6 0.12 -> 0.70);
+  content, formatting, charts and visual grounding unchanged on every page; overall 47.20 -> 47.30.
+  opendataloader-bench NID 0.8849 -> 0.8874 and TEDS 0.5426 -> 0.5784, three documents up each and
+  none down (`01030000000081`, `083` and `127`, TEDS 1.00 each); headings unchanged. The
+  fabrication check and the gate documents' tables unchanged.
+- **The trade**, put in the offer and taken by the owner: `Coca Cola 10-k` p107 0.095 -> 0.082. Its
+  upper table, shaded in full-width bands, had been divided only by the lower table's column lines.
+
 ### A table ruled in single strokes and divided by vertical ones (`stroke-ruled-v2`, decision #72)
 
 `table_detection.stroke_ruled` moves `stroke-ruled-v1` -> `-v2`, so `profile_sha256` moves.

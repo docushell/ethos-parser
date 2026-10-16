@@ -1004,3 +1004,41 @@ the gate documents' 541 tables unchanged cell for cell. **Measured and not used*
 step 8 (4 pages down: heads-only ruled tables reading their ruled rows alone) and without its form
 clause. **Still not read**: `Goldman Sachs 10-k` p433, whose two wrapped paragraphs side by side
 read as rows the page did not rule.
+
+## 26. A box behind the page, and tables stacked on their own columns (2026-10-16, decision #73)
+
+**What `ruled-rects-v13` missed.** Two shapes, both of the page's lattice.
+
+- **A box painted behind the whole page.** The face test leaves out the grid's own border — a
+  rectangle covering every face is no evidence those faces were drawn — but it counted a
+  rectangle's span in the page's bands, not in the grid's faces. A box behind the whole page spans
+  more bands than a grid drawn in rules keeps, so it was no border: it covered every face, and the
+  grid then took its cells from the rectangles alone, which for a grid of rules are none.
+  `Victoria Secret 10-k` p1 draws its cover's 2 × 3 table of securities so, and read no table.
+- **Tables stacked on their own columns.** The page's lattice is every rectangle's edges at once,
+  and band selection drops the whitespace between two tables one above the other: two tables drawn
+  on different columns read as one grid whose cells span columns only the other drew.
+  `FBLB-134215544` p6, a rate table above a schedule, read as one 9 × 10.
+
+**The change.** A rectangle spanning every face of the grid is its border however far past the
+grid it reaches: grid faces are counted, as the test's own executable spec
+(`tests::the_coverage_grid_is_the_per_pair_scan_by_another_route`) always stated it. And where the
+page lattice's rows break at whitespace into blocks, two neighbouring ones each drawing a column
+line the other does not, the page's lattice is refused and its rectangles read group by group; the
+refusal, `tables stacked on their own columns`, is the page's only where no group's grid stands. A
+block's lines are the edges of the rectangles lying within its rows, and a block drawing a subset of
+its neighbour's lines is no other table: a heading or total row spanning the columns, rows drawn
+apart on one table's columns. Asked of the page's lattice only: a group is one table's rectangles or
+none's, and the group pass is the page's last reading.
+
+**Measured**, with the shipped build against the #72 tree: ParseBench tables **0.5506 → 0.5555**, 6
+pages up and 1 down (`Victoria Secret 10-k` p1 0.00 → 1.00, `JNPR.2011.page_82` 0.05 → 0.72,
+`FBLB-134215544` p6 0.12 → 0.70, `BRWS-134565917` p6 and `SERFF_TX_random_pages 1` p649 0.13 →
+0.24, `SERFF_TX_random_pages 1` p650 0.00 → 0.03); content, formatting, charts and visual grounding
+unchanged on every page; overall 47.20 → 47.30. opendataloader-bench NID 0.8849 → 0.8874 and TEDS
+0.5426 → 0.5784, three documents up each and none down (`01030000000081`, `083` and `127`, TEDS
+1.00 each); headings unchanged; no table on a document without one, every cell its runs' text; the
+gate documents' 541 tables unchanged cell for cell. **The trade the owner took**: `Coca Cola 10-k`
+p107 0.095 → 0.082 — its upper table, shaded in full-width bands, had been divided only by the
+lower table's column lines, and on its own divides none. **Still not read**: the upper tables of
+`BRWS-134565917` p6 and `SERFF_TX_random_pages 1` p649, whose header sits above a single ruled row.

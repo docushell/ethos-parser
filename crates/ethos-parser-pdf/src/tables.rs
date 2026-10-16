@@ -42,7 +42,9 @@
 //!    scattered field boxes on a tax form produce one enormous lattice whose faces are mostly
 //!    empty — measured, not hypothesised: `irs-form-1040-2025` yielded a 662-cell "table" with a
 //!    cell spanning 75 rows by 45 columns. That is a fabricated table, and fabrication is the one
-//!    thing this slice may not do.
+//!    thing this slice may not do. Since `ruled-rects-v13` (decision #73) a rectangle spanning
+//!    every face of the grid and reaching past it, as a box painted behind the whole page does, is
+//!    excluded alike.
 //! 4. **Cells are the rectangles**, mapped onto the lattice. A rectangle spanning several faces
 //!    is a merged cell; one covering *every* face is the table's outer border, not a cell. **A grid
 //!    accepted by its traced lines instead** (see [`Lattice::build`]) drew no rectangle over a
@@ -62,6 +64,10 @@
 //!    bands), not a grid whose ruled rows each hold several rows of text (rows the page did not
 //!    rule), not one whose rows run on beside it on their own baselines (part of a wider table),
 //!    and not one with a column holding no letter or digit (a split the text does not make).
+//!    The page's lattice is refused, and so read group by group, where its rows break at
+//!    whitespace into blocks two neighbouring ones of which each draw a column line the other does
+//!    not: tables stacked on their own columns (`ruled-rects-v13`, decision #73,
+//!    [`Lattice::stacked`]).
 //! 7. **A grid's open side is where its rules end** (`ruled-rects-v13`). A table ruled across its
 //!    rows and between its columns but never down its sides draws no outer column line; an outer
 //!    line counts as drawn across a row where the rules above and below that row both run out to
@@ -575,6 +581,15 @@ pub enum RuledRefusal {
         /// Geometric faults — the boxes disagreeing among themselves. Reported, not decisive.
         geometric: usize,
     },
+    /// `ruled-rects-v13`: the page's rectangles drew tables stacked on their own columns
+    /// ([`Lattice::stacked`]).
+    ///
+    /// The page's lattice is refused so that each group of rectangles is read on its own; this is
+    /// the page's refusal only where no group's grid stands.
+    Stacked {
+        /// The blocks of rows whitespace separates.
+        blocks: usize,
+    },
 }
 
 impl RuledRefusal {
@@ -590,6 +605,7 @@ impl RuledRefusal {
             Self::GridNotDrawn { .. } => "a grid line the ink does not trace",
             Self::LatticeTooLarge { .. } => "past the cell ceiling",
             Self::CrossCheckRejected { .. } => "a grid that contradicts itself",
+            Self::Stacked { .. } => "tables stacked on their own columns",
         }
     }
 
@@ -631,6 +647,13 @@ impl RuledRefusal {
                  would reach a reader as a grid and reach nobody as a warning. The disagreement \
                  is not discarded: it is this entry, with the page and the fault counts",
             ),
+            Self::Stacked { .. } => String::from(
+                "The rectangles drew rows that whitespace separates into blocks, two neighbouring \
+                 blocks each drawing a column line the other does not: tables stacked on one \
+                 page, each on its own columns. Read as one lattice they would be one grid whose \
+                 cells span columns only the other table drew, so the page's rectangles were read \
+                 group by group instead, and no group's grid stood as a table",
+            ),
         }
     }
 
@@ -654,6 +677,7 @@ impl RuledRefusal {
                 structural,
                 geometric,
             } => format!("{structural} structural and {geometric} geometric fault(s)"),
+            Self::Stacked { blocks } => format!("{blocks} blocks of rows"),
         }
     }
 }
@@ -1378,6 +1402,15 @@ impl Lattice {
             return Err(None);
         }
 
+        // `ruled-rects-v13`: **tables stacked on their own columns are not one grid.** Asked of
+        // the page's lattice only (`merges` is a group's): a group is one table's rectangles or
+        // none's, and the per-group pass this refusal hands the page to is what reads each.
+        if merges.is_none() {
+            if let Some(blocks) = all.stacked(rects, &row_bands) {
+                return Err(Some(RuledRefusal::Stacked { blocks }));
+            }
+        }
+
         let mut lattice = Self {
             row_bands,
             col_bands,
@@ -1469,6 +1502,12 @@ impl Lattice {
     /// bars supplied the edges. That single confusion produced 79 of the 91 false-positive cell
     /// slots the gate charged against the ruled rule.
     ///
+    /// **Nor is one spanning the whole grid and more** (`ruled-rects-v13`): spanning counts GRID
+    /// faces, as `tests::the_coverage_grid_is_the_per_pair_scan_by_another_route` states it. Counted
+    /// in bands, a box painted behind the whole page spans more faces than a grid drawn in rules
+    /// holds, so it was no border and covered every face; the grid then took its cells from the
+    /// rectangles alone, and rules are none — Victoria's Secret's 10-K cover read no table.
+    ///
     /// Overlaps are deliberately NOT excluded — a rectangle claiming a face another already owns is
     /// a real disagreement, and it belongs in the cross-check where it is reported rather than in a
     /// precondition where it would be silently dropped.
@@ -1483,10 +1522,10 @@ impl Lattice {
         let mut coverage = vec![0i64; (row_count + 1) * stride];
         for r in rects {
             if self
-                .span_of_bands(*r)
-                .is_some_and(|(_, _, rs, cs)| rs * cs == faces)
+                .span_of(*r)
+                .is_some_and(|s| (s.rowspan * s.colspan) as usize == faces)
             {
-                continue; // the table's own border
+                continue; // the table's own border, or a box behind the page
             }
             let c_lo = self.xs.partition_point(|x| *x < r.x0 - LATTICE_TOLERANCE);
             let c_hi = self.xs.partition_point(|x| *x <= r.x1 + LATTICE_TOLERANCE);
@@ -1526,6 +1565,42 @@ impl Lattice {
             }
         }
         out
+    }
+
+    /// `ruled-rects-v13`: how many blocks the kept rows `row_bands` break into at whitespace, where
+    /// two neighbouring blocks each draw a column line the other does not — tables stacked on one
+    /// page, each on its own columns.
+    ///
+    /// The page's lattice is every rectangle's edges at once, so two such tables share one set of
+    /// column lines, and band selection drops the whitespace between them: the page read as one
+    /// grid whose cells span columns only the other table drew (`FBLB-134215544` p6, a rate table
+    /// above a schedule, read as one 9 x 10). A block's lines are the edges of the rectangles lying
+    /// within its rows. A block drawing a subset of its neighbour's lines is no other table: a
+    /// heading row whose cells span the columns under it, or rows drawn apart on the same columns.
+    fn stacked(&self, rects: &[QuantRect], row_bands: &[usize]) -> Option<usize> {
+        let mut blocks: Vec<(usize, usize)> = Vec::new();
+        for &b in row_bands {
+            match blocks.last_mut() {
+                Some((_, last)) if *last + 1 == b => *last = b,
+                _ => blocks.push((b, b)),
+            }
+        }
+        let lines: Vec<std::collections::BTreeSet<usize>> = blocks
+            .iter()
+            .map(|&(first, last)| {
+                let (y0, y1) = (self.ys[first], self.ys[last + 1]);
+                rects
+                    .iter()
+                    .filter(|r| r.y0 >= y0 - LATTICE_TOLERANCE && r.y1 <= y1 + LATTICE_TOLERANCE)
+                    .flat_map(|r| [r.x0, r.x1])
+                    .filter_map(|x| index_of(&self.xs, x))
+                    .collect()
+            })
+            .collect();
+        lines
+            .windows(2)
+            .any(|w| !w[0].is_subset(&w[1]) && !w[1].is_subset(&w[0]))
+            .then_some(blocks.len())
     }
 
     /// Whether the page draws a division **inside** this grid on both axes: some rectangle with an
@@ -2059,6 +2134,89 @@ mod tests {
         }
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 2);
+    }
+
+    /// Cells drawn one rectangle each: per block `(top, column edges, rows)`, a run in every cell.
+    fn blocks(spec: &[(i64, &[i64], i64)]) -> (Vec<QuantRect>, Vec<RunOrigin<'static>>) {
+        let (mut rects, mut runs) = (Vec::new(), Vec::new());
+        for &(y, edges, rows) in spec {
+            for row in 0..rows {
+                for w in edges.windows(2) {
+                    rects.push(r(w[0], y + 40 * row, w[1], y + 40 * row + 40));
+                    runs.push(RunOrigin {
+                        x: pt(w[0] + 5),
+                        y: pt(y + 40 * row + 25),
+                        text: "x",
+                    });
+                }
+            }
+        }
+        (rects, runs)
+    }
+
+    /// `ruled-rects-v13`: two tables stacked with whitespace between them, each drawn cell by cell
+    /// on its own columns, are two tables. The page's lattice found every face of the union of
+    /// their columns covered, and read them as one grid of spans.
+    #[test]
+    fn tables_stacked_on_their_own_columns_are_two_tables() {
+        let (rects, runs) = blocks(&[(100, &[100, 200, 300, 400], 2), (250, &[100, 250, 400], 2)]);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let shapes: Vec<(u32, u32)> = tables.iter().map(|t| (t.rows, t.columns)).collect();
+        assert_eq!(shapes, [(2, 3), (2, 2)]);
+    }
+
+    /// A heading row whose cell spans the columns under it, rows drawn apart on the same columns,
+    /// and a total row spanning them below are one table: of two neighbouring blocks, one draws
+    /// every column line the other does.
+    #[test]
+    fn rows_drawn_apart_on_one_tables_columns_are_one_table() {
+        let (rects, runs) = blocks(&[
+            (100, &[100, 300], 1),
+            (150, &[100, 200, 300], 1),
+            (200, &[100, 200, 300], 1),
+            (250, &[100, 300], 1),
+        ]);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let shapes: Vec<(u32, u32)> = tables.iter().map(|t| (t.rows, t.columns)).collect();
+        assert_eq!(shapes, [(4, 2)]);
+    }
+
+    /// The stacked refusal is the page lattice's alone: a group is one table's rectangles or
+    /// none's, and the group pass is the last reading the page gets.
+    #[test]
+    fn only_the_pages_lattice_is_refused_as_stacked() {
+        let (rects, _) = blocks(&[(100, &[100, 200, 300, 400], 2), (250, &[100, 250, 400], 2)]);
+        assert!(matches!(
+            Lattice::build(&rects, None),
+            Err(Some(RuledRefusal::Stacked { blocks: 2 }))
+        ));
+        assert!(Lattice::build(&rects, Some((&[], &[]))).is_ok());
+    }
+
+    /// The page's refusal where no stacked block stands as a grid of its own: it says why the page
+    /// was read group by group.
+    #[test]
+    fn stacked_strips_no_one_of_which_is_a_grid_declare_why() {
+        let (rects, runs) = blocks(&[(100, &[100, 200, 300, 400], 1), (250, &[100, 250, 400], 1)]);
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+        assert_eq!(refused, Some(RuledRefusal::Stacked { blocks: 2 }));
+    }
+
+    /// `ruled-rects-v13`: a box painted behind the whole page covers every face of a grid drawn in
+    /// rules, and is no more a cell, nor evidence of one, than the grid's own border. Counted in
+    /// bands it spanned more faces than the grid holds, carried the face test, and left the grid
+    /// to take its cells from the rectangles: rules are none.
+    #[test]
+    fn a_box_behind_the_page_is_no_cell_of_its_grid() {
+        let (mut rects, runs) = grid(100, 100, 2, 3, label);
+        rects.push(r(10, 10, 600, 800));
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{refused:?}");
+        let t = &tables[0];
+        assert_eq!((t.rows, t.columns), (2, 3));
+        let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
     }
 
     #[test]
