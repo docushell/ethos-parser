@@ -852,6 +852,24 @@ and none down; every other dimension unchanged on every page; opendataloader-ben
 Overall 46.81 -> 46.83. Not used: three and four rows' pitch (0.5324 each, a title read as a
 header), and any band line reaching four ems where it sits one cell to a track (0.5312).
 
+### After a table open at its sides read as ruled (`ruled-rects-v13`, decision #70, 2026-10-16)
+
+Every dimension's remaining loss was read again by cause. Formatting: of the bold and title rules
+failed on pages with text, the font names bold for 357 and 250, and those split into many shapes
+(punctuation the font draws regular after a bold word, a bold phrase broken across blocks, bold in
+table cells); content: order rules fail when their anchors are misread, not misordered (2,743 of
+2,877), and the worst text pages declare a `/ToUnicode` that maps glyph ids to the wrong letters,
+in fonts that carry no `cmap` and no glyph names; grounding: Section and Text confused 0.069 each way
+evenly. Tables: PyMuPDF's line-based table finder, scored in our place out of tree (decision #14),
+beats ours on 96 pages, and the better of the two on each page reads 0.611. 0.045 of that gap is on
+pages whose ruled grid was refused for a line not traced end to end, 0.023 of it an outer one. Told
+"Tables: open-sided grids": an outer line of a grid traced whole is drawn across a row whose rules
+above and below both run out to it, and a rule other rectangles end on is no underline. Tables
+0.5326 -> 0.5405, 7 pages up and none down; every other dimension unchanged on every page;
+opendataloader-bench unchanged. Overall 46.83 -> 46.99. Not used: closing the sides of a grid read
+through merged cells as well (no page more, opendataloader-bench `01030000000064` TEDS 1.00 ->
+0.81), and the grid's bounding box as its sides (0.5398, 6 pages up and 5 down).
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

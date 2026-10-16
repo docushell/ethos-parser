@@ -904,3 +904,43 @@ cell. Every bound of §4 holds. **Measured and not used**: a reach of three rows
 line of the band reaching four ems where its cells sit one to a track clear of their neighbours and
 name more than half the tracks (0.5312, three pages down).
 
+
+## 23. `ruled-rects-v13`: a table open at its sides (2026-10-16, decision #70)
+
+**What `ruled-rects-v12` missed.** Every score's remaining loss was read again by cause, and the
+one sizable pool left was ruled tables. PyMuPDF's line-based table finder, run out of tree as an
+instrument (decision #14), was scored in our place on each table page: it scores higher than ours
+on 96 of the 503, and the better of the two on each page would read 0.611 against 0.533. Of that
+gap, 0.045 lies on the 169 pages where the ruled rule refused a drawn grid for a line not traced end
+to end, and a scratch build naming which clause refused each grid found an outer line the largest
+share (65 pages, 0.023): a table ruled across its rows and between its columns, but never down its
+sides.
+
+**The change.** Two clauses, and neither supplies a line:
+
+- **An outer line is drawn across a row its rules close.** Where the rules above and below a row both
+  run out to where the side would be, the grid is open there, not undrawn; a row whose rule stops
+  short of the side stays undrawn, and the grid is refused as before. For a grid traced whole only:
+  a grid read through merged cells keeps its sides as `-v12` asked them.
+- **A rule another rectangle ends on part-way along it is no underline.** Closing the sides alone
+  moved one page: such a table's top and bottom borders meet nothing at their ends, and `-v12`'s
+  decoration clause left them out of the group, so its first and last rows had no rule to be closed
+  by. Its column rules end on them; nothing ends on an underline.
+
+**Measured**, with the shipped build on all 2,078 pages, against `28a9a17`: ParseBench tables
+**0.5326 → 0.5405**, 7 pages up and none down (six pages of `1657221585`, 0.00–0.63 → 0.84–0.97,
+and `SERFF_TX_random_pages 1` p783 0.50 → 1.00); content, formatting, charts and visual grounding
+unchanged on every page; overall 46.83 → 46.99. opendataloader-bench unchanged, no table on a
+document without one, every cell its runs' text; on the gate documents with their trees stripped,
+539 tables unchanged cell for cell and two new, `nist-sp-800-161r1`'s procurement table on p53 and
+its continuation on p54, both open at their sides. Every bound of §4 holds. **Measured and not
+used**: closing the sides of a grid read through merged cells too — no ParseBench page more, and
+opendataloader-bench `01030000000064` TEDS 1.00 → 0.81, its banded rows drawing no column line
+across their shading and reading as merged cells; taking the grid's bounding box as its sides,
+whatever its rules reach (0.5398: 6 pages up and 5 down, `BRWS-134565917` p953 0.66 → 0.02).
+
+**Still not read** in the same pool: an outer line beside a column some rows lack (`SERFF_CA` p2561);
+ink beyond the table on its side (`FBLB-134215544` p115); a merged first column along an open side
+(`sizingchart` p1, p2); a grid accepted through its merges and then refused for a column holding no
+letter or digit (13 pages, 0.005); grids the instrument reads better that `-v13` reads only in part
+(136 pages, 0.016).

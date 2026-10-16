@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V12` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V13` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -58,6 +58,14 @@
 //!    bands), not a grid whose ruled rows each hold several rows of text (rows the page did not
 //!    rule), not one whose rows run on beside it on their own baselines (part of a wider table),
 //!    and not one with a column holding no letter or digit (a split the text does not make).
+//! 7. **A grid's open side is where its rules end** (`ruled-rects-v13`). A table ruled across its
+//!    rows and between its columns but never down its sides draws no outer column line; an outer
+//!    line counts as drawn across a row where the rules above and below that row both run out to
+//!    it ([`closed_by_rules`]), so the side is where drawn rules stop — no line is supplied. Only
+//!    for a grid every other line of which is drawn end to end: one read through merged cells
+//!    keeps its sides as `-v12` asked them. And a rule another rectangle ends on part-way along
+//!    it, as a column rule ends on such a table's top border, is a line of the grid, not an
+//!    underline ([`without_decoration`]).
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -77,7 +85,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V12` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V13` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -192,7 +200,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V12`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V13`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -455,6 +463,25 @@ fn ink_on(rects: &[QuantRect], axis: Axis, line: i64) -> Vec<(i64, i64)> {
                 .then_some((lo, hi))
         })
         .collect()
+}
+
+/// `ruled-rects-v13`: whether the rules bounding band `(lo, hi)` both run out to the outer line
+/// `at`, of a grid's `axis` lines — so the grid is open on that side across the band, not undrawn.
+///
+/// A table ruled across its rows and between its columns draws no line down its sides, and its
+/// first and last columns are bounded there only by where its rules stop. The rules on lines `lo`
+/// and `hi` of the other axis each reaching `at` is that, and it is ink the page drew: no edge is
+/// supplied. A band whose rule falls short of `at` on either side stays undrawn there.
+fn closed_by_rules(rects: &[QuantRect], axis: Axis, at: i64, (lo, hi): (i64, i64)) -> bool {
+    let across = match axis {
+        Axis::Vertical => Axis::Horizontal,
+        Axis::Horizontal => Axis::Vertical,
+    };
+    [lo, hi].into_iter().all(|edge| {
+        ink_on(rects, across, edge)
+            .into_iter()
+            .any(|(a, b)| a.min(b) <= at + LATTICE_TOLERANCE && a.max(b) + LATTICE_TOLERANCE >= at)
+    })
 }
 
 /// Whether `spans` cover `(lo, hi)` end to end once merged.
@@ -725,6 +752,11 @@ pub fn detect_ruled_with(
 /// fill painted over paint of its own colour (`inset`), a cell's padding over its background, and a
 /// rule neither of whose ends meets another rectangle, an underline. Neither is a line the page
 /// drew between cells, and read as one each splits a cell into faces no rule bounds.
+///
+/// `ruled-rects-v13`: **a rule another rectangle ends on part-way along it is no underline.** The
+/// top and bottom borders of a table open at its sides meet nothing at their ends, and its column
+/// rules end on them; read as underlines, they left the grid's first and last rows unbounded.
+/// Nothing ends on an underline.
 fn without_decoration(group: Vec<QuantRect>, inset: &[QuantRect]) -> Vec<QuantRect> {
     let group: Vec<QuantRect> = group.into_iter().filter(|r| !inset.contains(r)).collect();
     // Whether another rectangle has an edge at `at` that spans `along` — the end of a rule there
@@ -742,14 +774,36 @@ fn without_decoration(group: Vec<QuantRect>, inset: &[QuantRect]) -> Vec<QuantRe
                 && along <= hi + LATTICE_TOLERANCE
         })
     };
+    // Whether another rectangle ends on the rule strictly between its ends: an edge of it on the
+    // rule's line, and the rectangle reaching away from that line.
+    let ends_on = |r: &QuantRect, horizontal: bool| {
+        let (line, lo, hi) = if horizontal {
+            ((r.y0 + r.y1) / 2, r.x0, r.x1)
+        } else {
+            ((r.x0 + r.x1) / 2, r.y0, r.y1)
+        };
+        group.iter().any(|s| {
+            let (near, far, s_lo, s_hi) = if horizontal {
+                (s.y0, s.y1, s.x0, s.x1)
+            } else {
+                (s.x0, s.x1, s.y0, s.y1)
+            };
+            s != r
+                && ((near - line).abs() <= LATTICE_TOLERANCE
+                    || (far - line).abs() <= LATTICE_TOLERANCE)
+                && far - near > LATTICE_TOLERANCE
+                && s_lo > lo + LATTICE_TOLERANCE
+                && s_hi < hi - LATTICE_TOLERANCE
+        })
+    };
     let meets_nothing = |r: &QuantRect| {
         let (w, h) = (r.x1 - r.x0, r.y1 - r.y0);
         if h <= LATTICE_TOLERANCE && w > LATTICE_TOLERANCE {
             let y = (r.y0 + r.y1) / 2;
-            !meets(r, r.x0, y, true) && !meets(r, r.x1, y, true)
+            !meets(r, r.x0, y, true) && !meets(r, r.x1, y, true) && !ends_on(r, true)
         } else if w <= LATTICE_TOLERANCE && h > LATTICE_TOLERANCE {
             let x = (r.x0 + r.x1) / 2;
-            !meets(r, r.y0, x, false) && !meets(r, r.y1, x, false)
+            !meets(r, r.y0, x, false) && !meets(r, r.y1, x, false) && !ends_on(r, false)
         } else {
             false
         }
@@ -1090,7 +1144,7 @@ fn ruled_grid(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V12.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V13.to_string(),
         }],
         None,
     ))
@@ -1536,6 +1590,11 @@ impl Lattice {
     /// would be requiring the page to draw the gaps it deliberately left — `01030000000045.pdf`'s
     /// line at x=8352 has union gaps of 2 635 and 1 656 centipoints for exactly that reason. The
     /// bands are the grid; the gaps are not part of it.
+    ///
+    /// **An outer line is drawn across a band its rules close** (`ruled-rects-v13`,
+    /// [`closed_by_rules`]): a table open at its sides draws no outer column line, and its rows'
+    /// rules running out to where that line would be are its edge. Here only, where a grid is
+    /// traced whole — [`Self::merged_cells`] says why not there.
     fn first_untraced_line(&self, rects: &[QuantRect]) -> Option<(Axis, usize, usize)> {
         let row_intervals: Vec<(i64, i64)> = self
             .row_bands
@@ -1548,13 +1607,17 @@ impl Lattice {
             .map(|c| (self.xs[*c], self.xs[c + 1]))
             .collect();
 
-        for (axis, lines, want) in [
-            (Axis::Vertical, &self.xs, &row_intervals),
-            (Axis::Horizontal, &self.ys, &col_intervals),
+        for (axis, lines, want, kept) in [
+            (Axis::Vertical, &self.xs, &row_intervals, &self.col_bands),
+            (Axis::Horizontal, &self.ys, &col_intervals, &self.row_bands),
         ] {
             for (index, line) in lines.iter().enumerate() {
+                let outer = index == kept[0] || index == kept[kept.len() - 1] + 1;
                 let mut spans = ink_on(rects, axis, *line);
-                if !want.iter().all(|band| traces(&mut spans, *band)) {
+                if !want.iter().all(|band| {
+                    traces(&mut spans, *band)
+                        || (outer && closed_by_rules(rects, axis, *line, *band))
+                }) {
                     return Some((axis, index, lines.len()));
                 }
             }
@@ -1573,7 +1636,11 @@ impl Lattice {
     ///    [`Self::first_untraced_line`] asks of every line — the outer four, a line beside the
     ///    whitespace between separately drawn cells, a line from ink beyond the grid — and a
     ///    rectangle a fill alone painted white (`white`) draws none of them: a white panel behind
-    ///    a note beneath a boxed passage is no row of it;
+    ///    a note beneath a boxed passage is no row of it. **An outer line its rules close is not
+    ///    drawn here** (`ruled-rects-v13` closes it only for a grid traced whole): a table shaded
+    ///    in bands draws no column line across its shaded rows, and closing its open sides read
+    ///    each shaded row's values as one merged cell — opendataloader-bench `01030000000064`,
+    ///    TEDS 1.00 -> 0.81, for no page gained;
     /// 2. **every interior line is drawn across one band at least**: a line drawn across none is
     ///    ink from elsewhere on the page that happens to fall inside the grid, not a division of
     ///    it;
@@ -1943,7 +2010,7 @@ mod tests {
         assert_eq!(tables.len(), 1);
         let t = &tables[0];
         assert_eq!((t.rows, t.columns), (2, 3));
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V12);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
         assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
@@ -2071,7 +2138,7 @@ mod tests {
             (heading.position.colspan, heading.text.as_str()),
             (3, "Focus area")
         );
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V12);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
     }
 
     #[test]
@@ -2148,13 +2215,90 @@ mod tests {
     }
 
     #[test]
-    fn an_outer_line_with_a_gap_is_not_merged_over() {
-        // The left edge is not drawn across row 1; every interior line is.
+    fn an_outer_line_with_a_gap_its_rules_close_is_drawn() {
+        // The left edge is not drawn across row 1, and the rules above and below that row both run
+        // out to it: the grid is open there, not undrawn (`ruled-rects-v13`).
         let rects = segments(2, 2, |vertical, line, band| {
             !(vertical && line == 0 && band == 1)
         });
         let runs: Vec<RunOrigin> = (0..2)
             .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        let t = &tables[0];
+        assert_eq!((t.rows, t.columns, t.cells.len()), (2, 2, 4));
+        let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "B1", "B2"]);
+    }
+
+    #[test]
+    fn an_outer_line_with_a_gap_no_rule_closes_is_not_merged_over() {
+        // As above, and the rule below row 1 is not drawn across that side's column either: the
+        // corner cell is open on two sides, and neither is closed by a rule that reaches it. The
+        // left corner, then the right, where the rule below row 1 stops a column short.
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        for side in [0, 2] {
+            let rects = segments(2, 2, |vertical, line, band| {
+                let left_out = if vertical {
+                    line == side && band == 1
+                } else {
+                    line == 2 && band == side / 2
+                };
+                !left_out
+            });
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "side {side}: {tables:?}");
+        }
+    }
+
+    #[test]
+    fn a_table_open_at_its_sides_is_a_grid() {
+        // Ruled across its rows and between its columns, never down its sides: a border along the
+        // top and the bottom, each a single rule meeting nothing at its ends, the column rules
+        // ending on them, and the rows' rules drawn cell by cell between the column rules.
+        let mut rects = segments(2, 3, |vertical, line, _| {
+            if vertical {
+                line != 0 && line != 3
+            } else {
+                line == 1
+            }
+        });
+        rects.extend([r(100, 100, 401, 101), r(100, 180, 401, 181), footer()]);
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        // The footer refuses the page's rectangles as one lattice, so the table's own group is
+        // read, decoration and all: `ruled-rects-v12` read both borders as underlines there, and
+        // both sides as undrawn.
+        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        assert!(whole.is_empty() && refused.is_some());
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        let t = &tables[0];
+        assert_eq!((t.rows, t.columns, t.cells.len()), (2, 3, 6));
+        let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+    }
+
+    #[test]
+    fn a_table_open_at_its_sides_is_not_read_through_merged_cells() {
+        // The table above, three rows deep, its middle row shaded in a band that draws no line
+        // between its last two columns, though each holds its own value: closing the sides of a
+        // grid read through merged cells would read that row's two values as one cell.
+        let mut rects = segments(3, 3, |vertical, line, band| {
+            if vertical {
+                line != 0 && line != 3 && !(line == 2 && band == 1)
+            } else {
+                line == 1 || line == 2
+            }
+        });
+        rects.extend([r(100, 100, 401, 101), r(100, 220, 401, 221)]);
+        let runs: Vec<RunOrigin> = (0..3)
+            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
             .collect();
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
@@ -2244,6 +2388,37 @@ mod tests {
         // A rule close above a cell's lower edge, meeting nothing at either end.
         let mut rects = segments(2, 2, |_, _, _| true);
         rects.push(r(110, 137, 160, 138));
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(
+            (tables[0].rows, tables[0].columns, tables[0].cells.len()),
+            (2, 2, 4)
+        );
+    }
+
+    #[test]
+    fn a_rule_ends_on_another_only_part_way_along_it() {
+        // An underline under a word, and a column rule further along ending level with it: the
+        // rule ends on the underline's line, not on the underline, which is still decoration.
+        let underline = r(110, 137, 160, 138);
+        let beyond = r(200, 100, 201, 137);
+        assert!(!without_decoration(vec![underline, beyond], &[]).contains(&underline));
+        // A tick ending on it between its ends keeps it, and is kept by meeting it.
+        let tick = r(130, 100, 131, 137);
+        assert_eq!(
+            without_decoration(vec![underline, tick], &[]),
+            [underline, tick]
+        );
+    }
+
+    #[test]
+    fn an_underline_another_rule_lies_on_is_still_no_line() {
+        // The underline above, struck twice: a shorter rule lying along it ends nowhere on it.
+        let mut rects = segments(2, 2, |_, _, _| true);
+        rects.extend([r(110, 137, 160, 138), r(120, 137, 150, 138)]);
         let runs: Vec<RunOrigin> = (0..2)
             .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
             .collect();

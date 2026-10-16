@@ -187,6 +187,30 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A table open at its sides is a ruled table (`ruled-rects-v13`, decision #70)
+
+`table_detection.ruled` moves `ruled-rects-v12` -> `-v13`, so `profile_sha256` moves.
+`docs/31-TABLE-TRACKS-SCOPE.md` §23 is the rule.
+
+- **An outer line is drawn across a row its rules close.** A table ruled across its rows and
+  between its columns but never down its sides draws no outer column line, and every grid it
+  implied was refused for a line not drawn end to end. Where the rules above and below a row both
+  run out to the side, the grid is open there, not undrawn: no line is supplied, and a row whose
+  rule stops short stays undrawn. Only for a grid traced whole; one read through merged cells keeps
+  its sides as `-v12` asked them.
+- **A rule another rectangle ends on part-way along it is no underline.** Such a table's top and
+  bottom borders meet nothing at their ends, and `-v12` left them out of the grid as decoration
+  though its column rules end on them. Nothing ends on an underline.
+- **Measured** on ParseBench: tables 0.5326 -> 0.5405, 7 pages up and none down (six pages of one
+  catalogue's tables, 0.00-0.63 -> 0.84-0.97); content, formatting, charts and visual
+  grounding unchanged on every page; overall 46.83 -> 46.99. opendataloader-bench and the
+  fabrication check unchanged. The gate documents with their trees stripped gain two real tables,
+  `nist-sp-800-161r1` p53 and its continuation on p54, and lose none.
+- **Found on the way** (the census behind it): a line-based detector run out of tree as an
+  instrument scores higher than ours on 96 of the 503 table pages; taking the better of the two on
+  each page would read 0.611. Of that gap, 0.045 lies on pages whose ruled grid was refused for a
+  line not drawn end to end, 0.023 of it an outer line.
+
 ### A header set further off its table is its header (`whitespace-tracks-v15`, decision #69)
 
 `table_detection.tracks` moves `whitespace-tracks-v14` -> `-v15`, so `profile_sha256` moves.

@@ -708,7 +708,11 @@ impl Capabilities {
             out.push(Limitation::profile(
                 codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
                 "All three table rules report the grid the document DREW, and none of them \
-                 supplies an edge nobody drew. `stroke-ruled-v1` reads rows as the regions \
+                 supplies an edge nobody drew. A table ruled across its rows and between its \
+                 columns but never down its sides is read by `ruled-rects-v13` with its first and \
+                 last columns bounded there only by where its rules stop: an outer line counts as \
+                 drawn across a row whose rules above and below both run out to it, and nowhere \
+                 else. `stroke-ruled-v1` reads rows as the regions \
                  BETWEEN ruling lines, so n baselines bound n-1 rows — and a form ruled \
                  underneath each of its cells never draws the top edge of its first row. Such a \
                  table is emitted ONE ROW SHORT, its remaining rows numbered from zero, rather \
