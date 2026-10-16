@@ -428,12 +428,13 @@ pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) 
 pub fn stroke_ruled_candidate_refused(
     refusals: &[(u32, crate::stroke_ruled::Refusal)],
 ) -> Limitation {
-    let mut detail = String::from(
+    let mut detail = format!(
         "On some pages the ruling lines the document stroked implied a grid and the stroke-ruled \
          rule REFUSED it, so no table was emitted there. This is the difference between `nothing \
          grid-shaped was ruled here` and `a grid was implied and judged incoherent`, and only the \
          second one is reported below. Nothing was repaired or partially emitted: a candidate \
-         either satisfies every precondition of `stroke-ruled-v1` or it produces no table.",
+         either satisfies every precondition of `{}` or it produces no table.",
+        ethos_parser_core::TABLE_DETECTION_STROKE_V2
     );
     let mut kinds: std::collections::BTreeMap<&'static str, (String, Vec<String>)> =
         std::collections::BTreeMap::new();

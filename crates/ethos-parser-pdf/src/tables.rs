@@ -205,7 +205,7 @@ pub struct DetectedTable {
     /// Which rule produced this table (v1-S2).
     ///
     /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V13`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
-    /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
+    /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V2`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
     /// whole reason it is a pinned constant.
@@ -325,6 +325,7 @@ pub fn tagged_not_applicable_check() -> LocatorCheck {
 // -------------------------------------------------------------------------------------------
 
 /// A text run's origin and text, as the detector needs it.
+#[derive(Clone, Copy)]
 pub struct RunOrigin<'a> {
     /// Origin x in page space, quantized.
     pub x: i64,
@@ -912,37 +913,7 @@ fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTa
         .flat_map(|t| t.cells.iter().flat_map(|c| c.run_indices.iter().copied()))
         .collect();
     let tol = crate::blocks::LINE_TOLERANCE;
-    let baselines = |c: &DetectedCell| -> Vec<i64> {
-        let mut ys: Vec<i64> = c
-            .run_indices
-            .iter()
-            .filter(|&&i| !runs[i].text.trim().is_empty())
-            .map(|&i| runs[i].y)
-            .collect();
-        ys.sort_unstable();
-        ys.dedup_by(|a, b| (*a - *b).abs() <= tol);
-        ys
-    };
-    let unruled_rows = |t: &DetectedTable| {
-        (0..t.rows).any(|r| {
-            let lines: Vec<Vec<i64>> = t
-                .cells
-                .iter()
-                .filter(|c| c.position.row == r)
-                .map(baselines)
-                .filter(|l| !l.is_empty())
-                .collect();
-            lines.len() >= 2
-                && lines.iter().all(|l| l.len() >= 3)
-                && lines.windows(2).all(|w| {
-                    let common = w[0]
-                        .iter()
-                        .filter(|y| w[1].iter().any(|z| (*y - z).abs() <= tol))
-                        .count();
-                    5 * common >= 4 * w[0].len().min(w[1].len())
-                })
-        })
-    };
+    let unruled_rows = |t: &DetectedTable| rows_not_ruled(t, runs);
     let wider = |t: &DetectedTable| {
         let w = t.rect.x1 - t.rect.x0;
         let beside = (0..t.rows)
@@ -977,6 +948,43 @@ fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTa
         .filter(|(t, banded)| !banded && !unruled_rows(t) && !wider(t) && !split(t))
         .map(|(t, _)| t)
         .collect()
+}
+
+/// Whether a ruled row of `t` holds rows the page did not rule: every one of its cells holding text
+/// holds three or more lines, on baselines its neighbours share (clause 2 of [`standing`], and
+/// `stroke-ruled-v2`'s for a band ruled by single strokes). A row whose long cells wrap beside a
+/// one-line label is one row.
+pub(crate) fn rows_not_ruled(t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool {
+    let tol = crate::blocks::LINE_TOLERANCE;
+    let baselines = |c: &DetectedCell| -> Vec<i64> {
+        let mut ys: Vec<i64> = c
+            .run_indices
+            .iter()
+            .filter(|&&i| !runs[i].text.trim().is_empty())
+            .map(|&i| runs[i].y)
+            .collect();
+        ys.sort_unstable();
+        ys.dedup_by(|a, b| (*a - *b).abs() <= tol);
+        ys
+    };
+    (0..t.rows).any(|r| {
+        let lines: Vec<Vec<i64>> = t
+            .cells
+            .iter()
+            .filter(|c| c.position.row == r)
+            .map(baselines)
+            .filter(|l| !l.is_empty())
+            .collect();
+        lines.len() >= 2
+            && lines.iter().all(|l| l.len() >= 3)
+            && lines.windows(2).all(|w| {
+                let common = w[0]
+                    .iter()
+                    .filter(|y| w[1].iter().any(|z| (*y - z).abs() <= tol))
+                    .count();
+                5 * common >= 4 * w[0].len().min(w[1].len())
+            })
+    })
 }
 
 /// The page's rectangles as one lattice: its table, or why it was refused. `merges`, the

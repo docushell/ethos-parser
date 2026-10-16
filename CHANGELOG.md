@@ -187,6 +187,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A table ruled in single strokes and divided by vertical ones (`stroke-ruled-v2`, decision #72)
+
+`table_detection.stroke_ruled` moves `stroke-ruled-v1` -> `-v2`, so `profile_sha256` moves.
+`docs/31-TABLE-TRACKS-SCOPE.md` §25 is the rule.
+
+- **A row drawn as one stroke is a rule-row.** A table ruled across its rows in single strokes and
+  divided by vertical ones drew no row of two abutting segments, so `-v1` formed no band and the
+  page reported no candidate at all: `Goldman Sachs 10-k` pages 411, 432 and 433 read no table.
+- **A band's columns are also the vertical strokes run across the whole of it**, strictly between
+  its ends; a stroke crossing only part of the band divides nothing.
+- **A band one of whose rows is a single stroke stands only where** it holds no form field's
+  widget, no ruled row of it holds rows the page did not rule (the ruled rule's own clause, now
+  `tables::rows_not_ruled`), and no line of text set on two or more of its columns, three runs to a
+  column at most, stands within a row's height above or below it. Each refusal is declared under
+  `stroke-ruled-table-candidate-refused`; a refused band moves no table id.
+- **Measured** on ParseBench: tables 0.5444 -> 0.5506, 4 pages up and none down (`Goldman Sachs
+  10-k` p411 and p432 and `Layout with Boxes and text` p1, 0.00 -> 1.00); visual grounding
+  0.5575 -> 0.5577, one page up; content, formatting and charts unchanged on every page; overall
+  47.07 -> 47.20. opendataloader-bench NID 0.8838 -> 0.8849 and TEDS 0.5301 -> 0.5426, one document
+  up each. The trade, taken by the owner: `01030000000182`'s heading score 0.5027 -> 0.5025. The
+  fabrication check and the gate documents' tables unchanged.
+- **Measured and not used**: the band without step 8's clauses (4 pages down, a heads-only ruled
+  table reading its two ruled rows and losing 22), and without the form clause (a W-9's address
+  boxes read as a table on the gate documents). `Goldman Sachs 10-k` p433 stays unread: its two
+  wrapped paragraphs side by side read as rows the page did not rule.
+
 ### A run is placed in a ruled cell where its first glyph stands (decision #71)
 
 Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`

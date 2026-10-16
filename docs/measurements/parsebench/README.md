@@ -881,6 +881,17 @@ pages up and none down; every other dimension unchanged on every page; opendatal
 unchanged. Overall 46.99 -> 47.07. Not used: the whitespace rule's runs placed the same way
 (+0.0005, 4 pages down).
 
+### After rows ruled in single strokes (`stroke-ruled-v2`, decision #72, 2026-10-16)
+
+Three Goldman Sachs 10-K pages draw a table as a box of single full-width strokes divided by
+vertical ones, and `stroke-ruled-v1` formed no band from rows of one segment. Told "Tables: stroked
+rows split by vertical strokes", a row of one stroke is a rule-row, a band's columns are also the
+vertical strokes across it, and such a band is refused where it holds a form widget, unruled rows,
+or rows of text running on past its rules. Tables 0.5444 -> 0.5506, 4 pages up and none down;
+visual grounding 0.5575 -> 0.5577; content, formatting and charts unchanged on every page;
+opendataloader-bench NID and TEDS up on one document each, one heading score 0.5027 -> 0.5025
+(the trade taken). Overall 47.07 -> 47.20.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

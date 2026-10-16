@@ -2389,7 +2389,7 @@ fn a_grid_drawn_as_stroked_ruling_lines_is_a_table() {
     let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
     assert_eq!(tables.len(), 1, "one band, one table: {tables:?}");
     let t = tables[0];
-    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_STROKE_V1);
+    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_STROKE_V2);
 
     // **Five baselines bound FOUR rows.** The page shows five, and the top one's upper edge was
     // never drawn — step 4 does not supply it. This is `undrawn-table-edges-not-supplied` on a

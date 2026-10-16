@@ -227,7 +227,7 @@
         },
         "stroke_ruled": {
           "type": "string",
-          "description": "Version id of the rule that reconstructs grids from stroked ruling lines (v1-S8). `stroke-ruled-v1`. A two-point stroked segment is the author saying `this edge is here`, which is evidence they left rather than an inference this engine made — so it ranks with the ruled rule and above the alignment one. Rows are the regions between rules, so a grid whose top edge was never drawn comes back one row short rather than completed."
+          "description": "Version id of the rule that reconstructs grids from stroked ruling lines (v1-S8). `stroke-ruled-v2`. A two-point stroked segment is the author saying `this edge is here`, which is evidence they left rather than an inference this engine made — so it ranks with the ruled rule and above the alignment one. Rows are the regions between rules, so a grid whose top edge was never drawn comes back one row short rather than completed. Since `stroke-ruled-v2` (decision #72) a row drawn as one stroke is a rule-row, a band's columns are also the vertical strokes run across the whole of it, and a band one of whose rows is a single stroke stands only where it holds no form field's widget, no ruled row of it holds rows the page did not rule, and no row of text runs on within a row's height above or below it."
         },
         "tagged": {
           "type": "string",
@@ -532,7 +532,7 @@
         "charts": "bar-labels-v3",
         "lines": "point-labels-v1",
         "ruled": "ruled-rects-v13",
-        "stroke_ruled": "stroke-ruled-v1",
+        "stroke_ruled": "stroke-ruled-v2",
         "tagged": "tagged-tables-v1",
         "tracks": "whitespace-tracks-v15",
         "unruled": "unruled-align-v1"

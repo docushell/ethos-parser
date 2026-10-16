@@ -1276,7 +1276,7 @@ mod tests {
                 for t in &d.detected.tables {
                     match t.rule.as_str() {
                         ethos_parser_core::TABLE_DETECTION_UNRULED_V1 => unruled_total += 1,
-                        ethos_parser_core::TABLE_DETECTION_STROKE_V1 => stroke_total += 1,
+                        ethos_parser_core::TABLE_DETECTION_STROKE_V2 => stroke_total += 1,
                         _ => ruled_total += 1,
                     }
                 }

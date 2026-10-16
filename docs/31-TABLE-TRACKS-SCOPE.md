@@ -969,3 +969,38 @@ text; the gate documents' 541 tables unchanged cell for cell. Every bound of §4
 and not used**: the whitespace rule's runs placed the same way, their boxes starting at the first
 glyph too (+0.0005, 4 pages down). **Still not read**: the same widened space inside a run
 (`683.0 8.8`, a header's `rage ELR*`), which straddles two cells — 377 such runs on 24 table pages.
+
+## 25. `stroke-ruled-v2`: rows ruled in single strokes (2026-10-16, decision #72)
+
+**What `stroke-ruled-v1` missed.** Of the table pages where we emit nothing and the line-based
+instrument reads a table, `Goldman Sachs 10-k` pages 411, 432 and 433 draw a box of single
+full-width strokes divided by vertical ones. `-v1`'s second step asks each row of rules for two or
+more abutting segments, so no band formed and the page reported no candidate; the rectangle rule
+never reads stroked lines.
+
+**The change.** A row drawn as one stroke is a rule-row. A band's columns are also the vertical
+strokes run across the whole of it, strictly between its ends — a stroke crossing only part of the
+band divides nothing, and a lone underline still bounds one column, under the 2 × 2 floor. And a
+band one of whose rows is a single stroke stands only where:
+
+- **it holds no form field's widget** — a form's boxes are drawn so (a W-9's address boxes read as
+  a table on the gate documents without this clause);
+- **no ruled row of it holds rows the page did not rule** — the ruled rule's own clause, now shared
+  as `tables::rows_not_ruled`: `SERFF_CA_random_pages 1` p513 rules its header and first row and
+  sets twenty-two more below, unruled, and read as a band its second row held all of them;
+- **no line of text set on two or more of its columns, three runs to a column at most, stands
+  within a row's height above or below it** — a table whose rules stop before its rows do, which
+  the whitespace rule reads whole; a paragraph's line drawn glyph by glyph is no such row.
+
+Each is a declared refusal, and a refused band moves no table id.
+
+**Measured**, with the shipped build against `fe62c64`: ParseBench tables **0.5444 → 0.5506**, 4
+pages up and none down (`Goldman Sachs 10-k` p411 and p432 and `Layout with Boxes and text` p1, 0.00
+→ 1.00; `tabular_2` p2 0.12 → 0.22); visual grounding 0.5575 → 0.5577; content, formatting and
+charts unchanged on every page; overall 47.07 → 47.20. opendataloader-bench NID 0.8838 → 0.8849
+and TEDS 0.5301 → 0.5426, one document up each, and `01030000000182`'s heading score 0.5027 →
+0.5025, the trade the owner took; no table on a document without one, every cell its runs' text;
+the gate documents' 541 tables unchanged cell for cell. **Measured and not used**: the band without
+step 8 (4 pages down: heads-only ruled tables reading their ruled rows alone) and without its form
+clause. **Still not read**: `Goldman Sachs 10-k` p433, whose two wrapped paragraphs side by side
+read as rows the page did not rule.

@@ -712,16 +712,17 @@ impl Capabilities {
                  columns but never down its sides is read by `ruled-rects-v13` with its first and \
                  last columns bounded there only by where its rules stop: an outer line counts as \
                  drawn across a row whose rules above and below both run out to it, and nowhere \
-                 else. `stroke-ruled-v1` reads rows as the regions \
+                 else. `stroke-ruled-v2` reads rows as the regions \
                  BETWEEN ruling lines, so n baselines bound n-1 rows — and a form ruled \
                  underneath each of its cells never draws the top edge of its first row. Such a \
                  table is emitted ONE ROW SHORT, its remaining rows numbered from zero, rather \
                  than completed with a coordinate no operator in the file produced: a consumer \
                  comparing this grid against the page must expect the offset rather than read it \
                  as a missing cell. Two narrower misses follow from the same discipline. Rows come \
-                 from HORIZONTAL rules — vertical ink is read only to corroborate that a column \
-                 boundary was drawn — so a grid ruled down its columns and not across its rows \
-                 implies no rows here and is not emitted. And curves are never flattened into \
+                 from HORIZONTAL rules — vertical ink corroborates that a column boundary was \
+                 drawn, and opens one only where it runs across a whole band of ruled rows — so \
+                 a grid ruled down its columns and not across its rows implies no rows here and \
+                 is not emitted. And curves are never flattened into \
                  ruling lines, so a grid drawn with Béziers is missed rather than approximated.",
             ));
         } else {

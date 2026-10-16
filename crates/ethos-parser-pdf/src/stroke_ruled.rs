@@ -33,17 +33,21 @@
 //! 1. **Rule-rows.** Horizontal segments sharing a baseline within
 //!    [`crate::tables::LATTICE_TOLERANCE`] are one rule-row, in x order.
 //!
-//! 2. **A rule-row must TILE.** Its segments must run end to end — at least two of them, each
-//!    starting where the last finished. A lone underline is a lone underline; two underlines with
-//!    a gap between them are two underlines. Only a contiguous run of rules is a row of cells,
-//!    and this is what keeps a page of scattered underlining from implying a grid.
+//! 2. **A rule-row must TILE.** Its segments must run end to end, each starting where the last
+//!    finished. Two underlines with a gap between them are two underlines: only a contiguous run
+//!    of rules is a row of cells. **A row drawn as one stroke tiles too** (`stroke-ruled-v2`,
+//!    decision #72): a table ruled across its rows in single strokes and divided by vertical ones
+//!    draws its cells so, and such a row divides only where vertical ink does (step 3). A lone
+//!    underline still implies no grid — with nothing dividing it, it bounds one column, under
+//!    step 7's floor — and step 8 asks after every band a single stroke rules.
 //!
 //! 3. **A band is consecutive rule-rows that agree about the columns.** The first tiling row sets
 //!    the column lines; a later row joins the band only if **every one of its endpoints is already
 //!    one of them**. It may rule fewer cells than the band has columns — a row with a blank cell
 //!    does — but it may not introduce a boundary the band does not have. Measured: requiring exact
 //!    equality instead split `cfpb-home-loan-toolkit` page 13's worksheet into a 4 × 4 and a 3 × 4
-//!    at the one row whose first cell is blank.
+//!    at the one row whose first cell is blank. Since `stroke-ruled-v2` the band's columns are also
+//!    the vertical strokes run across the whole of it, strictly between its ends.
 //!
 //! 4. **Rows are the regions BETWEEN rules, so nothing is invented.** *n* baselines bound *n − 1*
 //!    rows. A form ruled under each cell does not draw the top edge of its first row, and this
@@ -60,6 +64,13 @@
 //!
 //! 7. **At least 2 × 2**, and a cap at [`crate::tables::MAX_FACES`] — the same two guards, for
 //!    the same reasons, as both other rules.
+//!
+//! 8. **A band one of whose rows is a single stroke stands only where** (`stroke-ruled-v2`) it
+//!    holds no form field's widget — a form's boxes are drawn so; no ruled row of it holds rows
+//!    the page did not rule ([`crate::tables::rows_not_ruled`], the ruled rule's own clause); and
+//!    no line of text set on two or more of its columns, three runs to a column at most, stands
+//!    within a row's height above or below it — a table whose rules stop before its rows do, which
+//!    the whitespace rule reads whole. Each is a declared refusal.
 //!
 //! # Step 5, which is the whole difference from the rule that was parked
 //!
@@ -149,9 +160,10 @@ pub struct Rule {
 
 /// A **vertical** ruling line in page space, quantized (v1-S8).
 ///
-/// Read only as corroboration in step 5. A vertical segment never defines a row and never opens
-/// a column of its own: a column line this rule emits is always an endpoint of a horizontal rule
-/// that tiled, and the verticals only say whether the author agreed it was a boundary.
+/// Read as corroboration in step 5. A vertical segment never defines a row, and opens a column
+/// only where it runs across a whole band strictly between its ends (`stroke-ruled-v2`, step 3);
+/// otherwise a column line this rule emits is an endpoint of a horizontal rule that tiled, and the
+/// verticals only say whether the author agreed it was a boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Upright {
     /// The column line it sits on.
@@ -192,6 +204,22 @@ pub enum Refusal {
         /// Faces implied.
         faces: usize,
     },
+    /// `stroke-ruled-v2`: a band ruled by single strokes holds a form field's widget.
+    FormFieldInBand {
+        /// Faces the band implied.
+        faces: usize,
+    },
+    /// `stroke-ruled-v2`: a ruled row of a band ruled by single strokes holds rows the page did
+    /// not rule.
+    RowsNotRuled {
+        /// Faces the band implied.
+        faces: usize,
+    },
+    /// `stroke-ruled-v2`: the rows of a band ruled by single strokes run on past its rules.
+    RowsRunOn {
+        /// Faces the band implied.
+        faces: usize,
+    },
 }
 
 impl Refusal {
@@ -201,6 +229,9 @@ impl Refusal {
             Self::ColumnLineNotStroked { .. } => "a column line the page never drew",
             Self::FaceIsAFormFieldBox { .. } => "a cell that is a form field's own box",
             Self::BandTooLarge { .. } => "past the cell ceiling",
+            Self::FormFieldInBand { .. } => "a form's boxes ruled by single strokes",
+            Self::RowsNotRuled { .. } => "rows the page did not rule",
+            Self::RowsRunOn { .. } => "rows running on past the rules",
         }
     }
 
@@ -230,6 +261,23 @@ impl Refusal {
                  and no way to say which",
                 crate::tables::MAX_FACES
             ),
+            Self::FormFieldInBand { .. } => String::from(
+                "Rules each drawn as one stroke, divided by vertical strokes, made a grid of boxes \
+                 that holds a form field's widget. A form's boxes are drawn so, and its fields are \
+                 already nodes of their own kind here; read as a table, the boxes would be cells \
+                 the page drew to be filled in, not a table it printed",
+            ),
+            Self::RowsNotRuled { .. } => String::from(
+                "A row the single-stroke rules bound holds, in every one of its cells, three or \
+                 more lines on baselines its neighbours share: those are rows the page did not \
+                 rule, and the grid would read them as one",
+            ),
+            Self::RowsRunOn { .. } => String::from(
+                "A line of text set on two or more of the grid's columns, sparse as a table's row \
+                 is, stands within a row's height above or below the single-stroke rules that bound \
+                 it: the table runs on past where its rules stop, and the grid would read only the \
+                 ruled part of it",
+            ),
         }
     }
 
@@ -243,6 +291,11 @@ impl Refusal {
                 format!("a form field's box is one of {faces} cells")
             }
             Self::BandTooLarge { faces } => format!("{faces} cells implied"),
+            Self::FormFieldInBand { faces } => {
+                format!("a form field's widget lies among {faces} cells")
+            }
+            Self::RowsNotRuled { faces } => format!("a row of {faces} cells holds unruled rows"),
+            Self::RowsRunOn { faces } => format!("{faces} cells, and a row of text past them"),
         }
     }
 }
@@ -276,7 +329,8 @@ pub fn detect(
 ) -> Result<Outcome, EngineError> {
     let mut tables = Vec::new();
     let mut refusal = None;
-    for band in bands(rules) {
+    for mut band in bands(rules) {
+        divide(&mut band, uprights);
         match emit(page, &band, uprights, runs, fields, alloc)? {
             Ok(t) => {
                 if !claimed.iter().any(|c| c.overlaps(t.rect))
@@ -299,6 +353,8 @@ struct Band {
     baselines: Vec<i64>,
     /// Column lines, left to right.
     columns: Vec<i64>,
+    /// `stroke-ruled-v2`: one of its rows is a single stroke, so step 8 asks after it.
+    single: bool,
 }
 
 /// Group the page's rules into candidate bands — steps 1 to 3 of the rule.
@@ -316,10 +372,10 @@ fn bands(rules: &[Rule]) -> Vec<Band> {
         }
     }
 
-    // Step 2. A rule-row tiles when its segments run end to end.
-    let tiles = |row: &Vec<Rule>| -> bool {
-        row.len() >= 2 && row.windows(2).all(|w| (w[1].x0 - w[0].x1).abs() <= tol)
-    };
+    // Step 2. A rule-row tiles when its segments run end to end — and, `stroke-ruled-v2`, a row
+    // drawn as one stroke tiles, to be divided by vertical ink alone ([`divide`]).
+    let tiles =
+        |row: &Vec<Rule>| -> bool { row.windows(2).all(|w| (w[1].x0 - w[0].x1).abs() <= tol) };
     let edges = |row: &Vec<Rule>| -> Vec<i64> {
         let mut v: Vec<i64> = row.iter().flat_map(|r| [r.x0, r.x1]).collect();
         v.sort_unstable();
@@ -350,11 +406,63 @@ fn bands(rules: &[Rule]) -> Vec<Band> {
             out.push(Band {
                 baselines: rows[i..=j].iter().map(|r| r[0].y).collect(),
                 columns,
+                single: rows[i..=j].iter().any(|r| r.len() == 1),
             });
         }
         i = j + 1;
     }
     out
+}
+
+/// `stroke-ruled-v2`, step 3: the band's columns are also the vertical strokes run across the
+/// whole of it, strictly between its ends — the division a row drawn as one stroke leaves to
+/// vertical ink. A stroke that crosses only part of the band divides nothing here.
+fn divide(band: &mut Band, uprights: &[Upright]) {
+    let tol = crate::tables::LATTICE_TOLERANCE;
+    let (top, bottom) = (band.baselines[0], band.baselines[band.baselines.len() - 1]);
+    let (left, right) = (band.columns[0], band.columns[band.columns.len() - 1]);
+    for u in uprights {
+        if u.x > left + tol
+            && u.x < right - tol
+            && !band.columns.iter().any(|c| (c - u.x).abs() <= tol)
+            && column_is_stroked(uprights, u.x, top, bottom)
+        {
+            band.columns.push(u.x);
+        }
+    }
+    band.columns.sort_unstable();
+}
+
+/// `stroke-ruled-v2`, step 8: whether the rows of `t` run on past its rules — a line of text set on
+/// two or more of its columns, with no more runs than three to a column, as a table's row is and a
+/// paragraph's line drawn glyph by glyph is not, within one row's height above or below it.
+fn runs_on(t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool {
+    let tol = crate::blocks::LINE_TOLERANCE;
+    let pitch = (t.rect.y1 - t.rect.y0) / i64::from(t.rows.max(1));
+    let columns: Vec<(i64, i64)> = (0..t.columns)
+        .filter_map(|k| {
+            t.cells
+                .iter()
+                .find(|c| c.position.column == k)
+                .map(|c| (c.rect.x0, c.rect.x1))
+        })
+        .collect();
+    let near: Vec<&RunOrigin<'_>> = runs
+        .iter()
+        .filter(|o| !o.text.trim().is_empty() && o.x >= t.rect.x0 && o.x < t.rect.x1)
+        .filter(|o| {
+            (o.y < t.rect.y0 && t.rect.y0 - o.y <= pitch)
+                || (o.y > t.rect.y1 && o.y - t.rect.y1 <= pitch)
+        })
+        .collect();
+    near.iter().any(|a| {
+        let line: Vec<&&RunOrigin<'_>> = near.iter().filter(|b| (b.y - a.y).abs() <= tol).collect();
+        let set: std::collections::BTreeSet<usize> = line
+            .iter()
+            .filter_map(|o| columns.iter().position(|&(x0, x1)| o.x >= x0 && o.x < x1))
+            .collect();
+        set.len() >= 2 && line.len() <= 3 * columns.len()
+    })
 }
 
 /// Whether the page strokes column line `x` continuously from `y0` down to `y1`.
@@ -450,7 +558,14 @@ fn emit(
         x1: band.columns[columns],
         y1: band.baselines[rows],
     };
-    let id = alloc.next(IdKind::Table)?;
+    // Step 8, `stroke-ruled-v2`: a band ruled by single strokes holding a form field's widget is a
+    // form's boxes.
+    if band.single && fields.iter().any(|f| f.overlaps(rect)) {
+        return Ok(Err(Some(Refusal::FormFieldInBand { faces })));
+    }
+    // The id the table takes if it stands, drawn from a copy until step 8 has spoken, so a band
+    // it refuses moves no id after it.
+    let id = alloc.clone().next(IdKind::Table)?;
     let mut cells = Vec::with_capacity(faces);
     for r in 0..rows {
         for c in 0..columns {
@@ -488,7 +603,7 @@ fn emit(
     }
     let check = cross_check(rect, rows as u32, columns as u32, &cells);
     rect.as_qrect_checked()?;
-    Ok(Ok(DetectedTable {
+    let table = DetectedTable {
         id,
         page,
         rect,
@@ -497,8 +612,18 @@ fn emit(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_STROKE_V1.to_string(),
-    }))
+        rule: ethos_parser_core::TABLE_DETECTION_STROKE_V2.to_string(),
+    };
+    // Step 8, the rest: no ruled row holding rows the page did not rule, and no rows running on
+    // past the rules.
+    if band.single && crate::tables::rows_not_ruled(&table, runs) {
+        return Ok(Err(Some(Refusal::RowsNotRuled { faces })));
+    }
+    if band.single && runs_on(&table, runs) {
+        return Ok(Err(Some(Refusal::RowsRunOn { faces })));
+    }
+    alloc.next(IdKind::Table)?;
+    Ok(Ok(table))
 }
 
 #[cfg(test)]
@@ -581,7 +706,7 @@ mod tests {
         // `codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED` is where that is declared.
         assert_eq!((t.rows, t.columns), (7, 4));
         assert_eq!(t.cells.len(), 28);
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_STROKE_V1);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_STROKE_V2);
         // The blank cell is still emitted, and it is EMPTY rather than filled from a neighbour.
         assert!(t.cells.iter().all(|c| c.text.is_empty()));
     }
@@ -678,6 +803,176 @@ mod tests {
         assert!(out.tables.is_empty(), "the ruled rule wins on overlap");
     }
 
+    /// `stroke-ruled-v2`'s fixture: two rows ruled across in single strokes from x = 100 to 400 at
+    /// y = 100, 140 and 180, the outer sides stroked, and an interior column line at x = 250 run
+    /// over `interior` of the band's height; a run on each cell's baseline.
+    fn single_strokes(interior: (f64, f64)) -> (Vec<Rule>, Vec<Upright>, Vec<RunOrigin<'static>>) {
+        let rules = [100.0, 140.0, 180.0]
+            .map(|y| rule(y, 100.0, 400.0))
+            .to_vec();
+        let uprights = vec![
+            upright(100.0, 100.0, 180.0),
+            upright(250.0, interior.0, interior.1),
+            upright(400.0, 100.0, 180.0),
+        ];
+        let runs = [
+            (110.0, 125.0, "A1"),
+            (260.0, 125.0, "A2"),
+            (110.0, 165.0, "B1"),
+            (260.0, 165.0, "B2"),
+        ]
+        .map(|(x, y, text)| RunOrigin {
+            x: pt(x),
+            y: pt(y),
+            text,
+        })
+        .to_vec();
+        (rules, uprights, runs)
+    }
+
+    /// **A table ruled across its rows in single strokes and divided by vertical ones is a grid**
+    /// (`stroke-ruled-v2`): `-v1`'s tiling step formed no row of it, and the page reported no
+    /// candidate at all.
+    #[test]
+    fn rows_drawn_as_one_stroke_and_divided_by_vertical_ones_are_a_grid() {
+        let (rules, uprights, runs) = single_strokes((100.0, 180.0));
+        let out = detect(1, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
+        assert_eq!(out.tables.len(), 1, "{:?}", out.refusal);
+        let t = &out.tables[0];
+        assert_eq!((t.rows, t.columns), (2, 2));
+        let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "B1", "B2"]);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_STROKE_V2);
+    }
+
+    /// A single stroke nothing divides is no grid, and a vertical stroke crossing only part of the
+    /// band divides nothing: one column each time, under step 7's floor, with nothing to declare.
+    #[test]
+    fn a_single_stroke_divides_only_where_vertical_ink_crosses_the_whole_band() {
+        let (rules, uprights, runs) = single_strokes((100.0, 180.0));
+        let outer: Vec<Upright> = vec![uprights[0], uprights[2]];
+        for (uprights, why) in [
+            (outer, "nothing divides it"),
+            (
+                single_strokes((100.0, 140.0)).1,
+                "the interior stroke crosses one row of two",
+            ),
+        ] {
+            let out = detect(1, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
+            assert!(out.tables.is_empty(), "{why}: {:?}", out.tables);
+            assert_eq!(out.refusal, None, "{why}");
+        }
+    }
+
+    /// **Step 8.** A band ruled by single strokes stands only where no form field's widget lies in
+    /// it, no ruled row of it holds rows the page did not rule, and no row of text runs on past its
+    /// rules — while a paragraph's line drawn glyph by glyph below it does not count as one.
+    #[test]
+    fn a_band_ruled_by_single_strokes_is_asked_three_more_things() {
+        let (rules, uprights, runs) = single_strokes((100.0, 180.0));
+        let widget = vec![face(120.0, 110.0, 200.0, 130.0)];
+        let out = detect(1, &rules, &uprights, &runs, &widget, &[], &mut alloc()).expect("detects");
+        assert!(out.tables.is_empty());
+        assert_eq!(out.refusal, Some(Refusal::FormFieldInBand { faces: 4 }));
+
+        let mut unruled = runs[..2].to_vec();
+        for y in [150.0, 160.0, 170.0] {
+            unruled.push(RunOrigin {
+                x: pt(110.0),
+                y: pt(y),
+                text: "x",
+            });
+            unruled.push(RunOrigin {
+                x: pt(260.0),
+                y: pt(y),
+                text: "y",
+            });
+        }
+        let out = detect(1, &rules, &uprights, &unruled, &[], &[], &mut alloc()).expect("detects");
+        assert!(out.tables.is_empty());
+        assert_eq!(out.refusal, Some(Refusal::RowsNotRuled { faces: 4 }));
+
+        let mut on = runs.clone();
+        on.extend([(110.0, "C1"), (260.0, "C2")].map(|(x, text)| RunOrigin {
+            x: pt(x),
+            y: pt(195.0),
+            text,
+        }));
+        let out = detect(1, &rules, &uprights, &on, &[], &[], &mut alloc()).expect("detects");
+        assert!(out.tables.is_empty());
+        assert_eq!(out.refusal, Some(Refusal::RowsRunOn { faces: 4 }));
+
+        let mut paragraph = runs.clone();
+        paragraph.extend((0..7).map(|k| RunOrigin {
+            x: pt(110.0 + 40.0 * f64::from(k)),
+            y: pt(195.0),
+            text: "w",
+        }));
+        let out =
+            detect(1, &rules, &uprights, &paragraph, &[], &[], &mut alloc()).expect("detects");
+        assert_eq!(
+            out.tables.len(),
+            1,
+            "a paragraph's line is no row of the table"
+        );
+
+        // A caption under one column is no row either, and a row of text further off than a row's
+        // height is not this table's.
+        for (extra, why) in [
+            (vec![(110.0, 195.0, "Source")], "a caption under one column"),
+            (
+                vec![(110.0, 230.0, "C1"), (260.0, 230.0, "C2")],
+                "a row further off than one",
+            ),
+        ] {
+            let mut near = runs.clone();
+            near.extend(extra.into_iter().map(|(x, y, text)| RunOrigin {
+                x: pt(x),
+                y: pt(y),
+                text,
+            }));
+            let out = detect(1, &rules, &uprights, &near, &[], &[], &mut alloc()).expect("detects");
+            assert_eq!(out.tables.len(), 1, "{why}");
+        }
+    }
+
+    /// Step 8 asks only after a band a single stroke rules: the worksheet, tiled cell by cell,
+    /// stands with a row of text set on its columns just below it.
+    #[test]
+    fn a_band_its_rows_tile_is_not_asked_step_8() {
+        let (rules, uprights) = page_13();
+        let below = [
+            (60.0, 680.0, "Total"),
+            (220.0, 680.0, "12"),
+            (330.0, 680.0, "34"),
+        ]
+        .map(|(x, y, text)| RunOrigin {
+            x: pt(x),
+            y: pt(y),
+            text,
+        });
+        let out = detect(13, &rules, &uprights, &below, &[], &[], &mut alloc()).expect("detects");
+        assert_eq!(out.tables.len(), 1, "{:?}", out.refusal);
+    }
+
+    /// A band step 8 refuses moves no id: the next band's table is numbered as if it were alone.
+    #[test]
+    fn a_band_step_8_refuses_moves_no_table_id() {
+        let (mut rules, mut uprights, mut runs) = single_strokes((100.0, 180.0));
+        runs.extend([(110.0, "C1"), (260.0, "C2")].map(|(x, text)| RunOrigin {
+            x: pt(x),
+            y: pt(195.0),
+            text,
+        }));
+        // A second table further down, ruled to other ends, so it is a band of its own.
+        rules.extend([300.0, 340.0, 380.0].map(|y| rule(y, 100.0, 500.0)));
+        uprights.extend([100.0, 300.0, 500.0].map(|x| upright(x, 300.0, 380.0)));
+        let out = detect(1, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
+        assert_eq!(out.tables.len(), 1);
+        assert_eq!(out.refusal, Some(Refusal::RowsRunOn { faces: 4 }));
+        assert_eq!(out.tables[0].id, alloc().next(IdKind::Table).unwrap());
+    }
+
     /// Every refusal explains itself, and none of them scores anything.
     #[test]
     fn every_refusal_explains_itself_without_scoring_anything() {
@@ -688,6 +983,9 @@ mod tests {
             },
             Refusal::FaceIsAFormFieldBox { faces: 20 },
             Refusal::BandTooLarge { faces: 99_999 },
+            Refusal::FormFieldInBand { faces: 4 },
+            Refusal::RowsNotRuled { faces: 4 },
+            Refusal::RowsRunOn { faces: 4 },
         ] {
             assert!(!r.kind().is_empty());
             assert!(!r.explanation().is_empty());
