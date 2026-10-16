@@ -51,6 +51,10 @@
 //! 5. **Text is assigned by origin**, never by ink-box intersection. A run's native locator is
 //!    exact; its ink box is measured or absent, and intersecting an absent box would be inventing
 //!    one. A run whose origin falls in no cell stays where it is — it is still an Extracted node.
+//!    Since `ruled-rects-v13` (decision #71) the origin is its first inked character's: the
+//!    locator's origin moved past the run's leading whitespace by the pen's own advances, so a word
+//!    a page set apart by widening the space before it is placed where its ink is. The locator
+//!    itself is untouched.
 //! 6. **Where the page's rectangles as one lattice are refused, each group of them that touch is a
 //!    candidate of its own** (`ruled-rects-v8`, [`detect_ruled`]): a footer's rule or a logo's box
 //!    across the page no longer refuses a grid drawn whole. A group's grid stands only where it is
@@ -360,6 +364,10 @@ pub struct RunOrigin<'a> {
 /// Unruled detection runs only on runs whose origins fall **outside** every accepted ruled and
 /// stroke-ruled table, so a table's own text can never also seed an alignment lattice.
 ///
+/// **`glyphs` are `runs` where their first inked character stands** (`ruled-rects-v13`, decision
+/// #71), one for one and in the same order, and the ruled rule alone places runs by them: a word a
+/// page set apart by widening the space before it has its origin in the column before its ink.
+///
 /// # Errors
 ///
 /// [`EngineError::Malformed`] if a rectangle will not quantize into a well-formed box.
@@ -372,11 +380,13 @@ pub fn detect(
     rules: &[crate::stroke_ruled::Rule],
     uprights: &[crate::stroke_ruled::Upright],
     runs: &[RunOrigin<'_>],
+    glyphs: &[RunOrigin<'_>],
     fields: &[QuantRect],
     alloc: &mut IdAllocator,
 ) -> Result<Detected, EngineError> {
+    debug_assert_eq!(runs.len(), glyphs.len(), "one glyph position per run");
     let (mut tables, ruled_refusal) =
-        detect_ruled_with(page, rects, white, decoration, runs, alloc)?;
+        detect_ruled_with(page, rects, white, decoration, glyphs, alloc)?;
 
     // v1-S8. The rule on the ruling LINES the page stroked, on regions the ruled rule did not
     // already claim.

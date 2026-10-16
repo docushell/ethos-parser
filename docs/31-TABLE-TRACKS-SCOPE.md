@@ -944,3 +944,28 @@ ink beyond the table on its side (`FBLB-134215544` p115); a merged first column 
 (`sizingchart` p1, p2); a grid accepted through its merges and then refused for a column holding no
 letter or digit (13 pages, 0.005); grids the instrument reads better that `-v13` reads only in part
 (136 pages, 0.016).
+
+## 24. A run placed by its first glyph (2026-10-16, decision #71)
+
+**What `ruled-rects-v13` still misread.** Of the ruled tables accepted after §23 that the line-based
+instrument reads better, several had our shape and half the score, their text one cell off: a page
+that sets a word apart by widening the space before it (`Tw`) draws ` None` from where the figure
+before it ended, so the run's origin lies in the column before and its ink in its own, and
+`SERFF_CA_random_pages 1` p1800 read `12/31/2008 Non` | `e` where the truth reads `12/31/2008` |
+`None`.
+
+**The change**, folded into `ruled-rects-v13` before any release carried it: the ruled rule places a
+run by its first inked character — its origin moved past its leading whitespace by the pen's own
+advances, where the run's travel runs forward along the page's x (as decision #61 reads it) and
+its codes are its characters one for one; by its origin otherwise. The run's locator is untouched,
+and the stroke-ruled and alignment rules read origins as before: none of the pages gained holds
+their tables.
+
+**Measured**, with the shipped build against `4feeb99`: ParseBench tables **0.5405 → 0.5444**,
+9 pages up and none down (`SERFF_CA_random_pages 1` p1800 0.35 → 1.00, `DS5795A-06` p13 0.35 →
+0.85); content, formatting, charts and visual grounding unchanged on every page; overall 46.99 →
+47.07. opendataloader-bench unchanged, no table on a document without one, every cell its runs'
+text; the gate documents' 541 tables unchanged cell for cell. Every bound of §4 holds. **Measured
+and not used**: the whitespace rule's runs placed the same way, their boxes starting at the first
+glyph too (+0.0005, 4 pages down). **Still not read**: the same widened space inside a run
+(`683.0 8.8`, a header's `rage ELR*`), which straddles two cells — 377 such runs on 24 table pages.

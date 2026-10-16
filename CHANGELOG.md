@@ -187,6 +187,26 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A run is placed in a ruled cell where its first glyph stands (decision #71)
+
+Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`
+moves. `docs/31-TABLE-TRACKS-SCOPE.md` §24 is the rule.
+
+- **The ruled rule places a run by its first inked character**: its origin moved past its leading
+  whitespace by the pen's own advances, where its travel runs forward along the page's x and its
+  codes are its characters one for one. A page that sets a word apart by widening the space before
+  it (`Tw`) draws ` None` from where the figure before it ended — its origin in the column before,
+  its ink in its own — and the two values read as one cell. The run's locator is untouched, and
+  the stroke-ruled and alignment rules read origins as before.
+- **Measured** on ParseBench: tables 0.5405 -> 0.5444, 9 pages up and none down
+  (`SERFF_CA_random_pages 1` p1800 0.35 -> 1.00, `DS5795A-06` p13 0.35 -> 0.85); content,
+  formatting, charts and visual grounding unchanged on every page; overall 46.99 -> 47.07.
+  opendataloader-bench, the fabrication check and the gate documents' tables cell for cell
+  unchanged.
+- **Found on the way**: the same widened space inside a run (`683.0 8.8`, a header's `rage ELR*`)
+  straddles two cells, which placement cannot mend: 377 such runs on 24 table pages. Placing the
+  whitespace rule's runs the same way was measured and not used (+0.0005, 4 pages down).
+
 ### A table open at its sides is a ruled table (`ruled-rects-v13`, decision #70)
 
 `table_detection.ruled` moves `ruled-rects-v12` -> `-v13`, so `profile_sha256` moves.

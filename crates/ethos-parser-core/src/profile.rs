@@ -626,12 +626,19 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// - **A rule another rectangle ends on part-way along it is no underline**: such a table's top and
 ///   bottom borders meet nothing at their ends, and [`TABLE_DETECTION_V12`] left them out of the
 ///   group as decoration, though its column rules end on them. Nothing ends on an underline.
+/// - **A run is placed by its first inked character** (decision #71, folded in before any release
+///   carried this id): its origin moved past its leading whitespace by the pen's own advances,
+///   where its travel runs forward along the page's x and its codes are its characters one for
+///   one. A page that sets a word apart by widening the space before it (`Tw`) draws ` None` from
+///   where the figure before it ended, its origin in the column before and its ink in its own.
 ///
 /// # Measured
 ///
 /// ParseBench tables 0.5326 -> 0.5405, seven pages up and none down; content, formatting, charts
 /// and visual grounding unchanged on every page. opendataloader-bench and the fabrication check
 /// unchanged; the gate documents with their trees stripped gain two real tables and lose none.
+/// With decision #71's placement, tables 0.5405 -> 0.5444, nine pages up and none down, and
+/// nothing else moves.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

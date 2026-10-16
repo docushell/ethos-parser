@@ -304,6 +304,49 @@ fn trailing_whitespace_advance(
     (trailing > 0 && trailing < per.len()).then(|| per[per.len() - trailing..].iter().sum())
 }
 
+/// Decision #61: a run's travel along the page's x, where it runs forward along that axis — across
+/// it by less than the artifact can express; `None` otherwise.
+fn travel_along_x(geom: &PageGeometry, displacement: Option<(f64, f64)>) -> Option<f64> {
+    displacement
+        .map(|(dx, dy)| geom.to_top_left_linear(dx, dy))
+        .filter(|&(along, across)| along > 0.0 && across.abs() < crate::content::COORD_EPSILON)
+        .map(|(along, _)| along)
+}
+
+/// The advance of a run's leading whitespace, in the units of `per_code`, on the terms of
+/// [`trailing_whitespace_advance`]; `None` where the run does not open with whitespace, is
+/// whitespace alone, or cannot be read so.
+fn leading_whitespace_advance(text: &str, per_code: Option<&[f64]>, inserted: bool) -> Option<f64> {
+    let per = per_code?;
+    if inserted || per.len() != text.chars().count() {
+        return None;
+    }
+    let leading = text.chars().take_while(|c| c.is_whitespace()).count();
+    (leading > 0 && leading < per.len()).then(|| per[..leading].iter().sum())
+}
+
+/// `ruled-rects-v13` (decision #71): where a run's first inked character stands, for the ruled
+/// rule to place it by — its origin moved past its leading whitespace by the pen's own advances,
+/// for a run whose travel runs forward along the page's x (`along_x`, as decision #61 reads it)
+/// and whose codes are its characters one for one; its origin otherwise.
+///
+/// A page that sets a word apart by widening the space before it (`Tw`) draws ` None` from where
+/// the figure before it ended: its origin lies in the column before, and its ink in its own.
+fn first_glyph_x(
+    origin_x: i64,
+    along_x: bool,
+    text: &str,
+    per_code: Option<&[f64]>,
+    inserted: bool,
+) -> i64 {
+    if !along_x {
+        return origin_x;
+    }
+    leading_whitespace_advance(text, per_code, inserted)
+        .and_then(|a| quantize(a, QUANTUM_PER_POINT).ok())
+        .map_or(origin_x, |a| origin_x + a)
+}
+
 type HeadingLines = Vec<(Vec<usize>, crate::headings::Line)>;
 
 /// How much heavier than its page's body a run's weight class must be for the heading rule to read
@@ -609,6 +652,8 @@ fn extract_page(
     // `whitespace-tracks-v5`: where each run's last inked character ends, beside `ems` and aligned
     // with `runs` as it is, until the tracks pass reads it. Never on a `TextRun`.
     let mut ink_ends: Vec<Option<i64>> = Vec::new();
+    // `ruled-rects-v13` (decision #71): where each run's first inked character stands.
+    let mut glyph_starts: Vec<i64> = Vec::new();
     // Decision #54: how many characters each of a run's codes decoded to, aligned with `runs` in
     // content order until the right-to-left rule reads it, before `reorder_page`. Never on a
     // `TextRun`.
@@ -718,13 +763,7 @@ fn extract_page(
             // reads the advance read its line one glyph apart. Upright text on an unturned page is
             // the same number bit for bit; a travel off the x axis, or backward along it, keeps
             // the text matrix's length.
-            let travel = shown
-                .displacement
-                .map(|(dx, dy)| geom.to_top_left_linear(dx, dy))
-                .filter(|&(along, across)| {
-                    along > 0.0 && across.abs() < crate::content::COORD_EPSILON
-                })
-                .map(|(along, _)| along);
+            let travel = travel_along_x(&geom, shown.displacement);
             let advance = travel
                 .or(shown.advance)
                 .map(|a| quantize(a, QUANTUM_PER_POINT))
@@ -828,6 +867,13 @@ fn extract_page(
             // trailing whitespace: a space drawn with a wide advance carried `3 ` across the gap
             // to the next column, and three cells read as one. Where the run is upright and its
             // codes are its characters one for one, the end of its last inked character.
+            glyph_starts.push(first_glyph_x(
+                origin_x,
+                travel.is_some(),
+                &shown.text,
+                shown.code_advances.as_deref(),
+                !shown.synthesized_indices.is_empty(),
+            ));
             ink_ends.push(match geometry {
                 ethos_parser_core::GeometryPresence::Measured(b)
                     if (b.x0() - origin_x).abs() <= crate::tracks::UPRIGHT_TOLERANCE =>
@@ -985,6 +1031,17 @@ fn extract_page(
                 text: r.text.as_str(),
             })
             .collect();
+        // `ruled-rects-v13` (decision #71): the same runs where their first inked character
+        // stands, for the ruled rule alone to place them by.
+        let glyphs: Vec<crate::tables::RunOrigin<'_>> = runs
+            .iter()
+            .zip(&glyph_starts)
+            .map(|(r, &x)| crate::tables::RunOrigin {
+                x,
+                y: r.locator.origin_y,
+                text: r.text.as_str(),
+            })
+            .collect();
         // v1-S8. The ruling LINES the page stroked, split by orientation before the rule sees
         // them. Both go through the same transform and quantum as a glyph origin, for the reason
         // the rectangles do: geometry in a different coordinate system from the text inside it
@@ -1042,6 +1099,7 @@ fn extract_page(
             &stroke_rules,
             &uprights,
             &origins,
+            &glyphs,
             &field_rects,
             &mut alloc,
         )?;
@@ -2518,7 +2576,7 @@ pub(crate) fn per_page_table_diagnostics(
 
         // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
         // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
-        let mut owned: Vec<(i64, i64, String)> = Vec::with_capacity(interp.shown.len());
+        let mut owned: Vec<(i64, i64, i64, String)> = Vec::with_capacity(interp.shown.len());
         for shown in &interp.shown {
             if shown.text.is_empty() {
                 continue;
@@ -2526,11 +2584,26 @@ pub(crate) fn per_page_table_diagnostics(
             let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
             let origin_x = quantize(ox_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
             let origin_y = quantize(oy_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
-            owned.push((origin_x, origin_y, shown.text.clone()));
+            let glyph_x = first_glyph_x(
+                origin_x,
+                travel_along_x(&geom, shown.displacement).is_some(),
+                &shown.text,
+                shown.code_advances.as_deref(),
+                !shown.synthesized_indices.is_empty(),
+            );
+            owned.push((origin_x, origin_y, glyph_x, shown.text.clone()));
         }
         let origins: Vec<crate::tables::RunOrigin<'_>> = owned
             .iter()
-            .map(|(x, y, t)| crate::tables::RunOrigin {
+            .map(|(x, y, _, t)| crate::tables::RunOrigin {
+                x: *x,
+                y: *y,
+                text: t.as_str(),
+            })
+            .collect();
+        let glyphs: Vec<crate::tables::RunOrigin<'_>> = owned
+            .iter()
+            .map(|(_, y, x, t)| crate::tables::RunOrigin {
                 x: *x,
                 y: *y,
                 text: t.as_str(),
@@ -2602,6 +2675,7 @@ pub(crate) fn per_page_table_diagnostics(
             &stroke_rules,
             &uprights,
             &origins,
+            &glyphs,
             &field_rects,
             &mut alloc,
         )?;
@@ -3347,6 +3421,79 @@ mod tests {
             None,
             "no widths"
         );
+    }
+
+    /// **A run's leading whitespace is its first codes' advance** — the widened space a page draws
+    /// ` None` after — and nothing where the run opens inked, is whitespace alone, or its codes and
+    /// characters do not pair one for one.
+    #[test]
+    fn leading_whitespace_is_the_first_codes_advance() {
+        assert_eq!(
+            leading_whitespace_advance(" None", Some(&[182.8, 7.2, 5.6, 5.6, 5.6]), false),
+            Some(182.8)
+        );
+        assert_eq!(
+            leading_whitespace_advance("  $1", Some(&[2.5, 2.5, 5.0, 5.0]), false),
+            Some(5.0)
+        );
+        for (text, per, inserted, why) in [
+            (
+                "None ",
+                &[7.2, 5.6, 5.6, 5.6, 2.8][..],
+                false,
+                "no leading whitespace",
+            ),
+            ("  ", &[3.0, 3.0][..], false, "whitespace alone"),
+            (
+                " fi",
+                &[3.0, 5.0][..],
+                false,
+                "a ligature: two characters, one code",
+            ),
+            (
+                " ab",
+                &[3.0, 1.0, 5.0, 5.0][..],
+                false,
+                "a code that decoded to no character",
+            ),
+            (
+                " None",
+                &[182.8, 7.2, 5.6, 5.6, 5.6][..],
+                true,
+                "a space this reader inserted",
+            ),
+        ] {
+            assert_eq!(
+                leading_whitespace_advance(text, Some(per), inserted),
+                None,
+                "{why}"
+            );
+        }
+        assert_eq!(
+            leading_whitespace_advance(" 3", None, false),
+            None,
+            "no widths"
+        );
+    }
+
+    /// **The ruled rule's position is a run's first inked character where its pen runs along the
+    /// page's x**, and its origin wherever it does not or no leading whitespace can be read.
+    #[test]
+    fn a_run_is_placed_by_its_first_glyph_only_along_x() {
+        let per = [182.8, 7.2, 5.6, 5.6, 5.6];
+        assert_eq!(
+            first_glyph_x(13224, true, " None", Some(&per), false),
+            31504
+        );
+        assert_eq!(
+            first_glyph_x(13224, false, " None", Some(&per), false),
+            13224
+        );
+        assert_eq!(
+            first_glyph_x(13224, true, "None", Some(&per[1..]), false),
+            13224
+        );
+        assert_eq!(first_glyph_x(13224, true, " None", None, false), 13224);
     }
 
     #[test]

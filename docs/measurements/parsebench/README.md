@@ -870,6 +870,17 @@ opendataloader-bench unchanged. Overall 46.83 -> 46.99. Not used: closing the si
 through merged cells as well (no page more, opendataloader-bench `01030000000064` TEDS 1.00 ->
 0.81), and the grid's bounding box as its sides (0.5398, 6 pages up and 5 down).
 
+### After a run placed by its first glyph (decision #71, 2026-10-16)
+
+Among the ruled tables accepted after #70 that the out-of-tree line-based finder reads better,
+several had our shape and half the score: a page that widens the space before a word (`Tw`) draws
+` None` from where the figure before it ended, its origin in the column before its ink. Told
+"Tables: place a run by its first glyph", the ruled rule places a run by its first inked
+character, from the pen's own advances; folded into `ruled-rects-v13`. Tables 0.5405 -> 0.5444, 9
+pages up and none down; every other dimension unchanged on every page; opendataloader-bench
+unchanged. Overall 46.99 -> 47.07. Not used: the whitespace rule's runs placed the same way
+(+0.0005, 4 pages down).
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

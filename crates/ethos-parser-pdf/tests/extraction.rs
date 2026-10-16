@@ -7707,3 +7707,47 @@ fn an_outline_title_is_read_through_pdfdoc_encoding_or_absent_and_counted() {
         declared[0].detail
     );
 }
+
+/// **A run is placed in a ruled cell by its first inked character** (`ruled-rects-v13`, decision
+/// #71), end to end. A two-by-two grid ruled on a letter page, its second row's figure `2008` and,
+/// under a word spacing that widens the space before it, ` None`: the run's origin is where `2008`
+/// ended, in the first column, and its ink in the second. Placed by its origin, both values read
+/// as one cell; by its first glyph, each is its own. Under a narrower spacing that leaves `N` in
+/// the first column and carries only the word's end across, it stays there. The run's locator is
+/// the pen's either way.
+#[test]
+fn a_run_is_placed_in_a_ruled_cell_where_its_first_glyph_stands() {
+    let grid = "0 g 100 600 400.5 0.5 re f 100 640 400.5 0.5 re f 100 680 400.5 0.5 re f \
+                100 600 0.5 80.5 re f 300 600 0.5 80.5 re f 500 600 0.5 80.5 re f \
+                BT /F1 10 Tf 110 660 Td (Year) Tj ET BT /F1 10 Tf 310 660 Td (Fee) Tj ET";
+    let cells = |tw: u32| -> (Vec<String>, i64) {
+        let a = helvetica_letter_page(&format!(
+            "{grid} BT /F1 10 Tf {tw} Tw 110 620 Td (2008) Tj ( None) Tj ET"
+        ));
+        let tables = &a.pages[0].tables;
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        let t = &tables[0];
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+        assert_eq!((t.rows, t.columns), (2, 2));
+        let mut cells: Vec<_> = t.cells.iter().collect();
+        cells.sort_by_key(|c| (c.position.row, c.position.column));
+        let none = runs(&a)
+            .into_iter()
+            .find(|r| r.text == " None")
+            .expect("the run is drawn");
+        (
+            cells.iter().map(|c| c.text.clone()).collect(),
+            none.locator.origin_x,
+        )
+    };
+    // `N` stands at 315pt: the run's ink is in the second column.
+    let (wide, origin) = cells(180);
+    assert_eq!(wide, ["Year", "Fee", "2008", " None"]);
+    assert!(
+        origin < 30000,
+        "the origin stays where the pen was: {origin}"
+    );
+    // `N` stands at 285pt, the word's end past 300: the run's first glyph is in the first.
+    let (narrow, _) = cells(150);
+    assert_eq!(narrow, ["Year", "Fee", "2008 None", ""]);
+}
