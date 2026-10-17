@@ -30,7 +30,9 @@
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
 //!    edges. Edges within [`LATTICE_TOLERANCE`] of each other are one lattice line. This is what
 //!    lets a grid drawn as thin *stroked line* rectangles and a grid drawn as filled *cell*
-//!    rectangles produce the same lattice.
+//!    rectangles produce the same lattice. Since `ruled-rects-v13` (decision #75) a rule drawn
+//!    thicker than that, up to three points, is first read as the one line along its middle
+//!    ([`one_line`]): its two edges no longer bound a sliver of a column nothing else draws.
 //! 2. **Faces are candidate cells.** `n` x-lines and `m` y-lines make `(n-1) × (m-1)` faces.
 //!    **Fewer than two faces is not a grid** — a lone rectangle is an underline or a border, and
 //!    calling it a 1×1 table would find one on most pages in existence.
@@ -49,7 +51,8 @@
 //!    is a merged cell; one covering *every* face is the table's outer border, not a cell. **A grid
 //!    accepted by its traced lines instead** (see [`Lattice::build`]) drew no rectangle over a
 //!    face, so its cells are its faces, one each — tracing admits no merged cell, since a merged
-//!    cell breaks the line it spans (`ruled-rects-v7`).
+//!    cell breaks the line it spans (`ruled-rects-v7`). **A grid no cell of which is narrower
+//!    than it has no columns**, and is no candidate (`ruled-rects-v13`, decision #75).
 //! 5. **Text is assigned by origin**, never by ink-box intersection. A run's native locator is
 //!    exact; its ink box is measured or absent, and intersecting an absent box would be inventing
 //!    one. A run whose origin falls in no cell stays where it is — it is still an Extracted node.
@@ -755,6 +758,9 @@ pub fn detect_ruled_with(
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
+    // `ruled-rects-v13` (decision #75): a rule drawn up to three points thick is one line.
+    let rects: Vec<QuantRect> = rects.iter().map(one_line).collect();
+    let rects = &rects[..];
     let (tables, refusal) = ruled_grid(page, rects, runs, alloc, None)?;
     if !tables.is_empty() || refusal.is_none() || rects.len() > MAX_GROUPED_RECTS {
         return Ok((tables, refusal));
@@ -786,6 +792,26 @@ pub fn detect_ruled_with(
         }
     }
     Ok((grids, first))
+}
+
+/// The thickest rule [`one_line`] reads as one line, in centipoints: three points.
+const THICK_RULE: i64 = 300;
+
+/// `ruled-rects-v13` (decision #75): a rectangle thin on one axis — past [`LATTICE_TOLERANCE`], up
+/// to [`THICK_RULE`] — and longer than that on the other is a rule, read as the one line along its
+/// middle. Its two edges stand further apart than one lattice line folds, so as two lines it
+/// bounded a sliver of a column or row that nothing else draws, and the grid was refused for it.
+fn one_line(r: &QuantRect) -> QuantRect {
+    let (w, h) = (r.x1 - r.x0, r.y1 - r.y0);
+    if w > LATTICE_TOLERANCE && w <= THICK_RULE && h > THICK_RULE {
+        let m = (r.x0 + r.x1) / 2;
+        QuantRect { x0: m, x1: m, ..*r }
+    } else if h > LATTICE_TOLERANCE && h <= THICK_RULE && w > THICK_RULE {
+        let m = (r.y0 + r.y1) / 2;
+        QuantRect { y0: m, y1: m, ..*r }
+    } else {
+        *r
+    }
 }
 
 /// `ruled-rects-v12`: a group's rectangles without what decorates a grid rather than rules it — a
@@ -980,9 +1006,11 @@ fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTa
 }
 
 /// Whether a ruled row of `t` holds rows the page did not rule: every one of its cells holding text
-/// holds three or more lines, on baselines its neighbours share (clause 2 of [`standing`], and
-/// `stroke-ruled-v2`'s for a band ruled by single strokes). A row whose long cells wrap beside a
-/// one-line label is one row.
+/// holds three or more lines, and neighbouring cells share three baselines or more (clause 2 of
+/// [`standing`], and `stroke-ruled-v2`'s for a band ruled by single strokes). A row whose long cells
+/// wrap beside a one-line label is one row. `ruled-rects-v13` (decision #75) asks three shared
+/// baselines where it asked four in five of the fewer cell's: rows the page left empty in one
+/// column kept a ruled header's unruled rows below it as one row.
 pub(crate) fn rows_not_ruled(t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool {
     let tol = crate::blocks::LINE_TOLERANCE;
     let baselines = |c: &DetectedCell| -> Vec<i64> {
@@ -1011,7 +1039,7 @@ pub(crate) fn rows_not_ruled(t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool 
                     .iter()
                     .filter(|y| w[1].iter().any(|z| (*y - z).abs() <= tol))
                     .count();
-                5 * common >= 4 * w[0].len().min(w[1].len())
+                common >= 3
             })
     })
 }
@@ -1277,6 +1305,15 @@ fn ruled_grid(
         })
         .collect();
 
+    // `ruled-rects-v13` (decision #75): **a grid no cell of which is narrower than it has no
+    // columns** — its rows read as one cell each, across lines that bound no cell of their own.
+    // No candidate, as `Lattice::divided_on_both_axes` decides for a stack it never divided.
+    if detected
+        .iter()
+        .all(|c| c.position.colspan == lattice.columns())
+    {
+        return Ok((Vec::new(), None));
+    }
     let check = cross_check(table_rect, lattice.rows(), lattice.columns(), &detected);
 
     // **v2-S20: the structural half of the check is acted on.** Until this slice the cross-check
@@ -2526,6 +2563,82 @@ mod tests {
             runs.extend(above);
             header_above(&mut t, &runs);
             assert_eq!(t.rows, 2, "{what}");
+        }
+    }
+
+    /// `ruled-rects-v13` (decision #75): a grid drawn in rules two and a half points thick reads as
+    /// the grid its rules' middles draw, not as the slivers between each rule's two edges.
+    #[test]
+    fn a_grid_drawn_in_thick_rules_is_read_as_its_lines() {
+        let (_, runs) = grid(100, 100, 2, 3, label);
+        let thick = |x0: i64, y0: i64, x1: i64, y1: i64| QuantRect {
+            x0: pt(x0),
+            y0: pt(y0),
+            x1: pt(x1) + 250,
+            y1: pt(y1) + 250,
+        };
+        let mut rects: Vec<QuantRect> = (0..=3)
+            .map(|c| thick(100 + 100 * c, 100, 100 + 100 * c, 180))
+            .collect();
+        rects.extend((0..=2).map(|row| thick(100, 100 + 40 * row, 400, 100 + 40 * row)));
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{refused:?}");
+        let texts: Vec<&str> = tables[0].cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
+    }
+
+    /// A grid every cell of which spans its columns — rows read as one box each, across rules that
+    /// bound no cell of their own — has no columns, and is no table.
+    #[test]
+    fn a_grid_whose_every_cell_spans_its_columns_is_no_table() {
+        let rects = vec![
+            r(100, 100, 400, 140),
+            r(100, 140, 400, 180),
+            r(200, 100, 201, 180),
+            r(300, 100, 301, 180),
+        ];
+        let runs = vec![
+            RunOrigin {
+                x: pt(105),
+                y: pt(125),
+                text: "a",
+            },
+            RunOrigin {
+                x: pt(105),
+                y: pt(165),
+                text: "b",
+            },
+        ];
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+        assert!(refused.is_none(), "{refused:?}");
+    }
+
+    /// Cells of a ruled row sharing three baselines or more hold rows the page did not rule; two
+    /// shared lines are a row whose cells wrap.
+    #[test]
+    fn three_shared_baselines_are_rows_the_page_did_not_rule() {
+        for (left, right, stands) in [
+            ([150, 157, 172], [150, 157, 177], false),
+            ([150, 172, 175], [150, 157, 177], true),
+        ] {
+            let (mut rects, mut runs) = grid(100, 100, 2, 2, label);
+            rects.push(footer());
+            for (col, ys) in [(0, left), (1, right)] {
+                for y in ys {
+                    runs.push(RunOrigin {
+                        x: pt(105 + 100 * col),
+                        y: pt(y),
+                        text: "x",
+                    });
+                }
+            }
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert_eq!(
+                tables.len(),
+                usize::from(stands),
+                "{left:?} beside {right:?}"
+            );
         }
     }
 

@@ -1076,3 +1076,36 @@ every page; overall 47.30 → 47.39. opendataloader-bench NID 0.8874 → 0.8876 
 0.5827, two documents up each and none down; one heading score up; no table on a document without
 one, every cell its runs' text; the gate documents' 541 tables unchanged cell for cell. **Not
 read**: stroke-ruled tables' headers (one page, +0.01, left out).
+
+## 28. A rule drawn up to three points thick (2026-10-17, decision #75)
+
+**What `ruled-rects-v13` missed.** A rule thicker than `LATTICE_TOLERANCE`'s point and a half
+has two edges that do not fold into one lattice line, so between them it bounded a sliver of a
+column or row that nothing else draws, and the grid was refused for it — or split.
+`SERFF_CA_random_pages 1` p2747 and p965 draw their tables in two-point rules.
+
+**The change.** Three clauses, each its own:
+
+- **A rectangle thin on one axis, past the tolerance and up to three points, and longer on the
+  other is a rule, read as the one line along its middle** (`tables::one_line`, before the page's
+  lattice is built).
+- **A grid no cell of which is narrower than it has no columns**, and is no candidate — as
+  `Lattice::divided_on_both_axes` decides for a stack it never divided. `SERFF_TX_random_pages 1`
+  p398, with its thick rules read as lines, was a 5 × 10 whose every cell spanned all ten
+  columns: full-width boxes across rules that bound no cell of their own. The whitespace rule
+  reads it whole (1.00).
+- **A ruled row's cells sharing three baselines or more hold rows the page did not rule**
+  (`tables::rows_not_ruled`, shared with `stroke-ruled-v2`), where it asked four in five of the
+  fewer cell's. `SERFF_TX_random_pages 1` p414 rules its vision plans' headers and leaves their
+  rows unruled, some empty in one column; its cells shared five of seven baselines and read as
+  one row.
+
+**Measured**, with the shipped build against `9d4e9a5`: ParseBench tables **0.5601 → 0.5631**, 3
+pages up and none down (`SERFF_CA_random_pages 1` p2747 0.00 → 0.83, p965 0.37 → 0.87, p2467
+0.00 → 0.19); visual grounding 0.5577 → 0.5582 (`National Grid_ARA24` p12 0.38 → 0.63, a panel no
+longer read as a ruled table); content, formatting and charts unchanged on every page; overall
+47.39 → 47.46. opendataloader-bench unchanged; no table on a document without one, every cell its
+runs' text; the gate documents' 541 tables unchanged cell for cell. **Measured and not used**:
+the guard first offered — a cell spanning columns whose words sit in separate columns, each inside
+one, an em or more apart — refused `FBLB-134215544` p106's year headers (`Year:` over Amount,
+`2019` over %, 0.48 → 0.17) and, finding no one-column cell to measure columns by, missed p398.

@@ -912,6 +912,15 @@ columns word by word, labelling two or more. Tables 0.5555 -> 0.5601, 8 pages up
 every other dimension unchanged on every page; opendataloader-bench NID and TEDS up on two
 documents each and none down. Overall 47.30 -> 47.39.
 
+### After rules up to three points thick read as one line (decision #75, 2026-10-17)
+
+A rule thicker than the lattice tolerance bounded a sliver column between its edges, and the grid
+was refused. Told "Tables: thick rules + a guard", such a rule is read along its middle, a grid no
+cell of which is narrower than it has no columns, and a ruled row's cells sharing three baselines
+hold rows the page did not rule. Tables 0.5601 -> 0.5631, 3 pages up and none down; visual
+grounding 0.5577 -> 0.5582; content, formatting and charts unchanged on every page;
+opendataloader-bench unchanged. Overall 47.39 -> 47.46.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

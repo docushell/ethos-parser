@@ -643,6 +643,11 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 ///   above the rule, labelling two columns or more with each word inside one and set apart from
 ///   the text above them. The rules start under such a header, so the grid alone began at its
 ///   first row of values.
+/// - **A rule drawn up to three points thick is one line** (decision #75): read along its middle,
+///   its two edges no longer bound a sliver of a column or row nothing else draws, which refused
+///   the grid. And so that what this reads stays a table, **a grid no cell of which is narrower
+///   than it has no columns**, and **a ruled row's cells sharing three baselines or more hold rows
+///   the page did not rule** (it asked four in five of the fewer cell's).
 ///
 /// # Measured
 ///
@@ -654,7 +659,8 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// nothing else on ParseBench moving; opendataloader-bench NID and TEDS up on three documents each
 /// and down on none. With decision #74's, tables 0.5555 -> 0.5601, eight pages up and none down,
 /// nothing else on ParseBench moving; opendataloader-bench NID and TEDS up on two documents each
-/// and down on none.
+/// and down on none. With decision #75's, tables 0.5601 -> 0.5631, three pages up and none down,
+/// visual grounding 0.5577 -> 0.5582 on one page, opendataloader-bench unchanged.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
@@ -704,7 +710,9 @@ pub const TABLE_DETECTION_STROKE_V1: &str = "stroke-ruled-v1";
 ///   widget (a form's boxes are drawn so), no ruled row of it holds rows the page did not rule,
 ///   and no line of text set on two or more of its columns, three runs to a column at most, stands
 ///   within a row's height above or below it — its rows would run on past its rules. Each refusal
-///   is declared.
+///   is declared. Rows the page did not rule are the ruled rule's own clause, shared; since
+///   decision #75, folded in before any release carried this id, it asks neighbouring cells for
+///   three shared baselines or more rather than four in five of the fewer cell's.
 ///
 /// # Measured
 ///

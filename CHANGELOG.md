@@ -187,6 +187,34 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A rule drawn up to three points thick is one line (decision #75)
+
+Folded into `ruled-rects-v13` and, for the shared clause, `stroke-ruled-v2`, which no release
+carries yet, so no rule id and no `profile_sha256` moves. `docs/31-TABLE-TRACKS-SCOPE.md` §28 is
+the rule.
+
+- **A rectangle thin on one axis, past the lattice tolerance and up to three points, and longer on
+  the other is a rule, read as the one line along its middle.** Its two edges stood further apart
+  than one lattice line folds, so they bounded a sliver of a column or row nothing else draws, and
+  the grid was refused for it: `SERFF_CA_random_pages 1` p2747 and p965, drawn in two-point rules,
+  read no ruled table or a worse one.
+- **A grid no cell of which is narrower than it has no columns**, and is no candidate: rows read
+  as one box each, across rules that bound no cell of their own (`SERFF_TX_random_pages 1` p398,
+  which the whitespace rule reads whole, read with its two thick rules as one line a 5 x 10 of
+  full-width cells).
+- **A ruled row's cells sharing three baselines or more hold rows the page did not rule**, where it
+  asked four in five of the fewer cell's: a ruled header over rows left unruled, some of them
+  empty in one column, read as one row (`SERFF_TX_random_pages 1` p414's vision plans).
+- **Measured** on ParseBench: tables 0.5601 -> 0.5631, 3 pages up and none down
+  (`SERFF_CA_random_pages 1` p2747 0.00 -> 0.83, p965 0.37 -> 0.87); visual grounding 0.5577 ->
+  0.5582, one page up (`National Grid_ARA24` p12 0.38 -> 0.63, a panel no longer read as a ruled
+  table); content, formatting and charts unchanged on every page; overall 47.39 -> 47.46.
+  opendataloader-bench, the fabrication check and the gate documents' tables unchanged.
+- **Measured and not used**: the guard first offered with the lever — a cell spanning columns
+  whose words sit in separate columns is columns the page did not rule — refused
+  `FBLB-134215544` p106's year headers (`Year:` over Amount, `2019` over %), 0.48 -> 0.17, and
+  missed p398; the two clauses above replace it.
+
 ### A header set above a ruled table's top rule is its first row (decision #74)
 
 Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`
