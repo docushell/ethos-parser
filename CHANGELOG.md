@@ -187,6 +187,31 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A header set above a ruled table's top rule is its first row (decision #74)
+
+Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`
+moves. `docs/31-TABLE-TRACKS-SCOPE.md` §27 is the rule.
+
+- **The rules start under the header, so the grid began at its first row of values**, and a reader
+  keying records by the header found none: `SERFF_TX_random_pages 1` p1's schedule read
+  `Supporting Document | Annual Report | ...` as its header. The lines just above a ruled table's top
+  rule are now its first row where every clause holds: the document declares no structure (the
+  inference reads the text's alignment, as the whitespace rule does); the grid's own first row is no
+  header — no word over a column whose other cells hold numbers, most of them; the lines stand
+  within two and a half ems of the rule, three at most, with no further line within a line's pitch
+  above them; no table holds them; each word lies inside one column, a word drawn glyph by glyph
+  being one; and they label two columns or more. Its cells span the columns from the header's ink
+  to the rule and hold its runs.
+- **Measured** on ParseBench: tables 0.5555 -> 0.5601, 8 pages up and none down
+  (`SERFF_TX_random_pages 1` p1 0.45 -> 1.00, `FBLB-134215544` p10 0.40 -> 1.00 and p6 0.70 ->
+  1.00); content, formatting, charts and visual grounding unchanged on every page; overall 47.30
+  -> 47.39. opendataloader-bench NID 0.8874 -> 0.8876 and TEDS 0.5784 -> 0.5827, two documents up
+  each and none down (`01030000000045`, `01030000000188`), one heading score up. The fabrication
+  check and the gate documents' tables unchanged.
+- **Measured and not used**: the census's first reading, without the first-row clause, put a
+  table's title over six rate tables already headed inside their rules (1.00 -> 0.50); and without
+  the word clause, a `Proposed` drawn glyph by glyph across a column line read as two labels.
+
 ### A box behind the page, and tables stacked on their own columns (decision #73)
 
 Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`

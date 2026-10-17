@@ -903,6 +903,15 @@ on different column lines is read group by group. Tables 0.5506 -> 0.5555, 6 pag
 page; opendataloader-bench NID 0.8849 -> 0.8874 and TEDS 0.5426 -> 0.5784, three documents up each
 and none down. Overall 47.20 -> 47.30.
 
+### After a header set above a ruled table's top rule (decision #74, 2026-10-16)
+
+Ruled tables whose rules start under their header began at their first row of values. Told
+"Tables: header above a ruled grid", the lines just above the top rule are the table's first row
+where the grid's own first row is no header and the lines are one: set apart, within the table's
+columns word by word, labelling two or more. Tables 0.5555 -> 0.5601, 8 pages up and none down;
+every other dimension unchanged on every page; opendataloader-bench NID and TEDS up on two
+documents each and none down. Overall 47.30 -> 47.39.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

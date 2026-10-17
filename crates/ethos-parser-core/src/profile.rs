@@ -638,6 +638,11 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// - **Tables stacked on their own columns are read apart** (decision #73): where the page
 ///   lattice's rows break at whitespace into blocks, two neighbouring ones each drawing a column
 ///   line the other does not, the page's lattice is refused and its rectangles read group by group.
+/// - **A header set above the top rule is the table's first row** (decision #74): where the
+///   document declares no structure and the grid's own first row is no header, the lines just
+///   above the rule, labelling two columns or more with each word inside one and set apart from
+///   the text above them. The rules start under such a header, so the grid alone began at its
+///   first row of values.
 ///
 /// # Measured
 ///
@@ -647,6 +652,8 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// With decision #71's placement, tables 0.5405 -> 0.5444, nine pages up and none down, and
 /// nothing else moves. With decision #73's, tables 0.5506 -> 0.5555, six pages up and one down,
 /// nothing else on ParseBench moving; opendataloader-bench NID and TEDS up on three documents each
+/// and down on none. With decision #74's, tables 0.5555 -> 0.5601, eight pages up and none down,
+/// nothing else on ParseBench moving; opendataloader-bench NID and TEDS up on two documents each
 /// and down on none.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 

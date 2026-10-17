@@ -1255,7 +1255,8 @@ mod tests {
                 // decision #42's chart rule run after it, on the runs those leave, and add only
                 // tables that overlap none of theirs, so they cannot change what this compares;
                 // `docs/31-TABLE-TRACKS-SCOPE.md` §4 and `docs/32-CHART-LABELS-SCOPE.md` §4 are
-                // where they are measured.
+                // where they are measured. Decision #74's header row, read above a ruled table,
+                // runs only where a document declares no structure, and these declare theirs.
                 for t in p.tables.iter().filter(|t| {
                     t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V15
                         && t.rule != ethos_parser_core::TABLE_DETECTION_CHARTS_V2

@@ -76,6 +76,11 @@
 //!    keeps its sides as `-v12` asked them. And a rule another rectangle ends on part-way along
 //!    it, as a column rule ends on such a table's top border, is a line of the grid, not an
 //!    underline ([`without_decoration`]).
+//! 8. **A header set above the top rule is the table's first row** (`ruled-rects-v13`, decision
+//!    #74, [`header_above`]), where the document declares no structure and the grid's own first
+//!    row is no header: the lines just above the rule, a label over two columns or more and each
+//!    word inside one, set apart from the text above them. Its cells span the columns from the
+//!    header's ink to the rule and hold its runs — text the page drew, read where it stands.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -1008,6 +1013,153 @@ pub(crate) fn rows_not_ruled(t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool 
                     .count();
                 5 * common >= 4 * w[0].len().min(w[1].len())
             })
+    })
+}
+
+/// `ruled-rects-v13` (decision #74): the header a page set above a ruled table's top rule, read
+/// as the table's first row. The rules start under it, so the grid alone began at its first row
+/// of values, and a reader keying records by the header found none.
+///
+/// Taken only where the grid's own first row is no header, and the lines just above it are one:
+/// within two and a half ems of the top rule, three lines at most and none within a line's pitch
+/// above them, held by no table, wholly within the table's width, each word inside one column
+/// — a word drawn glyph by glyph is one — and labelling two columns or more. Its cells span the
+/// columns from the header's ink to the top rule, and hold its runs; nothing else changes.
+pub(crate) fn header_above(t: &mut DetectedTable, runs: &[crate::tracks::TrackRun<'_>]) {
+    let mut cols: Vec<(i64, i64)> = Vec::with_capacity(t.columns as usize);
+    for k in 0..t.columns {
+        let mut ext = t
+            .cells
+            .iter()
+            .filter(|c| c.position.column == k && c.position.colspan == 1)
+            .map(|c| (c.rect.x0, c.rect.x1));
+        let Some(first) = ext.next() else { return };
+        cols.push(ext.fold(first, |(a, b), (x0, x1)| (a.min(x0), b.max(x1))));
+    }
+    if first_row_is_header(t) {
+        return;
+    }
+    let tol = LATTICE_TOLERANCE;
+    let column_of = |b: &QuantRect| {
+        cols.iter()
+            .position(|&(a, z)| b.x0 >= a - tol && b.x1 <= z + tol)
+    };
+    let mut above: Vec<usize> = (0..runs.len())
+        .filter(|&i| !runs[i].claimed && !runs[i].text.trim().is_empty() && runs[i].y < t.rect.y0)
+        .collect();
+    above.sort_by_key(|&i| (std::cmp::Reverse(runs[i].y), runs[i].x));
+    let mut lines: Vec<Vec<usize>> = Vec::new();
+    for i in above {
+        match lines.last_mut() {
+            Some(line) if 10 * (runs[line[0]].y - runs[i].y) <= 3 * runs[i].em.unwrap_or(0) => {
+                line.push(i);
+            }
+            _ => lines.push(vec![i]),
+        }
+    }
+    let mut header: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut prev = t.rect.y0;
+    for line in &lines {
+        let Some(em) = line.iter().filter_map(|&i| runs[i].em).max() else {
+            return;
+        };
+        let reach = if header.is_empty() { 25 * em } else { 16 * em };
+        if 10 * (prev - runs[line[0]].y) > reach {
+            break; // set apart from what stands above it
+        }
+        if header.len() == 3 || !line.iter().all(|&i| runs[i].rect.is_some()) {
+            return; // a fourth line at a line's pitch is prose; an unmeasured run, unplaceable
+        }
+        let mut placed: Vec<(usize, usize)> = Vec::new();
+        for &i in line {
+            let Some(k) = column_of(&runs[i].rect.expect("checked above")) else {
+                return; // outside every column: across a column line, or past the table
+            };
+            placed.push((i, k));
+        }
+        placed.sort_by_key(|&(i, _)| runs[i].rect.map_or(0, |b| b.x0));
+        if placed.windows(2).any(|w| {
+            let (a, b) = (
+                runs[w[0].0].rect.expect("placed"),
+                runs[w[1].0].rect.expect("placed"),
+            );
+            100 * (b.x0 - a.x1) < 15 * em && w[0].1 != w[1].1
+        }) {
+            return; // a word across a column line
+        }
+        prev = runs[line[0]].y;
+        header.push(placed);
+    }
+    let filled: std::collections::BTreeSet<usize> =
+        header.iter().flatten().map(|&(_, k)| k).collect();
+    if filled.len() < 2 {
+        return;
+    }
+    let top = header
+        .iter()
+        .flatten()
+        .filter_map(|&(i, _)| runs[i].rect.map(|b| b.y0))
+        .min()
+        .expect("a header holds a run");
+    let mut cells: Vec<DetectedCell> = cols
+        .iter()
+        .enumerate()
+        .map(|(k, &(x0, x1))| {
+            let run_indices: Vec<usize> = header
+                .iter()
+                .rev()
+                .flat_map(|line| line.iter().filter(|&&(_, c)| c == k).map(|&(i, _)| i))
+                .collect();
+            DetectedCell {
+                position: TableCellPosition {
+                    row: 0,
+                    column: k as u32,
+                    rowspan: 1,
+                    colspan: 1,
+                    table_id: t.id.clone(),
+                },
+                rect: QuantRect {
+                    x0,
+                    y0: top,
+                    x1,
+                    y1: t.rect.y0,
+                },
+                text: run_indices.iter().map(|&i| runs[i].text).collect(),
+                run_indices,
+            }
+        })
+        .collect();
+    for c in &mut t.cells {
+        c.position.row += 1;
+    }
+    cells.append(&mut t.cells);
+    t.cells = cells;
+    t.rows += 1;
+    t.rect.y0 = top;
+    t.check = cross_check(t.rect, t.rows, t.columns, &t.cells);
+}
+
+/// Whether a table's first row is a header already: a word over a column whose other cells hold
+/// numbers, most of them.
+fn first_row_is_header(t: &DetectedTable) -> bool {
+    (0..t.columns).any(|k| {
+        let (mut top, mut body, mut numbers) = (None, 0, 0);
+        for c in t
+            .cells
+            .iter()
+            .filter(|c| c.position.column == k && c.position.colspan == 1)
+        {
+            let s = c.text.trim();
+            if c.position.row == 0 {
+                top = Some(s);
+            } else if !s.is_empty() {
+                body += 1;
+                numbers += usize::from(crate::charts::number(s).is_some());
+            }
+        }
+        top.is_some_and(|s| !s.is_empty() && crate::charts::number(s).is_none())
+            && body > 0
+            && 2 * numbers >= body
     })
 }
 
@@ -2217,6 +2369,164 @@ mod tests {
         assert_eq!((t.rows, t.columns), (2, 3));
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
+    }
+
+    /// A run as the header step reads it: its origin in points, an em of ten points, and a box `w`
+    /// points wide from eight above the baseline to two below.
+    fn hrun(x: i64, y: i64, w: i64, text: &'static str) -> crate::tracks::TrackRun<'static> {
+        crate::tracks::TrackRun {
+            x: pt(x),
+            y: pt(y),
+            em: Some(pt(10)),
+            rect: Some(r(x, y - 8, x + w, y + 2)),
+            text,
+            claimed: false,
+        }
+    }
+
+    /// A ruled table of `rows` x `cols` at (100, 100), and its own runs, held, as the header step
+    /// finds them.
+    fn headed(
+        rows: i64,
+        cols: i64,
+        text: impl Fn(i64, i64) -> &'static str,
+    ) -> (DetectedTable, Vec<crate::tracks::TrackRun<'static>>) {
+        let (rects, runs) = grid(100, 100, rows, cols, text);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let t = tables.into_iter().next().expect("a grid");
+        let held = runs
+            .iter()
+            .map(|o| crate::tracks::TrackRun {
+                x: o.x,
+                y: o.y,
+                em: Some(pt(10)),
+                rect: None,
+                text: o.text,
+                claimed: true,
+            })
+            .collect();
+        (t, held)
+    }
+
+    /// `ruled-rects-v13` (decision #74): a label over each column, just above a ruled table's top
+    /// rule, is the table's first row — its cells spanning the columns from the header's ink to
+    /// the rule, holding its runs.
+    #[test]
+    fn a_header_set_above_the_top_rule_is_the_tables_first_row() {
+        let (mut t, mut runs) = headed(2, 3, label);
+        runs.extend([
+            hrun(105, 95, 30, "Name"),
+            hrun(205, 95, 30, "Rate"),
+            hrun(305, 95, 30, "Note"),
+        ]);
+        header_above(&mut t, &runs);
+        assert_eq!((t.rows, t.columns), (3, 3));
+        let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            ["Name", "Rate", "Note", "A1", "A2", "A3", "B1", "B2", "B3"]
+        );
+        assert_eq!(t.cells[0].rect, r(100, 87, 200, 100));
+        assert_eq!(t.cells[0].run_indices, [6]);
+        assert_eq!(t.rect.y0, pt(87));
+        assert!(matches!(t.check.outcome, CheckStatus::Ok), "{:?}", t.check);
+    }
+
+    /// A header of two lines is one row: the second line within a line's pitch of the first.
+    #[test]
+    fn a_header_of_two_lines_is_one_row() {
+        let (mut t, mut runs) = headed(2, 3, label);
+        runs.extend([
+            hrun(105, 95, 30, "Name"),
+            hrun(205, 84, 40, "Overall"),
+            hrun(205, 95, 30, "Rate"),
+        ]);
+        header_above(&mut t, &runs);
+        let texts: Vec<&str> = t.cells.iter().take(3).map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["Name", "OverallRate", ""]);
+    }
+
+    /// A table whose first row is a header already — a word over a column whose other cells hold
+    /// numbers, most of them — takes no second one from the line above.
+    #[test]
+    fn a_table_headed_inside_its_rules_takes_no_line_from_above() {
+        let cells = |row: i64, col: i64| -> &'static str {
+            [
+                ["Points", "Factor"],
+                ["1", "1.05"],
+                ["2", "n/a"],
+                ["other", "2.10"],
+            ][row as usize][col as usize]
+        };
+        let (mut t, mut runs) = headed(4, 2, cells);
+        runs.extend([hrun(105, 95, 30, "Table"), hrun(205, 95, 30, "Proposed")]);
+        header_above(&mut t, &runs);
+        assert_eq!(t.rows, 4);
+    }
+
+    /// No header where the lines above are not one: prose a line's pitch deep, a word across a
+    /// column line, one run across two columns, a single label, a line too far above, runs another
+    /// table holds, or a run with no measured box.
+    #[test]
+    fn lines_above_that_are_no_header_leave_the_table_alone() {
+        let prose = (0..4)
+            .flat_map(|k| {
+                [
+                    hrun(105, 95 - 12 * k, 60, "words"),
+                    hrun(205, 95 - 12 * k, 60, "more"),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let held = |mut r: crate::tracks::TrackRun<'static>| {
+            r.claimed = true;
+            r
+        };
+        let unmeasured = |mut r: crate::tracks::TrackRun<'static>| {
+            r.rect = None;
+            r
+        };
+        for (what, above) in [
+            ("prose", prose),
+            (
+                "a word across a column line",
+                vec![
+                    hrun(180, 95, 19, "Prop"),
+                    hrun(199, 95, 25, "osed"),
+                    hrun(305, 95, 30, "Note"),
+                ],
+            ),
+            (
+                "a run across two columns",
+                vec![
+                    hrun(150, 95, 100, "Overall Rate"),
+                    hrun(305, 95, 30, "Note"),
+                ],
+            ),
+            ("a single label", vec![hrun(105, 95, 30, "Name")]),
+            (
+                "a line three ems above",
+                vec![hrun(105, 70, 30, "Name"), hrun(205, 70, 30, "Rate")],
+            ),
+            (
+                "runs another table holds",
+                vec![
+                    held(hrun(105, 95, 30, "Name")),
+                    held(hrun(205, 95, 30, "Rate")),
+                ],
+            ),
+            (
+                "a run with no box",
+                vec![
+                    hrun(105, 95, 30, "Name"),
+                    unmeasured(hrun(205, 95, 30, "Rate")),
+                ],
+            ),
+        ] {
+            let (mut t, mut runs) = headed(2, 3, label);
+            runs.extend(above);
+            header_above(&mut t, &runs);
+            assert_eq!(t.rows, 2, "{what}");
+        }
     }
 
     #[test]

@@ -1042,3 +1042,37 @@ gate documents' 541 tables unchanged cell for cell. **The trade the owner took**
 p107 0.095 → 0.082 — its upper table, shaded in full-width bands, had been divided only by the
 lower table's column lines, and on its own divides none. **Still not read**: the upper tables of
 `BRWS-134565917` p6 and `SERFF_TX_random_pages 1` p649, whose header sits above a single ruled row.
+
+## 27. A header set above a ruled table's top rule (2026-10-16, decision #74)
+
+**What `ruled-rects-v13` missed.** A table whose rules start under its header: the grid the rule
+reads begins at the first row of values, the header stands above it as loose lines, and a reader
+keying records by the header finds none. `SERFF_TX_random_pages 1` p1 read its schedule's first
+filing as the header, and the tables #73 read apart (`FBLB-134215544` p6, `BRWS-134565917` p6)
+each lost one so.
+
+**The change.** The lines just above a ruled table's top rule are its first row where every clause
+holds:
+
+- **the document declares no structure** — the inference reads the text's alignment, as the
+  whitespace rule does, and a tagged document says what its header is;
+- **the grid's own first row is no header**: no word over a column whose other cells hold numbers,
+  most of them. Six `BRWS-134565917` rate tables are headed inside their rules and carry a title
+  above, and the census's first reading, without this clause, set the title over each (1.00 →
+  0.50);
+- **the lines stand within two and a half ems of the rule, three at most, with no further line
+  within a line's pitch above them** — prose over a narrow table runs on upward;
+- **no table holds them, each word lies inside one column, and they label two columns or more** —
+  a word drawn glyph by glyph is one, so a `Proposed` across a column line reads as no header.
+
+Its cells span the columns from the header's ink to the rule and hold its runs; nothing else
+changes.
+
+**Measured**, with the shipped build against `a23544a`: ParseBench tables **0.5555 → 0.5601**, 8
+pages up and none down (`SERFF_TX_random_pages 1` p1 0.45 → 1.00, `FBLB-134215544` p10 0.40 →
+1.00 and p6 0.70 → 1.00, `SERFF_TX_random_pages 1` p649 and `BRWS-134565917` p6 0.24 → 0.50,
+`Coca Cola 10-k` p68 0.41 → 0.62); content, formatting, charts and visual grounding unchanged on
+every page; overall 47.30 → 47.39. opendataloader-bench NID 0.8874 → 0.8876 and TEDS 0.5784 →
+0.5827, two documents up each and none down; one heading score up; no table on a document without
+one, every cell its runs' text; the gate documents' 541 tables unchanged cell for cell. **Not
+read**: stroke-ruled tables' headers (one page, +0.01, left out).

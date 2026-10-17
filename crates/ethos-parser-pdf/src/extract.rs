@@ -1105,6 +1105,19 @@ fn extract_page(
         )?;
         let mut tables = detected.tables;
 
+        // `ruled-rects-v13` (decision #74): a ruled table's header set above its top rule, read
+        // off the text's alignment as the whitespace rule reads its grids — so, like that rule,
+        // only where the document declares no author structure.
+        if no_author_structure(structure.as_ref()) {
+            let header_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            for t in tables
+                .iter_mut()
+                .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V13)
+            {
+                crate::tables::header_above(t, &header_runs);
+            }
+        }
+
         // Decision #38. Last, on the runs no table above holds: grids inferred from the whitespace
         // across a table's rows (`docs/31-TABLE-TRACKS-SCOPE.md`). Here, before reading order,
         // because the rule reads the order the content stream wrote the rows in. **Only where the
