@@ -648,6 +648,11 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 ///   the grid. And so that what this reads stays a table, **a grid no cell of which is narrower
 ///   than it has no columns**, and **a ruled row's cells sharing three baselines or more hold rows
 ///   the page did not rule** (it asked four in five of the fewer cell's).
+/// - **A line a grid draws across none of its bands is no line of it** (decision #76): where the
+///   document declares no structure, a grid read through its merged cells is read again without
+///   it, and stands where it keeps its outline and no white fill on one of its panels drew the
+///   line — a white fill's edge refused whole tables. And **a label whose text holds half the rows
+///   it spans or fewer is one cell**, not a column the page left unruled.
 ///
 /// # Measured
 ///
@@ -660,7 +665,9 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// and down on none. With decision #74's, tables 0.5555 -> 0.5601, eight pages up and none down,
 /// nothing else on ParseBench moving; opendataloader-bench NID and TEDS up on two documents each
 /// and down on none. With decision #75's, tables 0.5601 -> 0.5631, three pages up and none down,
-/// visual grounding 0.5577 -> 0.5582 on one page, opendataloader-bench unchanged.
+/// visual grounding 0.5577 -> 0.5582 on one page, opendataloader-bench unchanged. With decision
+/// #76's, tables 0.5631 -> 0.5682, six pages up and none down, nothing else on ParseBench moving,
+/// opendataloader-bench unchanged.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

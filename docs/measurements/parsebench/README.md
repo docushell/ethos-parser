@@ -921,6 +921,16 @@ hold rows the page did not rule. Tables 0.5601 -> 0.5631, 3 pages up and none do
 grounding 0.5577 -> 0.5582; content, formatting and charts unchanged on every page;
 opendataloader-bench unchanged. Overall 47.39 -> 47.46.
 
+### After a line drawn across no band is no line of the grid (decision #76, 2026-10-17)
+
+Ruled grids were refused for a line they draw across none of their bands, mostly a white fill's
+edge, and rate tables for a label set beside the rows it spans. Told "Tables: untraced ruled
+lines", such a line is dropped and the grid read again where it keeps its outline and no white
+fill on one of its panels drew the line, and a label whose text holds half the rows it spans or
+fewer is one cell. Tables 0.5631 -> 0.5682, 6 pages up and none down; content, formatting, visual
+grounding and charts unchanged on every page; opendataloader-bench unchanged. Overall 47.46 ->
+47.56.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

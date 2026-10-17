@@ -187,6 +187,36 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line drawn across no band is no line of the grid, and a label beside rows is one cell (decision #76)
+
+Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no
+`profile_sha256` moves. `docs/31-TABLE-TRACKS-SCOPE.md` §29 is the rule.
+
+- **A line a grid draws across none of its bands is no line of it.** Where the document declares
+  no structure, a grid read through its merged cells is read again without such a line — and
+  without each one the next reading finds — and stands where every reading keeps the first one's
+  outline. Most such lines are the edges of white fills; refused for them, `SERFF_TX_random_pages
+  1` p824 and `FBLB-134215544` p110 read no table at all. This reverses `ruled-rects-v10`'s
+  refusal of the line, whose test now reads the grid without it.
+- **Not where the grid would lose a row, nor where a white fill on one of its panels drew the
+  line.** Dropping a line the grid's own rectangles end on unmaps them: `SERFF_CA_random_pages 1`
+  p2069 lost its header and first row (0.94 -> 0.49), so a grid whose outline changes keeps its
+  refusal. White painted on a panel is a gap a reader sees: El País's front page parts its banner
+  so, and read without it the banner was a 2 x 2 table of a teaser and two empty cells.
+- **A label whose text holds half the rows it spans or fewer is one cell**, not a column the page
+  left unruled: `SERFF_CA_random_pages 1` p2905's rate tables set "Preferred / 24 001 - 36000 /
+  miles" on the first three of the 25 rows it spans, and were refused.
+- **Measured** on ParseBench: tables 0.5631 -> 0.5682, 6 pages up and none down
+  (`SERFF_TX_random_pages 1` p824 0.00 -> 0.89, `SERFF_CA_random_pages 1` p2905 0.17 -> 1.00,
+  `FBLB-134215544` p110 0.00 -> 0.59); content, formatting, visual grounding and charts unchanged
+  on every page; overall 47.46 -> 47.56. opendataloader-bench, the fabrication check and the gate
+  documents' tables unchanged.
+- **Measured and not used**: an outer line missing across only a grid's first or last band read
+  as drawn — its pages failed next on another clause, and it moved five others; a fill repeating
+  the fill beneath it exactly read as one rectangle painted twice rather than an inset — it
+  restores p2069's header rule, which `ruled-rects-v11` and `-v12` together drop, but costs `Home
+  Depot 10-k` p31 its contents box (0.39 -> 0.17).
+
 ### A rule drawn up to three points thick is one line (decision #75)
 
 Folded into `ruled-rects-v13` and, for the shared clause, `stroke-ruled-v2`, which no release

@@ -1109,3 +1109,50 @@ runs' text; the gate documents' 541 tables unchanged cell for cell. **Measured a
 the guard first offered — a cell spanning columns whose words sit in separate columns, each inside
 one, an em or more apart — refused `FBLB-134215544` p106's year headers (`Year:` over Amount,
 `2019` over %, 0.48 → 0.17) and, finding no one-column cell to measure columns by, missed p398.
+
+## 29. A line drawn across no band, and a label beside rows (2026-10-17, decision #76)
+
+**What `ruled-rects-v13` missed.** 29 table pages refuse a ruled grid for "a grid line the ink
+does not trace", losing 0.046 of the table score between them. Read page by page for the clause
+that refused each, two merged-cell clauses (`Lattice::merged_cells`) refused grids whose drawn
+lines all stand:
+
+- **A line drawn across none of the grid's bands** (clause 2). Most such lines are the edges of
+  white fills — a cell's white background ending between two of the rows or columns the rules
+  draw — and one is a rule beyond the grid in line with one inside it. `SERFF_TX_random_pages 1`
+  p824 and `FBLB-134215544` p110 read no table at all for them.
+- **A cell spanning rows that holds, in two of them, a line on the baseline of text beside it**
+  (clause 4). `SERFF_CA_random_pages 1` p2905 sets its rate tables' label — "Preferred / 24 001 -
+  36000 / miles" — on the first three of the 25 rows it spans.
+
+**The change.**
+
+- **A line the grid draws across none of its bands is no line of it** (`Lattice::build`): where
+  the document declares no structure — as a group's decoration is left out only there — the grid
+  is read again without it, and without each such line the next reading finds, and stands where
+  every reading keeps the first one's outline. A loop, not a recursion: each pass drops a line no
+  pass dropped before. Two guards, each found by measuring without it:
+  - **The outline.** Dropping a line the grid's own rectangles end on unmaps them, and
+    `SERFF_CA_random_pages 1` p2069 then lost its header and first row (0.94 → 0.49): its header
+    rule is one `ruled-rects-v11` and `-v12` together drop, painted twice. A grid whose outline
+    changes keeps the first reading's refusal.
+  - **A white fill on a panel.** White painted on one of the grid's own panels is a gap a reader
+    sees, not a line nothing drew. El País's front page parts its banner with one, and read
+    without it the banner was a 2 × 2 table of a teaser and two empty cells (formatting 0.51 →
+    0.14 on that page). It also keeps `tabular_2` p2's grey header refused, which the drop had
+    read whole (tables 0.22 → 0.49) through its white separators.
+- **A label whose text holds half the rows it spans or fewer is one cell** (clause 4): a column
+  left unruled holds text down most of its rows. Across every refusal of clause 4 on ParseBench's
+  table pages, p2905's label is the only cell holding text on half its rows or fewer.
+
+**Measured**, with the shipped build against `3c845b4`: ParseBench tables **0.5631 → 0.5682**, 6
+pages up and none down (`SERFF_TX_random_pages 1` p824 0.00 → 0.89, `SERFF_CA_random_pages 1`
+p2905 0.17 → 1.00, `FBLB-134215544` p110 0.00 → 0.59, p112 0.20 → 0.34, p14 0.16 → 0.21,
+`20250401_Axos_Bank_SFR_Correspondent_Rate_Sheet` p1 0.59 → 0.65); content, formatting, visual
+grounding and charts unchanged on every page; overall 47.46 → 47.56. opendataloader-bench
+unchanged; no table on a document without one, every cell its runs' text; the gate documents' 541
+tables unchanged cell for cell. **Measured and not used**: an outer line missing across only a
+grid's first or last band read as drawn — its pages failed next on another clause, and it moved
+five others, two of them to fewer columns or merged tables; a fill repeating the fill beneath it
+exactly read as one rectangle painted twice rather than an inset — it restores p2069's header rule
+(0.94 → 1.00) but costs `Home Depot 10-k` p31 its contents box (0.39 → 0.17).

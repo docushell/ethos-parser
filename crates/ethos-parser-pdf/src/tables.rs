@@ -70,7 +70,9 @@
 //!    The page's lattice is refused, and so read group by group, where its rows break at
 //!    whitespace into blocks two neighbouring ones of which each draw a column line the other does
 //!    not: tables stacked on their own columns (`ruled-rects-v13`, decision #73,
-//!    [`Lattice::stacked`]).
+//!    [`Lattice::stacked`]). A group's grid read through its merged cells takes no line it draws
+//!    across none of its bands, where it keeps its outline without it, and a label beside the rows
+//!    it spans is one cell (`ruled-rects-v13`, decision #76, [`Lattice::merged_cells`]).
 //! 7. **A grid's open side is where its rules end** (`ruled-rects-v13`). A table ruled across its
 //!    rows and between its columns but never down its sides draws no outer column line; an outer
 //!    line counts as drawn across a row where the rules above and below that row both run out to
@@ -777,7 +779,13 @@ pub fn detect_ruled_with(
             Some(inset) => without_decoration(group, inset),
             None => group,
         };
-        let (found, refused) = ruled_grid(page, &group, runs, &mut trial, Some(white))?;
+        let (found, refused) = ruled_grid(
+            page,
+            &group,
+            runs,
+            &mut trial,
+            Some((white, decoration.is_some())),
+        )?;
         grids.extend(found);
         first = first.or(refused);
     }
@@ -1194,15 +1202,16 @@ fn first_row_is_header(t: &DetectedTable) -> bool {
 /// The page's rectangles as one lattice: its table, or why it was refused. `merges`, the
 /// rectangles a fill alone painted white, lets a traced grid's lines stop at merged cells
 /// ([`Lattice::merged_cells`]) — only for one group's rectangles, whose grids [`standing`] then
-/// asks after.
+/// asks after — and its flag, that the document declares no structure, lets the grid be read
+/// without a line it draws across none of its bands (decision #76), as a group's decoration is.
 fn ruled_grid(
     page: u32,
     rects: &[QuantRect],
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
-    merges: Option<&[QuantRect]>,
+    merges: Option<(&[QuantRect], bool)>,
 ) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
-    let lattice = match Lattice::build(rects, merges.map(|white| (runs, white))) {
+    let lattice = match Lattice::build(rects, merges.map(|(white, open)| (runs, white, open))) {
         Ok(l) => l,
         Err(refusal) => return Ok((Vec::new(), refusal)),
     };
@@ -1520,15 +1529,58 @@ impl Lattice {
     /// faces. That is an ordinary page, not a near miss, and declaring it would put a limitation on
     /// every document in existence. `Err(Some(_))` is a real refusal with a reason, and it reaches
     /// the artifact as `ruled-table-candidate-refused`.
+    ///
+    /// `ruled-rects-v13` (decision #76): **a line the grid draws across none of its bands is no
+    /// line of it.** Where the document declares no structure, the grid is read again without it
+    /// — and without each such line the next reading finds — and stands where every reading keeps
+    /// the first one's outline. Dropping a line some of the grid's own rectangles end on unmaps
+    /// them, and a grid that loses a row so is not this one: the first reading's refusal stands.
+    /// A loop, not a recursion: each pass drops a line no pass dropped before, so it ends, and a
+    /// page drawing many such lines cannot deepen the stack.
     fn build(
         rects: &[QuantRect],
-        merges: Option<(&[RunOrigin<'_>], &[QuantRect])>,
+        merges: Option<(&[RunOrigin<'_>], &[QuantRect], bool)>,
+    ) -> Result<Self, Option<RuledRefusal>> {
+        let mut undrawn = None;
+        let first = Self::build_without(rects, merges, &[], &mut undrawn);
+        let Some((line, outline)) = undrawn.take() else {
+            return first;
+        };
+        let mut dropped = vec![line];
+        loop {
+            if let Ok(again) = Self::build_without(rects, merges, &dropped, &mut undrawn) {
+                if again.bounds() == outline {
+                    return Ok(again);
+                }
+            }
+            match undrawn.take() {
+                Some((line, bounds)) if bounds == outline => dropped.push(line),
+                _ => return first,
+            }
+        }
+    }
+
+    /// [`Self::build`] with the lattice lines in `dropped` left out. `undrawn` names the line a
+    /// refused grid drew across none of its bands, with the grid's outline, where the document
+    /// declares no structure ([`Self::merged_cells`]).
+    fn build_without(
+        rects: &[QuantRect],
+        merges: Option<(&[RunOrigin<'_>], &[QuantRect], bool)>,
+        dropped: &[(Axis, i64)],
+        undrawn: &mut Option<((Axis, i64), QuantRect)>,
     ) -> Result<Self, Option<RuledRefusal>> {
         if rects.is_empty() {
             return Err(None);
         }
-        let xs = cluster(rects.iter().flat_map(|r| [r.x0, r.x1]));
-        let ys = cluster(rects.iter().flat_map(|r| [r.y0, r.y1]));
+        let kept = |axis: Axis| move |v: &i64| !dropped.contains(&(axis, *v));
+        let xs: Vec<i64> = cluster(rects.iter().flat_map(|r| [r.x0, r.x1]))
+            .into_iter()
+            .filter(kept(Axis::Vertical))
+            .collect();
+        let ys: Vec<i64> = cluster(rects.iter().flat_map(|r| [r.y0, r.y1]))
+            .into_iter()
+            .filter(kept(Axis::Horizontal))
+            .collect();
         // Two lines in each axis bound one face — but **one face is not a table**. A lone
         // rectangle is an underline, a highlight, a text-box border; calling it a 1x1 table would
         // find one on most pages in existence, and `docs/history/09-V1-MILESTONES.md` S1 names "a
@@ -1646,9 +1698,15 @@ impl Lattice {
         let occupied_kept = lattice.occupied_faces(rects, faces);
         if !lattice.every_kept_face_covered(&occupied_kept) {
             if let Some((axis, index, lines)) = lattice.first_untraced_line(rects) {
-                let Some(cells) =
-                    merges.and_then(|(runs, white)| lattice.merged_cells(rects, runs, white))
-                else {
+                let mut line = None;
+                let Some(cells) = merges.and_then(|(runs, white, _)| {
+                    lattice.merged_cells(rects, runs, white, &mut line)
+                }) else {
+                    // Only where the document declares no structure, as a group's decoration is
+                    // left out only there ([`Self::build`] reads the grid again without it).
+                    if merges.is_some_and(|(_, _, open)| open) {
+                        *undrawn = line.map(|line| (line, lattice.bounds()));
+                    }
                     return Err(Some(RuledRefusal::GridNotDrawn {
                         faces,
                         rects: rects.len(),
@@ -1925,18 +1983,24 @@ impl Lattice {
     ///    TEDS 1.00 -> 0.81, for no page gained;
     /// 2. **every interior line is drawn across one band at least**: a line drawn across none is
     ///    ink from elsewhere on the page that happens to fall inside the grid, not a division of
-    ///    it;
+    ///    it — and since `ruled-rects-v13` (decision #76) [`Self::build`] reads the grid again
+    ///    without it, where the grid keeps its outline (`undrawn` names it). Not where a white
+    ///    fill painted on one of the grid's panels drew it: white on a panel is a gap a reader
+    ///    sees;
     /// 3. **no segment is drawn inside the rectangle a cell so formed spans**: a line that stops
     ///    part-way into a cell is not a merge, and neither is a cell that is not a rectangle;
     /// 4. **no cell spanning rows holds, in two of them, a line on the baseline of text in a
     ///    one-row cell beside it**: a column the page did not rule between rows reads as one cell
     ///    whose lines sit on the rows of the columns it did rule, and those are rows left undrawn.
-    ///    A wrapped label beside them sits on baselines of its own.
+    ///    A wrapped label beside them sits on baselines of its own — and since `ruled-rects-v13`
+    ///    (decision #76) a label whose text holds half the rows it spans or fewer is one cell: a
+    ///    column left unruled holds text down most of its rows.
     fn merged_cells(
         &self,
         rects: &[QuantRect],
         runs: &[RunOrigin<'_>],
         white: &[QuantRect],
+        undrawn: &mut Option<(Axis, i64)>,
     ) -> Option<Vec<Span>> {
         let drawn_ink: Vec<QuantRect> = rects
             .iter()
@@ -1993,7 +2057,29 @@ impl Lattice {
                     continue;
                 }
                 let k = kept.iter().position(|b| b + 1 == i)?;
-                if kept.get(k + 1) != Some(&i) || !drawn.iter().any(|d| *d) {
+                if kept.get(k + 1) != Some(&i) {
+                    return None;
+                }
+                if !drawn.iter().any(|d| *d) {
+                    // A white fill painted on one of the grid's own panels is a gap a reader sees,
+                    // not a line nothing drew: El País's front page parts its banner so.
+                    let on_panel = white.iter().any(|w| {
+                        let (a, b) = match axis {
+                            Axis::Vertical => (w.x0, w.x1),
+                            Axis::Horizontal => (w.y0, w.y1),
+                        };
+                        ((a - line).abs() <= LATTICE_TOLERANCE
+                            || (b - line).abs() <= LATTICE_TOLERANCE)
+                            && drawn_ink.iter().any(|r| {
+                                r.x0 - LATTICE_TOLERANCE <= w.x0
+                                    && r.y0 - LATTICE_TOLERANCE <= w.y0
+                                    && w.x1 <= r.x1 + LATTICE_TOLERANCE
+                                    && w.y1 <= r.y1 + LATTICE_TOLERANCE
+                            })
+                    });
+                    if !on_panel {
+                        *undrawn = Some((axis, *line));
+                    }
                     return None;
                 }
                 for (b, d) in drawn.iter().enumerate() {
@@ -2073,7 +2159,10 @@ impl Lattice {
                         })
                 })
                 .count();
-            if aligned > 1 {
+            let texted = (m.row..m.row + m.rowspan)
+                .filter(|&r| !lines_in(m, row_iv[r as usize]).is_empty())
+                .count();
+            if aligned > 1 && 2 * texted > m.rowspan as usize {
                 return None;
             }
         }
@@ -2379,7 +2468,7 @@ mod tests {
             Lattice::build(&rects, None),
             Err(Some(RuledRefusal::Stacked { blocks: 2 }))
         ));
-        assert!(Lattice::build(&rects, Some((&[], &[]))).is_ok());
+        assert!(Lattice::build(&rects, Some((&[], &[], true))).is_ok());
     }
 
     /// The page's refusal where no stacked block stands as a grid of its own: it says why the page
@@ -2760,6 +2849,43 @@ mod tests {
     }
 
     #[test]
+    fn a_label_beside_rows_it_spans_is_one_cell() {
+        // Column 0 draws no line between its four rows and holds a label of two lines, on the
+        // first two rows' baselines (`ruled-rects-v13`, decision #76): text on half the rows it
+        // spans or fewer is a label set beside them, not a column the page left unruled.
+        let rects = segments(4, 3, |vertical, line, band| {
+            vertical || !(band == 0 && (1..4).contains(&line))
+        });
+        let mut runs = vec![at(0, 0, "Preferred"), at(1, 0, "miles")];
+        runs.extend((0..4).flat_map(|row| (1..3).map(move |c| at(row, c, "1"))));
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        let label_cell = tables[0]
+            .cells
+            .iter()
+            .find(|c| (c.position.row, c.position.column) == (0, 0))
+            .unwrap();
+        assert_eq!(label_cell.position.rowspan, 4);
+    }
+
+    #[test]
+    fn a_column_left_unruled_holding_text_down_its_rows_is_not_one_cell() {
+        // Text on every one of the four rows column 0 leaves unruled, two of its lines off the
+        // baselines beside them: the column holds text down its rows, aligned or not.
+        let rects = segments(4, 3, |vertical, line, band| {
+            vertical || !(band == 0 && (1..4).contains(&line))
+        });
+        let mut runs = vec![at(0, 0, "Preferred"), at(1, 0, "miles")];
+        runs.extend((2..4).map(|row| RunOrigin {
+            y: pt(135 + 40 * row),
+            ..at(row, 0, "Standard")
+        }));
+        runs.extend((0..4).flat_map(|row| (1..3).map(move |c| at(row, c, "1"))));
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
     fn a_column_left_unruled_between_its_rows_is_not_one_cell() {
         // Column 0 draws no line between any of its rows, and holds a line on each row's baseline.
         let rects = segments(3, 2, |vertical, line, band| {
@@ -2801,16 +2927,56 @@ mod tests {
     }
 
     #[test]
-    fn a_line_drawn_across_no_band_divides_nothing() {
+    fn a_line_drawn_across_no_band_is_no_line_of_the_grid() {
         // A piece of the left edge ends half-way down the first row: a row line nothing draws
-        // across any column.
+        // across any column, so it divides nothing, and the grid is read without it
+        // (`ruled-rects-v13`, decision #76).
         let mut rects = segments(2, 2, |_, _, _| true);
         rects.push(r(100, 100, 101, 120));
         let runs: Vec<RunOrigin> = (0..2)
             .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
             .collect();
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
+        // A piece of the right edge ending above it is a second such line, and both go.
+        rects.push(r(300, 100, 301, 115));
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
+    }
+
+    #[test]
+    fn a_grid_that_loses_rows_without_the_line_is_still_refused() {
+        // Row line 1 is drawn across no column, and the column rules of rows 0 and 1 end on it.
+        // Without it they are on no line, and the grid read again starts at row 2: not this grid.
+        let rects = segments(4, 2, |vertical, line, _| vertical || line != 1);
+        let runs: Vec<RunOrigin> = (0..4)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, "A1")))
+            .collect();
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_white_gap_on_a_panel_is_a_line_a_reader_sees() {
+        // A white strip across the first row: on white paper it draws nothing, and the grid is
+        // read without its edges; on the row's own shading it is a gap a reader sees, and the
+        // grid stays refused (`ruled-rects-v13`, decision #76).
+        let runs: Vec<RunOrigin> = (0..2)
+            .flat_map(|row| (0..2).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let strip = r(150, 100, 156, 140);
+        let mut rects = segments(2, 2, |_, _, _| true);
+        rects.push(strip);
+        let read = |rects: &[QuantRect]| {
+            detect_ruled_with(1, rects, &[strip], Some(&[]), &runs, &mut alloc())
+                .unwrap()
+                .0
+        };
+        assert_eq!(read(&rects).len(), 1);
+        rects.push(r(100, 100, 300, 140));
+        assert!(read(&rects).is_empty());
     }
 
     #[test]
