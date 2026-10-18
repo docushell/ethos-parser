@@ -86,12 +86,54 @@ for distributions in binary form:
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
+Adobe mapping resources for PDF (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+vendor/adobe-mapping-resources-pdf/ holds Adobe's CID-to-Unicode mapping
+resources for Adobe-Japan1, Adobe-GB1, Adobe-CNS1, Adobe-Korea1 and Adobe-KR,
+unmodified, vendored by decision #78 of docs/00-NORTH-STAR.md (source and
+checksums in vendor/adobe-mapping-resources-pdf/README.md). The engine embeds
+them verbatim with include_str! and reads them at runtime. Each carries this
+notice, each with its own year range (1990-2019 to 1990-2023), reproduced here
+from the repository's LICENSE.txt as the licence requires for distributions in
+binary form:
+
+  Copyright 1990-2019 Adobe. All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+
+  Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+
+  Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in the
+  documentation and/or other materials provided with the distribution.
+
+  Neither the name of Adobe nor the names of its contributors may be
+  used to endorse or promote products derived from this software without
+  specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
 Adobe CMap resources: NOT PRESENT
 --------------------------------------------------------------------------------
 
-No Adobe CMap resource files (.bcmap or otherwise) are present in this
-repository, so no notice for them is currently required (the Adobe Glyph List
-above carries its own).
+No Adobe predefined CMap resource files (.bcmap or otherwise) are present in
+this repository, so no notice for them is currently required (the Adobe Glyph
+List and the CID-to-Unicode mapping resources above carry their own).
 
 The M3 plan called for vendoring the ~168 predefined CJK CMaps. They are not
 here, and that is a declared decision rather than an oversight: nothing in the
@@ -109,7 +151,8 @@ When those files land — with a fixture that proves they work — they belong u
 vendor/cmaps/ with the Adobe BSD 3-Clause licence text reproduced there and this
 section replaced by the attribution.
 
-See vendor/README.md for the full vendoring posture, including the Adobe Glyph
-List, which is absent for the same reason. The Core-14 AFM metrics were absent
-for that reason too until decision #22; they are now present, under the APAFML
-section above.
+See vendor/README.md for the full vendoring posture. The Adobe Glyph List was
+absent for the same reason until decision #59, and Adobe's CID-to-Unicode
+mappings until decision #78; both are now present, in their sections above.
+The Core-14 AFM metrics were absent for that reason too until decision #22; they
+are now present, under the APAFML section above.

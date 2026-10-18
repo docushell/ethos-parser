@@ -101,9 +101,10 @@ A few boundaries worth knowing before you write anything:
 - **Two open questions for DocuShell.** Whether a geometry-absent span should be representable in a
   future `ethos.grounding.v1` revision, and whether typed `GeometryAbsence` should replace the
   companion spec's plain optional field. Both are additive and neither blocks anything.
-- **Some Adobe data is not vendored** — the predefined CJK CMaps, a gap declared on the wire rather
-  than papered over. The Core-14 AFMs (decision #22) and the Adobe Glyph List (decision #59) are
-  vendored. See [`vendor/README.md`](../vendor/README.md).
+- **Some Adobe data is not vendored** — the predefined CJK CMaps, which map character codes to
+  CIDs, a gap declared on the wire rather than papered over. The Core-14 AFMs (decision #22), the
+  Adobe Glyph List (decision #59) and Adobe's CID-to-Unicode mappings for its own collections
+  (decision #78) are vendored. See [`vendor/README.md`](../vendor/README.md).
 - **`skrifa` is pinned to 0.39**, because 0.44 needs Rust 1.89 and this workspace pins 1.88.
 
 Grep for `TODO(` to find the rest.

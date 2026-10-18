@@ -1421,7 +1421,15 @@ pub const FORM_ANNOTATION_RULE_V2: &str = "form-annotations-v2";
 /// ASCII, a font program's `post` name — is read as the list gives it, never as a private-use or
 /// control value. Page text changes wherever a font names such a glyph: a run holding one was
 /// omitted and counted, and is now read.
-pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-4";
+///
+/// `-5` (0.64.0, decision #78): Adobe's CID-to-Unicode mappings for its character collections
+/// Adobe-Japan1, -GB1, -CNS1, -Korea1 and -KR join the vendored data —
+/// `vendor/adobe-mapping-resources-pdf/`, unmodified, under Adobe's BSD-3-Clause licence. A font
+/// under `/Identity-H` with no `/ToUnicode`, whose `/CIDSystemInfo` names one of them, reads its
+/// CIDs through that collection's table. Page text changes wherever such a font draws: its runs
+/// were omitted and counted, or the document refused where nothing else decoded, and are now
+/// read.
+pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-5";
 
 /// Identity of the vendored **font metric** data — Adobe's Core-14 AFMs in `vendor/afm/`.
 ///
@@ -3669,7 +3677,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-4","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4825,11 +4833,15 @@ mod tests {
              Moved for decision #72, `sha256:fe4edbbd…` -> `sha256:f4b62eef…`: \
              `table_detection.stroke_ruled` `stroke-ruled-v1` -> `-v2`, which reads a row drawn \
              as one stroke and divided by vertical ones, asking three more things of the band \
-             it makes. Nothing else."
+             it makes. Nothing else.\n\n\
+             Moved for decision #78, `sha256:f4b62eef…` -> `sha256:4392b7d8…`: \
+             `cmap_data_version` `annex-d-encodings-4` -> `-5`, which vendors Adobe's \
+             CID-to-Unicode mappings for Adobe-Japan1, -GB1, -CNS1, -Korea1 and -KR and reads an \
+             `/Identity-H` font's CIDs through its collection's. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:f4b62eef4374e93c138b30b20b109e58b28fc5d43011f93744a208e9a58e535c"
+            "sha256:4392b7d8069d3755cbc4b67b3ed361e1a27965b1a87e7ec84fa79d6fb07ed4f4"
         );
     }
 

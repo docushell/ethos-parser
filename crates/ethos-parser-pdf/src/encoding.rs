@@ -31,13 +31,19 @@
 //! **The Adobe Glyph List** is vendored since decision #59 — `vendor/agl/glyphlist.txt`,
 //! unmodified, read by [`crate::agl`] for any name the small table below does not hold.
 //!
+//! **Adobe's CID-to-Unicode mappings** are vendored since decision #78 —
+//! `vendor/adobe-mapping-resources-pdf/`, unmodified, read by [`crate::cid_unicode`] for a font
+//! under `/Identity-H` with no `/ToUnicode` whose `/CIDSystemInfo` names one of Adobe's
+//! collections.
+//!
 //! **Not vendored:** the Adobe predefined CJK CMaps (`UniJIS-UCS2-H` and its ~167 siblings). They
 //! are not decoded approximately — `docs/01-CONTRACT.md` §8, because approximate text is worse
 //! than no text here: a citation can be verified against it and appear to hold. A document drawing
 //! text with a font that names a predefined CMap is genuinely **refused**, at the first string
 //! shown with that font; one a page lists and never draws with refuses nothing (tracker I8). An
 //! `/Identity-H` font with no `/ToUnicode` is the exception since 2026-10-03: its codes split and
-//! advance as the document says, so each run shown with it is dropped and counted instead. A
+//! advance as the document says, so each run shown with it is dropped and counted instead — and
+//! since decision #78, where its collection is one of Adobe's, read through Adobe's mapping. A
 //! `/Differences` name neither the table nor the list carries — a font's own `/g123` — drops
 //! **that run** and is counted into `broken-font-encoding`; only a document that decodes nothing
 //! is refused outright, which is v0.1's decision that failing a whole document over one glyph was

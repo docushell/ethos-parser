@@ -7822,3 +7822,45 @@ fn a_unit_of_heading_lines_past_thirty_words_is_read_as_text() {
     assert!(detail.starts_with("3 line(s)"), "{detail}");
     assert!(detail.contains("3 further line(s)"), "{detail}");
 }
+
+/// **A CJK font's CIDs read through Adobe's table for its collection** (`annex-d-encodings-5`,
+/// decision #78), end to end: a Type 0 font under `/Identity-H` with no `/ToUnicode`, its
+/// descendant naming `Adobe-Japan1`, draws CIDs 34 and 35 — read as `AB`. Named `Adobe-Identity`,
+/// whose CIDs are the subset font's own, nothing decodes and the document is refused.
+#[test]
+fn an_adobe_japan1_font_s_cids_read_through_adobe_s_table() {
+    let content = "BT /F1 12 Tf 1 0 0 1 72 720 Tm <00220023> Tj ET";
+    let page = |ordering: &str| {
+        let objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+               /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            )
+            .into_bytes(),
+            b"<< /Type /Font /Subtype /Type0 /BaseFont /KozMinPr6N-Regular \
+               /Encoding /Identity-H /DescendantFonts [6 0 R] >>"
+                .to_vec(),
+            format!(
+                "<< /Type /Font /Subtype /CIDFontType0 /BaseFont /KozMinPr6N-Regular \
+                 /CIDSystemInfo << /Registry (Adobe) /Ordering ({ordering}) /Supplement 6 >> \
+                 /DW 1000 >>"
+            )
+            .into_bytes(),
+        ];
+        let profile = Profile::default();
+        let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+        ethos_parser_pdf::extract(&d, &profile)
+    };
+    let a = page("Japan1").expect("extracts");
+    let text: String = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(text, "AB");
+    assert!(
+        page("Identity").is_err(),
+        "Adobe-Identity names no published table: nothing decodes, so the document is refused"
+    );
+}

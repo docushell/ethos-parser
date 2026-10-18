@@ -142,7 +142,10 @@ pub fn backend_limitations() -> Vec<Limitation> {
              font naming one is refused with a named error rather than decoded approximately, \
              because a substituted character is a character the document does not contain. If \
              those files land, `cmap_data_version` changes and artifacts from before and after \
-             become correctly non-comparable.",
+             become correctly non-comparable. Adobe's CID-to-Unicode mappings for its own \
+             character collections are vendored (`annex-d-encodings-5`): a font under \
+             `/Identity-H` with no `/ToUnicode`, whose `/CIDSystemInfo` names Adobe-Japan1, \
+             -GB1, -CNS1, -Korea1 or -KR, is read through them.",
         ),
     ]
 }

@@ -271,7 +271,8 @@ Start with [`docs/README.md`](docs/README.md) for the map of the documentation.
 
 ## Licence
 
-Apache-2.0. `NOTICE` records the encoding data in the tree and reserves a slot for the Adobe CMap
-resources (BSD-3-Clause) if they ever land — none are present today. No AGPL dependencies —
+Apache-2.0. `NOTICE` records the encoding data in the tree, Adobe's CID-to-Unicode mappings among
+it (BSD-3-Clause, decision #78), and reserves a slot for the Adobe predefined CMaps if they ever
+land — none are present today. No AGPL dependencies —
 `deny.toml` enforces it and CI proves the rule fires by flipping a crate to AGPL and requiring the
 build to reject it.

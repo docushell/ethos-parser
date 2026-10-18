@@ -63,6 +63,7 @@ pub(crate) mod bidi;
 pub(crate) mod blocks;
 pub(crate) mod budget;
 pub(crate) mod charts;
+pub(crate) mod cid_unicode;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;

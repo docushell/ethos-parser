@@ -130,7 +130,8 @@ pub enum Decoder {
     /// first shown with the font, not where a page lists it (tracker I8): a font a page never
     /// draws with decides nothing about the document.
     Refused(String),
-    /// `/Identity-H` or `/Identity-V` with no `/ToUnicode`, and why nothing decodes. The code is
+    /// `/Identity-H` or `/Identity-V` with no `/ToUnicode` and no mapping this profile reads for
+    /// its collection (decision #78), and why nothing decodes. The code is
     /// the CID and two bytes wide (§9.7.4.2), so a string splits and the pen advances as the
     /// document says; only the characters are unknown. A run shown with it is omitted and counted
     /// under `broken-font-encoding`, as a simple font's undecodable run is, and the document is
@@ -690,7 +691,12 @@ fn load_font(
                     Ok(lopdf::Object::Name(n)) if matches!(n.as_slice(), b"Identity-H" | b"Identity-V")
                 );
                 if identity && FontKind::from_subtype(&subtype) == FontKind::Composite {
-                    Decoder::Undecodable(detail)
+                    // Decision #78: the code is the CID, and an Adobe collection's CIDs are
+                    // stated by Adobe's published mapping for it.
+                    match collection_mapping(doc, fd) {
+                        Some(map) => Decoder::ToUnicode(map),
+                        None => Decoder::Undecodable(detail),
+                    }
                 } else {
                     Decoder::Refused(detail)
                 }
@@ -1009,16 +1015,23 @@ fn load_simple_encoding(
                         "/Encoding /{} maps character codes to CIDs by the identity (§9.7.4.2), \
                          so nothing about the CMap is missing — the code IS the CID. What is \
                          absent is the step after it: this font supplies no `/ToUnicode`, and \
-                         there is no other source here for CID to Unicode. Adobe publishes such \
-                         a mapping per registry and ordering, and this profile carries none of \
-                         them; where the descendant's /CIDSystemInfo ordering is \
-                         `Adobe-Identity-0` the CIDs are the subset font's own and no published \
-                         table decodes them either — only the embedded font program or a \
-                         `/ToUnicode` can. **Vendoring the predefined CJK CMaps would not change \
-                         this document**, which is what the message here used to imply. A \
-                         substituted character is a character the document does not contain, so \
-                         the run is omitted rather than decoded approximately.",
-                        String::from_utf8_lossy(n)
+                         {}. Where the ordering is `Adobe-Identity-0` the CIDs are the subset \
+                         font's own and no published table decodes them — only the embedded font \
+                         program or a `/ToUnicode` can. A substituted character is a character \
+                         the document does not contain, so the run is omitted rather than \
+                         decoded approximately.",
+                        String::from_utf8_lossy(n),
+                        if n.as_slice() == b"Identity-H" {
+                            "its descendant's /CIDSystemInfo names no character collection whose \
+                             CID-to-Unicode mapping this profile carries — Adobe's for \
+                             Adobe-Japan1, -GB1, -CNS1, -Korea1 and -KR are (decision #78)"
+                        } else {
+                            "the CID-to-Unicode mappings this profile carries — Adobe's for \
+                             Adobe-Japan1, -GB1, -CNS1, -Korea1 and -KR (decision #78) — are read \
+                             only under /Identity-H: a font under /Identity-V writes down the \
+                             page (§9.7.4.3), and this profile advances every pen across it, so \
+                             a run read here would carry a box where its glyphs are not"
+                        }
                     )
                 } else {
                     format!(
@@ -1283,6 +1296,24 @@ pub(crate) fn resolve_dict<'a>(
         lopdf::Object::Reference(r) => doc.get_object(*r).ok()?.as_dict().ok().cloned(),
         _ => None,
     }
+}
+
+/// Decision #78: the CID-to-Unicode mapping of the Adobe character collection a composite font's
+/// descendant names in its `/CIDSystemInfo`, where this profile vendors one — under `/Identity-H`
+/// only. A font under `/Identity-V` writes down the page (§9.7.4.3), and this profile advances
+/// every pen across it, so a run read there would carry a box where its glyphs are not.
+fn collection_mapping(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> Option<Arc<ToUnicode>> {
+    if fd.get(b"Encoding").ok()?.as_name().ok()? != b"Identity-H" {
+        return None;
+    }
+    let descendant = resolve_array(doc, fd.get(b"DescendantFonts").ok())
+        .and_then(|arr| arr.first().and_then(|o| resolve_dict(doc, Some(o))))?;
+    let info = resolve_dict(doc, descendant.get(b"CIDSystemInfo").ok())?;
+    let string = |key: &[u8]| match info.get(key).ok()? {
+        lopdf::Object::String(bytes, _) => Some(bytes.clone()),
+        _ => None,
+    };
+    crate::cid_unicode::for_collection(&string(b"Registry")?, &string(b"Ordering")?)
 }
 
 pub(crate) fn resolve_array<'a>(
@@ -2187,6 +2218,55 @@ mod tests {
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
+    }
+
+    /// **An Adobe collection's CIDs read through Adobe's mapping** (decision #78): an
+    /// `/Identity-H` font with no `/ToUnicode` whose descendant names `Adobe-Japan1` decodes CID 34
+    /// as `A`; one naming `Adobe-Identity`, or another registry's `Japan1`, stays undecodable, its
+    /// CIDs no published table's — and so does an `/Identity-V` one, which writes down the page.
+    #[test]
+    fn an_adobe_collection_s_cids_read_through_adobe_s_mapping() {
+        for (encoding, registry, ordering, decoded) in [
+            (
+                b"Identity-H".as_slice(),
+                b"Adobe".as_slice(),
+                b"Japan1".as_slice(),
+                Some("A"),
+            ),
+            (b"Identity-H", b"Adobe", b"Identity", None),
+            (b"Identity-H", b"Other", b"Japan1", None),
+            (b"Identity-V", b"Adobe", b"Japan1", None),
+        ] {
+            let mut info = lopdf::Dictionary::new();
+            for (key, value) in [("Registry", registry), ("Ordering", ordering)] {
+                info.set(
+                    key,
+                    lopdf::Object::String(value.to_vec(), lopdf::StringFormat::Literal),
+                );
+            }
+            let mut descendant = lopdf::Dictionary::new();
+            descendant.set("Subtype", lopdf::Object::Name(b"CIDFontType0".to_vec()));
+            descendant.set("CIDSystemInfo", info);
+            let mut fd = lopdf::Dictionary::new();
+            fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
+            fd.set("Encoding", lopdf::Object::Name(encoding.to_vec()));
+            fd.set(
+                "DescendantFonts",
+                lopdf::Object::Array(vec![lopdf::Object::Dictionary(descendant)]),
+            );
+            let font =
+                load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
+            assert_eq!(font.split_codes(b"\x00\x22\x00\x23"), (vec![0x22, 0x23], 0));
+            assert_eq!(
+                font.decode_code(0x22).ok(),
+                decoded,
+                "{encoding:?} {registry:?} {ordering:?}"
+            );
+            if encoding == b"Identity-V" {
+                let detail = format!("{}", font.decode_code(0x22).unwrap_err());
+                assert!(detail.contains("writes down the page"), "{detail}");
+            }
+        }
     }
 
     /// **A composite font whose `/Encoding` is an embedded CMap, and which has no `/ToUnicode`, is

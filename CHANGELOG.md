@@ -187,6 +187,38 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A CJK font's CIDs read through Adobe's table for its collection (decision #78)
+
+`cmap_data_version` `annex-d-encodings-4` -> `-5`, so `profile_sha256` moves. The CID-to-Unicode
+row of [`vendor/README.md`](vendor/README.md) is the reasoning.
+
+- **Adobe's CID-to-Unicode mappings are vendored**: `Adobe-Japan1-UCS2`, `Adobe-GB1-UCS2`,
+  `Adobe-CNS1-UCS2`, `Adobe-Korea1-UCS2` and `Adobe-KR-UCS2`, unmodified, from
+  `adobe-type-tools/mapping-resources-pdf` at `8c27856`, under Adobe's BSD-3-Clause licence
+  (`vendor/adobe-mapping-resources-pdf/`, `NOTICE`). Each is embedded with `include_str!` and
+  parsed, by the parser a document's `/ToUnicode` goes through, the first time a document needs
+  it. The binary grows by 1.1 MB.
+- **A composite font under `/Identity-H` with no `/ToUnicode`, whose `/CIDSystemInfo` names one of
+  those collections, reads its CIDs through Adobe's table for it**, as PDF 32000-1 §9.10.2
+  prescribes. Its runs were omitted and counted under `broken-font-encoding`, or its document
+  refused where nothing else decoded. All 45 such fonts in the measured corpora are CID-keyed CFF
+  programs, whose CIDs are the collection's by construction. A font naming any other collection —
+  `Adobe-Identity`, a vendor's own — stays undecodable, and its message now names the five this
+  profile carries.
+- **Not under `/Identity-V`**: such a font writes down the page (§9.7.4.3), and this profile
+  advances every pen across it, so a run read there would carry a box where its glyphs are not. Its
+  runs stay omitted and counted, and its message says why. None of the 2,247 measured documents
+  uses one.
+- **Measured** on ParseBench: content faithfulness 0.6696 -> 0.6716, 4 pages up
+  (`text_multilang__korean2` 0.00 -> 0.92); semantic formatting 0.4572 -> 0.4603, 3 up
+  (`text_multicolumns__analysis` 0.48 -> 0.98); visual grounding 0.5606 -> 0.5642, 5 up
+  (`Integrated_Report_2025_e` p2 0.05 -> 0.63, `fh_2025_004e` p6 0.16 -> 0.70); none down; tables
+  and charts unchanged on every page; overall 47.61 -> 47.78. Every run those pages omitted for a
+  CJK font is read — 1,447 on ten pages, and `text_multilang__korean2`, refused, reads 278 runs.
+  `text_sparse__anex`, refused, now reads its folio, its other font's `/ToUnicode` holding a
+  codespace and no mapping. opendataloader-bench, the fabrication check and the gate documents'
+  tables unchanged.
+
 ### A heading holds thirty words at most (decision #77)
 
 Folded into `type-size-v7`, which no release carries yet, so no rule id and no `profile_sha256`

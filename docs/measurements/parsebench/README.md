@@ -939,6 +939,16 @@ read as text; at twenty, four formatting pages fell for decks the benchmark read
 grounding 0.5582 -> 0.5606, 19 pages up and none down; tables, charts, content and formatting
 unchanged on every page; opendataloader-bench NID one up and none down. Overall 47.56 -> 47.61.
 
+### After Adobe's CID-to-Unicode tables (decision #78, 2026-10-18)
+
+Text set in Adobe-Japan1, -CNS1 and -Korea1 CID fonts with no `/ToUnicode` was omitted: 1,265 runs
+on seven Japanese report pages, 182 on three CJK text pages, and `text_multilang__korean2` refused.
+Told "Vendor Adobe CID tables", Adobe's CID-to-Unicode mappings are vendored
+([`vendor/README.md`](../../../vendor/README.md)), and every one of those runs is read. Content
+faithfulness 0.6696 -> 0.6716, semantic formatting 0.4572 -> 0.4603 and visual grounding 0.5606 ->
+0.5642, 4, 3 and 5 pages up and none down; tables and charts unchanged on every page;
+opendataloader-bench unchanged. Overall 47.61 -> 47.78.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
@@ -972,12 +982,12 @@ them:
 - **Tables.** Phrases before the unruled fold do not recover them; see
   [`../opendataloader-bench/tables-why-zero.md`](../opendataloader-bench/tables-why-zero.md), the
   2026-10-03 amendment.
-- **Fonts that state no character.** `text_multilang__korean2`, `text_multilang__mandarin4` and
-  `text_simple__grayson` are still refused after decision #43 (2026-10-05), because none of their
-  fonts states one: korean2's is a CID-keyed CFF program under the `Adobe-Korea1` ordering with no
-  `/ToUnicode`, which only Adobe's published CID-to-Unicode table decodes and this profile does not
-  carry; mandarin4's and grayson's ship a `/ToUnicode` holding a codespace and no mapping, over a
-  Type 1C program whose glyph names are indices (`/G21`) and a two-glyph TrueType stub.
+- **Fonts that state no character.** `text_multilang__mandarin4` and `text_simple__grayson` are
+  still refused after decision #43 (2026-10-05), because none of their fonts states one: they ship
+  a `/ToUnicode` holding a codespace and no mapping, over a Type 1C program whose glyph names are
+  indices (`/G21`) and a two-glyph TrueType stub. `text_multilang__korean2`, refused with them
+  until decision #78, sets its text in a CID-keyed CFF program under the `Adobe-Korea1` ordering
+  with no `/ToUnicode`, and is now read through Adobe's published table for that collection.
 - **Two streams `lopdf` does not load**, `text_ocr__mix` and `text_ocr__012-25`: a tab before
   `endstream` that qpdf reads. That is the `lopdf` boundary the 2026-09-25 review named as this
   engine's top risk, and it was left alone.
