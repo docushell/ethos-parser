@@ -488,10 +488,21 @@ pub fn headings_inferred_from_type(
     lines: u32,
     bold: u32,
     labels: u32,
+    as_text: u32,
     rule: &str,
     body_em: i64,
 ) -> Limitation {
     let sized = lines.saturating_sub(bold).saturating_sub(labels);
+    // Decision #77: said only where it happened, so a document with no lede reads as before.
+    let ledes = if as_text > 0 {
+        format!(
+            " {as_text} further line(s) the rule read stand in a unit of more than {} words, a lede \
+             set in display type, and were read as text: their runs carry no `inferred_heading`.",
+            crate::units::HEADING_MAX_WORDS
+        )
+    } else {
+        String::new()
+    };
     Limitation::document(
         ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE,
         format!(
@@ -507,7 +518,7 @@ pub fn headings_inferred_from_type(
              below the smallest size. {labels} are labels: bold lines at the head of their text \
              that do not stand apart, of at most 60 characters, whose text no three lines of the \
              document share, at level 7, below every ranked level, which the projections write \
-             as bold lines and never with `#`. A level deeper than 1 travels as \
+             as bold lines and never with `#`.{ledes} A level deeper than 1 travels as \
              `inferred_heading_level`. \
              The document declares no author structure — no `/StructTreeRoot`, or only one this \
              engine wrote — so EVERY heading in this artifact is this engine's measurement of type \

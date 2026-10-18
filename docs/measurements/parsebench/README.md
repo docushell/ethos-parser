@@ -931,6 +931,14 @@ fewer is one cell. Tables 0.5631 -> 0.5682, 6 pages up and none down; content, f
 grounding and charts unchanged on every page; opendataloader-bench unchanged. Overall 47.46 ->
 47.56.
 
+### After a heading holds thirty words at most (decision #77, 2026-10-18)
+
+Ledes and opening statements set in display type read as headings, and the layout ground truth
+labels them text. Told "Grounding: headings vs text", a unit of heading lines past thirty words is
+read as text; at twenty, four formatting pages fell for decks the benchmark reads as titles. Visual
+grounding 0.5582 -> 0.5606, 19 pages up and none down; tables, charts, content and formatting
+unchanged on every page; opendataloader-bench NID one up and none down. Overall 47.56 -> 47.61.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

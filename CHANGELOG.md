@@ -187,6 +187,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A heading holds thirty words at most (decision #77)
+
+Folded into `type-size-v7`, which no release carries yet, so no rule id and no `profile_sha256`
+moves. `docs/measurements/headings/README.md` §14 is the measurement.
+
+- **A unit of heading lines past thirty words is a lede set in display type, and its lines are read
+  as text**, where the document declares no author structure: words counted as the layout units
+  read their lines (a word gap the page set by moving its pen counts), so a heading set letter by
+  letter stays one word. The `headings-inferred-from-type` limitation counts only the lines still
+  read as headings and says how many were read as text; a document with no such lede reads as
+  before, byte for byte.
+- **Why thirty, not twenty**: ParseBench's layout pages label every such passage text, but its
+  formatting pages read a news deck or a pull quote as a title, and at twenty words four of them
+  fell (`text_dense__topofthenews` 0.94 -> 0.83, `text_dense__leaflet`, El País, `chinese3`) for
+  decks of 21 to 28 words, beside one grounding page down. At thirty, nothing falls.
+- **Measured** on ParseBench: visual grounding 0.5582 -> 0.5606, 19 pages up and none down
+  (`solvay-2023-ENG` p85 0.00 -> 0.33, `bd-sustainability-report-2024` p82 0.40 -> 0.60); tables,
+  charts, content and formatting unchanged on every page; overall 47.56 -> 47.61.
+  opendataloader-bench NID one document up and none down, TEDS and MHS unchanged; the fabrication
+  check and the gate documents' tables unchanged. On the heading bounds' eleven documents,
+  `cfpb-home-loan-toolkit`'s false headings 42 -> 38 (4.61% -> 4.17%) and its false labels six
+  fewer, no right heading lost, every other document line for line.
+- **Measured and not used**: a heading inside a figure region read as text — ParseBench's ground
+  truth calls many infographic labels section headers, and grounding fell 0.5582 -> 0.5546 (32
+  pages up, 50 down).
+
 ### A line drawn across no band is no line of the grid, and a label beside rows is one cell (decision #76)
 
 Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no

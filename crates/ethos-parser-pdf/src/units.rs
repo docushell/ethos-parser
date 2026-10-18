@@ -108,6 +108,12 @@ pub const SCRIPT_HEIGHT_TWENTIETHS: i64 = 17;
 /// of one word.
 pub const SPACE_GAP_TENTHS: i64 = 1;
 
+/// The most words a heading holds (`type-size-v7`, decision #77): a unit of heading lines past it,
+/// counted as [`spaced`] reads its lines, is a lede set in display type, and its lines are read as
+/// text. A news deck or a pull quote of fewer words reads as a title, and was measured so: at twenty
+/// words, four formatting pages fell for decks of 21 to 28.
+pub const HEADING_MAX_WORDS: usize = 30;
+
 /// A line's box and baseline as the script join reads them: `x0, y0, x1, y1`, top-left system, and
 /// its first run's baseline, centipoints.
 pub(crate) type LineBox = (i64, i64, i64, i64, i64);
@@ -471,21 +477,40 @@ pub(crate) fn assign(page: &mut PageExtract) {
         })
         .collect();
     let mut pieces = Vec::with_capacity(cut.len());
+    let mut words = Vec::with_capacity(cut.len());
     for ((range, unit), line) in read.iter().zip(units(&unit_lines)).zip(&unit_lines) {
         let height = line.rect.map_or(0, |r| r.3 - r.1);
         for (_, rect, runs) in &cut[range.clone()] {
+            let read = text(runs, height);
             pieces.push(Piece {
                 rect: *rect,
                 unit,
-                first_word: rect.map_or(0, |r| first_word(&text(runs, height), r.2 - r.0)),
+                first_word: rect.map_or(0, |r| first_word(&read, r.2 - r.0)),
                 heading: line.heading.is_some(),
             });
+            words.push(read.split_whitespace().count());
         }
     }
     let short = cut_after_short_pieces(&pieces);
-    for ((_, _, runs), unit) in cut.iter().zip(cut_at_hard_breaks(&pieces, &short)) {
+    let assigned = cut_at_hard_breaks(&pieces, &short);
+    // `type-size-v7` (decision #77): a heading unit past [`HEADING_MAX_WORDS`] is a lede, read as
+    // text. A heading line never shares a unit with body text, so a unit is one or the other.
+    let mut tally: BTreeMap<u32, (usize, bool)> = BTreeMap::new();
+    for ((unit, piece), n) in assigned.iter().zip(&pieces).zip(&words) {
+        let (count, heading) = tally.entry(*unit).or_insert((0, true));
+        *count += n;
+        *heading &= piece.heading;
+    }
+    for ((_, _, runs), unit) in cut.iter().zip(assigned) {
+        let lede = tally
+            .get(&unit)
+            .is_some_and(|&(count, heading)| heading && count > HEADING_MAX_WORDS);
         for &i in runs {
             page.runs[i].layout_unit = Some(unit);
+            if lede {
+                page.runs[i].inferred_heading = false;
+                page.runs[i].inferred_heading_level = None;
+            }
         }
     }
 }

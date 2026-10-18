@@ -2294,36 +2294,31 @@ fn extract_counted(
     // Decision #38: `type-size-v3` ranks the sizes the headings are set in, so the ranks are read
     // over every page's lines first, and only then is each line given its level.
     let candidates = heading_lines_by_page.iter().flatten().map(|(_, line)| line);
+    // Each line the rule read: its page, a run of it, and whether it is a label (2), bold alone
+    // (1) or sized (0) — counted once units are read, which may read a lede as text (decision #77).
+    let mut read_lines: Vec<(usize, usize, u8)> = Vec::new();
+    let mut body_em = None;
     if let Some(levels) = crate::headings::Levels::new(candidates, &doc_em_tally) {
-        let mut fired: u32 = 0;
-        let mut bold_headings: u32 = 0;
-        let mut labels: u32 = 0;
-        for (page, lines) in pages.iter_mut().zip(&heading_lines_by_page) {
+        for (p, (page, lines)) in pages.iter_mut().zip(&heading_lines_by_page).enumerate() {
             for (indices, line) in lines {
                 let Some(level) = levels.of(*line) else {
                     continue;
                 };
-                fired = fired.saturating_add(1);
-                if level == crate::headings::LABEL_LEVEL {
-                    labels = labels.saturating_add(1);
-                } else if !line.is_heading(levels.body_em()) {
-                    bold_headings = bold_headings.saturating_add(1);
-                }
+                let kind = if level == crate::headings::LABEL_LEVEL {
+                    2
+                } else {
+                    u8::from(!line.is_heading(levels.body_em()))
+                };
                 for &i in indices {
                     page.runs[i].inferred_heading = true;
                     page.runs[i].inferred_heading_level = (level > 1).then_some(level);
                 }
+                if let Some(&i) = indices.first() {
+                    read_lines.push((p, i, kind));
+                }
             }
         }
-        if fired > 0 {
-            limitations.push(lim::headings_inferred_from_type(
-                fired,
-                bold_headings,
-                labels,
-                &profile.heading_inference_rule,
-                levels.body_em(),
-            ));
-        }
+        body_em = Some(levels.body_em());
     }
 
     // Decision #38. Layout units, after headings — a heading line never shares a unit with body
@@ -2334,6 +2329,34 @@ fn extract_counted(
     {
         for page in pages.iter_mut() {
             crate::units::assign(page);
+        }
+    }
+    if let Some(body_em) = body_em {
+        let mut fired: u32 = 0;
+        let mut bold_headings: u32 = 0;
+        let mut labels: u32 = 0;
+        let mut as_text: u32 = 0;
+        for &(p, i, kind) in &read_lines {
+            if !pages[p].runs[i].inferred_heading {
+                as_text = as_text.saturating_add(1);
+                continue;
+            }
+            fired = fired.saturating_add(1);
+            match kind {
+                2 => labels = labels.saturating_add(1),
+                1 => bold_headings = bold_headings.saturating_add(1),
+                _ => {}
+            }
+        }
+        if fired > 0 {
+            limitations.push(lim::headings_inferred_from_type(
+                fired,
+                bold_headings,
+                labels,
+                as_text,
+                &profile.heading_inference_rule,
+                body_em,
+            ));
         }
     }
 

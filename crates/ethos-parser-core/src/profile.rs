@@ -1220,6 +1220,13 @@ pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 /// on `cfpb-home-loan-toolkit`, 12 of them against its tags; against ParseBench's ground truth it
 /// reads 199 more section headers as headings and 49 text elements as headings they are not, and
 /// the owner shipped it with that trade.
+///
+/// **And a heading holds thirty words at most** (decision #77, folded in before any release carried
+/// this id): a unit of heading lines past thirty words, counted as the layout units read their
+/// lines, is a lede set in display type, and its lines are read as text, which the limitation
+/// counts. On ParseBench visual grounding 0.5582 -> 0.5606, nineteen pages up and none down, every
+/// other bound unchanged; on the heading bounds' documents four false headings and six false labels
+/// fewer, on `cfpb-home-loan-toolkit`, and no right one lost (§14 there).
 pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.

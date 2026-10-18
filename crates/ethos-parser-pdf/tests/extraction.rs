@@ -7751,3 +7751,74 @@ fn a_run_is_placed_in_a_ruled_cell_where_its_first_glyph_stands() {
     let (narrow, _) = cells(150);
     assert_eq!(narrow, ["Year", "Fee", "2008 None", ""]);
 }
+
+/// **A heading holds thirty words at most** (`type-size-v7`, decision #77): a unit of heading lines
+/// past thirty words, counted as the units read its lines, is a lede set in display type, and its
+/// lines are read as text and said so. Three 14-point lines of
+/// thirty words over a body set at ten stay a heading; three of thirty-one, each line well short
+/// of the cap, are a lede.
+#[test]
+fn a_unit_of_heading_lines_past_thirty_words_is_read_as_text() {
+    let mut content = String::new();
+    let mut line = |size: u32, y: u32, text: &str| {
+        content.push_str(&format!(
+            "BT /F1 {size} Tf 1 0 0 1 72 {y} Tm ({text}) Tj ET\n"
+        ));
+    };
+    line(
+        14,
+        740,
+        "Alpha bravo charlie delta echo foxtrot golf hotel india juliet",
+    );
+    line(
+        14,
+        722,
+        "kilo lima mike november oscar papa quebec romeo sierra tango",
+    );
+    line(
+        14,
+        704,
+        "uniform victor whiskey xray yankee zulu amber birch cedar dahlia",
+    );
+    for k in 0..12 {
+        line(
+            10,
+            670 - 12 * k,
+            "Body text set at ten points across the measure of the column.",
+        );
+    }
+    line(14, 500, "Lede aa bb cc dd ee ff gg hh ii");
+    line(14, 482, "jj kk ll mm nn oo pp qq rr ss");
+    line(14, 464, "tt uu vv ww xx yy zz ab ac ad ae");
+    for k in 0..12 {
+        line(
+            10,
+            430 - 12 * k,
+            "More body text set at ten points across the column measure.",
+        );
+    }
+    let a = helvetica_letter_page(&content);
+    let flagged = |start: &str| -> Vec<bool> {
+        runs(&a)
+            .iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .skip_while(|r| !r.text.starts_with(start))
+            .take(3)
+            .map(|r| r.inferred_heading)
+            .collect()
+    };
+    assert_eq!(
+        flagged("Alpha"),
+        [true, true, true],
+        "thirty words are a heading"
+    );
+    assert_eq!(
+        flagged("Lede"),
+        [false, false, false],
+        "thirty-one are a lede"
+    );
+    let detail = limitation_detail(&a, ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE)
+        .expect("the inference is declared");
+    assert!(detail.starts_with("3 line(s)"), "{detail}");
+    assert!(detail.contains("3 further line(s)"), "{detail}");
+}

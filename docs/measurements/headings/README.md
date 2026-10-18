@@ -631,3 +631,33 @@ down. The owner shipped it with the label tier's trade (decision #64).
 **Measured beside it and not used:** the heavier weight read only where a line stands apart, the
 label tier as under `-v6` — both tiers of the bounds identical to `-v6`'s, but visual grounding
 0.5389 (19 pages up and 4 down) against 0.5435 (43 up and 18 down).
+
+## 14. `type-size-v7`, folded — a heading holds thirty words at most (2026-10-18)
+
+On ParseBench's visual-grounding pages, 0.0038 of the score is lost to units we read as headings
+that its ground truth labels text and that run past twenty words — a report's opening statement, a
+lede, set in display type.
+
+**The rule**: a unit of heading lines past thirty words, its words counted as the layout units read
+its lines (`units::spaced`: a word gap the page set by moving its pen counts as one, so a heading set
+letter by letter is one word), is a lede, and its lines are read as text: their runs lose
+`inferred_heading`, and `headings-inferred-from-type` counts only the lines still read as headings,
+naming the ones read as text. Only where layout units are read, so where the document declares no
+author structure.
+
+**The bounds**: every document reads as before, line for line, but `cfpb-home-loan-toolkit`, whose
+`#` headings fire on 65 -> **61** lines, right 19 -> **19**, false 42 -> **38** (FP rate 4.61% ->
+**4.17%**, recall unchanged at 22.89%), and whose label tier fires on six lines fewer, every one
+against its tags; over the eleven the label tier fires 739 -> **733**, right 375 -> **375**, against
+the author's tags 352 -> **346**. The rate bound is met, 0.00%..4.17% over the nine, worst
+`cfpb-home-loan-toolkit`; the count bound is breached where it was before and nowhere else.
+
+**Why thirty, not twenty.** At twenty words visual grounding rose further, 0.5582 -> 0.5615 (30 up,
+1 down), but ParseBench's formatting pages read a news deck or a pull quote as a title, and four of
+them fell — `text_dense__topofthenews` 0.94 -> 0.83 for a 28-word quote, `text_dense__leaflet`, El
+País's 21-word deck, `chinese3` — every one of 21 to 28 words. At thirty: grounding 0.5582 ->
+**0.5606**, 19 pages up and none down, and nothing else moves on any page. On opendataloader-bench
+NID one document up and none down; TEDS and MHS unchanged.
+
+**Measured beside it and not used:** a heading inside a figure region read as text. The ground truth
+calls many infographic labels section headers: grounding 0.5546, 32 pages up and 50 down.
