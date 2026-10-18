@@ -21,8 +21,9 @@
 //! `vendor/adobe-mapping-resources-pdf/`, unmodified, under Adobe's BSD-3-Clause licence, embedded
 //! with `include_str!` as the Adobe Glyph List is. Each mapping is a CMap by its syntax, so it is
 //! read by the parser a document's `/ToUnicode` is, once, the first time a document needs it.
-//! Not under `/Identity-V`: that font writes down the page (§9.7.4.3), and this profile advances
-//! every pen across it, so a run read there would carry a box where its glyphs are not.
+//! Not under `/Identity-V`, where decision #78 scoped it out: that font writes down the page
+//! (§9.7.4.3), by metrics this profile does not read, and its runs carry no advance and no box
+//! (decision #80).
 
 use std::sync::{Arc, OnceLock};
 

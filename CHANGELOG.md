@@ -187,6 +187,29 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A run in a font that writes down the page carries no box (decision #80)
+
+`text_box_rule` `advance-over-font-envelope-v1` -> `-v2`, so `profile_sha256` moves
+(`sha256:4392b7d8…` -> `sha256:8f54887c…`). The last update in
+[`docs/22-WORD-BOXES-SCOPE.md`](docs/22-WORD-BOXES-SCOPE.md) is the record.
+
+- **A run shown in a composite font under `/Identity-V` keeps its text and gets no advance and no
+  box** (`not_reported_by_reader`), declared under `font-widths-absent` with the reason. Such a font
+  writes down the page: PDF 32000-1 §9.7.4.3 moves its pen by each glyph's vertical displacement,
+  from `/W2` and `/DW2`, which this profile does not read. The reader advanced it along x by `/W`,
+  the horizontal width, so the run's box lay across the page where its glyphs stack down it: a
+  measured-looking box where no glyph is.
+- **The pen does not travel over such a run's glyphs**, as over any code of no known width, so a
+  later string in the same text object, with no new placement, is reported where the run starts,
+  where the old advance put it that run's width to the right. The declaration says so.
+- **Offered and not chosen**: `/W2` and `/DW2` read so the pen moves down the page, the box still
+  absent; and the vertical metrics in full, the box built as a column.
+- **Decision #78's tables stay under `/Identity-H`**, as the owner chose: a font under `/Identity-V`
+  naming an Adobe collection, with no `/ToUnicode`, keeps its runs omitted and counted, and its
+  message now gives that scope as the reason, since the box it named is gone.
+- **No font in the 2,247 documents censused on 2026-10-18** (ParseBench, opendataloader-bench, the
+  gate corpus) is under `/Identity-V`, so none of their artifacts can move but for its profile.
+
 ### A grid that holds no text, or that a chart's value axis rules, is no table (decision #79)
 
 Folded into `stroke-ruled-v2`, which no release carries yet, so no rule id and no

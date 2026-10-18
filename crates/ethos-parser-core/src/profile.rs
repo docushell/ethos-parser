@@ -1121,6 +1121,22 @@ pub const OUTLINE_RULE_V3: &str = "outlines-v3";
 /// it got. Narrowing the box to ink would be a different rule and would move this id.
 pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 
+/// [`TEXT_BOX_RULE_V1`] **with a run shown in a font under `/Identity-V` given no advance and no
+/// box** (decision #80).
+///
+/// **What `-v1` got wrong.** A composite font under `/Identity-V` writes down the page: PDF
+/// 32000-1 §9.7.4.3 moves its pen by each glyph's vertical displacement, from the descendant's
+/// `/W2` and `/DW2`, and places each glyph by its position vector. `-v1` advanced every pen along
+/// the text matrix's x by `/W`, the horizontal width, so such a run's box lay across the page where
+/// its glyphs stack down it: a measured-looking box where no glyph is.
+///
+/// **The change.** This profile reads no metric of that direction, so the run's advance is absent
+/// and its box `not_reported_by_reader`, declared under `font-widths-absent`; its text is
+/// unchanged. The pen does not travel over its glyphs, as over any code of no known width. Every
+/// other run's box is built as `-v1` builds it, and no font in the 2,247 documents measured on
+/// 2026-10-18 is under `/Identity-V`.
+pub const TEXT_BOX_RULE_V2: &str = "advance-over-font-envelope-v2";
+
 /// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3), repaired on
 /// measurement.
 ///
@@ -2319,7 +2335,7 @@ pub struct Profile {
     pub outline_rule: String,
     /// The rule that built the text-run boxes, or [`NOT_RUN`].
     ///
-    /// See [`TEXT_BOX_RULE_V1`]. `NOT_RUN` on the eight office profiles, which set
+    /// See [`TEXT_BOX_RULE_V2`]. `NOT_RUN` on the eight office profiles, which set
     /// `measured_ink_boxes: false` and emit no coordinate at all, so there is no box for a rule
     /// to have built.
     pub text_box_rule: String,
@@ -2445,7 +2461,7 @@ impl Default for Profile {
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
-            text_box_rule: TEXT_BOX_RULE_V1.to_string(),
+            text_box_rule: TEXT_BOX_RULE_V2.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
             layout_unit_rule: LAYOUT_UNIT_RULE_V5.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
@@ -3683,7 +3699,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4843,11 +4859,15 @@ mod tests {
              Moved for decision #78, `sha256:f4b62eef…` -> `sha256:4392b7d8…`: \
              `cmap_data_version` `annex-d-encodings-4` -> `-5`, which vendors Adobe's \
              CID-to-Unicode mappings for Adobe-Japan1, -GB1, -CNS1, -Korea1 and -KR and reads an \
-             `/Identity-H` font's CIDs through its collection's. Nothing else."
+             `/Identity-H` font's CIDs through its collection's. Nothing else.\n\n\
+             Moved for decision #80, `sha256:4392b7d8…` -> `sha256:8f54887c…`: `text_box_rule` \
+             `advance-over-font-envelope-v1` -> `-v2`, which gives a run shown in a font under \
+             `/Identity-V` no advance and no box, where `-v1` laid one across the page by the \
+             font's horizontal widths. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:4392b7d8069d3755cbc4b67b3ed361e1a27965b1a87e7ec84fa79d6fb07ed4f4"
+            "sha256:8f54887ce2a10968b2a8c33ebf772d7aebdb9fce97755822121c84af751161e8"
         );
     }
 
@@ -4861,9 +4881,9 @@ mod tests {
     #[test]
     fn the_profile_names_the_box_rule_and_moving_it_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.text_box_rule, TEXT_BOX_RULE_V1);
+        assert_eq!(base.text_box_rule, TEXT_BOX_RULE_V2);
         assert_eq!(
-            TEXT_BOX_RULE_V1, "advance-over-font-envelope-v1",
+            TEXT_BOX_RULE_V2, "advance-over-font-envelope-v2",
             "the id names the CONSTRUCTION, not the word `ink`: that is the whole point of it"
         );
 

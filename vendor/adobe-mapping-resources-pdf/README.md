@@ -31,9 +31,9 @@ codespace and `bfchar`/`bfrange` entries. A composite font under `/Identity-H` d
 codes; where it ships no `/ToUnicode` and its descendant's `/CIDSystemInfo` names `Adobe` and one
 of `Japan1`, `GB1`, `CNS1`, `Korea1` or `KR`, its characters are read through that collection's
 file. Any other collection — `Adobe-Identity`, a vendor's own — stays undecodable, its runs omitted
-and counted, and so does a font under `/Identity-V`: it writes down the page (§9.7.4.3), and the
-engine advances every pen across it, so a run read there would carry a box where its glyphs are
-not.
+and counted, and so does a font under `/Identity-V`, where decision #78 scoped them out: it writes
+down the page (§9.7.4.3), by metrics the engine does not read, and since decision #80 its runs carry
+no advance and no box.
 
 These are not the predefined CMaps (`UniJIS-UCS2-H` and its siblings), which map character codes
 to CIDs and remain unvendored: a font naming one as its `/Encoding` is still refused.

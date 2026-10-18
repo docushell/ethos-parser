@@ -332,7 +332,7 @@
     },
     "text_box_rule": {
       "type": "string",
-      "$comment": "docs/01-CONTRACT.md §5.3 and §6. The rule that built the text-run boxes. `advance-over-font-envelope-v1` on the PDF profile: along the baseline the pen's advance, across it the font's ascent-to-descent envelope scaled to the rendered em — which is NOT glyph ink, and is what this id exists to say. `not-run` on the eight office profiles, which emit no coordinate at all."
+      "$comment": "docs/01-CONTRACT.md §5.3 and §6. The rule that built the text-run boxes. `advance-over-font-envelope-v2` on the PDF profile: along the baseline the pen's advance, across it the font's ascent-to-descent envelope scaled to the rendered em — which is NOT glyph ink, and is what this id exists to say. `-v2` (decision #80) gives a run in a font under `/Identity-V`, which writes down the page, no box, where `-v1` laid one across it. `not-run` on the eight office profiles, which emit no coordinate at all."
     }
   },
   "$defs": {
@@ -537,7 +537,7 @@
         "tracks": "whitespace-tracks-v15",
         "unruled": "unruled-align-v1"
       },
-      "text_box_rule": "advance-over-font-envelope-v1",
+      "text_box_rule": "advance-over-font-envelope-v2",
       "text_code_rule": "declared-font-codes-v4",
       "unicode_data_version": "std-unicode-16.0.0",
       "verifier": {

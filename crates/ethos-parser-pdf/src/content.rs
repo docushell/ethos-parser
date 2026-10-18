@@ -1087,8 +1087,8 @@ impl<'a> Interpreter<'a> {
         // page, and the pen moved for the codes before the refused one.
         self.text_drawn_since_placement = true;
         // PDF 32000-1 §9.3.3: `Tw` is added to the SINGLE-BYTE code 32 only. A simple font's
-        // codes are one byte (§9.6). A composite font reaches an advance only under Identity-H or
-        // Identity-V (`fonts::load_cid_widths`), whose codes are all two bytes, so none of its
+        // codes are one byte (§9.6). A composite font reaches an advance only under Identity-H
+        // (`fonts::load_cid_widths`; decision #80), whose codes are all two bytes, so none of its
         // codes takes `Tw`: not `<0020>`, and not a byte 0x20 the interim `/ToUnicode`-derived
         // split read alone (`composite-font-codes-from-tounicode`). If composite advances ever
         // reach a CMap with single-byte codes, this must ask the code's own length instead

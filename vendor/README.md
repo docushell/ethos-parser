@@ -51,8 +51,9 @@ runs omitted, one page reading 8 runs of its 216 — three CJK text pages drop 1
 way, and two were refused outright: `text_multilang__korean2`, in Adobe-Korea1, now read in full,
 and `text_sparse__anex`, now read to its folio, its other font's `/ToUnicode` holding a codespace
 and no mapping. The five files go the list's way: pristine, embedded with `include_str!`, their
-notice in [`../NOTICE`](../NOTICE). Under `/Identity-H` only: a font under `/Identity-V` writes
-down the page, and the engine advances every pen across it; no document in the corpora uses one.
+notice in [`../NOTICE`](../NOTICE). Under `/Identity-H` only, where decision #78 scoped them: a font
+under `/Identity-V` writes down the page, and since decision #80 its runs carry no advance and no
+box; no document in the corpora uses one.
 
 ## The Adobe Glyph List row
 

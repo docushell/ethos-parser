@@ -177,17 +177,21 @@ baseline along neither gets `NotAxisAligned`, because no `[x0, y0, x1, y1]` equa
 rectangle. A run holding a code of no known width, a font with no ascent and descent — including a
 Type 3 font whose `/FontMatrix` leaves its glyph space vertically other than the 1000-unit default,
 where nothing in the font says which units its descriptor used — a run drawing only whitespace, and
-a box the document draws off its own page each get a typed absence instead (§5.2). Where the reader
-departs from this construction, that is a defect; [`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md)
-§9 records the ones found.
+a box the document draws off its own page each get a typed absence instead (§5.2). So does a run in
+a composite font under `/Identity-V`, which writes down the page by its `/W2` and `/DW2`, metrics
+this profile does not read: none of its codes has a known width along the pen's path (decision
+#80). Where the reader departs from this construction, that is a defect;
+[`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md) §9 records the ones found.
 
 A detected table's or cell's box is the rectangle its detection rule measured from the page's ink.
 The table record names that rule, and the profile's `table_detection` names the rules in force.
 
 **Settled 2026-09-24: the profile names the rule that built the box.** `text_box_rule` carries
-`advance-over-font-envelope-v1`, and the id is the declaration — it says the box is the pen's
+`advance-over-font-envelope-v2`, and the id is the declaration — it says the box is the pen's
 advance along the baseline over the font's ascent-to-descent envelope across it, which is not glyph
-ink. Narrowing the box to ink would be a different construction and would move the id.
+ink. Narrowing the box to ink would be a different construction and would move the id. `-v2`
+(decision #80) differs from `-v1` only for a run in a font under `/Identity-V`, which `-v1` gave a
+box laid across the page by the font's horizontal widths.
 
 It is on the **profile** and not on each box, because every text-run box in an artifact is built the
 same way: a per-box field would repeat one fact per run and still not say it where a consumer sizing

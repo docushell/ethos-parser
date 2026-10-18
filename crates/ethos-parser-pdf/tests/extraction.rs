@@ -7864,3 +7864,84 @@ fn an_adobe_japan1_font_s_cids_read_through_adobe_s_table() {
         "Adobe-Identity names no published table: nothing decodes, so the document is refused"
     );
 }
+
+/// **A run shown in a font under `/Identity-V` carries no advance and no box** (decision #80,
+/// `advance-over-font-envelope-v2`). Such a font writes down the page: PDF 32000-1 §9.7.4.3 moves
+/// its pen by `/W2` and `/DW2`, which this profile does not read, and `-v1` advanced it along x by
+/// `/W`, so `AB` got a measured box 11 pt across the page where its glyphs stack down it. The same
+/// font under `/Identity-H` is the control: its box stands, and the next string starts where `AB`
+/// ends. Under `/Identity-V` the pen does not travel, as over any code of no known width, so `C` is
+/// reported where `AB` starts, as the declaration says.
+#[test]
+fn a_run_in_a_font_that_writes_down_the_page_carries_no_advance_and_no_box() {
+    let content = "BT /F1 10 Tf 1 0 0 1 300 700 Tm <00010002> Tj <0003> Tj ET";
+    let cmap = "begincmap\n1 begincodespacerange <0000> <FFFF> endcodespacerange\n\
+                3 beginbfchar\n<0001> <0041>\n<0002> <0042>\n<0003> <0043>\nendbfchar\nendcmap";
+    let extract = |encoding: &str| {
+        let objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+               /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            )
+            .into_bytes(),
+            format!(
+                "<< /Type /Font /Subtype /Type0 /BaseFont /ProbeCID /Encoding /{encoding} \
+                 /DescendantFonts [6 0 R] /ToUnicode 8 0 R >>"
+            )
+            .into_bytes(),
+            b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /ProbeCID /CIDSystemInfo \
+               << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 7 0 R \
+               /DW 1000 /W [1 [500 600 700]] >>"
+                .to_vec(),
+            b"<< /Type /FontDescriptor /FontName /ProbeCID /Flags 4 /FontBBox [0 -200 1000 800] \
+               /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>"
+                .to_vec(),
+            format!("<< /Length {} >>\nstream\n{cmap}\nendstream", cmap.len()).into_bytes(),
+        ];
+        extracted(&pdf_from_objects(&objects)).expect("extracts")
+    };
+    let run = |a: &ExtractArtifact, text: &str| {
+        let r: Vec<_> = runs(a).into_iter().filter(|r| r.text == text).collect();
+        assert_eq!(r.len(), 1, "one run reads {text:?}");
+        r[0].clone()
+    };
+    let absent = ethos_parser_pdf::limitations::FONT_WIDTHS_ABSENT;
+
+    let across = extract("Identity-H");
+    let (ab, c) = (run(&across, "AB"), run(&across, "C"));
+    assert_eq!(
+        ab.locator.advance,
+        Some(1_100),
+        "500 + 600 glyph units at 10 pt"
+    );
+    assert_eq!(ab.geometry.measured().map(|b| b.x1() - b.x0()), Some(1_100));
+    assert_eq!(c.locator.origin_x, ab.locator.origin_x + 1_100);
+    assert_eq!(limitation_detail(&across, absent), None);
+
+    let down = extract("Identity-V");
+    let (ab, c) = (run(&down, "AB"), run(&down, "C"));
+    assert_eq!(
+        ab.locator.advance, None,
+        "/W is not how far this pen travels"
+    );
+    assert_eq!(
+        ab.geometry,
+        GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+        "no box laid across the page where the glyphs stack down it"
+    );
+    assert_eq!(
+        (c.locator.origin_x, c.locator.origin_y),
+        (ab.locator.origin_x, ab.locator.origin_y),
+        "the pen does not travel over glyphs of no known advance, as the declaration says"
+    );
+    let detail = limitation_detail(&down, absent).expect("the absence is declared");
+    assert!(
+        detail.contains("/Identity-V, which writes down the page"),
+        "{detail}"
+    );
+}

@@ -83,9 +83,10 @@ pub enum WidthSource {
         /// §9.7.4.3 states *"Default value: 1000"*, so an absent `/DW` is a declared value the
         /// same way an absent `/Encoding` on a simple font declares the built-in one. The
         /// distinction matters here because it is the difference between this variant and
-        /// [`Self::Absent`]: under an Identity CMap a composite font's advance is therefore
+        /// [`Self::Absent`]: under `/Identity-H` a composite font's advance is therefore
         /// **never** unknown, which is why nothing falls through to `Absent` for width reasons
-        /// once the encoding is Identity.
+        /// once the encoding is `/Identity-H`. `/Identity-V` is `Absent` for its direction
+        /// (decision #80).
         default: f64,
     },
     /// Adobe's own metrics for a standard-14 face the document named (decision #22).
@@ -132,10 +133,10 @@ pub enum Decoder {
     Refused(String),
     /// `/Identity-H` or `/Identity-V` with no `/ToUnicode` and no mapping this profile reads for
     /// its collection (decision #78), and why nothing decodes. The code is
-    /// the CID and two bytes wide (§9.7.4.2), so a string splits and the pen advances as the
-    /// document says; only the characters are unknown. A run shown with it is omitted and counted
-    /// under `broken-font-encoding`, as a simple font's undecodable run is, and the document is
-    /// refused only where nothing else decodes (ParseBench, 2026-10-03).
+    /// the CID and two bytes wide (§9.7.4.2), so a string splits and, under `/Identity-H`, the pen
+    /// advances as the document says; only the characters are unknown. A run shown with it is
+    /// omitted and counted under `broken-font-encoding`, as a simple font's undecodable run is, and
+    /// the document is refused only where nothing else decodes (ParseBench, 2026-10-03).
     Undecodable(String),
 }
 
@@ -1028,9 +1029,10 @@ fn load_simple_encoding(
                         } else {
                             "the CID-to-Unicode mappings this profile carries — Adobe's for \
                              Adobe-Japan1, -GB1, -CNS1, -Korea1 and -KR (decision #78) — are read \
-                             only under /Identity-H: a font under /Identity-V writes down the \
-                             page (§9.7.4.3), and this profile advances every pen across it, so \
-                             a run read here would carry a box where its glyphs are not"
+                             only under /Identity-H, where that decision scoped them: a font \
+                             under /Identity-V writes down the page (§9.7.4.3), by metrics this \
+                             profile does not read, so its runs carry no advance and no box \
+                             (decision #80)"
                         }
                     )
                 } else {
@@ -1117,7 +1119,7 @@ fn type3_vertical_is_default(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> b
 
 /// A composite font's widths, from its descendant CIDFont (v2.2-S3, PDF 32000-1 §9.7.4.3).
 ///
-/// # Why this refuses every encoding but Identity
+/// # Why this refuses every encoding but Identity-H
 ///
 /// `/W` is keyed by **CID**, and `advance_glyph_space` is given a **character code**. The map
 /// between them is the CMap named by `/Encoding`, and this profile parses no CMaps — the standing
@@ -1126,6 +1128,11 @@ fn type3_vertical_is_default(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> b
 /// the CID and no CMap is needed. Under anything else the CID is unknown, and a width looked up
 /// with the wrong key is worse than no width: it is a plausible number, and this engine's whole
 /// posture is that a plausible number is the one failure a consumer cannot detect.
+///
+/// **`Identity-V` is refused for another reason** (decision #80, `advance-over-font-envelope-v2`).
+/// It writes down the page: §9.7.4.3 moves its pen by each glyph's vertical displacement, from
+/// `/W2` and `/DW2`, and places the glyph by its position vector. `/W` is the horizontal width, so
+/// an advance read from it laid the run's box across the page where its glyphs stack down it.
 ///
 /// The restriction costs nothing measurable. All **78** composite fonts on the 200-document
 /// `opendataloader-bench` corpus declare `Identity-H` — which is the claim
@@ -1137,7 +1144,22 @@ fn type3_vertical_is_default(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> b
 /// the same change.
 fn load_cid_widths(doc: &lopdf::Document, fd: &lopdf::Dictionary, id: &str) -> WidthSource {
     let encoding = fd.get(b"Encoding").ok().and_then(|o| o.as_name().ok());
-    if !matches!(encoding, Some(b"Identity-H") | Some(b"Identity-V")) {
+    if matches!(encoding, Some(b"Identity-V")) {
+        return WidthSource::Absent {
+            reason: format!(
+                "font /{id} (Type0{}) declares /Encoding /Identity-V, which writes down the page: \
+                 PDF 32000-1 §9.7.4.3 moves its pen by each glyph's vertical displacement, from \
+                 the descendant's /W2 and /DW2, and this profile reads neither. Its /W widths are \
+                 horizontal, not how far its pen travels, so the advance is ABSENT and no box is \
+                 built, rather than one laid across the page where the glyphs stack down it. The \
+                 text is unaffected. The pen does not travel over these glyphs, so a later string \
+                 in the same text object, with no new placement, is reported where this run \
+                 starts.",
+                base_font_suffix(fd),
+            ),
+        };
+    }
+    if !matches!(encoding, Some(b"Identity-H")) {
         return WidthSource::Absent {
             reason: format!(
                 "font /{id} (Type0{}) declares /Encoding {}, and this profile parses no CMaps, so \
@@ -1300,8 +1322,8 @@ pub(crate) fn resolve_dict<'a>(
 
 /// Decision #78: the CID-to-Unicode mapping of the Adobe character collection a composite font's
 /// descendant names in its `/CIDSystemInfo`, where this profile vendors one — under `/Identity-H`
-/// only. A font under `/Identity-V` writes down the page (§9.7.4.3), and this profile advances
-/// every pen across it, so a run read there would carry a box where its glyphs are not.
+/// only, where decision #78 scoped it. A font under `/Identity-V` writes down the page (§9.7.4.3),
+/// by metrics this profile does not read, and its runs carry no advance and no box (decision #80).
 fn collection_mapping(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> Option<Arc<ToUnicode>> {
     if fd.get(b"Encoding").ok()?.as_name().ok()? != b"Identity-H" {
         return None;
@@ -2001,7 +2023,7 @@ mod tests {
     /// 1000 there: at that value an implementation that ignored the default entirely still
     /// produced the right number. An absent `/DW` is a declared value the same way an absent
     /// `/Encoding` on a simple font declares the built-in one — so this is not a guess, and a
-    /// composite font under an Identity CMap therefore has no width-absent case at all.
+    /// composite font under `/Identity-H` therefore has no width-absent case at all.
     #[test]
     fn the_spec_default_applies_when_dw_is_absent() {
         let w = widths_of("Identity-H", None, Some(vec![n(1), a(&[500])]));
@@ -2040,11 +2062,21 @@ mod tests {
                 "and disowns the AFM sentence: {reason}"
             );
         }
-        // Identity-V is Identity too — vertical writing does not change the CID mapping.
-        assert!(matches!(
-            widths_of("Identity-V", Some(900), None),
-            WidthSource::Cid { .. }
-        ));
+        // Identity-V maps codes to CIDs as Identity-H does, and is refused for its direction
+        // instead (decision #80): its pen travels down the page by /W2 and /DW2, which nothing
+        // here reads, so /W's horizontal widths are not its advance.
+        let w = widths_of("Identity-V", Some(900), Some(vec![n(1), a(&[500])]));
+        let WidthSource::Absent { reason } = &w else {
+            panic!("an /Identity-V font has no advance this profile reads, got {w:?}")
+        };
+        assert!(
+            reason.contains("/Identity-V, which writes down the page") && reason.contains("/W2"),
+            "{reason}"
+        );
+        assert!(
+            !reason.contains("parses no CMaps"),
+            "its CIDs are known, its direction is not: {reason}"
+        );
     }
 
     /// A `/Type0` with no descendant is malformed, and says that rather than blaming a table.

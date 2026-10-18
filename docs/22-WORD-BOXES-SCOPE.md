@@ -178,6 +178,19 @@ to is recorded below with the version it ships in.
   and §8 understates the reach — correcting the stale limitation detail changes one field of every
   **Office** representation, and every format's Markdown and HTML move their profile and
   representation digests.
+- **A run in a font under `/Identity-V` — fixed 2026-10-18, decision #80.** Such a font writes down
+  the page: PDF 32000-1 §9.7.4.3 moves its pen by each glyph's vertical displacement, from `/W2` and
+  `/DW2`, and places the glyph by its position vector. The reader read neither and advanced the pen
+  along x by `/W`, the horizontal width, so a run's box lay across the page where its glyphs stack
+  down it: a test font's `AB` at 10 pt got a measured box 11 pt across. The run now keeps its text
+  and gets no advance and no box (`not_reported_by_reader`), declared under `font-widths-absent`,
+  and `text_box_rule` moves to `advance-over-font-envelope-v2`. The vertical metrics are still not
+  read — offered, with the pen moving down the page and a box built as a column, and not chosen — so
+  the pen does not travel over such a run's glyphs, as over any code of no known width: a later
+  string in the same text object, with no new placement, is reported where the run starts, where
+  the old advance put it that run's width to the right. Both are wrong; this one is declared. No
+  font in the 2,247 documents censused that day (ParseBench, opendataloader-bench, the gate corpus)
+  is under `/Identity-V`, so none of their artifacts can move but for its profile.
 
 ---
 
