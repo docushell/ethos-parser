@@ -1001,13 +1001,25 @@ fn a_line_whose_process_fails_is_answered_and_the_session_goes_on() {
     let dir = stdio_scratch("gone");
     let copy = dir.join("ethos-parser");
     std::fs::copy(env!("CARGO_BIN_EXE_ethos-parser"), &copy).expect("copy the binary");
-    let mut child = Command::new(&copy)
-        .arg("mcp")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("runs");
+    // Linux refuses to run a file still open for writing (ETXTBSY), and a process another test
+    // forked while the copy was being written holds it open until that process execs. CI run
+    // 39021650604 failed here so; the copy is free a moment later.
+    let mut tries = 0;
+    let mut child = loop {
+        let spawned = Command::new(&copy)
+            .arg("mcp")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+        match spawned {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 100 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            spawned => break spawned.expect("runs"),
+        }
+    };
     let mut stdin = child.stdin.take().expect("stdin");
     let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
     let initialize = json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {} });
