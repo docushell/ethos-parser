@@ -349,14 +349,43 @@ fn first_glyph_x(
 
 type HeadingLines = Vec<(Vec<usize>, crate::headings::Line)>;
 
-/// How much heavier than its page's body a run's weight class must be for the heading rule to read
-/// it as bold (`type-size-v7`, decision #64): one class, the step between Light and Regular or
-/// Regular and Medium.
+/// How much heavier than its page's body a run's weight class must be to be read as bold
+/// (`type-size-v7`, decision #64; the run's own `bold` since decision #82): one class, the step
+/// between Light and Regular or Regular and Medium.
 const WEIGHT_STEP: u32 = 100;
 
 /// A weight class to the nearest hundred, as fonts state them.
 fn weight_class(weight: u32) -> u32 {
     (weight + 50) / 100 * 100
+}
+
+/// Decision #82, folded into `page-observations-v4`: a run set a weight class or more heavier than
+/// the class most of its page's characters are set in — Medium over Light, Regular over Light — is
+/// bold, as a reader sees it and as `type-size-v7` (decision #64) read it for the heading rule
+/// alone. The class itself is never on the wire; a run whose font states none is left as it is.
+fn heavier_runs_bold(runs: &mut [TextRun]) {
+    let mut by_weight: std::collections::BTreeMap<u32, u64> = std::collections::BTreeMap::new();
+    for run in runs.iter() {
+        if let Some(weight) = run.weight {
+            *by_weight.entry(weight_class(weight)).or_default() +=
+                run.text.trim().chars().count() as u64;
+        }
+    }
+    let Some(body) = by_weight
+        .iter()
+        .max_by_key(|&(&weight, &chars)| (chars, std::cmp::Reverse(weight)))
+        .map(|(&weight, _)| weight)
+    else {
+        return;
+    };
+    for run in runs.iter_mut() {
+        if run
+            .weight
+            .is_some_and(|weight| weight_class(weight) >= body + WEIGHT_STEP)
+        {
+            run.bold = true;
+        }
+    }
 }
 
 /// One page's candidate heading lines (decision #29), and its share of the body em.
@@ -382,26 +411,6 @@ fn page_heading_lines(
         .flat_map(|t| t.cells.iter())
         .flat_map(|c| c.run_indices.iter().copied())
         .collect();
-    // `type-size-v7` (decision #64): a run set a weight class or more heavier than the class most of
-    // its page's characters are set in — Medium over Light — is set apart as a bold one is, and the
-    // rule reads it so. The run's own `bold` is untouched: the projections still emphasise only what
-    // its font calls bold.
-    let mut by_weight: std::collections::BTreeMap<u32, u64> = std::collections::BTreeMap::new();
-    for run in runs {
-        if let Some(weight) = run.weight {
-            *by_weight.entry(weight_class(weight)).or_default() +=
-                run.text.trim().chars().count() as u64;
-        }
-    }
-    let body_weight = by_weight
-        .iter()
-        .max_by_key(|&(&weight, &chars)| (chars, std::cmp::Reverse(weight)))
-        .map(|(&weight, _)| weight);
-    let heavier = |run: &TextRun| {
-        run.weight
-            .zip(body_weight)
-            .is_some_and(|(weight, body)| weight_class(weight) >= body + WEIGHT_STEP)
-    };
     let typed: Vec<Typed> = runs
         .iter()
         .zip(ems)
@@ -415,7 +424,10 @@ fn page_heading_lines(
                 Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
             ),
             table_owned: owned.contains(&i),
-            bold: run.bold || heavier(run),
+            // `type-size-v7` (decision #64): a run set a weight class heavier than its page's body
+            // is read as bold — carried since decision #82 by the run's own `bold`
+            // ([`heavier_runs_bold`]), which the projections emphasise too.
+            bold: run.bold,
         })
         .collect();
 
@@ -1434,6 +1446,10 @@ fn extract_page(
             runs.len(),
             "one rendered em per run, for the same reason"
         );
+
+        // Decision #82. A run set a weight class heavier than its page's body is bold, before the
+        // heading rule reads the page's lines.
+        heavier_runs_bold(&mut runs);
 
         // Decision #29. This page's lines reduced for the heading rule, and its share of the
         // document's body em. Here, after `reorder_page`, so the indices address the final list;

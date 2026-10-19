@@ -1655,9 +1655,11 @@ pub struct TextRunAttributes {
     /// The font that drew this run declares itself bold (decision #38): a `/FontWeight` of 600
     /// or more, the ForceBold flag, or a bold style word in its `/BaseFont`, under the profile's
     /// `observation_rule`. A statement about the typeface the document chose, read from its own
-    /// font dictionary; the Markdown and HTML projections render it as strong emphasis. PDF
-    /// only — the office readers do not set it yet. **Absent where false**, as
-    /// [`Self::inferred_heading`] is.
+    /// font dictionary; the Markdown and HTML projections render it as strong emphasis. Since
+    /// decision #82 it is set too where the run is set a weight class or more heavier than the
+    /// class most of its page's characters are set in — Medium over Light — as a reader sees it;
+    /// the class itself is not on the wire. PDF only — the office readers do not set it yet.
+    /// **Absent where false**, as [`Self::inferred_heading`] is.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bold: bool,
     /// The font that drew this run declares itself italic: the Italic flag, or `Italic` or

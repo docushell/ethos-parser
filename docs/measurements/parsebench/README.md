@@ -967,6 +967,15 @@ or after one ending in a hyphen. Semantic formatting 0.4603 -> 0.4646, 7 pages u
 content faithfulness unchanged at 0.6716, 13 pages down by at most 0.0023, a trade the owner took;
 tables, charts and visual grounding unchanged on every page. Overall 47.79 -> 47.87.
 
+### After a run set heavier than its page's text is bold (decision #82, 2026-10-19)
+
+Of the bold rules failing on pages with Markdown, one cause had a single fix: faces a weight class
+heavier than their page's text — `Amplitude-Medium`, `McKinseySans-Medium` — which the heading rule
+read as bold since decision #64 and the projections did not emphasise. Told "Census: unread bold",
+such a run is bold. Semantic formatting 0.4646 -> 0.4732, 8 pages up and none down; charts 0.1248
+-> 0.1255, two up; content, tables and visual grounding unchanged on every page. Overall 47.87 ->
+48.06; opendataloader-bench NID 0.8876 -> 0.8872 and MHS 0.5895 -> 0.5893, a trade the owner took.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

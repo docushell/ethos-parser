@@ -229,6 +229,14 @@ pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 /// **Measured** (`docs/measurements/parsebench/README.md`): ParseBench semantic formatting
 /// 0.4080 → 0.4296, 17 documents up and none down, every other dimension unchanged; the heading
 /// bounds of `docs/28-HEADINGS-SCOPE.md` §7.5 where they stood.
+///
+/// **And a run set heavier than its page's text is bold** (decision #82, folded in before any
+/// release carried this id): a run set a weight class or more heavier than the class most of its
+/// page's characters are set in — `Amplitude-Medium` names over a light text — as the heading rule
+/// has read it since decision #64, which left the run's own `bold` alone. ParseBench semantic
+/// formatting 0.4646 → 0.4732, 8 pages up and none down, charts two pages up; opendataloader-bench
+/// NID 0.8876 → 0.8872 and MHS 0.5895 → 0.5893, a trade the owner took — its ground truth reads an
+/// arXiv paper's Medium author names and a chart's numbers as plain.
 pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
@@ -1235,7 +1243,8 @@ pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 /// **The change.** Each font's weight class is read — its descriptor's `/FontWeight`, its embedded
 /// program's `OS/2` class, or a weight word in its name's style — and a run set a class or more
 /// heavier than the class most of its page's characters are set in counts as bold for the bold
-/// clause and the label tier. The run's own `bold` is untouched, so no projection emphasises it.
+/// clause and the label tier. The run's own `bold` was untouched, so no projection emphasised it,
+/// until decision #82 set it there too (`OBSERVATION_RULE_V4`).
 ///
 /// **Measured** (`docs/measurements/headings/README.md` §13): the `#` headings of the heading
 /// bounds' eleven documents read as under `-v6`, line for line; the label tier reads 20 more lines

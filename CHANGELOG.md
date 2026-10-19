@@ -187,6 +187,33 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A run set a weight heavier than its page's text is bold (decision #82)
+
+Folded into `page-observations-v4`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A run set a weight class or more heavier than the class most of its page's characters are set
+  in is bold**, and both projections emphasise it: `Amplitude-Medium` names over a light text,
+  `McKinseySans-Medium` over a regular one. Decision #64 read such a run as bold for the heading
+  rule alone and left the run's own `bold` to what its font calls bold; ParseBench's ground truth
+  reads it bold, as the reader decision #64 described does. The weight class is still not on the
+  wire, and a run whose font states no weight is left as it is.
+- **Why this piece**: of the 881 bold rules failing on ParseBench pages with Markdown, 291 sit under
+  a run already bold where the page's structure splits the phrase, 289 on text the run list does
+  not hold, 236 on text no signal marks bold, and 65 in faces whose name or descriptor states a
+  weight heavier than their text — the one cause the census found with a single fix.
+- **Measured** on ParseBench: semantic formatting 0.4646 -> 0.4732, 8 pages up and none down
+  (`text_multicolumns__3cools` and `text_simple__chrissmass` 0.00 -> 1.00,
+  `text_multicolumns__mckinsey` 0.00 -> 0.71); charts 0.1248 -> 0.1255, two pages up and none
+  down; content, tables and visual grounding unchanged on every page; overall 47.87 -> 48.06.
+  **The trade, taken by the owner**: opendataloader-bench NID 0.8876 -> 0.8872, 13 documents down
+  (the largest 0.968 -> 0.941), and MHS 0.5895 -> 0.5893, 8 down, where its ground truth reads an
+  arXiv paper's Medium author names and a chart's numbers set heavier as plain; TEDS, the
+  fabrication check and the gate documents' tables unchanged.
+- **Measured and not used**: emphasising only a heavier run that holds a letter, so a chart's
+  numbers stay plain — ParseBench 48.02, and opendataloader-bench still 12 documents down for the
+  author names.
+
 ### A bold line its column wrapped continues the bold line above it (decision #81)
 
 Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule

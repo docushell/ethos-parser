@@ -136,8 +136,9 @@ pub struct TextRun {
     /// representation's `text_run.inferred_heading_level`. Absent at level 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inferred_heading_level: Option<u8>,
-    /// The run's font declares itself bold (decision #38) — as the representation's
-    /// `text_run.bold`. Absent where false.
+    /// The run's font declares itself bold (decision #38), or the run is set a weight class
+    /// heavier than its page's body (decision #82) — as the representation's `text_run.bold`.
+    /// Absent where false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bold: bool,
     /// The run's font declares itself italic — as the representation's `text_run.italic`.

@@ -4091,6 +4091,70 @@ fn a_runs_font_declares_bold_and_italic() {
     );
 }
 
+/// **A run set a weight class heavier than its page's body is bold** (decision #82, folded into
+/// `page-observations-v4`): over a body set at `/FontWeight 400`, a line at 500 is bold, and a line
+/// at 300, a run whose font states no weight and the body itself are not; on a page whose body is
+/// set at 500, the same line is body text.
+#[test]
+fn a_run_set_heavier_than_its_pages_body_is_bold() {
+    let page = |body: &str| {
+        let content = "BT /F1 10 Tf 10 180 Td (A body line of running text, one) Tj ET \
+                       BT /F1 10 Tf 10 165 Td (A body line of running text, two) Tj ET \
+                       BT /F1 10 Tf 10 150 Td (A body line of running text, three) Tj ET \
+                       BT /F2 10 Tf 10 120 Td (Medium) Tj ET BT /F3 10 Tf 10 100 Td (Light) Tj ET \
+                       BT /F4 10 Tf 10 80 Td (Unstated) Tj ET";
+        let font = |weight: &str| {
+            format!(
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Custom /FontDescriptor << /Type \
+                 /FontDescriptor /FontName /X /Flags 32 /Ascent 718 /Descent -207 /ItalicAngle 0 \
+                 /StemV 80 /FontBBox [0 -200 1000 900] {weight} >> >>"
+            )
+            .into_bytes()
+        };
+        let bytes = pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << \
+               /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            )
+            .into_bytes(),
+            font(&format!("/FontWeight {body}")),
+            font("/FontWeight 500"),
+            font("/FontWeight 300"),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        ]);
+        let a = extracted(&bytes).expect("reads");
+        let mut bold: Vec<(String, bool)> = runs(&a)
+            .iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .map(|r| (r.text.clone(), r.bold))
+            .collect();
+        bold.sort();
+        bold
+    };
+    let bold_of = |runs: &[(String, bool)], text: &str| {
+        runs.iter()
+            .filter(|(t, _)| t.starts_with(text))
+            .map(|(_, b)| *b)
+            .collect::<Vec<_>>()
+    };
+    let regular = page("400");
+    assert_eq!(bold_of(&regular, "Medium"), [true], "{regular:?}");
+    assert_eq!(bold_of(&regular, "Light"), [false], "{regular:?}");
+    assert_eq!(bold_of(&regular, "Unstated"), [false], "{regular:?}");
+    assert_eq!(
+        bold_of(&regular, "A body line"),
+        [false, false, false],
+        "{regular:?}"
+    );
+    let medium = page("500");
+    assert_eq!(bold_of(&medium, "Medium"), [false], "{medium:?}");
+}
+
 /// **A bold line alone in its block is an inferred heading; a bold line inside a paragraph is a
 /// label, below every ranked level** (decision #38, `type-size-v3`; decision #47, `type-size-v5`).
 /// Plain 10pt prose on a 12pt leading, a bold `Methods` with 30pt of whitespace above and below —
@@ -4157,9 +4221,9 @@ fn a_bold_line_alone_in_its_block_is_a_heading_and_bold_prose_is_not() {
 
 /// **A line set a weight heavier than its page's text reads as a bold one does** (`type-size-v7`,
 /// decision #64): a `Medium` line alone in its block over `Regular` prose is a heading, and one set
-/// inside a paragraph a label — while the runs stay unemphasised, since no font calls itself bold.
-/// The text's weight is the class most of the page is set in, not a light caption's; set in it,
-/// the same lines are neither.
+/// inside a paragraph a label — and since decision #82 their runs are bold, while the prose and the
+/// light caption are not. The text's weight is the class most of the page is set in, not a light
+/// caption's; set in it, the same lines are neither.
 #[test]
 fn a_line_set_heavier_than_its_text_reads_as_a_bold_one() {
     let page = |body_face: &str, heading_face: &str| {
@@ -4231,9 +4295,15 @@ fn a_line_set_heavier_than_its_text_reads_as_a_bold_one() {
             ("Medium lead line".to_string(), Some(7))
         ]
     );
-    assert!(
-        runs(&heavier).iter().all(|r| !r.bold),
-        "no font calls itself bold, so no run is emphasised"
+    let bold: Vec<&str> = runs(&heavier)
+        .iter()
+        .filter(|r| r.bold)
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(
+        bold,
+        ["Methods", "Medium lead line"],
+        "decision #82: the runs set a weight heavier than the text are bold, and only they"
     );
     assert!(
         headings(&page("Face-Regular", "Face-Regular")).is_empty(),
