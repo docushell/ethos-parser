@@ -720,13 +720,19 @@ pub const TABLE_DETECTION_STROKE_V1: &str = "stroke-ruled-v1";
 ///   is declared. Rows the page did not rule are the ruled rule's own clause, shared; since
 ///   decision #75, folded in before any release carried this id, it asks neighbouring cells for
 ///   three shared baselines or more rather than four in five of the fewer cell's.
+/// - **A grid that holds no text, or that a chart's value axis rules, is no table** (decision #79,
+///   folded in before any release carried this id): rules with nothing written between them are
+///   ruling, and a band every rule of which but one at most carries a number set on it just beside
+///   the band, as a tick label is set on its gridline, is a chart's gridlines. Each refusal is
+///   declared.
 ///
 /// # Measured
 ///
 /// ParseBench tables 0.5444 -> 0.5506, four pages up and none down; visual grounding one page up;
 /// content, formatting and charts unchanged. opendataloader-bench NID and TEDS one document up each
 /// and one document's heading score 0.5027 -> 0.5025, a trade the owner took; the gate documents'
-/// tables unchanged.
+/// tables unchanged. With decision #79's, 25 grids gone on 14 pages, every one a chart's or empty,
+/// and visual grounding one page up; nothing else moves.
 pub const TABLE_DETECTION_STROKE_V2: &str = "stroke-ruled-v2";
 
 /// The **tagged** table-detection rule v2-S24 ships: emit a table for each `/Table` the structure

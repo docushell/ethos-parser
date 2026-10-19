@@ -187,6 +187,29 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A grid that holds no text, or that a chart's value axis rules, is no table (decision #79)
+
+Folded into `stroke-ruled-v2`, which no release carries yet, so no rule id and no
+`profile_sha256` moves. `docs/31-TABLE-TRACKS-SCOPE.md` §30 is the rule.
+
+- **Rules with nothing written between them are ruling, not a table**: a stroke-ruled grid none of
+  whose cells holds text is refused. A cell enclosing no text is still emitted empty where others
+  hold some, as a printed worksheet's blank cells are.
+- **A band every rule of which but one at most carries a number set on it just beside the band is
+  a chart's gridlines**, refused: the number's baseline under its rule by a third of a row at most
+  and its origin within two rows of the band's end, where a value axis sets its tick labels; a
+  table's text sits between its rules. Every stroke-ruled table on ParseBench's chart pages was a
+  chart's grid — empty, or holding piles of the chart's own printed values — and because the chart
+  rules read only the runs no table holds, each also took the labels a chart rule would read.
+- Both are declared under `stroke-ruled-table-candidate-refused`.
+- **Measured** on ParseBench: 25 grids gone on 14 pages — 18 that held no text, 7 a value axis
+  ruled — and no table changed on any other page; visual grounding 0.5642 -> 0.5644, one page up
+  (`(Web_version)_E-Government_Survey_2024` p81 0.5 -> 0.6) and none down; tables, charts, content
+  and formatting unchanged on every page; overall 47.78 -> 47.79. opendataloader-bench, the
+  fabrication check and the gate documents' tables unchanged. The charts whose labels the grids
+  held are not read by the chart rules — three-series line charts and paired bars are their own
+  readings — and two bar charts printing no axis numbers keep their grids.
+
 ### A CJK font's CIDs read through Adobe's table for its collection (decision #78)
 
 `cmap_data_version` `annex-d-encodings-4` -> `-5`, so `profile_sha256` moves. The CID-to-Unicode

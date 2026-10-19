@@ -72,6 +72,15 @@
 //!    within a row's height above or below it — a table whose rules stop before its rows do, which
 //!    the whitespace rule reads whole. Each is a declared refusal.
 //!
+//! 9. **A grid that holds no text, or that a chart's value axis rules, is no table** (decision #79,
+//!    folded into `stroke-ruled-v2`, which no release carries yet). Rules with nothing written
+//!    between them are ruling, not a table. And a band every rule of which but one at most carries
+//!    a number set on it just beside the band — the number's baseline under its rule by a third of a
+//!    row at most, its origin within two rows of the band's end, as a tick label is set on its
+//!    gridline — is a chart's value axis drawn across its plot: the numbers between those rules are
+//!    the chart's own printed values, which the chart rules read where no table holds them. A
+//!    table's text sits between its rules. Each is a declared refusal.
+//!
 //! # Step 5, which is the whole difference from the rule that was parked
 //!
 //! **The id is still `-v1`, and deliberately.** A rule version exists so that two artifacts either
@@ -141,7 +150,8 @@
 //! A cell's text is the concatenation of runs **already extracted** whose origins fall inside it,
 //! in reading order. No re-decode, no nearest-neighbour, no borrowing from a neighbour cell. A
 //! face enclosing no run is emitted with empty text, because that is what the document put there
-//! — and a blank worksheet is mostly empty faces on purpose.
+//! — and a blank worksheet is mostly empty faces on purpose. A grid none of whose faces encloses a
+//! run is refused instead (step 9): it is ruling with nothing to read.
 
 use ethos_parser_core::{EngineError, IdAllocator, IdKind};
 
@@ -220,6 +230,17 @@ pub enum Refusal {
         /// Faces the band implied.
         faces: usize,
     },
+    /// Decision #79: no face of the band holds text.
+    HoldsNoText {
+        /// Faces the band implied.
+        faces: usize,
+    },
+    /// Decision #79: the band's rules carry a chart's value axis, a number set on each of them
+    /// beside the band.
+    ChartGridlines {
+        /// Faces the band implied.
+        faces: usize,
+    },
 }
 
 impl Refusal {
@@ -232,6 +253,8 @@ impl Refusal {
             Self::FormFieldInBand { .. } => "a form's boxes ruled by single strokes",
             Self::RowsNotRuled { .. } => "rows the page did not rule",
             Self::RowsRunOn { .. } => "rows running on past the rules",
+            Self::HoldsNoText { .. } => "a grid that holds no text",
+            Self::ChartGridlines { .. } => "a chart's gridlines",
         }
     }
 
@@ -278,6 +301,18 @@ impl Refusal {
                  it: the table runs on past where its rules stop, and the grid would read only the \
                  ruled part of it",
             ),
+            Self::HoldsNoText { .. } => String::from(
+                "The ruling lines made a grid none of whose cells holds any text. A table is the \
+                 text it sets in rows and columns; rules with nothing written between them are \
+                 ruling, and read as a table they would claim structure the page does not show",
+            ),
+            Self::ChartGridlines { .. } => String::from(
+                "Every rule of the grid but one at most carries a number set on it just beside the \
+                 grid, its baseline within a third of a row under the rule, as a chart's value \
+                 axis sets its tick labels on the gridlines it draws across the plot. A table's \
+                 text sits between its rules; the numbers between these are the chart's own \
+                 printed values, which the chart rules read where no table holds them",
+            ),
         }
     }
 
@@ -296,6 +331,10 @@ impl Refusal {
             }
             Self::RowsNotRuled { faces } => format!("a row of {faces} cells holds unruled rows"),
             Self::RowsRunOn { faces } => format!("{faces} cells, and a row of text past them"),
+            Self::HoldsNoText { faces } => format!("{faces} cells, none holding text"),
+            Self::ChartGridlines { faces } => {
+                format!("{faces} cells, a number set on every rule but one at most")
+            }
         }
     }
 }
@@ -465,6 +504,29 @@ fn runs_on(t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool {
     })
 }
 
+/// Step 9, decision #79: whether `t` is a chart's value axis drawn across its plot — every rule of
+/// the band but one at most carrying a number set on it just beside the band, as a tick label is set
+/// on its gridline: the number's baseline under the rule by a third of a row at most, its origin
+/// within two rows of the band's left or right end.
+fn gridlines(band: &Band, t: &DetectedTable, runs: &[RunOrigin<'_>]) -> bool {
+    let pitch = (t.rect.y1 - t.rect.y0) / i64::from(t.rows.max(1));
+    let ticked = band
+        .baselines
+        .iter()
+        .filter(|&&y| {
+            runs.iter().any(|o| {
+                let beside = (o.x < t.rect.x0 && t.rect.x0 - o.x <= 2 * pitch)
+                    || (o.x >= t.rect.x1 && o.x - t.rect.x1 <= 2 * pitch);
+                beside
+                    && o.y >= y
+                    && 3 * (o.y - y) <= pitch
+                    && crate::charts::number(o.text.trim()).is_some()
+            })
+        })
+        .count();
+    ticked + 1 >= band.baselines.len()
+}
+
 /// Whether the page strokes column line `x` continuously from `y0` down to `y1`.
 ///
 /// Collinear segments are joined end to end first, because a grid whose verticals are drawn one
@@ -622,6 +684,17 @@ fn emit(
     if band.single && runs_on(&table, runs) {
         return Ok(Err(Some(Refusal::RowsRunOn { faces })));
     }
+    // Step 9, decision #79: a grid that holds no text, or that a chart's value axis rules.
+    if table.cells.iter().all(|c| {
+        c.run_indices
+            .iter()
+            .all(|i| runs[*i].text.trim().is_empty())
+    }) {
+        return Ok(Err(Some(Refusal::HoldsNoText { faces })));
+    }
+    if gridlines(band, &table, runs) {
+        return Ok(Err(Some(Refusal::ChartGridlines { faces })));
+    }
     alloc.next(IdKind::Table)?;
     Ok(Ok(table))
 }
@@ -694,11 +767,21 @@ mod tests {
         (rules, uprights)
     }
 
+    /// The worksheet's first label, `Lender name`, in its first cell: a grid that holds no text is
+    /// no table (step 9), and the printed worksheet holds its labels.
+    fn label() -> Vec<RunOrigin<'static>> {
+        vec![RunOrigin {
+            x: pt(60.0),
+            y: pt(300.0),
+            text: "Lender name",
+        }]
+    }
+
     /// **The table v1-S8 exists to find.** `stroke-ruled-v1` as parked refused this band outright.
     #[test]
     fn a_blank_cell_does_not_refuse_the_worksheet_it_sits_in() {
         let (rules, uprights) = page_13();
-        let out = detect(13, &rules, &uprights, &[], &[], &[], &mut alloc()).expect("detects");
+        let out = detect(13, &rules, &uprights, &label(), &[], &[], &mut alloc()).expect("detects");
         assert_eq!(out.tables.len(), 1, "one band, one table");
         let t = &out.tables[0];
         // Eight baselines bound SEVEN rows: the worksheet's header row has no top edge drawn and
@@ -707,8 +790,27 @@ mod tests {
         assert_eq!((t.rows, t.columns), (7, 4));
         assert_eq!(t.cells.len(), 28);
         assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_STROKE_V2);
-        // The blank cell is still emitted, and it is EMPTY rather than filled from a neighbour.
-        assert!(t.cells.iter().all(|c| c.text.is_empty()));
+        // The blank cell is still emitted, and it is EMPTY rather than filled from a neighbour, as
+        // every cell but the labelled one is.
+        assert_eq!(t.cells[0].text, "Lender name");
+        assert!(t.cells[1..].iter().all(|c| c.text.is_empty()));
+    }
+
+    /// **Step 9: a grid that holds no text is no table** (decision #79): the worksheet's rules with
+    /// nothing written between them — or only a space the page drew — are ruling.
+    #[test]
+    fn a_grid_none_of_whose_cells_holds_text_is_no_table() {
+        let (rules, uprights) = page_13();
+        let space = [RunOrigin {
+            x: pt(60.0),
+            y: pt(300.0),
+            text: " ",
+        }];
+        for runs in [&[][..], &space[..]] {
+            let out = detect(13, &rules, &uprights, runs, &[], &[], &mut alloc()).expect("detects");
+            assert!(out.tables.is_empty(), "{:?}", out.tables);
+            assert_eq!(out.refusal, Some(Refusal::HoldsNoText { faces: 28 }));
+        }
     }
 
     /// The same worksheet with its interior column rules **not drawn** is not a grid.
@@ -745,7 +847,7 @@ mod tests {
                 uprights.push(upright(x, w[0], w[1]));
             }
         }
-        let out = detect(13, &rules, &uprights, &[], &[], &[], &mut alloc()).expect("detects");
+        let out = detect(13, &rules, &uprights, &label(), &[], &[], &mut alloc()).expect("detects");
         assert_eq!(out.tables.len(), 1);
         assert_eq!((out.tables[0].rows, out.tables[0].columns), (7, 4));
     }
@@ -789,7 +891,8 @@ mod tests {
         // The page-13 shape, measured: face 210 … 326 x 334.6 … 388.6 holding a widget at
         // 231.1 … 321.8 x 349.9 … 376.3.
         let fields = vec![face(231.1, 349.9, 321.8, 376.3)];
-        let out = detect(13, &rules, &uprights, &[], &fields, &[], &mut alloc()).expect("detects");
+        let out =
+            detect(13, &rules, &uprights, &label(), &fields, &[], &mut alloc()).expect("detects");
         assert_eq!(out.tables.len(), 1);
         assert_eq!((out.tables[0].rows, out.tables[0].columns), (7, 4));
     }
@@ -951,8 +1054,74 @@ mod tests {
             y: pt(y),
             text,
         });
-        let out = detect(13, &rules, &uprights, &below, &[], &[], &mut alloc()).expect("detects");
+        let runs = [label(), below.to_vec()].concat();
+        let out = detect(13, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
         assert_eq!(out.tables.len(), 1, "{:?}", out.refusal);
+    }
+
+    /// **Step 9: a band a chart's value axis rules is its gridlines** (decision #79): the fixture's
+    /// three rules, each — or all but one — carrying a number set on it just left of the band, as
+    /// tick labels are, is refused; a number set inside a row, on one rule only, a word, a number
+    /// further off than two rows, or one inside the band is no axis, and the grid stands.
+    #[test]
+    fn a_band_a_value_axis_rules_is_a_charts_gridlines() {
+        let (rules, uprights, runs) = single_strokes((100.0, 180.0));
+        let with = |ticks: &[(f64, f64, &'static str)]| {
+            let mut all = runs.clone();
+            all.extend(ticks.iter().map(|&(x, y, text)| RunOrigin {
+                x: pt(x),
+                y: pt(y),
+                text,
+            }));
+            detect(1, &rules, &uprights, &all, &[], &[], &mut alloc()).expect("detects")
+        };
+        for (ticks, why) in [
+            (
+                vec![(85.0, 103.0, "20"), (85.0, 143.0, "10"), (90.0, 183.0, "0")],
+                "every rule",
+            ),
+            (
+                vec![(85.0, 143.0, "10%"), (90.0, 183.0, "0%")],
+                "every rule but one",
+            ),
+        ] {
+            let out = with(&ticks);
+            assert!(out.tables.is_empty(), "{why}: {:?}", out.tables);
+            assert_eq!(
+                out.refusal,
+                Some(Refusal::ChartGridlines { faces: 4 }),
+                "{why}"
+            );
+        }
+        for (ticks, why) in [
+            (
+                vec![(85.0, 123.0, "20"), (85.0, 163.0, "10")],
+                "numbers set inside the rows",
+            ),
+            (vec![(85.0, 103.0, "20")], "a number on one rule of three"),
+            (
+                vec![
+                    (85.0, 103.0, "Total"),
+                    (85.0, 143.0, "Net"),
+                    (90.0, 183.0, "Gross"),
+                ],
+                "words, not numbers",
+            ),
+            (
+                vec![(15.0, 103.0, "20"), (15.0, 143.0, "10"), (15.0, 183.0, "0")],
+                "numbers further off than two rows",
+            ),
+            (
+                vec![
+                    (110.0, 103.0, "20"),
+                    (260.0, 143.0, "10"),
+                    (110.0, 183.0, "0"),
+                ],
+                "numbers set on the rules inside the band, as a cell's text set at its top is",
+            ),
+        ] {
+            assert_eq!(with(&ticks).tables.len(), 1, "{why}");
+        }
     }
 
     /// A band step 8 refuses moves no id: the next band's table is numbered as if it were alone.
@@ -967,6 +1136,11 @@ mod tests {
         // A second table further down, ruled to other ends, so it is a band of its own.
         rules.extend([300.0, 340.0, 380.0].map(|y| rule(y, 100.0, 500.0)));
         uprights.extend([100.0, 300.0, 500.0].map(|x| upright(x, 300.0, 380.0)));
+        runs.push(RunOrigin {
+            x: pt(110.0),
+            y: pt(325.0),
+            text: "D1",
+        });
         let out = detect(1, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
         assert_eq!(out.tables.len(), 1);
         assert_eq!(out.refusal, Some(Refusal::RowsRunOn { faces: 4 }));
@@ -986,6 +1160,8 @@ mod tests {
             Refusal::FormFieldInBand { faces: 4 },
             Refusal::RowsNotRuled { faces: 4 },
             Refusal::RowsRunOn { faces: 4 },
+            Refusal::HoldsNoText { faces: 4 },
+            Refusal::ChartGridlines { faces: 4 },
         ] {
             assert!(!r.kind().is_empty());
             assert!(!r.explanation().is_empty());

@@ -3873,7 +3873,8 @@ mod tests {
         let q = |v: f64| (v * f64::from(QUANTUM_PER_POINT)).round() as i64;
 
         // A 2 x 2 ruled in lines: three baselines bound two rows, three column lines bound two
-        // columns, and the one interior column line is stroked across the band.
+        // columns, and the one interior column line is stroked across the band — with a word in a
+        // cell, since a grid that holds no text is no table (decision #79).
         let rules: Vec<crate::stroke_ruled::Rule> = [100.0, 150.0, 200.0]
             .iter()
             .flat_map(|y| {
@@ -3889,8 +3890,13 @@ mod tests {
             y0: q(100.0),
             y1: q(200.0),
         }];
+        let word = [RunOrigin {
+            x: q(10.0),
+            y: q(140.0),
+            text: "a",
+        }];
         let stroked =
-            crate::stroke_ruled::detect(1, &rules, &uprights, &[], &[], &[], &mut alloc())
+            crate::stroke_ruled::detect(1, &rules, &uprights, &word, &[], &[], &mut alloc())
                 .expect("detects");
         let stroke_table = stroked.tables.first().expect("the band is a table");
 

@@ -1156,3 +1156,39 @@ grid's first or last band read as drawn — its pages failed next on another cla
 five others, two of them to fewer columns or merged tables; a fill repeating the fill beneath it
 exactly read as one rectangle painted twice rather than an inset — it restores p2069's header rule
 (0.94 → 1.00) but costs `Home Depot 10-k` p31 its contents box (0.39 → 0.17).
+
+## 30. A grid that holds no text, and a chart's gridlines (2026-10-18, decision #79)
+
+**What `stroke-ruled-v2` read that was no table.** Counting every table the engine emits on
+ParseBench's chart pages for the post-#78 census, `stroke-ruled-v2` emitted 21 there and every one
+was false: a chart's horizontal gridlines are rules each drawn as one stroke, divided by the
+vertical stroke of its axis or frame, and so make a band step 8 lets stand. Thirteen held no text
+at all — `MonthlyTreasuryStatement` pages draw a bar chart's grid with its labels outside it — and
+eight held piles of a chart's own printed values (`GWR-2024` p27 read eight rows of a line chart's
+numbers, every year's value of a band in one cell). Five more empty 2 × 2 grids stood on
+`2023-Sappi-Annual-Integrated-Report` p2. And because the chart rules read only the
+runs no table holds, a false grid also took the labels a chart rule would have read.
+
+**The change, step 9 of the rule.**
+
+- **A grid none of whose faces holds text is no table.** A face enclosing no run is still emitted
+  empty where others hold text — `cfpb-home-loan-toolkit` p13's worksheet holds its labels in 24
+  of its 28 cells — but rules with nothing written between them are ruling.
+- **A band every rule of which but one at most carries a number set on it just beside the band is
+  a chart's gridlines**: the number's baseline under its rule by a third of a row at most, its
+  origin within two rows of the band's left or right end — where a value axis sets its tick labels.
+  A table's text sits between its rules. Measured on every band the rule emits across ParseBench,
+  opendataloader-bench and the gate documents: on a chart's gridlines every rule carries one, or
+  all but one (6 of 6 to 11 of 11); anywhere else one rule of five at most
+  (`cfpb-home-loan-toolkit` p25).
+- Both are declared refusals, under `stroke-ruled-table-candidate-refused`.
+
+**Measured**, with the shipped build against `1369974`: 25 grids gone on 14 pages — 18 that held
+no text, 7 a value axis ruled — and none on any other page; visual grounding 0.5642 → 0.5644, one
+page up (`(Web_version)_E-Government_Survey_2024` p81 0.5 → 0.6) and none down; tables, charts,
+content and formatting unchanged on every page; overall 47.78 → 47.79. opendataloader-bench
+unchanged; no table on a document without one, every cell its runs' text; the gate documents' 541
+tables unchanged cell for cell. **Not freed**: the chart rules read none of the charts whose
+labels the grids had held — line charts of three series (`GWR-2024`) and paired bars and points
+(`cimquarterlychartbook` p15) are each their own reading. **Not caught**: `Consultancy-in-Spain`
+p19's bar charts, whose gridlines carry no axis numbers, keep their grids.

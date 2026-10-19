@@ -949,6 +949,15 @@ faithfulness 0.6696 -> 0.6716, semantic formatting 0.4572 -> 0.4603 and visual g
 0.5642, 4, 3 and 5 pages up and none down; tables and charts unchanged on every page;
 opendataloader-bench unchanged. Overall 47.61 -> 47.78.
 
+### After a chart's gridlines are no table (decision #79, 2026-10-18)
+
+Every table `stroke-ruled-v2` emitted on the chart pages was a chart's grid: empty, or holding piles
+of the chart's own printed values. Told "Gridlines are no table", a stroke-ruled grid that holds no
+text, or whose every rule but one carries a number set on it beside the grid as a value axis's tick
+labels are, is refused (`docs/31-TABLE-TRACKS-SCOPE.md` §30). 25 grids gone on 14 pages; visual
+grounding 0.5642 -> 0.5644, one page up and none down; tables, charts, content and formatting
+unchanged on every page; opendataloader-bench unchanged. Overall 47.78 -> 47.79.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
