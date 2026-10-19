@@ -228,7 +228,12 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// 0.5872. And so is decision #68's: the runs of one layout unit on one line take the gap between
 /// them as one space ([`unit_gap_continues`], [`LAYOUT_UNIT_GAP_JOINS`]), where a page placed its
 /// words by moving its pen — semantic formatting 0.4512 -> 0.4572 with no page down, content
-/// faithfulness 0.6700 -> 0.6696, opendataloader-bench MHS 0.5872 -> 0.5895.
+/// faithfulness 0.6700 -> 0.6696, opendataloader-bench MHS 0.5872 -> 0.5895. And so is decision
+/// #81's: a bold line of body text continues the bold line above it in its layout unit where its
+/// column wrapped it ([`wrapped_labels`], [`unit_continues`]), one span a reader keyed by the
+/// phrase finds — semantic formatting 0.4603 -> 0.4646 with no page down, content faithfulness
+/// unchanged at 0.6716 with thirteen pages down by at most 0.0023, a trade the owner took,
+/// opendataloader-bench NID one document up.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -1087,6 +1092,11 @@ pub(crate) fn hyphen_tail<'a>(
 /// it: `node` opens a line [`wrapped_labels`] names. Two labels set one under the other, `ARTICLE
 /// 11` over `DIVIDEND EQUIVALENTS`, are two, and joined each would stop being the line it names;
 /// `NOTICE OF PUBLIC` over `HEARING` in a newspaper's narrow column is one.
+///
+/// Decision #81: a line of bold body text — its runs bold, none an inferred heading — continues the
+/// bold line above it in one layout unit where its column wrapped it, `node` opening a line
+/// [`wrapped_labels`] names: a bold sentence set on two lines is one span, which a reader keyed by
+/// the phrase finds, and bold lines set one under the other keep their lines.
 pub(crate) fn unit_continues(
     prev: &crate::Node,
     node: &crate::Node,
@@ -1098,11 +1108,19 @@ pub(crate) fn unit_continues(
             .and_then(|a| a.layout_unit.map(|u| (u, a.inferred_heading_level)))
     };
     let label = unit(node).is_some_and(|(_, level)| level.unwrap_or(1) > 6);
+    let bold_body = |n: &crate::Node| {
+        text_run_attributes(n)
+            .filter(|a| !a.inferred_heading && a.bold)
+            .and_then(|a| a.layout_unit)
+    };
     prev.parent == node.parent
-        && unit(prev).is_some()
-        && unit(prev) == unit(node)
         && on_different_lines(prev, node)
-        && (!label || wrapped.contains(node.id.as_str()))
+        && ((unit(prev).is_some()
+            && unit(prev) == unit(node)
+            && (!label || wrapped.contains(node.id.as_str())))
+            || (bold_body(prev).is_some()
+                && bold_body(prev) == bold_body(node)
+                && wrapped.contains(node.id.as_str())))
 }
 
 /// Whether `node` continues, on a line of its own, the label `prev` belongs to (decision #65): both
@@ -1195,6 +1213,11 @@ pub(crate) fn unit_gap_continues(
 /// that measure is set to another, and stays a line of its own. Measured on ParseBench: the
 /// `NOTICE OF PUBLIC` / `HEARING` of a newspaper's narrow column joins, `ARTICLE 11` over
 /// `DIVIDEND EQUIVALENTS` and a centred title's lines do not.
+///
+/// Decision #81: two lines of bold body text — every inked run bold, neither an inferred heading —
+/// of one layout unit are asked the same, and two things more: a line set in capitals over one that
+/// is not is a heading over its text, and a line ending in a hyphen keeps its line, since joined
+/// across the break with a space it would write `Dupont- Steilacoom`, a space the page never set.
 pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections::BTreeSet<&str> {
     // One line: its first inked run, its text, its box, and the label, heading and unit it carries.
     struct Line<'a> {
@@ -1202,6 +1225,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         text: String,
         rect: Option<(i64, i64, i64, i64)>,
         label: bool,
+        bold: bool,
         heading: bool,
         unit: Option<u32>,
         page: u32,
@@ -1221,6 +1245,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
                 text: String::new(),
                 rect: None,
                 label: false,
+                bold: true,
                 heading: false,
                 unit: None,
                 page: key.page,
@@ -1233,6 +1258,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         if node.text.trim().is_empty() {
             continue;
         }
+        line.bold &= a.bold;
         if line.first.is_empty() {
             line.first = node.id.as_str();
             line.heading = a.inferred_heading;
@@ -1254,7 +1280,14 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
     for i in 1..lines.len() {
         let ((a, ra), (b, rb)) = (&lines[i - 1], &lines[i]);
         let height = rb.3 - rb.1;
-        if !(a.label && b.label && a.page == b.page)
+        let bold_body =
+            a.bold && b.bold && !a.heading && !b.heading && a.unit.is_some() && a.unit == b.unit;
+        let caps =
+            |t: &str| t.chars().any(char::is_alphabetic) && !t.chars().any(char::is_lowercase);
+        if !((a.label && b.label) || bold_body)
+            || (bold_body && caps(&a.text) && !caps(&b.text))
+            || (bold_body && a.text.trim_end().ends_with('-'))
+            || a.page != b.page
             || (ra.0 - rb.0).abs() > height
             || opens_with_label(&b.text)
             || a.text.trim_end().ends_with(['?', '!', '.'])
@@ -6479,6 +6512,131 @@ pub(crate) mod tests {
         }
         let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
         blocks_of(&artifact_of(repr))
+    }
+
+    /// A line, one run, for [`project_bold_lines`]: its text, its box, whether it is set bold, and
+    /// its layout unit.
+    type BoldLine<'a> = (&'a str, (i64, i64, i64, i64), bool, u32);
+
+    /// Lines, one run each, projected as body text set bold or not, each in the layout unit given:
+    /// the bold lines one paragraph, the rest the text below it that measures its column.
+    fn project_bold_lines(lines: &[BoldLine<'_>]) -> Vec<String> {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+            visible: None,
+        };
+        let mut nodes = Vec::new();
+        let mut geometry = Vec::new();
+        for (i, (text, b, bold, unit)) in lines.iter().enumerate() {
+            let mut node = placed_run(
+                &mut alloc,
+                &page.id,
+                i as u32 + 1,
+                text,
+                None,
+                b.0,
+                b.3,
+                Some(b.2 - b.0),
+                None,
+            );
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.bold = *bold;
+                a.layout_unit = Some(*unit);
+            }
+            geometry.push(NodeGeometry {
+                node: node.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(b.0, b.1, b.2, b.3).unwrap()),
+            });
+            nodes.push(node);
+        }
+        let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+        blocks_of(&artifact_of(repr))
+    }
+
+    /// **A bold line its column wrapped is one span; bold lines set one under the other keep
+    /// theirs** (decision #81, folded into `-v12`): a bold sentence's first line ends a point short
+    /// of the column the text below it is set in, where its next line's first word would not fit.
+    #[test]
+    fn a_bold_line_its_column_wrapped_is_one_span() {
+        let project = |first: &str, second: &str, column: i64| {
+            project_bold_lines(&[
+                (first, (7200, 7200, 19000, 8200), true, 1),
+                (second, (7200, 8300, 12000, 9300), true, 1),
+                (
+                    "A Public Hearing will be",
+                    (7200, 9500, column, 10500),
+                    false,
+                    2,
+                ),
+                (
+                    "held during the Meeting",
+                    (7200, 10600, column - 500, 11600),
+                    false,
+                    2,
+                ),
+            ])
+        };
+        let one = |blocks: &[String], text: &str| blocks.iter().any(|b| b == text);
+        let wrapped = project("Notice of a public", "hearing held", 19500);
+        assert!(
+            one(&wrapped, "**Notice of a public hearing held**"),
+            "{wrapped:?}"
+        );
+        // The column leaves room for its next word: its author broke the line.
+        let broken = project("Notice of a public", "hearing held", 40000);
+        assert!(one(&broken, "**Notice of a public**"), "{broken:?}");
+        // A line in capitals over one that is not is a heading over its text.
+        let caps = project("NOTICE OF A PUBLIC", "Hearing held today", 19500);
+        assert!(one(&caps, "**NOTICE OF A PUBLIC**"), "{caps:?}");
+        // A line ending in a hyphen — drawn as a run of its own, which no word closes up across —
+        // is read across no space the page never set.
+        let hyphen = project_bold_lines(&[
+            ("Notice of a Dupont", (7200, 7200, 18700, 8200), true, 1),
+            ("-", (18700, 7200, 19000, 8200), true, 1),
+            ("Steilacoom hearing", (7200, 8300, 12000, 9300), true, 1),
+            (
+                "A Public Hearing will be",
+                (7200, 9500, 19500, 10500),
+                false,
+                2,
+            ),
+        ]);
+        assert!(
+            !hyphen.iter().any(|b| b.contains("Dupont- Steilacoom")),
+            "{hyphen:?}"
+        );
+        assert!(one(&hyphen, "**Notice of a Dupont-**"), "{hyphen:?}");
+        // A next line set bold only in part keeps its line: only a line set bold throughout is
+        // one of the bold paragraph's.
+        let part = project_bold_lines(&[
+            ("Notice of a public", (7200, 7200, 19000, 8200), true, 1),
+            ("hearing", (7200, 8300, 10000, 9300), true, 1),
+            ("held", (10200, 8300, 12000, 9300), false, 1),
+            (
+                "A Public Hearing will be",
+                (7200, 9500, 19500, 10500),
+                false,
+                2,
+            ),
+        ]);
+        assert!(one(&part, "**Notice of a public**"), "{part:?}");
+        // Body text not set bold keeps its lines, wrapped or not.
+        let plain = project_bold_lines(&[
+            ("Notice of a public", (7200, 7200, 19000, 8200), false, 1),
+            ("hearing held", (7200, 8300, 12000, 9300), false, 1),
+            (
+                "A Public Hearing will be",
+                (7200, 9500, 19500, 10500),
+                false,
+                2,
+            ),
+        ]);
+        assert!(one(&plain, "Notice of a public"), "{plain:?}");
     }
 
     /// **A label its column wrapped is one line; a label its author broke keeps its lines**

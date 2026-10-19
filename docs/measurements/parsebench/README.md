@@ -958,6 +958,15 @@ labels are, is refused (`docs/31-TABLE-TRACKS-SCOPE.md` §30). 25 grids gone on 
 grounding 0.5642 -> 0.5644, one page up and none down; tables, charts, content and formatting
 unchanged on every page; opendataloader-bench unchanged. Overall 47.78 -> 47.79.
 
+### After a bold line its column wrapped joins the line above (decision #81, 2026-10-19)
+
+A bold phrase set on two lines was written as two bold blocks, and the bold rule finds a phrase only
+inside one span. Told "Bold: reuse #48 wrap test", a line of bold body text continues the bold line
+above it where decision #48's test says its column wrapped it, but not under a line set in capitals
+or after one ending in a hyphen. Semantic formatting 0.4603 -> 0.4646, 7 pages up and none down;
+content faithfulness unchanged at 0.6716, 13 pages down by at most 0.0023, a trade the owner took;
+tables, charts and visual grounding unchanged on every page. Overall 47.79 -> 47.87.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

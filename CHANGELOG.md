@@ -187,6 +187,36 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A bold line its column wrapped continues the bold line above it (decision #81)
+
+Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule
+id and no `profile_sha256` moves.
+
+- **A line of bold body text continues the bold line above it in its layout unit where its column
+  wrapped it**, by decision #48's test for a label's lines: it starts where the first does, opens
+  with no number or marker, follows a line that ends no sentence, and its first word would not have
+  fit after the first line within the text below it. Joined by one space the two are one bold span
+  — `**Notice of a public hearing held**` — which ParseBench's bold rule needs, since emphasis
+  cannot cross the blank line between two blocks; bold lines set one under the other keep their
+  lines, as a title line must stand alone to be read as one.
+- **Two clauses more than a label's**: a line set in capitals over one that is not is a heading
+  over its text, and a line ending in a hyphen keeps its line, since joined by a space it would
+  write `Dupont- Steilacoom`, a space the page never set. Without the first a glossary's title
+  joined its definition (`text_multicolumns__definitions` 1.00 -> 0.97); without the second
+  content faithfulness lost 0.013 instead of 0.005, summed over its pages.
+- Both projections share the join (`markdown::unit_continues`), its line break counted under
+  `layout-unit-line-joins-v1` as a heading's is.
+- **Measured** on ParseBench: semantic formatting 0.4603 -> 0.4646, 7 pages up and none down
+  (`text_simple__allcaps` and `text_simple__minutes2` 0.21 -> 0.92, `text_simple__gando` 0.48 ->
+  0.72); content faithfulness unchanged at 0.6716, 13 pages down by at most 0.0023 where a bold
+  paragraph read whole is a sentence the ground truth splits — a trade the owner took; tables,
+  charts and visual grounding unchanged on every page; overall 47.79 -> 47.87.
+  opendataloader-bench NID one document up and none down, TEDS and MHS unchanged; the fabrication
+  check and the gate documents' tables unchanged.
+- **Measured and not used**: every run of consecutive all-bold blocks joined into one whatever
+  wrapped it — semantic formatting 0.4603 -> 0.4510, 148 title rules down where stacked titles
+  became one line.
+
 ### A run in a font that writes down the page carries no box (decision #80)
 
 `text_box_rule` `advance-over-font-envelope-v1` -> `-v2`, so `profile_sha256` moves

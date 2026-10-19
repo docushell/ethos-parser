@@ -155,8 +155,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
 /// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
-/// decision #65's label lines in one `<p>` and heading number joined to its title, and decision
-/// #68's runs of one unit on one line joined across the gap between them, this id carries too.
+/// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
+/// runs of one unit on one line joined across the gap between them, and decision #81's bold line
+/// its column wrapped joined to the one above it, this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
