@@ -233,7 +233,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// column wrapped it ([`wrapped_labels`], [`unit_continues`]), one span a reader keyed by the
 /// phrase finds — semantic formatting 0.4603 -> 0.4646 with no page down, content faithfulness
 /// unchanged at 0.6716 with thirteen pages down by at most 0.0023, a trade the owner took,
-/// opendataloader-bench NID one document up.
+/// opendataloader-bench NID one document up. And so is decision #83's: a mark — a run of
+/// punctuation alone, in no style of its own — set right after a bold run stays inside the span
+/// unless a letter or a digit follows it directly ([`Emphasis`]) — semantic formatting 0.4732 ->
+/// 0.4771 with no page down, content faithfulness unchanged on every page.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -2149,6 +2152,12 @@ impl Style {
 /// sits against the text it closes — `**bold** text`, never `**bold **text`, which CommonMark
 /// does not read as emphasis. No span opens inside a heading, which is marked already, or a
 /// table cell. Every marker is `syntax`: the document drew no such bytes.
+///
+/// Decision #83: a **mark** — a run of punctuation alone, in no style of its own — set right after
+/// a bold run stays inside the span, `**necessary?**` rather than `**necessary**?`, where a space,
+/// a line's end, more punctuation or more of the span follows it. It is held until the next text
+/// shows which: where that text starts with a letter or a digit the span closes before the mark,
+/// since CommonMark reads no closing marker set between punctuation and a letter.
 #[derive(Debug, Default)]
 struct Emphasis {
     /// `None` where no run is styled, and then nothing below is consulted.
@@ -2159,6 +2168,17 @@ struct Emphasis {
     held: String,
     heading: bool,
     table: bool,
+    mark: Option<Mark>,
+}
+
+/// A mark held after a bold span (decision #83): what [`Emit::source_encoded`] or
+/// [`Emit::source_continuing`] was given, written once the next text shows where the span closes.
+#[derive(Debug)]
+struct Mark {
+    text: String,
+    chars: usize,
+    node: String,
+    continuing: bool,
 }
 
 impl Emit {
@@ -2197,6 +2217,7 @@ impl Emit {
     /// A table starts (`true`) or ends: no span opens in its cells.
     pub(crate) fn table(&mut self, inside: bool) {
         if inside {
+            self.settle(true);
             self.close_emphasis();
             self.flush_held();
         }
@@ -2205,6 +2226,7 @@ impl Emit {
 
     /// Close any open span and write any held spaces: the end of the projection.
     pub(crate) fn finish(&mut self) {
+        self.settle(true);
         self.close_emphasis();
         self.flush_held();
     }
@@ -2222,8 +2244,32 @@ impl Emit {
         self.write_syntax(&held);
     }
 
-    /// Open, close or continue a span for the text `node` is about to write.
-    fn before_text(&mut self, node: &str) {
+    /// Whether `s`, `node`'s text, is a mark set right after a bold span (decision #83). Not after
+    /// a script, and never one holding a character Markdown reads as inline syntax: a `\` there
+    /// would escape the closing marker, and a `` ` `` could open a code span across it.
+    fn holds_mark(&self, node: &str, s: &str) -> bool {
+        let open = self.emphasis.open;
+        open.bold
+            && open.script.is_none()
+            && !self.emphasis.styles.contains_key(node)
+            && s.chars()
+                .all(|c| !c.is_alphanumeric() && !c.is_whitespace() && !"\\`*_<>&|#".contains(c))
+    }
+
+    /// Write the held mark (decision #83): inside the open span, or after it where `inside` is
+    /// false.
+    fn settle(&mut self, inside: bool) {
+        if let Some(mark) = self.emphasis.mark.take() {
+            if !inside {
+                self.close_emphasis();
+            }
+            self.flush_held();
+            self.write_source(&mark.text, mark.chars, &mark.node, mark.continuing);
+        }
+    }
+
+    /// Open, close or continue a span for `s`, the text `node` is about to write.
+    fn before_text(&mut self, node: &str, s: &str) {
         let Some(markup) = self.emphasis.markup else {
             return;
         };
@@ -2232,6 +2278,7 @@ impl Emit {
         } else {
             self.emphasis.styles.get(node).copied().unwrap_or_default()
         };
+        self.settle(style == self.emphasis.open || !s.starts_with(char::is_alphanumeric));
         if style == self.emphasis.open {
             self.flush_held();
             return;
@@ -2250,6 +2297,8 @@ impl Emit {
     /// requires the previous segment to end where this one starts *and* to be syntax.
     pub(crate) fn syntax(&mut self, s: &str) {
         if self.emphasis.markup.is_some() && !s.is_empty() {
+            // Inside: no syntax either projection writes starts with a letter or a digit.
+            self.settle(true);
             if s.bytes().all(|b| b == b' ') {
                 self.emphasis.held.push_str(s);
                 return;
@@ -2303,31 +2352,7 @@ impl Emit {
     /// `node_ids.len() > 1` and knows the quote spans runs. That is the identical signal the
     /// hyphen join has carried since v1.1-S3.
     pub(crate) fn source_continuing(&mut self, s: &str, node: &str) {
-        let (s, chars) = writable(s, s.chars().count());
-        if s.is_empty() {
-            return;
-        }
-        self.before_text(node);
-        let start = self.markdown.len();
-        match self.segments.last_mut() {
-            Some(last) if last.kind == SegmentKind::Source && last.end == start => {
-                self.markdown.push_str(&s);
-                last.end = self.markdown.len();
-                if last.node_ids.iter().all(|id| id != node) {
-                    last.node_ids.push(node.to_string());
-                }
-            }
-            _ => {
-                self.markdown.push_str(&s);
-                self.segments.push(Segment {
-                    kind: SegmentKind::Source,
-                    start,
-                    end: self.markdown.len(),
-                    node_ids: vec![node.to_string()],
-                });
-            }
-        }
-        self.emitted_chars += chars;
+        self.text(s, s.chars().count(), node, true);
     }
 
     /// Bytes that stand for `chars` characters of one node's text.
@@ -2344,19 +2369,48 @@ impl Emit {
     /// unescaped count keeps `emitted + dropped == in_representation` exactly true, and keeps it
     /// true for the same reason on both artifacts.
     pub(crate) fn source_encoded(&mut self, s: &str, chars: usize, node: &str) {
+        self.text(s, chars, node, false);
+    }
+
+    /// `node`'s text, written — or held, where it is a mark after a bold span (decision #83).
+    /// `continuing` appends it to an adjacent `source` segment, as [`Self::source_continuing`].
+    fn text(&mut self, s: &str, chars: usize, node: &str, continuing: bool) {
         let (s, chars) = writable(s, chars);
         if s.is_empty() {
             return;
         }
-        self.before_text(node);
+        if self.holds_mark(node, &s) {
+            self.settle(true);
+            self.emphasis.mark = Some(Mark {
+                text: s.into_owned(),
+                chars,
+                node: node.to_string(),
+                continuing,
+            });
+            return;
+        }
+        self.before_text(node, &s);
+        self.write_source(&s, chars, node, continuing);
+    }
+
+    fn write_source(&mut self, s: &str, chars: usize, node: &str, continuing: bool) {
         let start = self.markdown.len();
-        self.markdown.push_str(&s);
-        self.segments.push(Segment {
-            kind: SegmentKind::Source,
-            start,
-            end: self.markdown.len(),
-            node_ids: vec![node.to_string()],
-        });
+        self.markdown.push_str(s);
+        let end = self.markdown.len();
+        match self.segments.last_mut() {
+            Some(last) if continuing && last.kind == SegmentKind::Source && last.end == start => {
+                last.end = end;
+                if last.node_ids.iter().all(|id| id != node) {
+                    last.node_ids.push(node.to_string());
+                }
+            }
+            _ => self.segments.push(Segment {
+                kind: SegmentKind::Source,
+                start,
+                end,
+                node_ids: vec![node.to_string()],
+            }),
+        }
         self.emitted_chars += chars;
     }
 
@@ -2390,7 +2444,7 @@ impl Emit {
         if s.is_empty() {
             return;
         }
-        self.before_text(first);
+        self.before_text(first, &s);
         let start = self.markdown.len();
         self.markdown.push_str(&s);
         self.segments.push(Segment {
@@ -2505,7 +2559,9 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    boundary, and never inside a heading or a table cell. The markers are `syntax`. **A run set
 ///    as a superscript or a subscript** (`TextRunAttributes::script`) is written inside them as
 ///    `<sup>…</sup>` or `<sub>…</sub>`, under the same rules — Markdown has no syntax of its own
-///    for either, and both survive every Markdown renderer as inline HTML.
+///    for either, and both survive every Markdown renderer as inline HTML. A mark — a run of
+///    punctuation alone, in no style of its own — set right after a bold run is written inside
+///    its span, unless a letter or a digit follows it directly (decision #83).
 ///
 /// # Where the tables go
 ///
@@ -3696,6 +3752,21 @@ pub(crate) mod tests {
             (" ", tagged_at(3), 10800, 7200, Some(200), None),
             ("sharply", tagged_at(3), 11000, 7200, Some(1400), None),
         ])
+    }
+
+    /// One line, one marked-content sequence, of `words` set side by side at 200 units a
+    /// character — a `" "` is a space run, as in [`styled_line`].
+    pub(crate) fn line_of_words(words: &[&str]) -> DocumentRepresentation {
+        let mut x = 7200;
+        let specs: Vec<LineSpec<'_>> = words
+            .iter()
+            .map(|word| {
+                let width = 200 * word.chars().count() as i64;
+                x += width;
+                (*word, tagged_at(3), x - width, 7200, Some(width), None)
+            })
+            .collect();
+        repr_of_placed(&specs)
     }
 
     pub(crate) fn simple_repr() -> DocumentRepresentation {
@@ -5926,6 +5997,92 @@ pub(crate) mod tests {
             bold.markdown,
             "**Total** **<sup>revenue</sup>** rose sharply\n"
         );
+    }
+
+    /// **A mark set right after a bold run stays inside its span** (decision #83): punctuation
+    /// alone, in no style of its own, before a space, the line's end, more punctuation or more of
+    /// the span. Where a letter follows it directly the span closes before it, since CommonMark
+    /// reads no closing marker between punctuation and a letter. Nothing moves after an italic
+    /// span or a script, nor a mark in a style of its own, with a space in it, or a `\`, which
+    /// would escape the closing marker.
+    #[test]
+    fn a_mark_after_a_bold_run_stays_in_its_span() {
+        use crate::Script::Superscript;
+        let md = |words: &[&str], bold: &[usize], italic: &[usize]| {
+            artifact_of(with_styles(line_of_words(words), bold, italic)).markdown
+        };
+        assert_eq!(
+            md(&["Total", "?", " ", "rose"], &[0], &[]),
+            "**Total?** rose\n"
+        );
+        assert_eq!(
+            md(&["Total", " ", "\u{2013}", " ", "rose"], &[0], &[]),
+            "**Total \u{2013}** rose\n"
+        );
+        assert_eq!(md(&["Total", ")", "."], &[0], &[]), "**Total).**\n");
+        assert_eq!(
+            md(&["Total", "-", "rose"], &[0, 2], &[]),
+            "**Total-rose**\n"
+        );
+        assert_eq!(md(&["Total", "-", "rose"], &[0], &[]), "**Total**-rose\n");
+        assert_eq!(
+            md(&["Total", "?", " ", "rose"], &[], &[0]),
+            "*Total*? rose\n"
+        );
+        assert_eq!(
+            md(&["Total", " ", "?", " ", "rose"], &[0], &[2]),
+            "**Total** *?* rose\n"
+        );
+        assert_eq!(
+            md(&["Total", " ", "- -", " ", "rose"], &[0], &[]),
+            "**Total** - - rose\n"
+        );
+        assert_eq!(
+            md(&["Total", "\\", " ", "rose"], &[0], &[]),
+            "**Total**\\ rose\n"
+        );
+        let script = with_scripts(
+            with_styles(
+                line_of_words(&["Total", " ", "2", ",", " ", "rose"]),
+                &[2],
+                &[],
+            ),
+            &[(2, Superscript)],
+        );
+        assert_eq!(
+            artifact_of(script).markdown,
+            "Total **<sup>2</sup>**, rose\n"
+        );
+
+        let a = artifact_of(with_styles(
+            line_of_words(&["Total", "?", " ", "rose"]),
+            &[0],
+            &[],
+        ));
+        let at = a.markdown.find('?').unwrap();
+        let held = a.anchor_map.segments_touching(at, at + 1);
+        assert!(
+            held.iter().all(|s| s.kind == SegmentKind::Source),
+            "the mark is source"
+        );
+        assert!(a.coverage.balances());
+
+        // Held to the end, or to a table, the mark is still written, and inside.
+        let repr = with_styles(line_of_words(&["Total", "?"]), &[0], &[]);
+        let nodes = &repr.payload().nodes;
+        let (total, mark) = (nodes[0].id.as_str(), nodes[1].id.as_str());
+        let mut e = Emit::with_emphasis(nodes, Markup::Markdown);
+        e.source("Total", total);
+        e.source("?", mark);
+        e.finish();
+        assert_eq!(e.markdown, "**Total?**");
+        assert_eq!(e.emitted_chars, 6);
+        let mut e = Emit::with_emphasis(nodes, Markup::Markdown);
+        e.source("Total", total);
+        e.source("?", mark);
+        e.table(true);
+        e.syntax("|");
+        assert_eq!(e.markdown, "**Total?**|");
     }
 
     /// **No emphasis inside a heading or a table cell, and none across a block.** A heading is

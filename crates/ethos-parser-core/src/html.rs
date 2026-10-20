@@ -156,8 +156,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
-/// runs of one unit on one line joined across the gap between them, and decision #81's bold line
-/// its column wrapped joined to the one above it, this id carries too.
+/// runs of one unit on one line joined across the gap between them, decision #81's bold line its
+/// column wrapped joined to the one above it, and decision #83's mark set right after a bold run
+/// inside its `<strong>`, this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -832,8 +833,9 @@ pub fn fingerprint(artifact: &HtmlArtifact) -> Result<Sha256Hex, EngineError> {
 mod tests {
     use super::*;
     use crate::markdown::tests::{
-        cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
-        spanning, styled_line, with_inferred_headings, with_scripts, with_styles, with_units,
+        cell, epub_repr_of, line_of_words, repr_of, repr_of_lines, repr_of_paths, repr_with_table,
+        simple_repr, spanning, styled_line, with_inferred_headings, with_scripts, with_styles,
+        with_units,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -893,6 +895,15 @@ mod tests {
             "{}",
             a.html
         );
+    }
+
+    /// **A mark set right after a bold run stays inside its `<strong>`** (decision #83), and closes
+    /// it before a letter that follows directly, as the Markdown projection places `**`.
+    #[test]
+    fn a_mark_after_a_bold_run_stays_in_its_strong() {
+        let html = |words: &[&str]| artifact_of(with_styles(line_of_words(words), &[0], &[])).html;
+        assert!(html(&["Total", "?", " ", "rose"]).contains("<p><strong>Total?</strong> rose</p>"));
+        assert!(html(&["Total", "-", "rose"]).contains("<p><strong>Total</strong>-rose</p>"));
     }
 
     /// **The same spans in HTML** (decision #38): `<strong>` and `<em>`, closed before the space

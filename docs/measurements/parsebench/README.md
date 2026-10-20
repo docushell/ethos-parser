@@ -976,6 +976,16 @@ such a run is bold. Semantic formatting 0.4646 -> 0.4732, 8 pages up and none do
 -> 0.1255, two up; content, tables and visual grounding unchanged on every page. Overall 47.87 ->
 48.06; opendataloader-bench NID 0.8876 -> 0.8872 and MHS 0.5895 -> 0.5893, a trade the owner took.
 
+### After a mark set right after a bold run stays in its span (decision #83, 2026-10-19)
+
+Of the bold rules failing under text already set bold, 84 lost only punctuation the page set in its
+text's weight — `**PAMPLONA** –`, `**necessary**?` — and the bold rule finds a phrase only inside one
+span. Told "Punctuation stays in span", a run of punctuation alone set right after a bold run is
+written inside the span, unless a letter or a digit follows it directly. Semantic formatting 0.4732
+-> 0.4771, 14 pages up and none down; content faithfulness, tables, charts and visual grounding
+unchanged on every page. Overall 48.06 -> 48.14; opendataloader-bench NID 0.8872 -> 0.8874, 7
+documents up and none down.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

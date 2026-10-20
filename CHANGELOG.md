@@ -187,6 +187,29 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A mark set right after a bold run stays inside its span (decision #83)
+
+Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule
+id and no `profile_sha256` moves. The representation is unchanged; only where a span closes moves.
+
+- **A mark — a run of punctuation alone, in no style of its own — set right after a bold run stays
+  inside the span**, in both projections: `**necessary?**` rather than `**necessary**?`, and
+  `**PAMPLONA –** text` rather than `**PAMPLONA** – text`. The writer holds the mark until the next
+  text shows where the span closes. Before a space, a line's end, more punctuation or more of the
+  span, the mark goes inside; where a letter or a digit follows it directly, the span closes before
+  it, since CommonMark reads no closing marker set between punctuation and a letter. Nothing moves
+  after an italic span or a script, nor a mark with a space in it or a character Markdown reads as
+  inline syntax (`` \ ` * _ < > & | # ``): a `\` would escape the closing marker.
+- **Why this piece**: of the 292 bold rules ParseBench failed under text already set bold, 86 were
+  split across blocks, 84 lost only punctuation the page set in its text's weight, 72 sat in tables
+  and 22 lost words. Its bold rule finds a phrase only inside one span, punctuation and all.
+- **Measured** on ParseBench: semantic formatting 0.4732 -> 0.4771, 14 pages up and none down
+  (`text_misc__ikea3` 0.32 -> 0.66, `text_simple__genius` 0.00 -> 0.45), 52 bold rules and 2 title
+  rules more passing and none fewer; content faithfulness, tables, charts and visual grounding
+  unchanged on every page; overall 48.06 -> 48.14. opendataloader-bench NID 0.8872 -> 0.8874, 7
+  documents up and none down, and MHS 0.5893 -> 0.5894, 2 up; TEDS, the fabrication check and the
+  gate documents' 541 tables unchanged.
+
 ### A run set a weight heavier than its page's text is bold (decision #82)
 
 Folded into `page-observations-v4`, which no release carries yet, so no rule id and no
