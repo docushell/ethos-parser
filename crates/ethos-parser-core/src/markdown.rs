@@ -243,7 +243,13 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// as an untagged page's runs do ([`sequence_join`], [`BLOCK_ELEMENT_RUN_JOINS`]); Word's export,
 /// which opens a sequence at every change of style and at every line, projected a block per change
 /// — semantic formatting 0.4771 -> 0.4819 with one page down, content faithfulness 0.6716 ->
-/// 0.6737 with thirty-one pages down by at most 0.018, a trade the owner took.
+/// 0.6737 with thirty-one pages down by at most 0.018, a trade the owner took. And so is decision
+/// #85's: on a tagged page, which carries no layout units, a bold line continues the bold line above
+/// it where both are children of one kind of element and it opens lowercase, or #81's test says
+/// the column wrapped it, measured by the body lines straight below ([`wrapped_labels`]) —
+/// semantic formatting 0.4819 -> 0.4848 with no page down, content faithfulness unchanged at 0.6737
+/// with ten pages down by at most 0.006, a trade the owner took, opendataloader-bench NID six
+/// documents up.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -345,7 +351,9 @@ pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 /// is this engine's measure, not the producer's word, so it is counted apart from both baseline
 /// joins. Body text keeps its lines; see [`unit_continues`]. Decision #65 counts a label's next
 /// line here too, where it keeps its line break but joins the label's block
-/// ([`label_line_continues`]): the block boundary is what the unit erased.
+/// ([`label_line_continues`]): the block boundary is what the unit erased. So are decision #81's
+/// bold line its column wrapped and decision #85's tagged bold line read on to the one above
+/// ([`wrapped_labels`]): the same reading of the wrap, on a page whose tree leaves no units.
 pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
 
 /// A heading's section number or marker joined to the title it opens, across the gap the page set
@@ -1237,6 +1245,14 @@ pub(crate) fn unit_gap_continues(
 /// of one layout unit are asked the same, and two things more: a line set in capitals over one that
 /// is not is a heading over its text, and a line ending in a hyphen keeps its line, since joined
 /// across the break with a space it would write `Dupont- Steilacoom`, a space the page never set.
+///
+/// Decision #85: a tagged page carries no layout units, and a producer that tags each line of a
+/// title as an element of its own leaves its lines apart. Two bold lines there whose first runs
+/// are children of one kind of element are asked the same, the bold lines in a row standing for
+/// the unit and the text they head being the body lines straight below that start where they
+/// start — a tagged page has no inferred heading to stop at. And a second line opening with a
+/// lowercase letter continues the first whatever that measure says: a title its author broke by
+/// hand, `Building resilience` over `across markets`, reads on.
 pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections::BTreeSet<&str> {
     // One line: its first inked run, its text, its box, and the label, heading and unit it carries.
     struct Line<'a> {
@@ -1248,6 +1264,8 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         heading: bool,
         unit: Option<u32>,
         page: u32,
+        /// Decision #85: the structure-tree path above a tagged line's first run, its parent's.
+        tagged: Option<&'a [String]>,
     }
     let payload = repr.payload();
     let mut lines: Vec<Line<'_>> = Vec::new();
@@ -1268,6 +1286,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
                 heading: false,
                 unit: None,
                 page: key.page,
+                tagged: None,
             });
         }
         let Some(line) = lines.last_mut() else {
@@ -1283,6 +1302,15 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
             line.heading = a.inferred_heading;
             line.label = a.inferred_heading && a.inferred_heading_level.unwrap_or(1) > 6;
             line.unit = a.layout_unit;
+            line.tagged = match node.structural_locator.as_ref() {
+                Some(crate::StructuralLocator::PdfTagged(t))
+                    if t.derivation == crate::DerivationClass::Extracted
+                        && t.role_path.len() > 1 =>
+                {
+                    Some(&t.role_path[..t.role_path.len() - 1])
+                }
+                _ => None,
+            };
         }
         if let Some(crate::GeometryPresence::Measured(r)) = repr.geometry_at(i) {
             let b = (r.x0(), r.y0(), r.x1(), r.y1());
@@ -1299,8 +1327,15 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
     for i in 1..lines.len() {
         let ((a, ra), (b, rb)) = (&lines[i - 1], &lines[i]);
         let height = rb.3 - rb.1;
-        let bold_body =
-            a.bold && b.bold && !a.heading && !b.heading && a.unit.is_some() && a.unit == b.unit;
+        let bold_body = a.bold
+            && b.bold
+            && !a.heading
+            && !b.heading
+            && ((a.unit.is_some() && a.unit == b.unit)
+                || (a.unit.is_none()
+                    && b.unit.is_none()
+                    && a.tagged.is_some()
+                    && a.tagged == b.tagged));
         let caps =
             |t: &str| t.chars().any(char::is_alphabetic) && !t.chars().any(char::is_lowercase);
         if !((a.label && b.label) || bold_body)
@@ -1313,19 +1348,37 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         {
             continue;
         }
-        let heads = lines[i..]
-            .iter()
-            .skip_while(|(l, _)| l.page == a.page && l.unit == a.unit)
-            .take_while(|(l, _)| l.page == a.page && !l.heading)
-            .filter(|(_, r)| (r.0 - ra.0).abs() <= height)
-            .map(|(_, r)| r.2)
-            .max();
+        let below = lines[i..].iter().skip_while(|(l, _)| {
+            l.page == a.page
+                && if a.unit.is_some() {
+                    l.unit == a.unit
+                } else {
+                    l.tagged == a.tagged && l.bold
+                }
+        });
+        let heads = if a.unit.is_some() || a.tagged.is_none() {
+            below
+                .take_while(|(l, _)| l.page == a.page && !l.heading)
+                .filter(|(_, r)| (r.0 - ra.0).abs() <= height)
+                .map(|(_, r)| r.2)
+                .max()
+        } else {
+            // A tagged page has no inferred heading to stop at: the body lines straight below.
+            below
+                .take_while(|(l, r)| l.page == a.page && (r.0 - ra.0).abs() <= height)
+                .map(|(_, r)| r.2)
+                .max()
+        };
         let text = b.text.trim();
         let chars = i64::try_from(text.chars().count()).unwrap_or(i64::MAX);
         let word =
             i64::try_from(text.chars().take_while(|c| !c.is_whitespace()).count()).unwrap_or(0);
         let first_word = (1 + word) * (rb.2 - rb.0) / chars.max(1);
-        if heads.is_some_and(|edge| ra.2 <= edge + height && ra.2 + first_word > edge) {
+        let lowercase = a.unit.is_none()
+            && a.tagged.is_some()
+            && b.text.trim_start().starts_with(char::is_lowercase);
+        if lowercase || heads.is_some_and(|edge| ra.2 <= edge + height && ra.2 + first_word > edge)
+        {
             out.insert(b.first);
         }
     }
@@ -1462,6 +1515,10 @@ pub(crate) enum SequenceJoin {
     ElementNextLine,
     /// Children of one kind of element, drawn next along one line.
     Line,
+    /// Decision #85: a tagged bold line [`wrapped_labels`] names, onto the next line with one
+    /// space. The projections' own clause, as [`unit_continues`] is: [`sequence_join`] never
+    /// returns it.
+    Wrapped,
 }
 
 /// What the page drew between two runs on one line, as [`sequence_join`] reads it.
@@ -2947,10 +3004,17 @@ pub fn to_markdown(
                         .unwrap_or_else(|| ink_contiguous(prev, node, &pitch)),
                 };
                 across = sequence_join(open, k, prev, node, between, line_ink, &pitch)
-                    .filter(|j| *j != SequenceJoin::Line || ht.is_none());
+                    .or_else(|| {
+                        // Decision #85: a tagged bold line its column wrapped, or that reads on.
+                        (wrapped.contains(node.id.as_str()) && on_different_lines(prev, node))
+                            .then_some(SequenceJoin::Wrapped)
+                    })
+                    .filter(|j| {
+                        !matches!(j, SequenceJoin::Line | SequenceJoin::Wrapped) || ht.is_none()
+                    });
                 across.map(|j| match j {
                     SequenceJoin::ElementLine { space } => space,
-                    SequenceJoin::ElementNextLine => true,
+                    SequenceJoin::ElementNextLine | SequenceJoin::Wrapped => true,
                     SequenceJoin::Line => {
                         pending_space
                             || line_ink
@@ -3066,6 +3130,8 @@ pub fn to_markdown(
                     Some(SequenceJoin::ElementLine { .. } | SequenceJoin::ElementNextLine)
                 ) {
                     BLOCK_ELEMENT_RUN_JOINS
+                } else if across == Some(SequenceJoin::Wrapped) {
+                    LAYOUT_UNIT_LINE_JOINS
                 } else if declared {
                     MCID_RUN_JOINS
                 } else if space {
@@ -6923,6 +6989,179 @@ pub(crate) mod tests {
         }
         let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
         blocks_of(&artifact_of(repr))
+    }
+
+    /// A tagged line, one run, for [`project_tagged_lines`]: its text, its box, whether it is set
+    /// bold, and the structure-tree path its element sits on.
+    type TaggedLine<'a> = (&'a str, (i64, i64, i64, i64), bool, &'a [&'a str]);
+
+    /// Lines, one run each, each tagged as an element of its own under `path` and carrying no
+    /// layout unit, as a producer that tags every line of a title writes them (decision #85).
+    pub(crate) fn tagged_lines_repr(lines: &[TaggedLine<'_>]) -> DocumentRepresentation {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+            visible: None,
+        };
+        let mut nodes = Vec::new();
+        let mut geometry = Vec::new();
+        for (i, (text, b, bold, path)) in lines.iter().enumerate() {
+            let element = u32::try_from(i).unwrap() + 100;
+            let mut node = placed_run(
+                &mut alloc,
+                &page.id,
+                i as u32 + 1,
+                text,
+                tagged_in(i64::from(element), path, Some(element)),
+                b.0,
+                b.3,
+                Some(b.2 - b.0),
+                None,
+            );
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.bold = *bold;
+            }
+            geometry.push(NodeGeometry {
+                node: node.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(b.0, b.1, b.2, b.3).unwrap()),
+            });
+            nodes.push(node);
+        }
+        DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap()
+    }
+
+    fn project_tagged_lines(lines: &[TaggedLine<'_>]) -> Vec<String> {
+        blocks_of(&artifact_of(tagged_lines_repr(lines)))
+    }
+
+    /// **A tagged title's lines read on where the next opens lowercase or its column wrapped it**
+    /// (decision #85): a producer that tags every line of a title as an element of its own leaves
+    /// no layout unit for #81's test, so the bold lines in a row stand for the unit and the body
+    /// lines straight below measure the column. A line opening in capitals with room for its first
+    /// word above keeps its line, as do lines under another kind of parent, a line not set bold,
+    /// and a line after a sentence's end; a broken word still closes up.
+    #[test]
+    fn a_tagged_titles_lines_read_on() {
+        const P: &[&str] = &["Document", "Sect", "P"];
+        let body = |column: i64| -> Vec<TaggedLine<'static>> {
+            vec![
+                (
+                    "Cushioning the effects of",
+                    (7200, 9600, column, 10600),
+                    false,
+                    P,
+                ),
+                (
+                    "such volatility and loss",
+                    (7200, 10700, column - 400, 11700),
+                    false,
+                    P,
+                ),
+            ]
+        };
+        let title = |lines: &[TaggedLine<'static>], column: i64| {
+            let mut all = lines.to_vec();
+            all.extend(body(column));
+            project_tagged_lines(&all)
+        };
+        let three = title(
+            &[
+                ("Building resilience", (7200, 6300, 15000, 7300), true, P),
+                ("across markets", (7200, 7400, 13000, 8400), true, P),
+                ("and society", (7200, 8500, 11000, 9500), true, P),
+            ],
+            40000,
+        );
+        assert_eq!(
+            three[0], "**Building resilience across markets and society**",
+            "{three:?}"
+        );
+        let pair =
+            |second: &'static str, column: i64, path: &'static [&'static str], bold: bool| {
+                title(
+                    &[
+                        ("Notice of a public", (7200, 6300, 19000, 7300), true, P),
+                        (second, (7200, 7400, 12000, 8400), bold, path),
+                    ],
+                    column,
+                )
+            };
+        assert_eq!(
+            pair("Hearing held", 40000, P, true)[0],
+            "**Notice of a public**"
+        );
+        assert_eq!(
+            pair("Hearing held", 19500, P, true)[0],
+            "**Notice of a public Hearing held**"
+        );
+        assert_eq!(
+            pair("hearing held", 40000, &["Document", "Div", "P"], true)[0],
+            "**Notice of a public**"
+        );
+        assert_eq!(
+            pair("hearing held", 40000, P, false)[0],
+            "**Notice of a public**"
+        );
+        let ended = title(
+            &[
+                ("Notice of a public.", (7200, 6300, 19000, 7300), true, P),
+                ("hearing held", (7200, 7400, 12000, 8400), true, P),
+            ],
+            40000,
+        );
+        assert_eq!(ended[0], "**Notice of a public.**");
+
+        // The column is the body straight below, not a wider line further down the page.
+        let mut far = vec![
+            ("Notice of a public", (7200, 6300, 19000, 7300), true, P),
+            ("Hearing held", (7200, 7400, 12000, 8400), true, P),
+        ];
+        far.extend(body(19500));
+        far.push((
+            "Elsewhere on the page",
+            (30000, 12000, 40000, 13000),
+            false,
+            P,
+        ));
+        far.push((
+            "A line set across the whole page width",
+            (7200, 14000, 50000, 15000),
+            false,
+            P,
+        ));
+        assert_eq!(
+            project_tagged_lines(&far)[0],
+            "**Notice of a public Hearing held**"
+        );
+
+        let broken = title(
+            &[
+                ("Building resilience", (7200, 6300, 15000, 7300), true, P),
+                ("perfor-", (7200, 7400, 10000, 8400), true, P),
+                ("mance and", (7200, 8500, 11000, 9500), true, P),
+            ],
+            40000,
+        );
+        assert_eq!(
+            &broken[..2],
+            ["**Building resilience**", "**performance and**"],
+            "{broken:?}"
+        );
+
+        let joins = artifact_of(tagged_lines_repr(&[
+            ("Building resilience", (7200, 6300, 15000, 7300), true, P),
+            ("across markets", (7200, 7400, 13000, 8400), true, P),
+        ]))
+        .coverage
+        .structural_erasures
+        .iter()
+        .find(|e| e.code == LAYOUT_UNIT_LINE_JOINS)
+        .map_or(0, |e| e.count);
+        assert_eq!(joins, 1);
     }
 
     /// **A bold line its column wrapped is one span; bold lines set one under the other keep

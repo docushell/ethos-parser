@@ -158,8 +158,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
 /// column wrapped joined to the one above it, decision #83's mark set right after a bold run inside
-/// its `<strong>`, and decision #84's runs of one block element as one `<p>` across the
-/// marked-content sequences they cite, this id carries too.
+/// its `<strong>`, decision #84's runs of one block element as one `<p>` across the marked-content
+/// sequences they cite, and decision #85's tagged bold line read on to the one above, this id
+/// carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -574,10 +575,17 @@ pub fn to_html(
                 };
                 across =
                     crate::markdown::sequence_join(open, k, prev, node, between, line_ink, &pitch)
-                        .filter(|j| *j != SequenceJoin::Line || ht.is_none());
+                        .or_else(|| {
+                            (wrapped.contains(node.id.as_str())
+                                && crate::markdown::on_different_lines(prev, node))
+                            .then_some(SequenceJoin::Wrapped)
+                        })
+                        .filter(|j| {
+                            !matches!(j, SequenceJoin::Line | SequenceJoin::Wrapped) || ht.is_none()
+                        });
                 across.map(|j| match j {
                     SequenceJoin::ElementLine { space } => space,
-                    SequenceJoin::ElementNextLine => true,
+                    SequenceJoin::ElementNextLine | SequenceJoin::Wrapped => true,
                     SequenceJoin::Line => {
                         pending_space
                             || line_ink
@@ -674,6 +682,8 @@ pub fn to_html(
                 Some(SequenceJoin::ElementLine { .. } | SequenceJoin::ElementNextLine)
             ) {
                 crate::markdown::BLOCK_ELEMENT_RUN_JOINS
+            } else if across == Some(SequenceJoin::Wrapped) {
+                crate::markdown::LAYOUT_UNIT_LINE_JOINS
             } else if key.is_some() && across.is_none() {
                 crate::markdown::MCID_RUN_JOINS
             } else if space {
@@ -872,8 +882,8 @@ mod tests {
     use super::*;
     use crate::markdown::tests::{
         cell, epub_repr_of, line_of_words, repr_of, repr_of_lines, repr_of_paths, repr_of_placed,
-        repr_with_table, simple_repr, spanning, styled_line, tagged_in, with_inferred_headings,
-        with_scripts, with_styles, with_units,
+        repr_with_table, simple_repr, spanning, styled_line, tagged_in, tagged_lines_repr,
+        with_inferred_headings, with_scripts, with_styles, with_units,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -1009,6 +1019,30 @@ mod tests {
         };
         assert_eq!(count(crate::markdown::MCID_RUN_JOINS), 1);
         assert_eq!(count(crate::markdown::BASELINE_RUN_JOINS_SPACED), 1);
+    }
+
+    /// **A tagged title's lines read on into one `<strong>`** (decision #85), as in Markdown, and
+    /// the line break is counted as #81's is.
+    #[test]
+    fn a_tagged_titles_lines_read_on() {
+        const P: &[&str] = &["Document", "Sect", "P"];
+        let a = artifact_of(tagged_lines_repr(&[
+            ("Building resilience", (7200, 6300, 15000, 7300), true, P),
+            ("across markets", (7200, 7400, 13000, 8400), true, P),
+        ]));
+        assert!(
+            a.html
+                .contains("<p><strong>Building resilience across markets</strong></p>"),
+            "{}",
+            a.html
+        );
+        let joins = a
+            .coverage
+            .structural_erasures
+            .iter()
+            .find(|e| e.code == crate::markdown::LAYOUT_UNIT_LINE_JOINS)
+            .map_or(0, |e| e.count);
+        assert_eq!(joins, 1);
     }
 
     /// **A mark set right after a bold run stays inside its `<strong>`** (decision #83), and closes

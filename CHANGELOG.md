@@ -187,6 +187,35 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A tagged title's lines read on (decision #85)
+
+Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule
+id and no `profile_sha256` moves.
+
+- **On a tagged page, a bold line continues the bold line above it** where both are children of
+  one kind of element and it opens with a lowercase letter, or decision #81's test says its column
+  wrapped it: `**Building resilience across markets and society**`, a title a producer tagged one
+  line per element. A tagged page carries no layout units, so the bold lines in a row stand for
+  the unit, and the text they head is the body lines straight below that start where they start —
+  a tagged page has no inferred heading to stop at. #81's other clauses hold: a line opening with
+  a number or a marker, after one ending a sentence, set in capitals over one that is not, or
+  after a hyphen keeps its line, and a broken word still closes up. Counted under
+  `layout-unit-line-joins-v1`, as #81's join is.
+- **Why this piece**: of the 120 bold and title rules still failing only on a phrase that wraps,
+  30 fall on a tagged page that tags each line of a title as an element of its own, the largest
+  of three causes; the wrap test alone, measured to the page's foot, read the full-width line far
+  below as the column and kept every title apart.
+- **Measured** on ParseBench: semantic formatting 0.4819 -> 0.4848, 10 pages up and none down
+  (`text_multicolumns__3colceo` 0.57 -> 0.84, `text_multicolumns__2x` 0.70 -> 0.90); content
+  faithfulness unchanged at 0.6737, 10 pages down by at most 0.006 where the ground truth keeps a
+  title's lines apart, a trade the owner took; tables, charts and visual grounding unchanged on
+  every page; overall 48.33 -> 48.38. opendataloader-bench NID 0.8874 -> 0.8875, 6 documents up
+  and none down, TEDS and MHS unchanged; the fabrication check and the gate documents' 541 tables
+  unchanged.
+- **Measured and not used**: the wrap test alone, measured by the body lines straight below —
+  formatting 0.4835, a title its author broke by hand (`across markets` / `and society`) still
+  apart.
+
 ### One paragraph's runs are one block across its marked-content sequences (decision #84)
 
 `struct_tree_rule` moves to `struct-tree-v3`, so `profile_sha256` moves. The projections' part is

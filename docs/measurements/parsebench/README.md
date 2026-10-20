@@ -995,6 +995,15 @@ runs of one element are one block. Semantic formatting 0.4771 -> 0.4819, 15 page
 content faithfulness 0.6716 -> 0.6737, 22 up and 31 down by at most 0.018, a trade the owner took;
 tables and charts unchanged on every page, visual grounding 0.5644 -> 0.5670 with two pages up. Overall 48.14 -> 48.33.
 
+### After a tagged title's lines read on (decision #85, 2026-10-20)
+
+A producer that tags each line of a title as an element of its own left the lines apart, and the
+bold rule finds a phrase only inside one span. Told "Lowercase continuation", a bold line on a
+tagged page continues the bold line above it where both are children of one kind of element and
+it opens lowercase, or #81's test says its column wrapped it. Semantic formatting 0.4819 -> 0.4848,
+10 pages up and none down; content faithfulness unchanged at 0.6737, 10 pages down by at most
+0.006, a trade the owner took; tables, charts and visual grounding unchanged on every page. Overall 48.33 -> 48.38.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
