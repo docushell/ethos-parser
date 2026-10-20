@@ -187,6 +187,28 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A chart's panel is no bar (decision #86)
+
+Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **A rectangle drawn round all of a chart's bars is the panel the chart is set on, not a bar**,
+  so a category label set on it is read: a chart drawn on a filled panel — a grey box under a
+  quarter of the page, which the rule takes as a bar like any other filled rectangle — had every
+  category label refused as set on a bar, and read no table. A strip that holds no bars is still a
+  bar to the rule, and a label set on one is still no category.
+- **Why this piece**: told "Census: charts", the chart pages were re-counted by why a printed value
+  fails: 39 pages read no table though their values and labels are printed, at most +1.17 overall,
+  and their charts split into many small causes — pies, lines, slanted year labels with no box,
+  names set below icons, a sparse year axis. Told "Category labels", the bar rule's refusals were
+  traced on every chart page: 78 categories on 19 pages refused as set on a bar, a panel among them.
+- **Measured** on ParseBench: charts 0.1255 -> 0.1276, 3 pages up and none down
+  (`2022_SPI_Benchmark_Executive_Summary` p20 0.4 -> 1.0 and p19 0.6 -> 1.0,
+  `Visa-Fiscal-2025-Annual-Report` p10 0.0 -> 0.2); tables, content faithfulness, semantic
+  formatting and visual grounding unchanged on every page; overall 48.38 -> 48.43.
+  opendataloader-bench unchanged on every document; the fabrication check and the gate documents'
+  541 tables unchanged.
+
 ### A tagged title's lines read on (decision #85)
 
 Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule

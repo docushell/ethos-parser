@@ -1029,6 +1029,11 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// and one printing none — kept two series, and its one column of numbers went unnamed, though the
 /// panel's title above it names it. `-v3` reads the title for the one series that carries numbers,
 /// whatever else is drawn beside it.
+///
+/// Decision #86, folded in as no release carries `-v3`: a rectangle drawn round all of a chart's
+/// bars is the panel it is set on, not a bar, so a category label set on the panel is read — a
+/// chart drawn on a filled panel, a grey box under a quarter of the page, had every label refused
+/// as set on a bar.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**

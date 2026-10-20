@@ -1004,6 +1004,13 @@ it opens lowercase, or #81's test says its column wrapped it. Semantic formattin
 10 pages up and none down; content faithfulness unchanged at 0.6737, 10 pages down by at most
 0.006, a trade the owner took; tables, charts and visual grounding unchanged on every page. Overall 48.33 -> 48.38.
 
+### After a chart's panel is no bar (decision #86, 2026-10-20)
+
+The bar rule refuses a category label set on a bar, and took a chart's filled panel for one, so a
+chart drawn on a grey panel read no categories at all. Told "Category labels", a rectangle drawn
+round all of a chart's bars is its panel, not a bar. Charts 0.1255 -> 0.1276, 3 pages up and none
+down; every other group unchanged on every page. Overall 48.38 -> 48.43.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

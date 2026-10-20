@@ -969,11 +969,17 @@ fn joined(labels: &[Label], ks: &[usize]) -> String {
         .join(" ")
 }
 
-/// Whether a label is set on a bar of any chart: a fifth of its area or more.
-fn on_ink(l: &Label, ink: &[Bar], _chart: &Chart) -> bool {
+/// Whether a label is set on a bar of any chart: a fifth of its area or more. Decision #86: a
+/// rectangle drawn round all of `chart`'s bars is the panel the chart is set on, not a bar, and a
+/// label on it is on no ink — a chart drawn on a filled panel had every category refused.
+fn on_ink(l: &Label, ink: &[Bar], chart: &Chart) -> bool {
     let area = i128::from((l.x1 - l.x0).max(1)) * i128::from((l.y1 - l.y0).max(1));
+    let bars = bars_box(chart, ink);
     ink.iter().any(|b| {
         let r = b.rect;
+        if r.x0 <= bars.x0 && r.y0 <= bars.y0 && r.x1 >= bars.x1 && r.y1 >= bars.y1 {
+            return false;
+        }
         let (w, h) = (
             l.x1.min(r.x1) - l.x0.max(r.x0),
             l.y1.min(r.y1) - l.y0.max(r.y0),
@@ -1517,6 +1523,25 @@ mod tests {
             let joined: String = cell.run_indices.iter().map(|&i| runs[i].text).collect();
             assert_eq!(cell.text, joined);
         }
+    }
+
+    /// **A chart drawn on a filled panel reads its categories** (decision #86): the panel is drawn
+    /// round all the bars and is no bar, so a label set on it is on no ink. A strip under the
+    /// labels that holds no bars is still ink, and its labels are still no categories.
+    #[test]
+    fn a_chart_on_a_panel_reads_its_categories() {
+        let (runs, mut bars) = four_years(["10", "20", "30", "40"], [25, 50, 75, 100]);
+        bars.push(bar(80, 150, 280, 330, rgb(900, 900, 900)));
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|Solar", "2020|10", "2021|20", "2022|30", "2023|40"]
+        );
+
+        let (runs, mut bars) = four_years(["10", "20", "30", "40"], [25, 50, 75, 100]);
+        bars.push(bar(80, 302, 280, 316, rgb(900, 900, 900)));
+        assert!(found(&runs, &bars).is_empty());
     }
 
     #[test]
