@@ -86,7 +86,8 @@ pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.parser.representation.v0";
 /// [`RepresentationPayload::figures`], the regions the figure rule infers from painted paths —
 /// always written, empty where none was found, on `outlines`' argument for the version. Folded into
 /// it, as no release carries 0.8.0: `TextRunAttributes::inferred_heading_level` may be 7, a label
-/// (decision #47), where 0.7.0 stopped at 6.
+/// (decision #47), where 0.7.0 stopped at 6; and [`PdfTaggedLocator::block_element`] is new
+/// (decision #84), absent under `struct-tree-v2` and wherever no numbered element holds a block.
 pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.8.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
@@ -823,6 +824,16 @@ pub struct PdfObjectLocator {
     pub rect: AnnotationRect,
 }
 
+/// An indirect object's number and generation, as the file numbers it (decision #84).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PdfObjectNumber {
+    /// The object number.
+    pub object: u32,
+    /// Its generation number. Usually 0; carried because an object id is both halves.
+    pub generation: u32,
+}
+
 /// The `/Rect` an annotation or widget declares, or why there is none.
 ///
 /// **Deliberately not [`crate::derivation::GeometryPresence`].** That type means *measured ink*,
@@ -996,6 +1007,18 @@ pub struct PdfTaggedLocator {
     /// invented would not address anything in the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub element_id: Option<String>,
+    /// The innermost citing element that holds one block of text, as the file numbers its object
+    /// (decision #84): a paragraph or a heading (`/P`, `/H`, `/H1`–`/H6`), a title, a caption, a
+    /// contents entry, a list item or its label or body, a table cell — read after the document's
+    /// `/RoleMap`.
+    ///
+    /// **An address, not a role.** The marked-content id changes wherever a producer changes
+    /// sequence — Word's export at every change of style, and at every line — so one paragraph's
+    /// runs cite many; this says which ones one element holds, for a projection that keeps them
+    /// together. Absent where no such element cites the content, and where the one that does is a
+    /// direct object, which the file does not number: never minted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_element: Option<PdfObjectNumber>,
     /// Whose tree cited this content: the author's, or this engine's own.
     ///
     /// [`DerivationClass::Extracted`] means the element that cites this content is the

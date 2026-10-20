@@ -3517,6 +3517,7 @@ fn self_check(
                             role_path: vec!["Document".to_string(), "Div".to_string()],
                             standard_role_path: None,
                             element_id: None,
+                            block_element: None,
                             derivation: DerivationClass::Computed,
                         }));
                     if b.structural.as_ref() != Some(&expected) || b.mcid != Some(mcid) {

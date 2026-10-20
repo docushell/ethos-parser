@@ -157,8 +157,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
-/// column wrapped joined to the one above it, and decision #83's mark set right after a bold run
-/// inside its `<strong>`, this id carries too.
+/// column wrapped joined to the one above it, decision #83's mark set right after a bold run inside
+/// its `<strong>`, and decision #84's runs of one block element as one `<p>` across the
+/// marked-content sequences they cite, this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -544,6 +545,7 @@ pub fn to_html(
         // in `crate::markdown`.
         let ht = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner);
         let key = crate::markdown::group_key(node);
+        let mut across: Option<crate::markdown::SequenceJoin> = None;
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
                 let drew_space = pending_space
@@ -559,6 +561,30 @@ pub fn to_html(
                 } else {
                     None
                 }
+            }
+            // Decision #84. `crate::markdown`'s join across marked-content sequences, as there.
+            (Some(open), Some(k), Some(prev)) => {
+                use crate::markdown::SequenceJoin;
+                let between = crate::markdown::Between {
+                    space: pending_space
+                        || prev.reading_text().ends_with(char::is_whitespace)
+                        || node.reading_text().starts_with(char::is_whitespace),
+                    contiguous: crate::markdown::read_together(&stretches, prev, node)
+                        .unwrap_or_else(|| crate::markdown::ink_contiguous(prev, node, &pitch)),
+                };
+                across =
+                    crate::markdown::sequence_join(open, k, prev, node, between, line_ink, &pitch)
+                        .filter(|j| *j != SequenceJoin::Line || ht.is_none());
+                across.map(|j| match j {
+                    SequenceJoin::ElementLine { space } => space,
+                    SequenceJoin::ElementNextLine => true,
+                    SequenceJoin::Line => {
+                        pending_space
+                            || line_ink
+                                .is_some_and(|(ink, _, _)| ink.text.ends_with(char::is_whitespace))
+                            || node.text.starts_with(char::is_whitespace)
+                    }
+                })
             }
             // v2.2-S5. Neither run carries a declaration; geometry along one baseline is the
             // whole licence. The clauses are `crate::markdown`'s, called rather than restated.
@@ -632,13 +658,23 @@ pub fn to_html(
         }
 
         if let Some(space) = joining {
+            use crate::markdown::SequenceJoin;
             if space {
                 e.syntax(" ");
                 block_text.push(' ');
             }
             escaped_source(&mut e, &text, node.id.as_str());
             block_text.push_str(&text);
-            let code = if key.is_some() {
+            // Decision #84, as in `crate::markdown`: the block goes on in the new sequence.
+            if across.is_some() {
+                open_group = key;
+            }
+            let code = if matches!(
+                across,
+                Some(SequenceJoin::ElementLine { .. } | SequenceJoin::ElementNextLine)
+            ) {
+                crate::markdown::BLOCK_ELEMENT_RUN_JOINS
+            } else if key.is_some() && across.is_none() {
                 crate::markdown::MCID_RUN_JOINS
             } else if space {
                 crate::markdown::BASELINE_RUN_JOINS_SPACED
@@ -651,6 +687,8 @@ pub fn to_html(
             line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
             if line_ink.is_none() {
                 open_line = None;
+            } else if key.is_some() && crate::markdown::moved_line(open_line, line_ink, node) {
+                open_line = crate::markdown::line_key(node);
             }
             continue;
         }
@@ -833,9 +871,9 @@ pub fn fingerprint(artifact: &HtmlArtifact) -> Result<Sha256Hex, EngineError> {
 mod tests {
     use super::*;
     use crate::markdown::tests::{
-        cell, epub_repr_of, line_of_words, repr_of, repr_of_lines, repr_of_paths, repr_with_table,
-        simple_repr, spanning, styled_line, with_inferred_headings, with_scripts, with_styles,
-        with_units,
+        cell, epub_repr_of, line_of_words, repr_of, repr_of_lines, repr_of_paths, repr_of_placed,
+        repr_with_table, simple_repr, spanning, styled_line, tagged_in, with_inferred_headings,
+        with_scripts, with_styles, with_units,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -895,6 +933,82 @@ mod tests {
             "{}",
             a.html
         );
+    }
+
+    /// **One element's runs are one `<p>` across its marked-content sequences** (decision #84), as
+    /// they are one block in Markdown — counted, with each run's seam still addressable — and
+    /// two elements are two. The paragraph goes on in the sequence it joined, and takes its line
+    /// with it onto the next line.
+    #[test]
+    fn one_elements_runs_are_one_paragraph() {
+        let p = |mcid, element| tagged_in(mcid, &["Document", "P"], Some(element));
+        let one = |second: u32| {
+            artifact_of(repr_of_placed(&[
+                ("Total", p(1, 9), 7200, 7200, Some(1000), None),
+                (" ", p(2, 9), 8200, 7200, Some(200), None),
+                ("revenue", p(3, 9), 8400, 7200, Some(1400), None),
+                ("rose", p(4, second), 7200, 5800, Some(800), None),
+            ]))
+        };
+        let a = one(9);
+        assert!(a.html.contains("<p>Total revenue rose</p>"), "{}", a.html);
+        let joins = a
+            .coverage
+            .structural_erasures
+            .iter()
+            .find(|e| e.code == crate::markdown::BLOCK_ELEMENT_RUN_JOINS)
+            .map_or(0, |e| e.count);
+        assert_eq!(joins, 2);
+        let two = one(10).html;
+        assert!(two.contains("<p>Total revenue</p>\n<p>rose</p>"), "{two}");
+
+        let word = artifact_of(repr_of_placed(&[
+            ("Tot", p(1, 9), 7200, 7200, Some(600), None),
+            ("al", p(2, 9), 7800, 7200, Some(400), None),
+        ]));
+        assert!(word.html.contains("<p>Total</p>"), "{}", word.html);
+        assert!(word
+            .anchor_map
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Source)
+            .all(|s| s.node_ids.len() == 1));
+
+        let same = artifact_of(repr_of_placed(&[
+            ("Total", p(1, 9), 7200, 7200, Some(1000), None),
+            (" ", p(2, 9), 8200, 7200, Some(200), None),
+            ("perfor-", p(3, 9), 8400, 7200, Some(1400), None),
+            ("mance", p(3, 9), 7200, 5800, Some(1000), None),
+        ]));
+        assert!(
+            same.html.contains("<p>Total perfor- mance</p>"),
+            "{}",
+            same.html
+        );
+
+        let at = |mcid| tagged_in(mcid, &["Document", "P"], None);
+        let moved = artifact_of(repr_of_placed(&[
+            ("Total", at(1), 7200, 7200, Some(1000), None),
+            ("rose", at(1), 7200, 5800, Some(800), None),
+            (" ", at(2), 8000, 5800, Some(200), None),
+            ("sharply", at(3), 8200, 5800, Some(1400), None),
+        ]));
+        assert!(
+            moved.html.contains("<p>Total rose sharply</p>"),
+            "{}",
+            moved.html
+        );
+        // One sequence's line break, and a join along the line that no element licenses.
+        let count = |code: &str| {
+            moved
+                .coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map_or(0, |e| e.count)
+        };
+        assert_eq!(count(crate::markdown::MCID_RUN_JOINS), 1);
+        assert_eq!(count(crate::markdown::BASELINE_RUN_JOINS_SPACED), 1);
     }
 
     /// **A mark set right after a bold run stays inside its `<strong>`** (decision #83), and closes

@@ -329,7 +329,7 @@
 
     "structural_locator": {
       "title": "StructuralLocator — where the node kind defines one",
-      "$comment": "Externally tagged, one of three variants, matching StructuralLocator in crates/ethos-parser-core/src/representation.rs. The tagged-structure tree has been READ since v1-S3 (struct-tree-v1): pdf_tagged is the address the document's own /StructTreeRoot gives the content, pdf_mcid an id the content stream supplied that no structure element claims, pdf_artifact content the page marked as furniture outside the tree. pdf_tagged.derivation is read since auto-tagging S1 (struct-tree-v2): `extracted` when the innermost citing element is the author's, `computed` when it carries this engine's own owner attribute (/O /EthosParser under /A, or through /C and the root's /ClassMap; docs/23-AUTO-TAGGING-SCOPE.md §4.2), written on every tagged locator with no default (decision #20). Omitted entirely when the page marked nothing; never invented.",
+      "$comment": "Externally tagged, one of three variants, matching StructuralLocator in crates/ethos-parser-core/src/representation.rs. The tagged-structure tree has been READ since v1-S3 (struct-tree-v1): pdf_tagged is the address the document's own /StructTreeRoot gives the content, pdf_mcid an id the content stream supplied that no structure element claims, pdf_artifact content the page marked as furniture outside the tree. pdf_tagged.block_element is read since decision #84 (struct-tree-v3). pdf_tagged.derivation is read since auto-tagging S1 (struct-tree-v2): `extracted` when the innermost citing element is the author's, `computed` when it carries this engine's own owner attribute (/O /EthosParser under /A, or through /C and the root's /ClassMap; docs/23-AUTO-TAGGING-SCOPE.md §4.2), written on every tagged locator with no default (decision #20). Omitted entirely when the page marked nothing; never invented.",
       "oneOf": [
         {
           "type": "object",
@@ -353,6 +353,16 @@
                 "role_path": { "type": "array", "minItems": 1, "items": { "type": "string" }, "$comment": "Structure types from the root down, exactly as the document wrote them in /S. Never laundered." },
                 "standard_role_path": { "type": "array", "minItems": 1, "items": { "type": "string" }, "$comment": "The same path after the document's own /RoleMap. Present only when the map changed something." },
                 "element_id": { "type": "string", "$comment": "The innermost element's /ID, when it declares one. Never minted." },
+                "block_element": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["object", "generation"],
+                  "properties": {
+                    "object": { "type": "integer", "minimum": 0 },
+                    "generation": { "type": "integer", "minimum": 0 }
+                  },
+                  "$comment": "Since struct-tree-v3 (decision #84): the innermost citing element that holds one block of text — /P, /H, /H1–/H6, /Title, /Caption, /TOCI, /LI, /Lbl, /LBody, /TD or /TH, after the document's /RoleMap — as the file numbers its object. An address, not a role: the runs one element holds name one object across every marked-content sequence it cites. Absent where no such element cites the content, and where the one that does is a direct object, which the file does not number. Never minted."
+                },
                 "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "`extracted` or `computed` — see the $comment on this def. Required and never defaulted." }
               }
             }

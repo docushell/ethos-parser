@@ -986,6 +986,15 @@ written inside the span, unless a letter or a digit follows it directly. Semanti
 unchanged on every page. Overall 48.06 -> 48.14; opendataloader-bench NID 0.8872 -> 0.8874, 7
 documents up and none down.
 
+### After one paragraph's runs are one block across its marked-content sequences (decision #84, 2026-10-20)
+
+A Word-style tagged page opens a marked-content sequence at every change of style and every line,
+and the projections opened a block at each: a bold phrase was cut from its sentence. Told "Group by
+paragraph element", the reader names the element holding each tagged run's block of text and the
+runs of one element are one block. Semantic formatting 0.4771 -> 0.4819, 15 pages up and one down;
+content faithfulness 0.6716 -> 0.6737, 22 up and 31 down by at most 0.018, a trade the owner took;
+tables and charts unchanged on every page, visual grounding 0.5644 -> 0.5670 with two pages up. Overall 48.14 -> 48.33.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

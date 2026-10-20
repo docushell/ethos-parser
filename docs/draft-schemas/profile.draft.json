@@ -189,9 +189,9 @@
     "struct_tree_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the structure-tree rule in force (v1-S3; struct-tree-v2 since auto-tagging S1). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser. Since -v2 it also decides what class the path carries: an element whose attribute objects (under /A, or through /C and the root's /ClassMap) are owned by /O /EthosParser binds as `computed`, every other as `extracted`.",
+      "description": "Version id of the structure-tree rule in force (v1-S3; struct-tree-v2 since auto-tagging S1; struct-tree-v3 since decision #84). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser. Since -v2 it also decides what class the path carries: an element whose attribute objects (under /A, or through /C and the root's /ClassMap) are owned by /O /EthosParser binds as `computed`, every other as `extracted`. Since -v3 each tagged binding also names the innermost element holding its block of text, as the file numbers its object (pdf_tagged.block_element).",
       "examples": [
-        "struct-tree-v2"
+        "struct-tree-v3"
       ]
     },
     "heading_inference_rule": {
@@ -527,7 +527,7 @@
       },
       "reading_order_rule": "gutter-columns-v4",
       "right_to_left_rule": "right-to-left-lines-v1",
-      "struct_tree_rule": "struct-tree-v2",
+      "struct_tree_rule": "struct-tree-v3",
       "table_detection": {
         "charts": "bar-labels-v3",
         "lines": "point-labels-v1",

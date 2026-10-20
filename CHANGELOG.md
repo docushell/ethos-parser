@@ -187,6 +187,48 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### One paragraph's runs are one block across its marked-content sequences (decision #84)
+
+`struct_tree_rule` moves to `struct-tree-v3`, so `profile_sha256` moves. The projections' part is
+folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet.
+
+- **A tagged binding names the element that holds its block of text**: `pdf_tagged.block_element`,
+  the innermost citing `/P`, `/H`, `/H1`–`/H6`, `/Title`, `/Caption`, `/TOCI`, `/LI`, `/Lbl`,
+  `/LBody`, `/TD` or `/TH`, after the document's `/RoleMap`, as the file numbers its object
+  (`{"object": 33, "generation": 0}`). Absent where no such element cites the content, and where
+  the one that does is a direct object the file does not number; never minted. `PdfObjectNumber`
+  is new in the public API.
+- **The runs one element holds are one block** in Markdown, in HTML, and in the blocks `locate` and
+  the grounding projection read, across the marked-content sequences they cite. Word's export opens
+  a sequence at every change of style and at every line, so a paragraph with a bold phrase in it
+  projected a block per change and the bold phrase was cut from its sentence. Along a line a run
+  joins where the page drew a space or no gap, and never drawn back over the run before it — a
+  heading drawn twice to thicken it stays two lines; onto the element's next line with one space,
+  where the baseline moved at least a glyph and the line does not end in a hyphen. Counted as the
+  new structural erasure `block-element-run-joins-v1`.
+- **Children of one kind of element join along one line** where no element holds them both — a
+  producer that tags one line as several elements — as an untagged line's runs join, the next ink
+  along the line, and never a heading with its text. Until now two marked-content ids never joined,
+  whatever the geometry said.
+- **Why this piece**: told "Census: bold splits", the bold and title rules ParseBench fails because
+  a bold phrase sits in two blocks were traced to the runs on either side of each split: 70 of the
+  133 tagged text documents change marked-content sequence mid-line, 1,329 times, every time a block
+  break.
+- **Measured** on ParseBench: semantic formatting 0.4771 -> 0.4819, 15 pages up and one down
+  (`text_multicolumns__2col_simple` 0.00 -> 0.59, `text_simple__deploying` 0.49 -> 0.91); content
+  faithfulness 0.6716 -> 0.6737, 22 pages up and 31 down by at most 0.018
+  (`text_multilang__chinese2` 0.50 -> 0.85, `text_multilang__japan2` 0.48 -> 0.83); visual
+  grounding 0.5644 -> 0.5670, two pages up and none down; tables and charts unchanged on every
+  page; overall 48.14 -> 48.33. **The trade, taken by the owner**: where the ground truth keeps a
+  paragraph's lines apart, or a bold line inside its paragraph as a line of its own
+  (`text_multicolumns__ads`'s URL), the joined paragraph reads otherwise. opendataloader-bench
+  unchanged on every document; the fabrication check and the gate documents' 541 tables
+  unchanged.
+- **Measured and not used**: joining an element's runs as one sequence's would, across any gap and
+  any line — formatting 0.4823 but a heading drawn twice glued to itself
+  (`text_multilang__bengali` 0.69 -> 0.56); joining only along one line, with no element —
+  formatting 0.4788 and content 0.6735, wrapped lines left apart.
+
 ### A mark set right after a bold run stays inside its span (decision #83)
 
 Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule

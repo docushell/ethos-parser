@@ -284,6 +284,8 @@ const CORE: &[&str] = &[
     "EPUB_TEXT_CODE_RULE_V2",
     "PdfLocator",
     "PdfObjectLocator",
+    // Decision #84. The block element a tagged binding names.
+    "PdfObjectNumber",
     "PdfTaggedLocator",
     "ProcessingGaps",
     "ProcessingRun",
@@ -316,6 +318,7 @@ const CORE: &[&str] = &[
     "SlotFault",
     "STRUCT_TREE_RULE_V1",
     "STRUCT_TREE_RULE_V2",
+    "STRUCT_TREE_RULE_V3",
     // Decision #29. The heading-inference rule id, beside the tree rule it runs in the absence of.
     "HEADING_INFERENCE_RULE_V4",
     "HEADING_INFERENCE_RULE_V5",
@@ -347,6 +350,8 @@ const CORE: &[&str] = &[
     // Decision #65. A heading's number joined to its title.
     "HEADING_NUMBER_JOINS",
     "LAYOUT_UNIT_GAP_JOINS",
+    // Decision #84. One element's runs, joined across its marked-content sequences.
+    "BLOCK_ELEMENT_RUN_JOINS",
     "GFM_CELL_NOT_PLACED",
     "GFM_CELL_RUN_CLAIMED_TWICE",
     "GFM_LIST_ITEM_RUN_JOINS",

@@ -236,7 +236,14 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// opendataloader-bench NID one document up. And so is decision #83's: a mark — a run of
 /// punctuation alone, in no style of its own — set right after a bold run stays inside the span
 /// unless a letter or a digit follows it directly ([`Emphasis`]) — semantic formatting 0.4732 ->
-/// 0.4771 with no page down, content faithfulness unchanged on every page.
+/// 0.4771 with no page down, content faithfulness unchanged on every page. And so is decision
+/// #84's: on a tagged page the runs one block element holds — a paragraph, a heading, a list item,
+/// a cell, which the reader names since `struct-tree-v3` — are one block across the
+/// marked-content sequences they cite, and the children of one kind of element join along one line
+/// as an untagged page's runs do ([`sequence_join`], [`BLOCK_ELEMENT_RUN_JOINS`]); Word's export,
+/// which opens a sequence at every change of style and at every line, projected a block per change
+/// — semantic formatting 0.4771 -> 0.4819 with one page down, content faithfulness 0.6716 ->
+/// 0.6737 with thirty-one pages down by at most 0.018, a trade the owner took.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -354,6 +361,15 @@ pub const HEADING_NUMBER_JOINS: &str = "heading-number-joins-v1";
 /// written for the gap. The unit is this engine's measure, not the producer's word nor ink the page
 /// drew next, so it is counted apart from the baseline joins.
 pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
+
+/// Runs joined into one block across a change of marked-content sequence, because one element the
+/// document's structure tree declares holds them both — a paragraph, a heading, a list item, a
+/// cell (decision #84, [`sequence_join`]): a producer that changes sequence at every change of
+/// style and at every line, as Word's export does, wrote each piece as a block of its own. Along a
+/// line a space goes in only where the page drew one; onto the element's next line, one space for
+/// the line break. The licence is the element, not the sequence, so it is counted apart from
+/// [`MCID_RUN_JOINS`].
+pub const BLOCK_ELEMENT_RUN_JOINS: &str = "block-element-run-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
 /// as a paragraph (v2.4).
@@ -1430,6 +1446,114 @@ pub(crate) struct GroupKey {
     /// Which locator kind declared the id, so a tagged `4` and an artifact `4` are never one group.
     kind: u8,
     mcid: i64,
+    /// Decision #84: the element holding the run's block of text, where its tagged locator names
+    /// one ([`crate::PdfTaggedLocator::block_element`]). One sequence is one element's, so it adds
+    /// nothing to equality; [`sequence_join`] reads it across two.
+    element: Option<crate::PdfObjectNumber>,
+}
+
+/// How a run cited through another marked-content sequence than the open block's continues the
+/// block (decision #84, [`sequence_join`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SequenceJoin {
+    /// One block element holds both, on one line: `space` where the page drew one.
+    ElementLine { space: bool },
+    /// One block element holds both, and this run opens the element's next line.
+    ElementNextLine,
+    /// Children of one kind of element, drawn next along one line.
+    Line,
+}
+
+/// What the page drew between two runs on one line, as [`sequence_join`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Between {
+    /// A space, in either run's own text or as a run of its own.
+    pub(crate) space: bool,
+    /// No gap the page drew: [`read_together`], or else [`ink_contiguous`].
+    pub(crate) contiguous: bool,
+}
+
+/// Decision #84. Whether `node`, cited through another marked-content sequence than `prev`, the
+/// open block's last run, continues the block. A tagged page that changes sequence wherever its
+/// style or its line changes — Word's export — projected a block per change.
+///
+/// 1. **One block element holds both** ([`crate::PdfTaggedLocator::block_element`]), and `node`
+///    continues as a run of one sequence would. On `prev`'s line: where the page drew a space,
+///    or no gap ([`Between`]), and never drawn back over `prev` — starting more than half a glyph
+///    of its font before `prev`'s ink ends, as the second drawing does where a page thickens a
+///    heading by drawing its line twice. On a later line:
+///    with one space, where the baseline moved at least a glyph of `prev`'s font — less is the
+///    same line drawn twice — and `prev` does not end in a hyphen, since joined by a space a
+///    broken word would read `Dupont- Steilacoom`.
+/// 2. **Children of one kind of element**, at one heading level, joined where the page drew
+///    `node` next along `prev`'s line ([`ink_sequenced`]), as an untagged page's runs join: a
+///    producer that tags one line as several elements, or a run as none the file numbers.
+///
+/// `line_ink` is where the block's ink ends on its line; `pitch` measures `prev`'s font. Without
+/// either nothing joins. Both projections and [`geometric_blocks`] call this, so they cannot drift.
+pub(crate) fn sequence_join(
+    open: GroupKey,
+    key: GroupKey,
+    prev: &crate::Node,
+    node: &crate::Node,
+    between: Between,
+    line_ink: Option<(&crate::Node, i64, FontMeasure)>,
+    pitch: &PitchReference,
+) -> Option<SequenceJoin> {
+    if open.page != key.page || open.region != key.region || open.kind != key.kind {
+        return None;
+    }
+    if open.element.is_some() && open.element == key.element {
+        let measure =
+            text_run_attributes(prev).and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))?;
+        let (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) =
+            (&prev.native_locator, &node.native_locator)
+        else {
+            return None;
+        };
+        if line_key(prev).is_some_and(|line| same_line(line, node, *measure)) {
+            let over = a.origin_x + a.advance.unwrap_or(0) - b.origin_x;
+            return (2 * over <= measure.pitch && (between.space || between.contiguous)).then_some(
+                SequenceJoin::ElementLine {
+                    space: between.space,
+                },
+            );
+        }
+        let stepped = (a.origin_y - b.origin_y).abs() >= measure.pitch;
+        let broken = prev.reading_text().trim_end().ends_with('-');
+        return (stepped && !broken).then_some(SequenceJoin::ElementNextLine);
+    }
+    let (ink, end, reference) = line_ink?;
+    let along = line_key(prev).is_some_and(|line| same_line(line, node, reference))
+        && ink_sequenced(ink, end, reference, node);
+    (along && same_parent(prev, node) && heading_level(prev) == heading_level(node))
+        .then_some(SequenceJoin::Line)
+}
+
+/// Whether `node`, just joined with `line_ink` its ink, sits on another line than `open_line`, or
+/// the block has none (decision #84).
+pub(crate) fn moved_line(
+    open_line: Option<LineKey>,
+    line_ink: Option<(&crate::Node, i64, FontMeasure)>,
+    node: &crate::Node,
+) -> bool {
+    line_ink
+        .is_some_and(|(_, _, measure)| open_line.is_none_or(|line| !same_line(line, node, measure)))
+}
+
+/// Whether two runs' structure-tree paths differ in their last element alone: two children of one
+/// kind of element (decision #84).
+fn same_parent(a: &crate::Node, b: &crate::Node) -> bool {
+    match (a.structural_locator.as_ref(), b.structural_locator.as_ref()) {
+        (
+            Some(crate::StructuralLocator::PdfTagged(x)),
+            Some(crate::StructuralLocator::PdfTagged(y)),
+        ) => {
+            let (x, y) = (&x.role_path, &y.role_path);
+            x.len() > 1 && x.len() == y.len() && x[..x.len() - 1] == y[..y.len() - 1]
+        }
+        _ => false,
+    }
 }
 
 /// The [`GroupKey`] of a run, or `None` where no producer declared one.
@@ -1448,7 +1572,7 @@ pub(crate) fn group_key(node: &crate::Node) -> Option<GroupKey> {
     let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
         return None;
     };
-    let (kind, mcid) = match node.structural_locator.as_ref()? {
+    let (kind, mcid, element) = match node.structural_locator.as_ref()? {
         // No projection rule id moves for this arm: no input that existed before it projects
         // differently — every locator a reader minted before auto-tagging is `Extracted` — and
         // the new input class projects as its untagged twin, block for block and byte for byte
@@ -1459,15 +1583,16 @@ pub(crate) fn group_key(node: &crate::Node) -> Option<GroupKey> {
         {
             return None;
         }
-        crate::StructuralLocator::PdfTagged(t) => (0u8, t.mcid),
-        crate::StructuralLocator::PdfMcid(m) => (1u8, *m),
-        crate::StructuralLocator::PdfArtifact(a) => (2u8, a.mcid?),
+        crate::StructuralLocator::PdfTagged(t) => (0u8, t.mcid, t.block_element),
+        crate::StructuralLocator::PdfMcid(m) => (1u8, *m, None),
+        crate::StructuralLocator::PdfArtifact(a) => (2u8, a.mcid?, None),
     };
     Some(GroupKey {
         page: loc.page,
         region: region_of(node),
         kind,
         mcid,
+        element,
     })
 }
 
@@ -2002,9 +2127,10 @@ pub struct GeometricBlock {
 /// may read a role from one.
 ///
 /// The clauses are the ones [`to_markdown`] joins on, called rather than restated so the two
-/// cannot drift: a declared marked-content group ([`group_key`]), or, where the document declared
-/// nothing, the next ink along one baseline ([`line_key`] + [`ink_sequenced`], with the reach
-/// capped by [`ink_reach`]). What this does NOT carry is the projection-specific breaks — list
+/// cannot drift: a declared marked-content group ([`group_key`]); across two, the runs of one
+/// block element and the children of one kind of element along one line ([`sequence_join`],
+/// decision #84); or, where the document declared nothing, the next ink along one baseline
+/// ([`line_key`] + [`ink_sequenced`], with the reach capped by [`ink_reach`]). What this does NOT carry is the projection-specific breaks — list
 /// items, hyphen rejoins and heading markers are renderings, and a grounding consumer wants the
 /// ink.
 ///
@@ -2033,6 +2159,15 @@ pub fn geometric_blocks(
             !standalone
                 && match (open_group, key, open_prev) {
                     (Some(open), Some(k), Some(_)) if open == k => true,
+                    (Some(open), Some(k), Some(prev)) => {
+                        let between = Between {
+                            space: prev.reading_text().ends_with(char::is_whitespace)
+                                || node.reading_text().starts_with(char::is_whitespace),
+                            contiguous: read_together(&stretches, prev, node)
+                                .unwrap_or_else(|| ink_contiguous(prev, node, &pitch)),
+                        };
+                        sequence_join(open, k, prev, node, between, line_ink, &pitch).is_some()
+                    }
                     (None, None, Some(prev)) => read_together(&stretches, prev, node)
                         .unwrap_or_else(|| match (open_line, line_ink) {
                             (Some(line), Some((ink, end, reference))) => {
@@ -2774,6 +2909,7 @@ pub fn to_markdown(
         // would strand the tail and re-open `nonescr` from the other side.
         let ht = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner);
         let key = group_key(node);
+        let mut across: Option<SequenceJoin> = None;
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
                 // 1. The page drew a space — in either run's own bytes, or as a run of its own.
@@ -2797,6 +2933,31 @@ pub fn to_markdown(
                     // 4. A visible gap with no whitespace anywhere, or no advance to judge with.
                     None
                 }
+            }
+            // Decision #84. Another marked-content sequence: the next run of one block element, or a
+            // child of one kind of element drawn next along the line — see `sequence_join`. The
+            // second is geometry's licence, as an untagged run's is, so `hyphen_tail` keeps first
+            // refusal over it.
+            (Some(open), Some(k), Some(prev)) => {
+                let between = Between {
+                    space: pending_space
+                        || prev.reading_text().ends_with(char::is_whitespace)
+                        || node.reading_text().starts_with(char::is_whitespace),
+                    contiguous: read_together(&stretches, prev, node)
+                        .unwrap_or_else(|| ink_contiguous(prev, node, &pitch)),
+                };
+                across = sequence_join(open, k, prev, node, between, line_ink, &pitch)
+                    .filter(|j| *j != SequenceJoin::Line || ht.is_none());
+                across.map(|j| match j {
+                    SequenceJoin::ElementLine { space } => space,
+                    SequenceJoin::ElementNextLine => true,
+                    SequenceJoin::Line => {
+                        pending_space
+                            || line_ink
+                                .is_some_and(|(ink, _, _)| ink.text.ends_with(char::is_whitespace))
+                            || node.text.starts_with(char::is_whitespace)
+                    }
+                })
             }
             // v2.2-S5. **Neither run carries a declaration**, so geometry is the whole licence
             // and every clause a declaration licensed is gone. `LineKey` equality holds the join
@@ -2875,7 +3036,12 @@ pub fn to_markdown(
 
         match joining {
             Some(space) => {
-                let declared = key.is_some();
+                // Decision #84: a join across sequences is licensed by the element or the line,
+                // never by one sequence, and the block goes on in the new one.
+                let declared = key.is_some() && across.is_none();
+                if across.is_some() {
+                    open_group = key;
+                }
                 if space {
                     // `syntax`, not source: the document drew a space somewhere, and this is this
                     // exporter's single normalized rendering of it. `html.rs`'s cell join settled
@@ -2895,7 +3061,12 @@ pub fn to_markdown(
                     block_text.push(' ');
                 }
                 block_text.push_str(&text);
-                let code = if declared {
+                let code = if matches!(
+                    across,
+                    Some(SequenceJoin::ElementLine { .. } | SequenceJoin::ElementNextLine)
+                ) {
+                    BLOCK_ELEMENT_RUN_JOINS
+                } else if declared {
                     MCID_RUN_JOINS
                 } else if space {
                     BASELINE_RUN_JOINS_SPACED
@@ -2908,6 +3079,10 @@ pub fn to_markdown(
                 line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
                 if line_ink.is_none() {
                     open_line = None;
+                } else if key.is_some() && moved_line(open_line, line_ink, node) {
+                    // Decision #84: a declared join onto a later line takes the open line with it,
+                    // so a space the page drew there, and the next sequence, are read on it.
+                    open_line = line_key(node);
                 }
                 continue;
             }
@@ -3642,6 +3817,7 @@ pub(crate) mod tests {
                         role_path: vec!["Document".into(), r.into()],
                         standard_role_path: None,
                         element_id: None,
+                        block_element: None,
                         derivation: DerivationClass::Extracted,
                     }
                     .into(),
@@ -3867,6 +4043,7 @@ pub(crate) mod tests {
                 role_path: path.iter().map(|s| (*s).to_string()).collect(),
                 standard_role_path: None,
                 element_id: None,
+                block_element: None,
                 derivation: DerivationClass::Extracted,
             }
             .into(),
@@ -5305,6 +5482,29 @@ pub(crate) mod tests {
         tagged_as(mcid, DerivationClass::Extracted)
     }
 
+    /// An author's declaration under `path`, citing `mcid`, held by the block element numbered
+    /// `element` where there is one (decision #84).
+    pub(crate) fn tagged_in(
+        mcid: i64,
+        path: &[&str],
+        element: Option<u32>,
+    ) -> Option<StructuralLocator> {
+        Some(StructuralLocator::PdfTagged(
+            PdfTaggedLocator {
+                mcid,
+                role_path: path.iter().map(|r| (*r).to_string()).collect(),
+                standard_role_path: None,
+                element_id: None,
+                block_element: element.map(|object| crate::PdfObjectNumber {
+                    object,
+                    generation: 0,
+                }),
+                derivation: DerivationClass::Extracted,
+            }
+            .into(),
+        ))
+    }
+
     /// A tagged locator of either class (auto-tagging S3). `Computed` is the writer's `/Div`
     /// read back; the role path is the one the writer emits, so the builder is the shape the
     /// projections meet rather than an author's path with a class swapped in.
@@ -5319,6 +5519,7 @@ pub(crate) mod tests {
                 role_path: vec!["Document".into(), role.into()],
                 standard_role_path: None,
                 element_id: None,
+                block_element: None,
                 derivation,
             }
             .into(),
@@ -6167,14 +6368,22 @@ pub(crate) mod tests {
         assert_eq!(blocks_of(&a), vec!["is", "separate"]);
     }
 
-    /// **Different marked-content ids are different blocks**, whatever the geometry says.
+    /// **Different marked-content ids join only where an untagged line's runs would** (decision
+    /// #84): along one line, as children of one kind of element, and never across a baseline.
+    /// Until #84 they never joined, whatever the geometry said, and a page that opens a sequence
+    /// at every change of style projected a block per change.
     #[test]
-    fn different_mcids_never_join() {
+    fn different_mcids_join_only_along_one_line() {
         let a = project_runs(&[
             ("first", tagged_at(1), 7200, Some(1000), None),
             ("second", tagged_at(2), 8200, Some(1000), None),
         ]);
-        assert_eq!(blocks_of(&a), vec!["first", "second"]);
+        assert_eq!(blocks_of(&a), vec!["firstsecond"]);
+        let apart = project_lines(&[
+            ("first", tagged_at(1), 7200, 7200, Some(1000), None),
+            ("second", tagged_at(2), 7200, 5800, Some(1000), None),
+        ]);
+        assert_eq!(blocks_of(&apart), vec!["first", "second"]);
     }
 
     /// **Absence is not a group, but a baseline is a line** (v2.2-S5).
@@ -6475,6 +6684,7 @@ pub(crate) mod tests {
                 role_path: ["Document", "L", "LI", "LBody"].map(String::from).to_vec(),
                 standard_role_path: None,
                 element_id: None,
+                block_element: None,
                 derivation: DerivationClass::Extracted,
             }
             .into(),
@@ -7020,6 +7230,174 @@ pub(crate) mod tests {
                 a.anchor_map.segments
             );
         }
+    }
+
+    /// **One element's runs are one block across its marked-content sequences** (decision #84):
+    /// Word's export changes sequence at every change of style and at every line, and the element
+    /// citing them is the paragraph the document declared. Along a line a run joins where the page
+    /// drew a space or no gap, and never drawn back over the run before it — a heading drawn twice
+    /// to thicken it stays two lines; onto the next line with one space, where the baseline moved
+    /// at least a glyph and the line does not end in a hyphen. Two elements stay two blocks, and so
+    /// does each half of a page break, a column or a region.
+    #[test]
+    fn one_elements_runs_are_one_block_across_sequences() {
+        let p = |mcid, element| tagged_in(mcid, &["Document", "P"], Some(element));
+        let count = |a: &MarkdownArtifact, code: &str| {
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map_or(0, |e| e.count)
+        };
+        let one = project_lines(&[
+            ("Total", p(1, 9), 7200, 7200, Some(1000), None),
+            (" ", p(2, 9), 8200, 7200, Some(200), None),
+            ("revenue", p(3, 9), 8400, 7200, Some(1400), None),
+            ("rose", p(4, 9), 7200, 5800, Some(800), None),
+        ]);
+        assert_eq!(one.markdown, "Total revenue rose\n");
+        assert_eq!(count(&one, BLOCK_ELEMENT_RUN_JOINS), 2);
+        assert_eq!(count(&one, MCID_RUN_JOINS), 0);
+        assert!(one.coverage.balances());
+
+        let two = project_lines(&[
+            ("Total", p(1, 9), 7200, 7200, Some(1000), None),
+            (" ", p(2, 9), 8200, 7200, Some(200), None),
+            ("revenue", p(3, 9), 8400, 7200, Some(1400), None),
+            ("rose", p(4, 10), 7200, 5800, Some(800), None),
+        ]);
+        assert_eq!(two.markdown, "Total revenue\n\nrose\n");
+
+        let line = |second: LineSpec<'static>| {
+            project_lines(&[("Title", p(1, 9), 7200, 7200, Some(1000), None), second]).markdown
+        };
+        // Drawn again over itself, on the line or just off it: two lines, as the page has them.
+        assert_eq!(
+            line(("Title", p(2, 9), 7210, 7200, Some(1000), None)),
+            "Title\n\nTitle\n"
+        );
+        assert_eq!(
+            line(("Title", p(2, 9), 7200, 7150, Some(1000), None)),
+            "Title\n\nTitle\n"
+        );
+        // A gap the page drew, with no space in it.
+        assert_eq!(
+            line(("rose", p(2, 9), 9000, 7200, Some(800), None)),
+            "Title\n\nrose\n"
+        );
+        // Abutting: one word, and the seam between the two runs still addressable.
+        let word = project_lines(&[
+            ("Tot", p(1, 9), 7200, 7200, Some(600), None),
+            ("al", p(2, 9), 7800, 7200, Some(400), None),
+            ("rose", p(3, 9), 7200, 5800, Some(800), None),
+        ]);
+        assert_eq!(word.markdown, "Total rose\n");
+        let sources = word
+            .anchor_map
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Source);
+        assert!(
+            sources.clone().all(|s| s.node_ids.len() == 1),
+            "{:?}",
+            word.anchor_map.segments
+        );
+        assert_eq!(sources.count(), 3);
+        // Another region, as a column the reading order reads apart.
+        assert_eq!(
+            line(("rose", p(2, 9), 7200, 5800, Some(800), Some(2))),
+            "Title\n\nrose\n"
+        );
+
+        // A line ending in a hyphen keeps its line; one sequence across a line break joins as
+        // one sequence always has.
+        let hyphen = |mcid| {
+            project_lines(&[
+                ("Total", p(1, 9), 7200, 7200, Some(1000), None),
+                (" ", p(2, 9), 8200, 7200, Some(200), None),
+                ("perfor-", p(3, 9), 8400, 7200, Some(1400), None),
+                ("mance", p(mcid, 9), 7200, 5800, Some(1000), None),
+            ])
+            .markdown
+        };
+        assert_eq!(hyphen(4), "Total perfor-\n\nmance\n");
+        assert_eq!(hyphen(3), "Total perfor- mance\n");
+
+        let blocks = |specs: &[LineSpec<'_>]| {
+            geometric_blocks(&repr_of_placed(specs).payload().nodes, &Default::default()).len()
+        };
+        assert_eq!(
+            blocks(&[
+                ("Total", p(1, 9), 7200, 7200, Some(1000), None),
+                (" ", p(2, 9), 8200, 7200, Some(200), None),
+                ("revenue", p(3, 9), 8400, 7200, Some(1400), None),
+                ("rose", p(4, 9), 7200, 5800, Some(800), None),
+            ]),
+            1
+        );
+        assert_eq!(
+            blocks(&[
+                ("Title", p(1, 9), 7200, 7200, Some(1000), None),
+                ("Title", p(2, 9), 7210, 7200, Some(1000), None),
+            ]),
+            2
+        );
+        // A space the run's own text ends in, before a gap: one block, as one sequence's.
+        assert_eq!(
+            blocks(&[
+                ("Total ", p(1, 9), 7200, 7200, Some(1200), None),
+                ("revenue", p(2, 9), 8600, 7200, Some(1400), None),
+                ("rose", p(3, 10), 7200, 5800, Some(800), None),
+            ]),
+            2
+        );
+    }
+
+    /// **Children of one kind of element join along one line where no element holds them both**
+    /// (decision #84): a producer that tags one line as several elements, or a run under none the
+    /// file numbers. As an untagged line's runs join — the next ink along the line — and never a
+    /// heading with its text, a run under another kind of parent, or a line break; and a word the
+    /// line broke opens its block, so it closes up as on an untagged page.
+    #[test]
+    fn children_of_one_kind_of_element_join_along_one_line() {
+        let at = |mcid, path: &[&str]| tagged_in(mcid, path, None);
+        let p = &["Document", "P"];
+        let a = project_lines(&[
+            ("Total", at(1, p), 7200, 7200, Some(1000), None),
+            (" ", at(2, p), 8200, 7200, Some(200), None),
+            ("revenue", at(3, p), 8400, 7200, Some(1400), None),
+            ("rose", at(4, p), 7200, 5800, Some(800), None),
+        ]);
+        assert_eq!(a.markdown, "Total revenue\n\nrose\n");
+
+        let pair = |first: &[&str], second: &[&str]| {
+            project_lines(&[
+                ("Total", at(1, first), 7200, 7200, Some(1000), None),
+                (" ", at(2, first), 8200, 7200, Some(200), None),
+                ("revenue", at(3, second), 8400, 7200, Some(1400), None),
+            ])
+            .markdown
+        };
+        assert_eq!(pair(p, &["Document", "Sect", "P"]), "Total\n\nrevenue\n");
+        assert_eq!(pair(&["Document", "H1"], p), "# Total\n\nrevenue\n");
+
+        let broken = project_lines(&[
+            ("Total", at(1, p), 7200, 7200, Some(1000), None),
+            (" ", at(2, p), 8200, 7200, Some(200), None),
+            ("perfor-", at(3, p), 8400, 7200, Some(1400), None),
+            ("mance", at(4, p), 7200, 5800, Some(1000), None),
+        ]);
+        assert_eq!(broken.markdown, "Total\n\nperformance\n");
+
+        // A sequence that crosses a line break takes the open line with it, so the next one
+        // along that line is read on it.
+        let moved = project_lines(&[
+            ("Total", at(1, p), 7200, 7200, Some(1000), None),
+            ("rose", at(1, p), 7200, 5800, Some(800), None),
+            (" ", at(2, p), 8000, 5800, Some(200), None),
+            ("sharply", at(3, p), 8200, 5800, Some(1400), None),
+        ]);
+        assert_eq!(moved.markdown, "Total rose sharply\n");
     }
 
     // -----------------------------------------------------------------------------------

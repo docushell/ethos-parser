@@ -86,10 +86,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use ethos_parser_core::{DerivationClass, EngineError, PdfTaggedLocator};
+use ethos_parser_core::{DerivationClass, EngineError, PdfObjectNumber, PdfTaggedLocator};
 use lopdf::{Dictionary, Object, ObjectId};
 
-// The rule id lives in `ethos_parser_core::STRUCT_TREE_RULE_V2` and is NOT restated here, for the same
+// The rule id lives in `ethos_parser_core::STRUCT_TREE_RULE_V3` and is NOT restated here, for the same
 // reason the table rule ids are not: two spellings of one rule id is exactly the drift a versioned
 // id exists to prevent.
 
@@ -298,6 +298,7 @@ pub fn read(doc: &lopdf::Document) -> Result<Option<StructureTree>, EngineError>
         visit_budget,
         tables: Vec::new(),
         cells: Vec::new(),
+        blocks: Vec::new(),
     };
 
     let kids = root.get(b"K").ok();
@@ -396,7 +397,20 @@ struct Walker<'a> {
     /// A stack rather than a single slot because a `/TD` may contain a nested `/Table`, and that
     /// inner table's cells must claim their own marked content rather than the outer cell's.
     cells: Vec<(usize, usize)>,
+    /// Decision #84. The elements holding one block of text open on the current path, innermost
+    /// last — `None` for one written as a direct object, which the file does not number, so that
+    /// content under it never borrows an outer element's number.
+    blocks: Vec<Option<ObjectId>>,
 }
+
+/// The structure types that hold one block of text (decision #84), read after `/RoleMap`: PDF
+/// 32000-1 §14.8.4.3's paragraphlike elements, a list item and its label and body, a table cell, a
+/// caption and a contents entry, and PDF 2.0's `/Title`. Not the grouping elements — `/Sect`,
+/// `/Div`, `/Art` hold paragraphs — nor a list or a table, which hold items and cells.
+const BLOCK_ELEMENTS: [&str; 16] = [
+    "P", "H", "H1", "H2", "H3", "H4", "H5", "H6", "Title", "LI", "Lbl", "LBody", "TD", "TH",
+    "Caption", "TOCI",
+];
 
 /// A `/Table` being walked.
 ///
@@ -538,6 +552,7 @@ impl Walker<'_> {
                                 role_path: role_path.to_vec(),
                                 standard_role_path: mapped.then_some(standard),
                                 element_id: None,
+                                block_element: self.block_element(),
                                 // The enclosing element's class: an `/OBJR` is cited by the
                                 // element it sits under, exactly as a marked-content id is.
                                 derivation,
@@ -598,6 +613,10 @@ impl Walker<'_> {
 
         let standard = self.standard_role(&raw_role);
         role_path.push(raw_role);
+        let opened_block = BLOCK_ELEMENTS.contains(&standard.as_str());
+        if opened_block {
+            self.blocks.push(origin);
+        }
 
         // `/Table`, `/TR`, `/TD` and `/TH` are read AFTER `/RoleMap`, because a document that
         // maps its own `/MyRow` onto `/TR` has told us that is a row. The raw name still rides on
@@ -642,6 +661,9 @@ impl Walker<'_> {
 
         if opened_cell.is_some() {
             self.cells.pop();
+        }
+        if opened_block {
+            self.blocks.pop();
         }
         if opened_table {
             if let Some(ctx) = self.tables.pop() {
@@ -860,12 +882,22 @@ impl Walker<'_> {
                 role_path: role_path.to_vec(),
                 standard_role_path: mapped.then_some(standard),
                 element_id: element_id.map(str::to_owned),
+                block_element: self.block_element(),
                 derivation,
             }),
         );
     }
 
     /// A role after `/RoleMap`, or unchanged when the document maps nothing for it.
+    /// The innermost open element holding one block of text, where the file numbers it.
+    fn block_element(&self) -> Option<PdfObjectNumber> {
+        let (object, generation) = self.blocks.last().copied().flatten()?;
+        Some(PdfObjectNumber {
+            object,
+            generation: u32::from(generation),
+        })
+    }
+
     fn standard_role(&self, raw: &str) -> String {
         self.role_map
             .get(raw)
@@ -1311,5 +1343,68 @@ mod tests {
                  order until v1-S5 replaces the rule deliberately"
             );
         }
+    }
+
+    /// **A binding names the element that holds its block of text** (decision #84). A `/P` that
+    /// cites two sequences and a `/Span` names one object for all three; content a `/Sect` cites
+    /// directly names none, since a section holds paragraphs; a `/P` written as a direct object
+    /// names none either, and not the cell around it, since the file gives it no number; and an
+    /// object the `/P` cites by `/OBJR` names the `/P`.
+    #[test]
+    fn a_binding_names_the_element_holding_its_block() {
+        use ethos_parser_core::PdfObjectNumber;
+        use lopdf::{dictionary, Object};
+
+        let mut doc = lopdf::Document::with_version("1.7");
+        let page = doc.add_object(dictionary! { "Type" => "Page" });
+        let annot = doc.add_object(dictionary! { "Type" => "Annot", "Subtype" => "Link" });
+        let span = doc.add_object(dictionary! { "Type" => "StructElem", "S" => "Span", "K" => 2 });
+        let objr = dictionary! { "Type" => "OBJR", "Obj" => annot };
+        let para = doc.add_object(dictionary! {
+            "Type" => "StructElem", "S" => "P", "Pg" => page,
+            "K" => vec![0.into(), 1.into(), span.into(), Object::Dictionary(objr)],
+        });
+        let direct = dictionary! { "Type" => "StructElem", "S" => "P", "K" => 5 };
+        let cell = doc.add_object(dictionary! {
+            "Type" => "StructElem", "S" => "TD", "Pg" => page,
+            "K" => vec![Object::Dictionary(direct)],
+        });
+        let sect = doc.add_object(dictionary! {
+            "Type" => "StructElem", "S" => "Sect", "Pg" => page,
+            "K" => vec![3.into(), cell.into()],
+        });
+        let root = doc.add_object(dictionary! {
+            "Type" => "StructTreeRoot", "K" => vec![para.into(), sect.into()],
+        });
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "StructTreeRoot" => root });
+        doc.trailer.set("Root", catalog);
+
+        let tree = super::read(&doc).expect("walks").expect("is tagged");
+        let block = |mcid| {
+            tree.locator_for(page, mcid)
+                .unwrap_or_else(|| panic!("mcid {mcid} is bound"))
+                .block_element
+        };
+        let p = Some(PdfObjectNumber {
+            object: para.0,
+            generation: 0,
+        });
+        assert_eq!(block(0), p);
+        assert_eq!(
+            block(1),
+            p,
+            "two sequences of one paragraph name one element"
+        );
+        assert_eq!(block(2), p, "a span names the paragraph it sits in");
+        assert_eq!(block(3), None, "a section holds paragraphs, not one block");
+        assert_eq!(
+            block(5),
+            None,
+            "a direct object has no number, and borrows none"
+        );
+        assert_eq!(
+            tree.locator_for_object(annot).expect("bound").block_element,
+            p
+        );
     }
 }

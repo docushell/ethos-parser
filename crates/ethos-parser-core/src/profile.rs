@@ -1088,6 +1088,30 @@ pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 /// produces no role path and says so.
 pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 
+/// The structure-tree rule decision #84 ships: the same walk, now naming the element that holds
+/// each binding's block of text.
+///
+/// # Why a bump and not a new name
+///
+/// [`STRUCT_TREE_RULE_V2`]'s test once more. This reads `/StructTreeRoot`, `/K` and `/RoleMap`
+/// exactly as `-v2` did, binds by the same exact `(page, mcid)` equality, and reports the same
+/// role path and derivation for every run; it **reports more of what it found**. A binding now
+/// names the innermost citing element that holds one block of text — a paragraph or a heading, a
+/// title, a caption, a contents entry, a list item or its label or body, a table cell — as the
+/// file numbers its object (`pdf_tagged.block_element`). The walk always knew which element it
+/// was in; `-v2` dropped that on every binding.
+///
+/// # What an artifact naming this promises
+///
+/// That the runs one such element cites name one object, and the runs of two name two. Word's
+/// export changes marked-content sequence wherever a paragraph changes style and at every line,
+/// so the id every binding has carried since `-v1` splits one paragraph many ways; the element is
+/// what the document declared the paragraph to be. **Still a reading, not an inference**: the
+/// number is the file's own, absent where the element is a direct object the file does not
+/// number, and no role is deduced. An artifact naming `-v2` carries no `block_element`, and an
+/// older reader refuses one that does.
+pub const STRUCT_TREE_RULE_V3: &str = "struct-tree-v3";
+
 /// The rule that reads a PDF catalog's `/Outlines` (`docs/29-OUTLINES-SCOPE.md`).
 ///
 /// Covers the walk order (`/First` then `/Next`, pre-order), the depth semantics — the chain's
@@ -2329,12 +2353,13 @@ pub struct Profile {
     pub table_detection: TableDetection,
     /// Version id of the structure-tree rule in force. New at v1-S3.
     ///
-    /// [`STRUCT_TREE_RULE_V2`] by default since auto-tagging S1; [`STRUCT_TREE_RULE_V1`] names
-    /// the walk both share. On the profile because it decides which runs come out carrying a
-    /// role path — the recognised structure types, the `/RoleMap` handling, the depth bound and
-    /// the exactness of the `(page, mcid)` join are all part of it — and, since `-v2`, what
-    /// class that path carries: the owner attribute read under `/A` and through `/ClassMap` is
-    /// what puts `computed` on a `pdf_tagged` locator.
+    /// [`STRUCT_TREE_RULE_V3`] by default since decision #84; [`STRUCT_TREE_RULE_V2`] and
+    /// [`STRUCT_TREE_RULE_V1`] name the walk all three share. On the profile because it decides
+    /// which runs come out carrying a role path — the recognised structure types, the `/RoleMap`
+    /// handling, the depth bound and the exactness of the `(page, mcid)` join are all part of it —
+    /// since `-v2`, what class that path carries: the owner attribute read under `/A` and through
+    /// `/ClassMap` is what puts `computed` on a `pdf_tagged` locator — and since `-v3`, which
+    /// element holds the run's block of text.
     pub struct_tree_rule: String,
     /// The rule that read the declared outline, or [`NOT_RUN`].
     ///
@@ -2468,7 +2493,7 @@ impl Default for Profile {
             page_budget: PageBudget::Unlimited,
             reading_order_rule: READING_ORDER_RULE_V4.to_string(),
             table_detection: TableDetection::default(),
-            struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
+            struct_tree_rule: STRUCT_TREE_RULE_V3.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V2.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
@@ -3708,7 +3733,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v2","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4872,11 +4897,14 @@ mod tests {
              Moved for decision #80, `sha256:4392b7d8…` -> `sha256:8f54887c…`: `text_box_rule` \
              `advance-over-font-envelope-v1` -> `-v2`, which gives a run shown in a font under \
              `/Identity-V` no advance and no box, where `-v1` laid one across the page by the \
-             font's horizontal widths. Nothing else."
+             font's horizontal widths. Nothing else.\n\n\
+             Moved for decision #84, `sha256:8f54887c…` -> `sha256:6028b8a5…`: \
+             `struct_tree_rule` `struct-tree-v2` -> `-v3`, which names on every tagged binding \
+             the element holding its block of text, where the file numbers it. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8f54887ce2a10968b2a8c33ebf772d7aebdb9fce97755822121c84af751161e8"
+            "sha256:6028b8a5fe7e7aafc5c2c2f5abbbd8d73be716554c1f74fbf5db3ac11e4b300a"
         );
     }
 
