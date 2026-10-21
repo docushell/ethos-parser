@@ -779,6 +779,91 @@ fn helvetica_page_with(rotate: u32, extra: &str, stream: &[u8]) -> ExtractArtifa
     ethos_parser_pdf::extract(&d, &profile).expect("extracts")
 }
 
+/// **A chart of rounded bars, named by a legend of dots, reads as its table** (decision #88),
+/// through the whole extraction: each bar a pill — its ends half circles — each swatch a dot, and
+/// a rounded bullet of a series' colour, beside a line of text, no swatch.
+#[test]
+fn rounded_bars_and_a_legend_of_dots_read_as_their_table() {
+    // A pill from (x, 100) to (x + 20, y1), its ends half circles of radius 10.
+    let pill = |x: f64, y1: f64| {
+        let (r, k) = (10.0, 5.523);
+        let (x1, y0) = (x + 20.0, 100.0);
+        format!(
+            "{x} {a} m {x} {b} l {x} {c} {d} {y1} {e} {y1} c {f} {y1} {x1} {c} {x1} {b} c \
+             {x1} {a} l {x1} {g} {f} {y0} {e} {y0} c {d} {y0} {x} {g} {x} {a} c h f ",
+            a = y0 + r,
+            b = y1 - r,
+            c = y1 - r + k,
+            d = x + r - k,
+            e = x + r,
+            f = x + r + k,
+            g = y0 + r - k,
+        )
+    };
+    // A dot of radius 3 at (x, y).
+    let dot = |x: f64, y: f64| {
+        let k = 1.657;
+        format!(
+            "{a} {y} m {a} {u} {p} {t} {x} {t} c {q} {t} {b} {u} {b} {y} c \
+             {b} {v} {q} {s} {x} {s} c {p} {s} {a} {v} {a} {y} c h f ",
+            a = x + 3.0,
+            b = x - 3.0,
+            t = y + 3.0,
+            s = y - 3.0,
+            u = y + k,
+            v = y - k,
+            p = x + k,
+            q = x - k,
+        )
+    };
+    let text = |x: f64, y: f64, s: &str| format!("BT /F1 10 Tf {x} {y} Td ({s}) Tj ET ");
+    let mut stream = String::new();
+    for (k, cat) in ["North", "South", "East"].into_iter().enumerate() {
+        let x = 40.0 + 45.0 * k as f64;
+        let (ha, hb) = (30.0 + 10.0 * k as f64, 35.0 + 10.0 * k as f64);
+        stream += &format!(
+            "0 0 1 rg {}1 0.5 0 rg {}",
+            pill(x, 100.0 + ha),
+            pill(x + 20.0, 100.0 + hb)
+        );
+        stream += &text(x + 5.0, 103.0 + ha, ["11", "15", "19"][k]);
+        stream += &text(x + 25.0, 103.0 + hb, ["14", "18", "22"][k]);
+        stream += &text(x + 20.0 - 2.5 * cat.len() as f64, 88.0, cat);
+    }
+    stream += &format!("0 0 1 rg {}1 0.5 0 rg {}", dot(20.0, 60.0), dot(20.0, 48.0));
+    stream += &text(28.0, 57.5, "2023");
+    stream += &text(28.0, 45.5, "2024");
+    // The bullet: a pill 8 points wide and 4 high, of the second series' colour.
+    stream += "1 0.5 0 rg 102 58 m 106 58 l 107.1 58 108 58.9 108 60 c 108 61.1 107.1 62 106 62 c \
+               102 62 l 100.9 62 100 61.1 100 60 c 100 58.9 100.9 58 102 58 c h f ";
+    stream += &text(112.0, 57.5, "Most trust");
+    let a = helvetica_page(0, stream.as_bytes());
+    let tables: Vec<_> = a.pages[0]
+        .tables
+        .iter()
+        .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_CHARTS_V3)
+        .collect();
+    assert_eq!(tables.len(), 1, "{:?}", a.pages[0].tables);
+    let t = tables[0];
+    let grid: Vec<String> = (0..t.rows)
+        .map(|r| {
+            (0..t.columns)
+                .map(|c| {
+                    t.cells
+                        .iter()
+                        .find(|x| x.position.row == r && x.position.column == c)
+                        .map_or("", |x| x.text.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect();
+    assert_eq!(
+        grid,
+        vec!["|2023|2024", "North|11|14", "South|15|18", "East|19|22"]
+    );
+}
+
 /// **Text a producer turns upright on a turned page advances along its line** (decision #61,
 /// `docs/22-WORD-BOXES-SCOPE.md` §9 item 2's open half). A `/Rotate 90` page whose text matrix
 /// turns its text a quarter back draws it upright. Measured along the text matrix's x alone, each

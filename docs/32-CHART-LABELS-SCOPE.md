@@ -31,7 +31,9 @@ it overlaps none already found.
    or operands that are not numbers, is a colour this reader does not know, and matches nothing.
    The ruled-table rule reads exactly the rectangles it read before.
 2. **Bars.** Filled rectangles in a known colour that is not white, a point or more each way, under
-   a quarter of the page; one drawn twice counts once.
+   a quarter of the page; one drawn twice counts once. A bar drawn with its ends or corners rounded
+   — curves and straight sides only, two sides or more straight and none on a slant, every point
+   on the edge of its box — is its box (decision #88).
 3. **Columns.** Bars sharing one span across their direction, set end to end, each a colour the one
    before it is not — a stack. Two touching segments of one colour are a row of shaded table cells
    or a bar drawn in pieces, never one stack.
@@ -50,12 +52,13 @@ it overlaps none already found.
    its slot, or a line ends in a hyphen). Never a number but a year, never a label that opens with a
    value — a range of two values, `$1.00bn–$5.00bn`, is a category (decision #87) — never a line of
    prose (opening lower-case and thirty characters or more), never one set on a bar.
-8. **A series' name** is the one label beside a small swatch of its colour, near the chart and
-   nearer it than any other chart or bars of that colour, not running into the next legend entry,
-   with its wrapped lines; a legend above the chart only where nothing but the chart's own labels
-   stands between. A chart of one colour without one takes the one-line title just above it, where
-   that line is the only label over the chart — over any part of it, not only its centre (decision
-   #87) — and holds no number but a year.
+8. **A series' name** is the one label beside a small swatch of its colour — a rectangle, or a dot,
+   never a rounded bar (decision #88) — near the chart and nearer it than any other chart or bars
+   of that colour, not running into the next legend entry, with its wrapped lines; a legend above
+   the chart only where nothing but the chart's own labels stands between. A chart of one colour
+   without one takes the one-line title just above it, where that line is the only label over the
+   chart — over any part of it, not only its centre (decision #87) — and holds no number but a
+   year.
 
 ## 3. What makes it a table and not a coincidence
 

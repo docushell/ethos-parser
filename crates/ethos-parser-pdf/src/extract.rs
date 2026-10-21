@@ -1191,13 +1191,20 @@ fn extract_page(
         // Decision #42. Then a bar chart's printed labels, as its table
         // (`docs/32-CHART-LABELS-SCOPE.md`): on the runs no table above holds, under the tracks
         // rule's gate, and kept only where it overlaps no table already found.
-        let mut bars = Vec::with_capacity(interp.filled.len() + interp.filled_repeated.len());
-        for f in interp.filled.iter().chain(&interp.filled_repeated) {
+        let mut bars = Vec::with_capacity(
+            interp.filled.len() + interp.filled_repeated.len() + interp.filled_rounded.len(),
+        );
+        let square = interp.filled.iter().chain(&interp.filled_repeated);
+        for (f, rounded) in square
+            .map(|f| (f, false))
+            .chain(interp.filled_rounded.iter().map(|f| (f, true)))
+        {
             let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
             let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
             bars.push(crate::charts::Bar {
                 rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
                 fill: f.fill,
+                rounded,
             });
         }
         let q = f64::from(QUANTUM_PER_POINT);
@@ -1206,9 +1213,25 @@ fn extract_page(
             && no_author_structure(structure.as_ref())
         {
             let chart_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
-            for table in
-                crate::charts::detect(page_number, &chart_runs, &bars, page_area, &mut alloc)?
-            {
+            // Decision #88: the small marks a fill painted, a legend's dots among them.
+            let mut dots = Vec::with_capacity(interp.marks.len());
+            for m in &interp.marks {
+                let (ax, ay) = geom.to_top_left(m.rect.x0, m.rect.y0);
+                let (bx, by) = geom.to_top_left(m.rect.x1, m.rect.y1);
+                dots.push(crate::charts::Bar {
+                    rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
+                    fill: m.fill,
+                    rounded: false,
+                });
+            }
+            for table in crate::charts::detect(
+                page_number,
+                &chart_runs,
+                &bars,
+                &dots,
+                page_area,
+                &mut alloc,
+            )? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
                 }

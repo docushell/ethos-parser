@@ -1039,6 +1039,9 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// a value fused to a name — a survey's brackets of firm size had every category refused; and a
 /// chart's title may be set over any part of it, not only across its centre — a title set flush
 /// left and shorter than half the chart's width named nothing.
+///
+/// Decision #88, folded in likewise: a bar drawn with its ends or corners rounded is a bar, and a
+/// legend's dot names its series as a square swatch does; a rounded bar is never a swatch.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**

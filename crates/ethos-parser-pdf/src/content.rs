@@ -310,6 +310,12 @@ struct Subpath {
     /// Every point the subpath reaches — where a line or a curve ends — for
     /// [`Interpreter::polylines`] (`point-labels-v1`).
     vertices: Vec<(f64, f64)>,
+    /// What [`rounded_bar`] reads (decision #88): its curves' control points, how many straight
+    /// sides it draws, and whether a line runs on a slant — each measured from where the subpath
+    /// stands, a curve's end included.
+    controls: Vec<(f64, f64)>,
+    sides: u32,
+    slanted: bool,
 }
 
 /// Interprets one page's content stream.
@@ -360,6 +366,10 @@ pub struct Interpreter<'a> {
     /// [`Interpreter::filled`], which the ruled rule's padding test reads, so every other rule
     /// reads exactly what it read before; the chart rule reads both.
     pub filled_repeated: Vec<FilledRect>,
+    /// The bars a fill painted with their ends or corners rounded (decision #88): each the box of
+    /// a subpath [`rounded_bar`] reads. Kept apart from [`Interpreter::filled`], as
+    /// [`Interpreter::filled_repeated`] is, for the chart rule alone.
+    pub filled_rounded: Vec<FilledRect>,
     /// The rectangles a fill alone painted white (`ruled-rects-v10`), also in
     /// [`Interpreter::rects`]. On white paper they draw no line a reader sees, so a grid's merged
     /// cells are never read from their edges. Dropped with a form's ink, as `rects` is.
@@ -397,6 +407,9 @@ pub struct Interpreter<'a> {
     /// Rectangles from the current path drawn with a corner named twice in a row, pending a fill:
     /// for [`Interpreter::filled_repeated`] alone (`bar-labels-v2`).
     pending_filled: Vec<PathRect>,
+    /// Rounded bars from the current path, pending a fill: for [`Interpreter::filled_rounded`]
+    /// alone (decision #88).
+    pending_rounded: Vec<PathRect>,
     /// Segments from the current path, pending a painting operator (v1-S8).
     pending_segments: Vec<PathSegment>,
     /// The current path's subpaths as lines, pending a painting operator (`point-labels-v1`).
@@ -490,10 +503,12 @@ impl<'a> Interpreter<'a> {
             path_box: None,
             filled: Vec::new(),
             filled_repeated: Vec::new(),
+            filled_rounded: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
             pending: Vec::new(),
             pending_filled: Vec::new(),
+            pending_rounded: Vec::new(),
             pending_segments: Vec::new(),
             pending_polylines: Vec::new(),
             dropped_runs: 0,
@@ -584,6 +599,7 @@ impl<'a> Interpreter<'a> {
                 self.segments.clear();
                 self.pending.clear();
                 self.pending_filled.clear();
+                self.pending_rounded.clear();
                 self.pending_polylines.clear();
                 self.polylines.clear();
                 self.marks.clear();
@@ -655,6 +671,9 @@ impl<'a> Interpreter<'a> {
         let sub = std::mem::take(&mut self.subpath);
         if sub.vertices.len() >= 2 {
             self.pending_polylines.push(sub.vertices.clone());
+        }
+        if self.ctm_is_axis_aligned() {
+            self.pending_rounded.extend(rounded_bar(&sub));
         }
         if sub.disqualified || !self.ctm_is_axis_aligned() {
             return;
@@ -907,6 +926,15 @@ impl<'a> Interpreter<'a> {
                         self.subpath.disqualified = true;
                     }
                 }
+                // Decision #88: a side measured from where the subpath stands, a curve's end
+                // included, for a rounded bar's straight sides.
+                if let Some(&prev) = self.subpath.vertices.last() {
+                    if !approx_eq(prev.0, p.0) && !approx_eq(prev.1, p.1) {
+                        self.subpath.slanted = true;
+                    } else if !approx_eq(prev.0, p.0) || !approx_eq(prev.1, p.1) {
+                        self.subpath.sides += 1;
+                    }
+                }
                 self.subpath.points.push(p);
                 self.subpath.vertices.push(p);
             }
@@ -925,7 +953,8 @@ impl<'a> Interpreter<'a> {
                     if let (Ok(x), Ok(y)) = (num(operands, i), num(operands, i + 1)) {
                         let p = self.gs.ctm.apply(x, y);
                         self.grow_path_box(p);
-                        end = Some(p);
+                        // Decision #88: every point a curve names but its last is a control point.
+                        self.subpath.controls.extend(end.replace(p));
                     }
                 }
                 self.subpath.disqualified = true;
@@ -990,8 +1019,14 @@ impl<'a> Interpreter<'a> {
                             .iter()
                             .map(|&rect| FilledRect { rect, fill }),
                     );
+                    self.filled_rounded.extend(
+                        self.pending_rounded
+                            .iter()
+                            .map(|&rect| FilledRect { rect, fill }),
+                    );
                 }
                 self.pending_filled.clear();
+                self.pending_rounded.clear();
                 self.rects.append(&mut self.pending);
                 self.segments.append(&mut self.pending_segments);
             }
@@ -1002,6 +1037,7 @@ impl<'a> Interpreter<'a> {
                 self.subpath = Subpath::default();
                 self.pending.clear();
                 self.pending_filled.clear();
+                self.pending_rounded.clear();
                 self.pending_segments.clear();
                 self.pending_polylines.clear();
             }
@@ -1011,6 +1047,7 @@ impl<'a> Interpreter<'a> {
                 self.subpath = Subpath::default();
                 self.pending.clear();
                 self.pending_filled.clear();
+                self.pending_rounded.clear();
                 self.pending_segments.clear();
                 self.pending_polylines.clear();
             }
@@ -1444,6 +1481,28 @@ fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < COORD_EPSILON
 }
 
+/// The bar a subpath draws with its ends or corners rounded (decision #88): curves and straight
+/// sides only, two sides or more straight and none on a slant, and every point it reaches on the
+/// edge of the box its points and control points span. A circle draws no straight side, and a
+/// shape with a point inside its box is no bar.
+fn rounded_bar(sub: &Subpath) -> Option<PathRect> {
+    if sub.controls.is_empty() || sub.sides < 2 || sub.slanted {
+        return None;
+    }
+    let all = || sub.vertices.iter().chain(&sub.controls);
+    let x0 = all().map(|p| p.0).fold(f64::INFINITY, f64::min);
+    let y0 = all().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    let x1 = all().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+    let y1 = all().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+    let on_edge = |p: &(f64, f64)| {
+        approx_eq(p.0, x0) || approx_eq(p.0, x1) || approx_eq(p.1, y0) || approx_eq(p.1, y1)
+    };
+    sub.vertices
+        .iter()
+        .all(on_edge)
+        .then(|| PathRect::from_corners((x0, y0), (x1, y1)))
+}
+
 /// The rectangle four or five points draw — a fifth closing on the first — where they hold two
 /// distinct `x`s and two distinct `y`s.
 fn rectangle(pts: &[(f64, f64)]) -> Option<PathRect> {
@@ -1830,6 +1889,40 @@ mod tests {
             .collect();
         assert_eq!(bars, vec![(0.0, 0.0, 24.0, 59.0)]);
         assert!(i.filled.is_empty(), "{:?}", i.filled);
+        assert!(i.rects.is_empty(), "{:?}", i.rects);
+    }
+
+    /// **A bar drawn with its ends rounded is a rounded bar, for the chart rule alone** (decision
+    /// #88): a pill — two straight sides, each end two curves — filled, is read as its box. A
+    /// circle draws no straight side, and a shape of straight sides alone no curve; a shape with a
+    /// side on a slant, or a point inside its box, is no bar; a pill only stroked is not filled, nor by the fill that follows it; and the ruled
+    /// rule reads exactly the rectangles it read before.
+    #[test]
+    fn a_bar_with_rounded_ends_is_a_rounded_bar_only() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0.5 g 10 0 m 50 0 l 55.5 0 60 4.5 60 10 c 60 15.5 55.5 20 50 20 c 10 20 l \
+             4.5 20 0 15.5 0 10 c 0 4.5 4.5 0 10 0 c h f \
+             100 0 m 105.5 0 110 4.5 110 10 c 110 15.5 105.5 20 100 20 c 94.5 20 90 15.5 90 10 c \
+             90 4.5 94.5 0 100 0 c h f \
+             205 0 m 240 0 l 245.5 0 250 4.5 250 10 c 250 15.5 245.5 20 240 20 c 200 20 l \
+             205 0 l h f \
+             310 0 m 350 0 l 355.5 0 360 4.5 360 10 c 360 15.5 355.5 20 350 20 c 330 20 l \
+             330 15 l 320 15 l 320 20 l 310 20 l 304.5 20 300 15.5 300 10 c \
+             300 4.5 304.5 0 310 0 c h f \
+             410 0 m 450 0 l 455.5 0 460 4.5 460 10 c 460 15.5 455.5 20 450 20 c 410 20 l \
+             404.5 20 400 15.5 400 10 c 400 4.5 404.5 0 410 0 c h S 500 0 m 520 0 l 510 15 l h f \
+             0 30 m 30 30 l 60 30 l 60 50 l 0 50 l h f",
+        ))
+        .unwrap();
+        let bars: Vec<(f64, f64, f64, f64)> = i
+            .filled_rounded
+            .iter()
+            .map(|f| (f.rect.x0, f.rect.y0, f.rect.x1, f.rect.y1))
+            .collect();
+        assert_eq!(bars, vec![(0.0, 0.0, 60.0, 20.0)]);
+        assert!(i.filled.is_empty() && i.filled_repeated.is_empty());
         assert!(i.rects.is_empty(), "{:?}", i.rects);
     }
 

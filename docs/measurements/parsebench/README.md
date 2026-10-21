@@ -1021,6 +1021,15 @@ whose `2024` the scorer now finds in a new range cell, a trade the owner took; v
 0.5670 -> 0.5671, 1 page up and none down; tables, content faithfulness and semantic formatting
 unchanged on every page. Overall 48.43 -> 48.47.
 
+### After a bar with rounded ends is a bar and a legend's dot is its swatch (decision #88, 2026-10-21)
+
+The bar rule read only rectangles, so a chart whose bars have rounded ends read no bars, and its
+legend swatches only as squares, so a legend of dots named no series. A bar drawn with its ends or
+corners rounded is now a bar, a legend's dot is a swatch, and a rounded bar is never one — a
+rounded bullet beside a paragraph had named a series as near as its legend. Charts 0.1297 ->
+0.1337, 4 pages up and none down; tables, content faithfulness, semantic formatting and visual
+grounding unchanged on every page. Overall 48.47 -> 48.55.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

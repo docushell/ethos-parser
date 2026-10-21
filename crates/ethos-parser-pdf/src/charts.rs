@@ -23,7 +23,7 @@
 //! # What it reads
 //!
 //! **Bars**: rectangles the page filled, in a colour this reader knows and not white, a point or
-//! more each way. **Columns**: bars of one width set end to end, each a colour the one before it
+//! more each way — or bars it filled with their ends or corners rounded. **Columns**: bars of one width set end to end, each a colour the one before it
 //! is not — a stack, its segments listed from the base out. **A chart**: two or more columns on one base, of one width, side by side;
 //! its categories are the columns, one each — or, where the columns' colours repeat with a period
 //! of two or more and the gaps inside a period are narrower than between them, each period. Its
@@ -40,7 +40,8 @@
 //!   beside it (horizontal), with the lines a long label wraps onto. Never a number but a year,
 //!   never a label that starts with a value but a range of two, never a line of prose, never one
 //!   set on a bar.
-//! - **A series** is named by the one label beside a legend swatch of its colour, near this chart
+//! - **A series** is named by the one label beside a legend swatch of its colour — a small
+//!   rectangle or a dot, never a rounded bar — near this chart
 //!   and nearer it than any other bars of that colour; a chart of one colour without one is named
 //!   by the title just above it, where that title is a line of its own.
 //!
@@ -88,6 +89,9 @@ pub(crate) struct Bar {
     pub rect: QuantRect,
     /// Its fill.
     pub fill: Fill,
+    /// Whether it was drawn with its ends or corners rounded (decision #88): a bar, and never a
+    /// legend's swatch — a rounded bullet set beside a paragraph is drawn so.
+    pub rounded: bool,
 }
 
 /// Runs joined along a baseline: what a chart prints as one label.
@@ -185,7 +189,8 @@ struct Found {
 /// Every table `bar-labels-v2` finds on one page, top to bottom.
 ///
 /// `page_area` is the page's area in square centipoints: a rectangle a quarter of the page or more
-/// is a background, never a bar.
+/// is a background, never a bar. `dots` are the small marks the page filled — a dot, a diamond, a
+/// small square — which a legend sets beside its names as often as a rectangle (decision #88).
 ///
 /// # Errors
 ///
@@ -194,6 +199,7 @@ pub(crate) fn detect(
     page: u32,
     runs: &[TrackRun<'_>],
     bars: &[Bar],
+    dots: &[Bar],
     page_area: i128,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
@@ -212,7 +218,7 @@ pub(crate) fn detect(
         .collect();
     let mut found: Vec<Found> = charts
         .iter()
-        .filter_map(|c| table(c, &labels, &ink, &boxes))
+        .filter_map(|c| table(c, &labels, &ink, dots, &boxes))
         .collect();
     // No run is in two tables: where two read the same labels, the one with more cells stands.
     found.sort_by_key(|f| std::cmp::Reverse(cells_of(f).len()));
@@ -684,6 +690,7 @@ fn table(
     chart: &Chart,
     labels: &[Label],
     ink: &[Bar],
+    dots: &[Bar],
     boxes: &[(QuantRect, Fill)],
 ) -> Option<Found> {
     let axis = chart.axis;
@@ -876,7 +883,7 @@ fn table(
     });
     let mut headers: Vec<Option<usize>> = series
         .iter()
-        .map(|&f| legend(f, chart, labels, ink, (bars, near), boxes, &used))
+        .map(|&f| legend(f, chart, labels, ink, dots, (bars, near), boxes, &used))
         .collect();
     // A series with no number printed in it is no column.
     let keep: Vec<usize> = (0..series.len())
@@ -992,13 +999,14 @@ fn on_ink(l: &Label, ink: &[Bar], chart: &Chart) -> bool {
 /// The legend's name for `fill`: the one label beside a small swatch of that colour, near this
 /// chart and nearer it than any other bars of the colour, with nothing but the chart's own labels
 /// between a legend above it and its bars; the nearest such name, unless another name stands
-/// almost as near.
+/// almost as near. Decision #88: a swatch is a small rectangle or a dot, and never a rounded bar.
 #[allow(clippy::too_many_arguments)]
 fn legend(
     fill: Fill,
     chart: &Chart,
     labels: &[Label],
     ink: &[Bar],
+    dots: &[Bar],
     (bars, near): (QuantRect, QuantRect),
     boxes: &[(QuantRect, Fill)],
     used: &[usize],
@@ -1015,9 +1023,16 @@ fn legend(
         let dy = (r.y0 - y).max(0).max(y - r.y1);
         ((dx as f64).hypot(dy as f64)) as i64
     };
+    let swatches: Vec<Bar> = ink
+        .iter()
+        .enumerate()
+        .filter(|&(si, s)| small(s) && !s.rounded && !mine.contains(&si))
+        .map(|(_, s)| *s)
+        .chain(dots.iter().copied())
+        .collect();
     let mut found: Vec<(i64, usize)> = Vec::new();
-    for (si, s) in ink.iter().enumerate() {
-        if !s.fill.same(fill) || !small(s) || mine.contains(&si) {
+    for s in &swatches {
+        if !s.fill.same(fill) {
             continue;
         }
         let (sx, sy) = (
@@ -1037,8 +1052,8 @@ fn legend(
         if number(&l.text).is_some() && !is_year(&l.text) {
             continue;
         }
-        // The name runs into the next entry.
-        if ink.iter().any(|o| {
+        // The name runs into the next entry: its square, or its dot.
+        if ink.iter().chain(dots).any(|o| {
             o != s
                 && small(o)
                 && 5 * ((o.rect.y0 + o.rect.y1).div_euclid(2) - l.cy()).abs() <= 3 * l.h
@@ -1471,13 +1486,14 @@ mod tests {
                 y1: y1 * 100,
             },
             fill,
+            rounded: false,
         }
     }
 
     const PAGE: i128 = 61_200 * 79_200;
 
     fn found(runs: &[TrackRun<'_>], bars: &[Bar]) -> Vec<DetectedTable> {
-        detect(1, runs, bars, PAGE, &mut alloc()).expect("detects")
+        detect(1, runs, bars, &[], PAGE, &mut alloc()).expect("detects")
     }
 
     /// The grid as text: one row per line, cells by `|`, an empty slot empty.
@@ -1602,6 +1618,74 @@ mod tests {
             runs.push(run(x, 186, 30, "Note"));
             assert_eq!(grid(&found(&runs, &bars)[0]), solar, "a line beside at {x}");
         }
+    }
+
+    /// Bars with rounded ends, side by side per category, and a legend of dots, one under the
+    /// other, each beside its series' name.
+    fn rounded_pairs() -> (Vec<TrackRun<'static>>, Vec<Bar>, Vec<Bar>) {
+        let (mut runs, mut bars) = (Vec::new(), Vec::new());
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        for (k, cat) in ["North", "South", "East"].into_iter().enumerate() {
+            let x = 100 + 80 * k as i64;
+            let (ha, hb) = (30 + 20 * k as i64, 40 + 20 * k as i64);
+            bars.push(Bar {
+                rounded: true,
+                ..bar(x, 300 - ha, x + 30, 300, a)
+            });
+            bars.push(Bar {
+                rounded: true,
+                ..bar(x + 30, 300 - hb, x + 60, 300, b)
+            });
+            runs.push(run(x + 5, 300 - ha - 3, 18, ["11", "15", "19"][k]));
+            runs.push(run(x + 35, 300 - hb - 3, 18, ["14", "18", "22"][k]));
+            runs.push(run(x + 15, 312, 30, cat));
+        }
+        let dots = vec![bar(100, 330, 106, 336, a), bar(100, 341, 106, 347, b)];
+        runs.push(run(110, 336, 30, "2023"));
+        runs.push(run(110, 347, 30, "2024"));
+        (runs, bars, dots)
+    }
+
+    /// **Rounded bars named by a legend of dots** (decision #88): a producer draws each bar with
+    /// its ends rounded and each series' swatch as a dot, and a dot is a swatch as a square is.
+    #[test]
+    fn rounded_bars_are_named_by_a_legend_of_dots() {
+        let (runs, bars, dots) = rounded_pairs();
+        let t = detect(1, &runs, &bars, &dots, PAGE, &mut alloc()).expect("detects");
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2023|2024", "North|11|14", "South|15|18", "East|19|22"]
+        );
+    }
+
+    /// **A rounded bar is no legend swatch** (decision #88): a bullet drawn as a small rounded bar
+    /// of a series' colour, beside a line of a paragraph, would name that series as near as its
+    /// legend does, and leave it unnamed.
+    #[test]
+    fn a_rounded_bullet_is_no_swatch() {
+        let (mut runs, mut bars, dots) = rounded_pairs();
+        bars.push(Bar {
+            rounded: true,
+            ..bar(260, 330, 268, 334, rgb(900, 500, 100))
+        });
+        runs.push(run(272, 336, 60, "Most trust"));
+        let t = detect(1, &runs, &bars, &dots, PAGE, &mut alloc()).expect("detects");
+        assert_eq!(grid(&t[0])[0], "|2023|2024");
+    }
+
+    /// **A name that runs over the next entry's dot names nothing** (decision #88), as one that
+    /// runs over a square does: two names set close along a line read as one label.
+    #[test]
+    fn a_name_running_over_the_next_dot_names_nothing() {
+        let (mut runs, bars, mut dots) = rounded_pairs();
+        runs.truncate(runs.len() - 2);
+        dots[1] = bar(131, 333, 134, 336, rgb(900, 500, 100));
+        dots[0] = bar(100, 333, 103, 336, rgb(0, 300, 800));
+        runs.push(run(110, 336, 20, "2023"));
+        runs.push(run(135, 336, 20, "2024"));
+        let t = detect(1, &runs, &bars, &dots, PAGE, &mut alloc()).expect("detects");
+        assert_eq!(grid(&t[0])[0], "||");
     }
 
     #[test]

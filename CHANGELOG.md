@@ -187,6 +187,39 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A bar with rounded ends is a bar, and a legend's dot is its swatch (decision #88)
+
+Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **A bar drawn with its ends or corners rounded is a bar**: a filled subpath of curves and
+  straight sides only — two sides or more straight, none on a slant, every point it reaches on the
+  edge of its box — is read as that box, by the chart rule alone; every other rule reads exactly
+  the rectangles it read before. A circle draws no straight side, and a shape of straight sides
+  alone no curve.
+- **A legend's dot is a swatch**: the small marks a page fills — a dot, a diamond, a small square,
+  which the line rule already reads — name a bar chart's series as a square swatch does, and a
+  name that runs over the next entry's dot is no name, as it is over a square.
+- **A rounded bar is never a swatch**: a bullet drawn as a small rounded bar of a series' colour,
+  beside a line of a paragraph, stood as near as the legend and left the series unnamed —
+  `Digital_News-Report_2022` p17 fell 0.75 -> 0.5 without this clause, as it did when decision #57
+  measured rounded bars alone.
+- **Why this piece**: told "Census: no bars found", the 24 chart pages whose printed values read no
+  table because no bars were found (134 rules, at most +0.70 overall) were sorted by chart kind:
+  lines 4 pages, rounded bars 4, pies and donuts 3, bars found but formed into no chart 4, bars
+  drawn as other paths 2, and seven others each its own. Rounded bars had been measured twice and
+  not used, with `-v2` and `-v3` (decisions #57 and #66): no page rose, for their legends draw dots.
+- **Measured** on ParseBench: charts 0.1297 -> 0.1337, 4 pages up and none down
+  (`salesforce-state-of-data-and-analytics-2nd-edition` p21 0 -> 1.0,
+  `WEF_Navigating_Global_Financial_System_Fragmentation_2025` p12 0 -> 0.75,
+  `Digital_News-Report_2022` p55 0.5 -> 0.75 and p63 0 -> 0.25); tables, content faithfulness,
+  semantic formatting and visual grounding unchanged on every page; overall 48.47 -> 48.55. One
+  chart table more on a layout page, `Micron-2025-Sustainability-Report` p80's stacked rounded bars,
+  right against the drawing. opendataloader-bench unchanged on every document; the fabrication
+  check and the gate documents' 541 tables unchanged.
+- **Still not read**: `Consultancy-in-Spain` p10 and p16 draw their rounded bars through soft masks
+  and shadings, and their numbers as outlines.
+
 ### A range is a category, and a title may sit over any part of its chart (decision #87)
 
 Folded into `bar-labels-v3` and `point-labels-v1`, which no release carries yet, so no rule id and
