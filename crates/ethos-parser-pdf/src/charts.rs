@@ -38,7 +38,8 @@
 //!   segment, the one just beyond its end. A number two cells could read fills neither.
 //! - **A category** is the one label nearest the base under its column or group (vertical) or
 //!   beside it (horizontal), with the lines a long label wraps onto. Never a number but a year,
-//!   never a label that starts with a value, never a line of prose, never one set on a bar.
+//!   never a label that starts with a value but a range of two, never a line of prose, never one
+//!   set on a bar.
 //! - **A series** is named by the one label beside a legend swatch of its colour, near this chart
 //!   and nearer it than any other bars of that colour; a chart of one colour without one is named
 //!   by the title just above it, where that title is a line of its own.
@@ -1123,18 +1124,18 @@ fn wrapped_name(labels: &[Label], first: usize, ink: &[Bar]) -> Vec<usize> {
 }
 
 /// The title of a chart of one colour: the block of lines nearest above it, within four lines,
-/// each the only label on its line over the chart and spanning its centre, ending in no full stop
-/// and holding no number but a year.
+/// each the only label on its line over the chart, ending in no full stop and holding no number
+/// but a year. Decision #87: over any part of the chart — a title set flush left and shorter than
+/// half the chart's width had named nothing.
 pub(crate) fn title(labels: &[Label], chart: QuantRect, used: &[usize]) -> Option<usize> {
-    let cx = (chart.x0 + chart.x1).div_euclid(2);
     let above: Vec<usize> = (0..labels.len())
         .filter(|&k| {
             let l = &labels[k];
             !used.contains(&k)
                 && l.y1 <= chart.y0
                 && chart.y0 - l.y1 <= 4 * l.h
-                && l.x0 <= cx
-                && cx <= l.x1
+                && l.x0 < chart.x1
+                && chart.x0 < l.x1
         })
         .collect();
     let &first = above
@@ -1268,12 +1269,22 @@ pub(crate) fn is_year(text: &str) -> bool {
 }
 
 /// Whether a label opens with a value: an optional bracket and currency sign, then digits, a
-/// point, digits.
+/// point, digits. Decision #87: a range of two values, `$1.00bn–$5.00bn`, names a category, not a
+/// value fused to one — a survey's brackets of firm size had every category refused.
 fn starts_with_value(text: &str) -> bool {
     let t = text.strip_prefix('(').unwrap_or(text);
     let t = t.strip_prefix(['$', '€', '£', '¥']).unwrap_or(t);
     let d = t.chars().take_while(char::is_ascii_digit).count();
-    d > 0 && t[d..].starts_with('.') && t[d + 1..].starts_with(|c: char| c.is_ascii_digit())
+    let range = text.split_once(['–', '-']).is_some_and(|(a, b)| {
+        number(a.trim()).is_some()
+            && b.split_whitespace()
+                .next()
+                .is_some_and(|b| number(b).is_some())
+    });
+    d > 0
+        && t[d..].starts_with('.')
+        && t[d + 1..].starts_with(|c: char| c.is_ascii_digit())
+        && !range
 }
 
 /// Whether the numbers agree with their bars in order: no bar a tenth longer than another carries
@@ -1542,6 +1553,55 @@ mod tests {
         let (runs, mut bars) = four_years(["10", "20", "30", "40"], [25, 50, 75, 100]);
         bars.push(bar(80, 302, 280, 316, rgb(900, 900, 900)));
         assert!(found(&runs, &bars).is_empty());
+    }
+
+    /// **A range of two values is a category** (decision #87): a survey's brackets of firm size
+    /// open with a value, and were refused as a value fused to a name.
+    #[test]
+    fn a_range_of_values_is_a_category() {
+        let blue = rgb(0, 300, 800);
+        let mut bars = Vec::new();
+        let mut runs = vec![run(150, 82, 100, "Partners by firm size")];
+        for (k, (cat, v)) in [
+            ("Less than $1.00bn", 20),
+            ("$1.00bn–$5.00bn", 35),
+            ("$5.01bn–$20.00bn", 45),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 100 + 30 * k as i64;
+            bars.push(bar(100, y, 100 + 4 * v, y + 20, blue));
+            runs.push(run(105 + 4 * v, y + 14, 16, ["20", "35", "45"][k]));
+            runs.push(run(10, y + 14, 85, cat));
+        }
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec![
+                "|Partners by firm size",
+                "Less than $1.00bn|20",
+                "$1.00bn–$5.00bn|35",
+                "$5.01bn–$20.00bn|45"
+            ]
+        );
+    }
+
+    /// **A title set flush left over a chart names its series** (decision #87): it need only be
+    /// set over the chart, not across its centre. A line beside the chart, nearer its top, is no
+    /// title and hides none — a column of text level with a chart's top was taken as nearest.
+    #[test]
+    fn a_title_set_flush_left_names_the_series() {
+        let solar = vec!["|Solar", "2020|10", "2021|20", "2022|30", "2023|40"];
+        let (mut runs, bars) = four_years(["10", "20", "30", "40"], [25, 50, 75, 100]);
+        runs[0] = run(100, 182, 30, "Solar");
+        assert_eq!(grid(&found(&runs, &bars)[0]), solar);
+        for x in [40, 260] {
+            runs.truncate(9);
+            runs.push(run(x, 186, 30, "Note"));
+            assert_eq!(grid(&found(&runs, &bars)[0]), solar, "a line beside at {x}");
+        }
     }
 
     #[test]
@@ -1968,6 +2028,12 @@ mod tests {
         }
         assert!(is_year("2024") && !is_year("2124") && !is_year("204"));
         assert!(starts_with_value("0.6644 CP") && !starts_with_value("Less than $1.00bn"));
+        // A range of two values opens with one and is no value fused to a name; a value before a
+        // dash and a name, or a name and a dash before a value, still is.
+        assert!(
+            !starts_with_value("$1.00bn–$5.00bn") && !starts_with_value("$1.01m-$2.00m (n= 23)")
+        );
+        assert!(starts_with_value("0.4919–TEC") && starts_with_value("0.6644 CP–2024"));
         assert!(only_years("Revenue (2015-2024)") && !only_years("Figure 1.7 Population"));
         assert!(number("10").unwrap() < number("10.5").unwrap());
     }

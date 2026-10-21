@@ -1034,6 +1034,11 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// bars is the panel it is set on, not a bar, so a category label set on the panel is read — a
 /// chart drawn on a filled panel, a grey box under a quarter of the page, had every label refused
 /// as set on a bar.
+///
+/// Decision #87, folded in likewise: a range of two values, `$1.00bn–$5.00bn`, is a category, not
+/// a value fused to a name — a survey's brackets of firm size had every category refused; and a
+/// chart's title may be set over any part of it, not only across its centre — a title set flush
+/// left and shorter than half the chart's width named nothing.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**
@@ -1048,6 +1053,9 @@ pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 /// beside a legend swatch of its colour, or a lone series by the title over it. A value is never
 /// read off a point's height. Runs after [`TABLE_DETECTION_CHARTS_V3`], on runs no other rule's
 /// table holds, only on a document that declares no author structure.
+///
+/// Decision #87, folded in as no release carries `-v1`: a lone series' title may be set over any
+/// part of the plot, as a bar chart's may.
 pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.

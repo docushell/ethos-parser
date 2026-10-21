@@ -1011,6 +1011,16 @@ chart drawn on a grey panel read no categories at all. Told "Category labels", a
 round all of a chart's bars is its panel, not a bar. Charts 0.1255 -> 0.1276, 3 pages up and none
 down; every other group unchanged on every page. Overall 48.38 -> 48.43.
 
+### After a range is a category and a title may sit over any part of its chart (decision #87, 2026-10-21)
+
+The bar rule refused a category that opens with a value, which a survey's brackets of firm size
+(`$1.00bn–$5.00bn`) do, and read a chart's title only where it crossed the chart's centre. A range
+of two values is now a category, and a title may be set over any part of its chart. Charts 0.1276
+-> 0.1297, 5 pages up and 1 down — `US_Professional_Services_Partner_Compensation_Survey_2024` p25,
+whose `2024` the scorer now finds in a new range cell, a trade the owner took; visual grounding
+0.5670 -> 0.5671, 1 page up and none down; tables, content faithfulness and semantic formatting
+unchanged on every page. Overall 48.43 -> 48.47.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

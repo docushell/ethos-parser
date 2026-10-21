@@ -48,13 +48,14 @@ it overlaps none already found.
 7. **A category** is the one label nearest the base under its column or group (vertical) or beside
    it (horizontal), with the lines a long label wraps onto (only where the first line fills most of
    its slot, or a line ends in a hyphen). Never a number but a year, never a label that opens with a
-   value, never a line of prose (opening lower-case and thirty characters or more), never one set on
-   a bar.
+   value — a range of two values, `$1.00bn–$5.00bn`, is a category (decision #87) — never a line of
+   prose (opening lower-case and thirty characters or more), never one set on a bar.
 8. **A series' name** is the one label beside a small swatch of its colour, near the chart and
    nearer it than any other chart or bars of that colour, not running into the next legend entry,
    with its wrapped lines; a legend above the chart only where nothing but the chart's own labels
    stands between. A chart of one colour without one takes the one-line title just above it, where
-   that line is the only label over the chart and holds no number but a year.
+   that line is the only label over the chart — over any part of it, not only its centre (decision
+   #87) — and holds no number but a year.
 
 ## 3. What makes it a table and not a coincidence
 

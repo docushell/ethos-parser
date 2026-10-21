@@ -187,6 +187,39 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A range is a category, and a title may sit over any part of its chart (decision #87)
+
+Folded into `bar-labels-v3` and `point-labels-v1`, which no release carries yet, so no rule id and
+no `profile_sha256` moves.
+
+- **A range of two values is a category**: `$1.00bn–$5.00bn`, a survey's bracket of firm size,
+  opens with a value, and the clause that refuses a value fused to a name (`0.6644 CP`, where small
+  multiples are set close) refused it, so a chart of brackets read only those opening with a word.
+  A label that is two values joined by a dash, whatever follows the second, is now a category; a
+  value, a dash and a name still is not.
+- **A chart's title may be set over any part of it**: the line just above a chart of one colour
+  named its series only where it crossed the chart's centre, so a title set flush left and shorter
+  than half the chart named nothing. The same title names a lone line chart's series. A line
+  beside the chart is still no title, and hides none set over it. Measured with `bar-labels-v2`
+  (decision #57) and not used then, as it moved no page; it moves two now.
+- **Why this piece**: told "Census the next category sub-cause", the bar rule's category refusals
+  were re-counted after #86 against the failing rules each one costs: a number under a bar 127
+  groups on 14 pages but 1 rule, set on a bar 3 rules, a line of prose 2, a value fused to a name 18
+  rules on 10 pages — a survey's brackets and small multiples' joined labels — and no label at all 5
+  pages, each its own cause. Of the 62 rules whose series name went unread, a title off the chart's
+  centre was the one clause shared across pages.
+- **Measured** on ParseBench: charts 0.1276 -> 0.1297, 5 pages up and 1 down
+  (`US_Professional_Services_Partner_Compensation_Survey_2024` p16 0.6 -> 1.0, p20 0.2 -> 0.6 and
+  p14 0.4 -> 0.6, `(Web_version)_E-Government_Survey_2024` p79 0 -> 0.25,
+  `CleanEnergyMarketMonitorMarch2024` p17 0.57 -> 0.71); visual grounding 0.5670 -> 0.5671, 1 page
+  up and none down (`article_thebeatjun2025` p33 0.50 -> 0.57); tables, content faithfulness and
+  semantic formatting unchanged on every page; overall 48.43 -> 48.47. opendataloader-bench
+  unchanged on every document; the fabrication check and the gate documents' 541 tables unchanged.
+- **The trade, taken by the owner**: `US_Professional_Services_Partner_Compensation_Survey_2024`
+  p25 0.2 -> 0.0. Its two new rows are right against the drawing, but at the rule's tolerance of
+  two characters the scorer finds its `2024` in the new `$2.01m–$3.00m` cell, and so no longer
+  takes the bold legend line `2024 2022` above the table as that label.
+
 ### A chart's panel is no bar (decision #86)
 
 Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`
