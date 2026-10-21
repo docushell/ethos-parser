@@ -1042,6 +1042,8 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 ///
 /// Decision #88, folded in likewise: a bar drawn with its ends or corners rounded is a bar, and a
 /// legend's dot names its series as a square swatch does; a rounded bar is never a swatch.
+///
+/// Decision #90, folded in likewise: a number may end in `b`, for billions.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**
@@ -1065,7 +1067,27 @@ pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 /// or bare numbers; a line stroked segment by segment is one line; a label set across several
 /// points names none of them; and a series' categories are the first row below its own lowest
 /// point.
+///
+/// Decision #90, folded in likewise: a number may end in `b`, for billions; and a legend set in
+/// rows names each row's swatch by the label nearest its height, a line led by another entry's
+/// swatch being that entry's.
 pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
+
+/// The rule that reads **the numbers a pie prints at its slices back as its table** (decision #90,
+/// `docs/32-CHART-LABELS-SCOPE.md` §10).
+///
+/// A slice is a filled path of curves whose every point but one lies one distance from that one,
+/// its centre; slices about one centre, of one radius, turning a full circle between them are a
+/// pie. Each number goes to the pie whose rim it stands nearest, within its radius, and is no
+/// slice's where it stands over the centre; a pie takes as many as it has slices, nearest its rim
+/// first and all of one kind, and matches them to its slices in their order round the centre, at
+/// the one turn that sets each within a quarter turn of its slice and all nearest; a slice clearly
+/// larger never carries a smaller number. Pies side by side sharing a colour are one table: a row
+/// per slice, named by the label beside a legend swatch of its colour or by the lines set over its
+/// number, and a column per pie, named by the label in its hole or the line just over it. A value
+/// is never read off a slice's size. Runs after [`TABLE_DETECTION_LINES_V1`], on runs no other
+/// rule's table holds, only on a document that declares no author structure.
+pub const TABLE_DETECTION_PIES_V1: &str = "slice-labels-v1";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
@@ -1679,6 +1701,12 @@ pub struct TableDetection {
     /// evidence — stroked lines and small marks, their colours, and the labels set at their points —
     /// is its own.
     pub lines: String,
+    /// Version id of the rule that reads the numbers a pie prints at its slices as its table
+    /// (decision #90).
+    ///
+    /// See [`TABLE_DETECTION_PIES_V1`]. An eighth field for the reason there were seven: its
+    /// evidence — filled slices, their colours, and the labels set at them — is its own.
+    pub pies: String,
 }
 
 impl Default for TableDetection {
@@ -1692,6 +1720,7 @@ impl Default for TableDetection {
             tracks: TABLE_DETECTION_TRACKS_V15.to_string(),
             charts: TABLE_DETECTION_CHARTS_V3.to_string(),
             lines: TABLE_DETECTION_LINES_V1.to_string(),
+            pies: TABLE_DETECTION_PIES_V1.to_string(),
         }
     }
 }
@@ -2610,6 +2639,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V2.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2689,6 +2719,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2762,6 +2793,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2839,6 +2871,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2903,6 +2936,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -2973,6 +3007,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3042,6 +3077,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3114,6 +3150,7 @@ impl Profile {
                 tracks: NOT_RUN.into(),
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
+                pies: NOT_RUN.into(),
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3304,6 +3341,7 @@ mod tests {
                 tracks,
                 charts,
                 lines,
+                pies,
             })
         );
         assert_eq!(
@@ -3406,6 +3444,7 @@ mod tests {
                     tracks: _,
                     charts: _,
                     lines: _,
+                    pies: _,
                 },
             struct_tree_rule: _,
             outline_rule: _,
@@ -3476,6 +3515,10 @@ mod tests {
             (
                 "table_detection.lines",
                 Box::new(|p: &mut Profile| p.table_detection.lines = "other-lines-v9".into()),
+            ),
+            (
+                "table_detection.pies",
+                Box::new(|p: &mut Profile| p.table_detection.pies = "other-pies-v9".into()),
             ),
             (
                 // v1-S4. Which form and annotation nodes exist at all.
@@ -3695,12 +3738,13 @@ mod tests {
         // `table_detection.charts` the same way. Forty-four since decision #46, which added
         // `figure_rule` and `capabilities.figures` the same way, and forty-five since decision
         // #54, which added `right_to_left_rule` the same way. Forty-six since decision #66, which
-        // added `table_detection.lines` the same way.
+        // added `table_detection.lines` the same way, and forty-seven since decision #90, which
+        // added `table_detection.pies` the same way.
         assert_eq!(
             mutations.len(),
-            46,
-            "{} single-field mutation(s); forty-six is the number at decision #66, which added \
-             `table_detection.lines` with its mutation",
+            47,
+            "{} single-field mutation(s); forty-seven is the number at decision #90, which added \
+             `table_detection.pies` with its mutation",
             mutations.len()
         );
 
@@ -3755,7 +3799,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -4922,11 +4966,15 @@ mod tests {
              font's horizontal widths. Nothing else.\n\n\
              Moved for decision #84, `sha256:8f54887c…` -> `sha256:6028b8a5…`: \
              `struct_tree_rule` `struct-tree-v2` -> `-v3`, which names on every tagged binding \
-             the element holding its block of text, where the file numbers it. Nothing else."
+             the element holding its block of text, where the file numbers it. Nothing else.\n\n\
+             Moved for decision #90, `sha256:6028b8a5…` -> `sha256:698a7924…`: the new \
+             `table_detection.pies`, `slice-labels-v1`, which reads the numbers a pie prints at \
+             its slices back as its table. The office profiles name it \
+             `not-run-for-this-format`. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:6028b8a5fe7e7aafc5c2c2f5abbbd8d73be716554c1f74fbf5db3ac11e4b300a"
+            "sha256:698a7924a8ac89d86b92e0f67704df2298bdcc313b2ded48af0ffcdc3c86deb4"
         );
     }
 
@@ -4998,6 +5046,13 @@ mod tests {
             (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_TRACKS_V15, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_CHARTS_V3, TABLE_DETECTION_LINES_V1),
+            (TABLE_DETECTION_V13, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_TRACKS_V15, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_CHARTS_V3, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_LINES_V1, TABLE_DETECTION_PIES_V1),
         ] {
             assert_ne!(
                 a, b,
@@ -5005,11 +5060,11 @@ mod tests {
             );
         }
 
-        // All seven appear on the wire, under their own keys.
+        // All eight appear on the wire, under their own keys.
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -5140,7 +5195,14 @@ mod tests {
             "a pre-#66 profile must not silently acquire the line rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v13","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","charts":"bar-labels-v3","lines":"point-labels-v1"}"#;
+        // And a profile from before decision #90 must not acquire the pie rule.
+        let pre_pies = r#"{"ruled":"ruled-rects-v13","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","charts":"bar-labels-v3","lines":"point-labels-v1"}"#;
+        assert!(
+            serde_json::from_str::<TableDetection>(pre_pies).is_err(),
+            "a pre-#90 profile must not silently acquire the pie rule"
+        );
+
+        let good = r#"{"ruled":"ruled-rects-v13","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

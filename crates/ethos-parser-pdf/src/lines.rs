@@ -587,7 +587,7 @@ fn categories(
 /// A series' name: beside the nearest swatch of its colour, the block of lines starting just right
 /// of it — the line that starts there and the lines of its left edge above and below it, each read
 /// up to the next swatch on its row — unless another name stands almost as near.
-fn legend(
+pub(crate) fn legend(
     colour: Fill,
     labels: &[Label],
     swatches: &[Mark],
@@ -609,7 +609,12 @@ fn legend(
                     && 5 * (l.cy() - cy).abs() <= 8 * l.h
             })
             .collect();
-        let Some(&lead) = first.iter().min_by_key(|&&k| (labels[k].x0, k)) else {
+        // Decision #90: the one nearest the swatch's line, a legend set in rows naming each row's
+        // swatch by its own line.
+        let Some(&lead) = first
+            .iter()
+            .min_by_key(|&&k| ((labels[k].cy() - cy).abs(), labels[k].x0, k))
+        else {
             continue;
         };
         let x0 = labels[lead].x0;
@@ -622,10 +627,21 @@ fn legend(
             .map(|o| o.rect.x0)
             .min()
             .unwrap_or(i64::MAX);
+        // Decision #90: a line led by a swatch of its own is the next entry's name — a legend set
+        // in rows — where that swatch is not this entry's, set between its two lines.
         let mut starts: Vec<usize> = (0..labels.len())
             .filter(|&k| {
                 let l = &labels[k];
-                2 * (l.x0 - x0).abs() <= l.h && 5 * (l.cy() - cy).abs() <= 11 * l.h
+                2 * (l.x0 - x0).abs() <= l.h
+                    && 5 * (l.cy() - cy).abs() <= 11 * l.h
+                    && (k == lead
+                        || !swatches.iter().any(|o| {
+                            o.rect != s.rect
+                                && o.rect.x1 <= l.x0
+                                && l.x0 - o.rect.x1 <= 2 * l.h
+                                && 5 * ((o.rect.y0 + o.rect.y1).div_euclid(2) - l.cy()).abs()
+                                    <= 3 * l.h
+                        }))
             })
             .collect();
         starts.sort_by_key(|&k| (labels[k].y0, k));
@@ -844,6 +860,50 @@ mod tests {
         between[k] = run(192, 243, 16, "2.8");
         let t = detect(1, &between, &strokes, &[], &[], &mut alloc()).expect("reads");
         assert!(t.iter().all(|t| cell(t, 3, 2).is_none()), "{t:?}");
+    }
+
+    /// **A legend set in rows names each row's swatch by its own line** (decision #90): a line led
+    /// by a swatch of its own is the next entry's name, not the line a name wraps onto.
+    #[test]
+    fn a_legend_set_in_rows_names_each_swatch_by_its_own_line() {
+        let (blue, red) = (rgb(0, 0, 900), rgb(900, 0, 0));
+        let upper = [(100, 200), (150, 195), (200, 190), (250, 185), (300, 180)];
+        let lower = [(100, 300), (150, 290), (200, 280), (250, 270), (300, 260)];
+        let mut runs = Vec::new();
+        for i in 0..5 {
+            let (x, y) = upper[i];
+            runs.push(run(
+                x - 8,
+                y - 4,
+                16,
+                ["8.0", "8.2", "8.4", "8.6", "8.8"][i],
+            ));
+            let (x, y) = lower[i];
+            runs.push(run(
+                x - 8,
+                y + 14,
+                16,
+                ["2.0", "2.4", "2.8", "3.2", "3.6"][i],
+            ));
+            runs.push(run(
+                x - 10,
+                340,
+                20,
+                ["2020", "2021", "2022", "2023", "2024"][i],
+            ));
+        }
+        runs.push(run(125, 384, 40, "Imports"));
+        runs.push(run(125, 398, 40, "Exports"));
+        let strokes = vec![
+            line(&upper, blue),
+            line(&lower, red),
+            line(&[(100, 380), (120, 380)], blue),
+            line(&[(100, 394), (120, 394)], red),
+        ];
+        let t = detect(1, &runs, &strokes, &[], &[], &mut alloc()).expect("reads");
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(cell(&t[0], 0, 1).as_deref(), Some("Imports"));
+        assert_eq!(cell(&t[0], 0, 2).as_deref(), Some("Exports"));
     }
 
     /// **A line drawn through its marks is one series**, and a run of marks reads as a line does.

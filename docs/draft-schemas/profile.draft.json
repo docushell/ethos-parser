@@ -213,9 +213,10 @@
         "tagged",
         "tracks",
         "charts",
-        "lines"
+        "lines",
+        "pies"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42 and seven since decision #66: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42, seven since decision #66 and eight since decision #90: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -244,6 +245,10 @@
         "lines": {
           "type": "string",
           "description": "Version id of the rule that reads the numbers a line chart prints at its points back as its table (decision #66). `point-labels-v1`. A series is a line the page stroked whose every point stands right of the one before, not all at one height — a line drawn twice read once — or three or more small marks of one colour and size so set; a line drawn through a run of marks is that run. Each number goes to the one point it is set over, under or beside, unless another series' point stands nearly as near (within one and a half times the distance), and each point keeps its nearest number; a number set on a bar is the bar's. A series keeps its numbers where six points in ten carry one and a point higher on the page never carries a smaller number; its categories are the first row of labels below the plot holding one label under eight points in ten, no label twice and at most half of them numbers but years. Series reading one row are one table, each named by the block of lines beside a legend swatch of its colour — a small mark or a short level stroke — or a lone series by the one-line title over it. A value is never read off a point's height and an empty cell is not emitted. Runs after `charts`, on runs no other rule's table holds, only on a document that declares no author structure."
+        },
+        "pies": {
+          "type": "string",
+          "description": "Version id of the rule that reads the numbers a pie prints at its slices back as its table (decision #90). `slice-labels-v1`. A slice is a filled path of curves whose every point but one lies one distance from that one, its centre; slices about one centre, of one radius, turning a full circle between them are a pie. Each number goes to the pie whose rim it stands nearest, within its radius, and is no slice's where it stands over the centre; a pie takes as many as it has slices, nearest its rim first and all of one kind, and matches them to its slices in their order round the centre, at the one turn that sets each within a quarter turn of its slice and all nearest; a slice clearly larger never carries a smaller number. Pies side by side sharing a colour are one table: a row per slice, named by the label beside a legend swatch of its colour or by the lines set over its number, and a column per pie, named by the label in its hole or the line just over it. A value is never read off a slice's size. Runs after `point-labels-v1`, on runs no other rule's table holds, only on a document that declares no author structure. Office profiles name it `not-run-for-this-format`."
         }
       }
     },
@@ -531,6 +536,7 @@
       "table_detection": {
         "charts": "bar-labels-v3",
         "lines": "point-labels-v1",
+        "pies": "slice-labels-v1",
         "ruled": "ruled-rects-v13",
         "stroke_ruled": "stroke-ruled-v2",
         "tagged": "tagged-tables-v1",

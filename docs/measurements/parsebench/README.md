@@ -1040,6 +1040,16 @@ in segments is one line, and each series reads the first row below its own point
 -> 0.1363, 3 pages up and none down; visual grounding 0.5671 -> 0.5670, one page down where a chart
 now reads as its table, a trade the owner took. Overall 48.55 -> 48.60.
 
+### After a pie's printed values read as its table (decision #90, 2026-10-21)
+
+No rule read a pie: its slices are curves, not bars or lines, so a pie that prints a number at each
+slice read nothing. A new rule, `slice-labels-v1`, reads a slice from its centre, a pie from slices
+turning a full circle about one, and matches the numbers set at it to its slices in their order
+round the centre, each slice named by its legend or the lines over its number, each pie by its
+hole or the line over it. Charts 0.1363 -> 0.1485, 9 pages up and none down; tables, content
+faithfulness, semantic formatting and visual grounding unchanged on every page. Overall 48.60 ->
+48.84.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

@@ -1282,6 +1282,42 @@ fn extract_page(
             }
         }
 
+        // Decision #90. Then the numbers a pie prints at its slices, as its table
+        // (`docs/32-CHART-LABELS-SCOPE.md` §10): on the runs no table above holds, under the tracks
+        // rule's gate, and kept only where it overlaps no table already found.
+        if profile.table_detection.pies == ethos_parser_core::TABLE_DETECTION_PIES_V1
+            && no_author_structure(structure.as_ref())
+        {
+            let place = |(x, y): (f64, f64)| -> Result<(i64, i64), EngineError> {
+                let (ax, ay) = geom.to_top_left(x, y);
+                let r = crate::tables::quantize_rect(ax, ay, ax, ay)?;
+                Ok((r.x0, r.y0))
+            };
+            let mut slices = Vec::with_capacity(interp.wedges.len());
+            for w in &interp.wedges {
+                slices.push(crate::pies::Slice {
+                    centre: place(w.centre)?,
+                    rim: w.rim.iter().map(|&p| place(p)).collect::<Result<_, _>>()?,
+                    fill: w.fill,
+                });
+            }
+            let mut marks = Vec::with_capacity(interp.marks.len());
+            for m in &interp.marks {
+                let (ax, ay) = geom.to_top_left(m.rect.x0, m.rect.y0);
+                let (bx, by) = geom.to_top_left(m.rect.x1, m.rect.y1);
+                marks.push(crate::lines::Mark {
+                    rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
+                    colour: m.fill,
+                });
+            }
+            let pie_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            for table in crate::pies::detect(page_number, &pie_runs, &slices, &marks, &mut alloc)? {
+                if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
+                    tables.push(table);
+                }
+            }
+        }
+
         // Decision #46. Last, once every table rule has run: the paths the page painted, read as
         // one drawing where they cluster (`docs/34-FIGURE-REGIONS-SCOPE.md`). Under the tracks
         // rule's gate, for its reason: a tagged document says what is a figure.

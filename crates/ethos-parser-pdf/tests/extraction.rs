@@ -864,6 +864,80 @@ fn rounded_bars_and_a_legend_of_dots_read_as_their_table() {
     );
 }
 
+/// **A pie printing a number on each slice reads as its table** (decision #90), through the whole
+/// extraction: each slice drawn from the centre with curves, its number on it, a legend of squares
+/// set in rows under the pie and a title over it.
+#[test]
+fn a_pie_printing_its_numbers_reads_as_its_table() {
+    let (cx, cy, r) = (100.0_f64, 180.0_f64, 40.0_f64);
+    // A slice from `a0` to `a1` degrees, its arc in pieces of a quarter turn or less.
+    let wedge = |a0: f64, a1: f64| {
+        let mut path = format!("{cx} {cy} m ");
+        let n = ((a1 - a0) / 90.0).ceil();
+        for i in 0..n as usize {
+            let t1 = (a0 + (a1 - a0) * i as f64 / n).to_radians();
+            let t2 = (a0 + (a1 - a0) * (i + 1) as f64 / n).to_radians();
+            let k = 4.0 / 3.0 * ((t2 - t1) / 4.0).tan() * r;
+            let (x0, y0) = (cx + r * t1.cos(), cy + r * t1.sin());
+            let (x3, y3) = (cx + r * t2.cos(), cy + r * t2.sin());
+            if i == 0 {
+                path += &format!("{x0:.2} {y0:.2} l ");
+            }
+            path += &format!(
+                "{:.2} {:.2} {:.2} {:.2} {x3:.2} {y3:.2} c ",
+                x0 - k * t1.sin(),
+                y0 + k * t1.cos(),
+                x3 + k * t2.sin(),
+                y3 - k * t2.cos()
+            );
+        }
+        path + "h f "
+    };
+    let text = |x: f64, y: f64, s: &str| format!("BT /F1 10 Tf {x} {y} Td ({s}) Tj ET ");
+    let mut stream = String::new();
+    stream += &format!("0 0 1 rg {}", wedge(90.0, 270.0));
+    stream += &format!("1 0.5 0 rg {}", wedge(270.0, 378.0));
+    stream += &format!("0 0.6 0 rg {}", wedge(18.0, 90.0));
+    stream += &text(70.5, 176.5, "50%");
+    stream += &text(110.3, 163.6, "30%");
+    stream += &text(105.4, 194.3, "20%");
+    stream += &text(85.0, 228.0, "Share");
+    for (k, (fill, name)) in [
+        ("0 0 1", "Alpha"),
+        ("1 0.5 0", "Beta"),
+        ("0 0.6 0", "Gamma"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let y = 120.0 - 12.0 * k as f64;
+        stream += &format!("{fill} rg 60 {y} 6 6 re f ");
+        stream += &text(70.0, y + 1.0, name);
+    }
+    let a = helvetica_page(0, stream.as_bytes());
+    let tables: Vec<_> = a.pages[0]
+        .tables
+        .iter()
+        .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_PIES_V1)
+        .collect();
+    assert_eq!(tables.len(), 1, "{:?}", a.pages[0].tables);
+    let t = tables[0];
+    let grid: Vec<String> = (0..t.rows)
+        .map(|r| {
+            (0..t.columns)
+                .map(|c| {
+                    t.cells
+                        .iter()
+                        .find(|x| x.position.row == r && x.position.column == c)
+                        .map_or("", |x| x.text.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect();
+    assert_eq!(grid, vec!["|Share", "Alpha|50%", "Beta|30%", "Gamma|20%"]);
+}
+
 /// **Text a producer turns upright on a turned page advances along its line** (decision #61,
 /// `docs/22-WORD-BOXES-SCOPE.md` §9 item 2's open half). A `/Rotate 90` page whose text matrix
 /// turns its text a quarter back draws it upright. Measured along the text matrix's x alone, each

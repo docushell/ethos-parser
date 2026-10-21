@@ -89,6 +89,7 @@ pub(crate) mod ops;
 pub(crate) mod outlines;
 pub(crate) mod overlay;
 pub(crate) mod pdfdoc;
+pub(crate) mod pies;
 pub(crate) mod reading_order;
 pub(crate) mod reasons;
 pub(crate) mod represent;

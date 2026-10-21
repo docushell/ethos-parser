@@ -283,6 +283,22 @@ pub struct Polyline {
     pub stroke: Fill,
 }
 
+/// One slice of a pie a page **filled** (decision #90): the centre its two straight sides meet at,
+/// and the points its arc reaches in order, in user space, with the fill colour in force.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Wedge {
+    /// Where its straight sides meet.
+    pub centre: (f64, f64),
+    /// Where each piece of its arc ends, in the order drawn, its first where the arc starts.
+    pub rim: Vec<(f64, f64)>,
+    /// The fill colour in force when it was painted.
+    pub fill: Fill,
+}
+
+/// A slice of a pie as a subpath draws it (decision #90): its centre, and the points its arc
+/// reaches in order, in user space.
+type Slice = ((f64, f64), Vec<(f64, f64)>);
+
 /// One open marked-content sequence (v1-S3).
 ///
 /// v0 tracked only the id, which was enough to copy an `/MCID` onto a run and not enough for
@@ -393,6 +409,9 @@ pub struct Interpreter<'a> {
     /// with its fill colour. A line chart sets its points so, and a legend its swatches. Read by
     /// the line rule alone.
     pub marks: Vec<FilledRect>,
+    /// The slices a fill painted (`slice-labels-v1`, decision #90): each subpath [`wedge`] reads,
+    /// with its fill colour. Read by the pie rule alone.
+    pub wedges: Vec<Wedge>,
     /// The box of the path being built: every point and control point it has named so far.
     path_box: Option<PathRect>,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
@@ -410,6 +429,9 @@ pub struct Interpreter<'a> {
     /// Rounded bars from the current path, pending a fill: for [`Interpreter::filled_rounded`]
     /// alone (decision #88).
     pending_rounded: Vec<PathRect>,
+    /// Slices from the current path, pending a fill: for [`Interpreter::wedges`] alone (decision
+    /// #90).
+    pending_wedges: Vec<Slice>,
     /// Segments from the current path, pending a painting operator (v1-S8).
     pending_segments: Vec<PathSegment>,
     /// The current path's subpaths as lines, pending a painting operator (`point-labels-v1`).
@@ -500,6 +522,7 @@ impl<'a> Interpreter<'a> {
             painted: Vec::new(),
             polylines: Vec::new(),
             marks: Vec::new(),
+            wedges: Vec::new(),
             path_box: None,
             filled: Vec::new(),
             filled_repeated: Vec::new(),
@@ -509,6 +532,7 @@ impl<'a> Interpreter<'a> {
             pending: Vec::new(),
             pending_filled: Vec::new(),
             pending_rounded: Vec::new(),
+            pending_wedges: Vec::new(),
             pending_segments: Vec::new(),
             pending_polylines: Vec::new(),
             dropped_runs: 0,
@@ -600,9 +624,11 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_wedges.clear();
                 self.pending_polylines.clear();
                 self.polylines.clear();
                 self.marks.clear();
+                self.wedges.clear();
                 self.subpath = Subpath::default();
                 self.dropped_runs = 0;
                 Err(e)
@@ -675,6 +701,7 @@ impl<'a> Interpreter<'a> {
         if self.ctm_is_axis_aligned() {
             self.pending_rounded.extend(rounded_bar(&sub));
         }
+        self.pending_wedges.extend(wedge(&sub));
         if sub.disqualified || !self.ctm_is_axis_aligned() {
             return;
         }
@@ -1024,9 +1051,16 @@ impl<'a> Interpreter<'a> {
                             .iter()
                             .map(|&rect| FilledRect { rect, fill }),
                     );
+                    self.wedges
+                        .extend(self.pending_wedges.drain(..).map(|(centre, rim)| Wedge {
+                            centre,
+                            rim,
+                            fill,
+                        }));
                 }
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_wedges.clear();
                 self.rects.append(&mut self.pending);
                 self.segments.append(&mut self.pending_segments);
             }
@@ -1038,6 +1072,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_wedges.clear();
                 self.pending_segments.clear();
                 self.pending_polylines.clear();
             }
@@ -1048,6 +1083,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_wedges.clear();
                 self.pending_segments.clear();
                 self.pending_polylines.clear();
             }
@@ -1503,6 +1539,32 @@ fn rounded_bar(sub: &Subpath) -> Option<PathRect> {
         .then(|| PathRect::from_corners((x0, y0), (x1, y1)))
 }
 
+/// The slice of a pie a subpath draws (decision #90): curves, and one point every other it reaches
+/// lies one distance from — its centre. The points after the centre, round to it, are its arc's in
+/// order. A circle has no such point.
+fn wedge(sub: &Subpath) -> Option<Slice> {
+    if sub.controls.is_empty() {
+        return None;
+    }
+    let mut v = once_each(&sub.vertices);
+    if v.len() > 1 && approx_eq(v[0].0, v[v.len() - 1].0) && approx_eq(v[0].1, v[v.len() - 1].1) {
+        v.pop();
+    }
+    let dist = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
+    for (i, &c) in v.iter().enumerate() {
+        let rim: Vec<(f64, f64)> = v[i + 1..].iter().chain(&v[..i]).copied().collect();
+        let Some(&first) = rim.first() else { continue };
+        let r = dist(c, first);
+        if rim
+            .iter()
+            .all(|&p| (dist(c, p) - r).abs() <= (r / 100.0).max(0.5))
+        {
+            return Some((c, rim));
+        }
+    }
+    None
+}
+
 /// The rectangle four or five points draw — a fifth closing on the first — where they hold two
 /// distinct `x`s and two distinct `y`s.
 fn rectangle(pts: &[(f64, f64)]) -> Option<PathRect> {
@@ -1924,6 +1986,41 @@ mod tests {
         assert_eq!(bars, vec![(0.0, 0.0, 60.0, 20.0)]);
         assert!(i.filled.is_empty() && i.filled_repeated.is_empty());
         assert!(i.rects.is_empty(), "{:?}", i.rects);
+    }
+
+    /// **A slice of a pie filled is a wedge** (decision #90): curves, and one point every other
+    /// lies one distance from — drawn from the centre, or ending at it, or both. A circle has no
+    /// such point;
+    /// a slice only stroked is not filled, nor by the fill after it; a shape with a point off the
+    /// circle, or with no curve, is none.
+    #[test]
+    fn a_slice_filled_is_a_wedge() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "1 0 0 rg 100 100 m 150 100 l 150 127.6 127.6 150 100 150 c h f \
+             250 100 m 250 127.6 227.6 150 200 150 c 200 100 l h f \
+             450 100 m 450 127.6 427.6 150 400 150 c 372.4 150 350 127.6 350 100 c \
+             350 72.4 372.4 50 400 50 c 427.6 50 450 72.4 450 100 c h f \
+             500 100 m 550 100 l 550 127.6 527.6 150 500 150 c h S 0 0 1 1 re f \
+             600 100 m 650 100 l 650 127.6 627.6 150 600 150 c 620 120 l h f \
+             700 100 m 750 100 l 700 150 l h f \
+             800 100 m 850 100 l 850 127.6 827.6 150 800 150 c 800 100 l h f",
+        ))
+        .unwrap();
+        let wedges: Vec<Slice> = i.wedges.iter().map(|w| (w.centre, w.rim.clone())).collect();
+        assert_eq!(
+            wedges,
+            vec![
+                ((100.0, 100.0), vec![(150.0, 100.0), (100.0, 150.0)]),
+                ((200.0, 100.0), vec![(250.0, 100.0), (200.0, 150.0)]),
+                ((800.0, 100.0), vec![(850.0, 100.0), (800.0, 150.0)]),
+            ]
+        );
+        assert!(i
+            .wedges
+            .iter()
+            .all(|w| w.fill.components == [1000, 0, 0, 0]));
     }
 
     #[test]

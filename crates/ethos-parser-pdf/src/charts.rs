@@ -1196,6 +1196,17 @@ pub(crate) struct Value {
     scale: u32,
 }
 
+impl Value {
+    /// Its size, whatever its sign: a pie's slice for a negative number is drawn as large as its
+    /// size (decision #90).
+    pub(crate) fn abs(self) -> Self {
+        Self {
+            mantissa: self.mantissa.abs(),
+            ..self
+        }
+    }
+}
+
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -1213,7 +1224,7 @@ impl Ord for Value {
 
 /// `text` as a number: an optional sign or bracket, an optional currency sign, digits — grouped in
 /// threes by commas, or not at all — an optional decimal part, an optional unit (`%`, `x`, `k`,
-/// `m`, `bn`, `pp`) and an optional closing bracket. Anything else is not a number.
+/// `m`, `bn`, `b`, `pp`) and an optional closing bracket. Anything else is not a number.
 pub(crate) fn number(text: &str) -> Option<Value> {
     let s: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -1256,7 +1267,7 @@ pub(crate) fn number(text: &str) -> Option<Value> {
         i += 1;
     }
     let rest: String = s[i..].iter().collect::<String>().to_lowercase();
-    let unit = ["%", "x", "k", "m", "bn", "pp"]
+    let unit = ["%", "x", "k", "m", "bn", "b", "pp"]
         .into_iter()
         .find(|u| rest.starts_with(u))
         .map_or(0, |u| u.chars().count());
@@ -2098,6 +2109,9 @@ mod tests {
         assert_eq!(v("1,069"), Some((1069, 0)));
         assert_eq!(v("$2.6bn"), Some((26, 1)));
         assert_eq!(v("(9.9%)"), Some((-99, 1)));
+        // Decision #90: billions as a pie's slices print them.
+        assert_eq!(v("$1,581B"), Some((1581, 0)));
+        assert_eq!(v("($60B)"), Some((-60, 0)));
         assert_eq!(v("-3"), Some((-3, 0)));
         for no in [
             "0.36670.3264",

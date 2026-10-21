@@ -187,6 +187,43 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A pie's printed values read as its table (decision #90)
+
+A new rule, `slice-labels-v1`, under a new profile field, `table_detection.pies`; the office
+profiles name it `not-run-for-this-format`. `profile_sha256` moves `6028b8a5…` -> `698a7924…`.
+
+- **A slice** is a filled path of curves with one point every other point it reaches lies one
+  distance from: its centre, where its straight sides meet, the path drawn from it or ending at it.
+  Slices about one centre, of one radius, turning a full circle between them, two or more, are a
+  pie; a slice drawn again, or within a larger one of its colour, counts once. A circle has no
+  centre point and is no slice: a donut's hole, a legend's dot.
+- **Each number goes to the pie whose rim it stands nearest**, within the pie's radius, and one set
+  over a pie's centre is no slice's. A pie takes as many as it has slices, nearest its rim first,
+  all of one kind — percentages or not — and matches them to its slices in their order round the
+  centre: numbers set beside a pie on leader lines keep its slices' order, though a small slice's
+  number stands over the next slice. Each stands within a quarter turn of its slice, no second
+  turn sets them as near, and a slice a tenth larger than another never carries a smaller number —
+  a number in brackets by its size.
+- **A slice is named** by the label beside a legend swatch of its colour, or by the lines just over
+  its number where the legend cannot tell two slices of one colour apart. **A pie is named** by the
+  label in its hole, or the line just over it, where that line is no number but a year and ends in
+  no full stop. Pies side by side, sharing a colour, are one table: a row per slice, a column per
+  pie.
+- **Folded in** (`bar-labels-v3`, `point-labels-v1`, which no release carries): a number may end in
+  `b`, for billions, as `$1,581B` — two bar charts more read, each right against its drawing, no
+  page's score moved; and a legend set in rows names each row's swatch by its own line — a legend of
+  two rows had read each name as both rows together.
+- **Why this piece**: offered after #89 with a census of the 775 chart rules still failing, sorted
+  by the kind of chart, the owner chose "Pies and donuts": five pages that read nothing, every pie
+  on them drawn as vector slices, at most +0.17 overall.
+- **Measured** on ParseBench: charts 0.1363 -> 0.1485, 9 pages up and none down
+  (`FPA-guide-to-data-visualization` p20, `MonthlyTreasuryStatement_202411` p8 and `_202509` p8,
+  `Technopak_Industry_Report` p18 and p6 and `WEF_The_Global_Public_Impact_of_GovTech_2025` p29
+  0 -> 1.0, `us-global-outsourcing-survey-2024-report` p13 0.6 -> 1.0, `MonthlyTreasuryStatement_202509`
+  p7 0 -> 0.3, `Renewables2025_1` p48 0 -> 0.22); tables, content faithfulness, semantic formatting
+  and visual grounding unchanged on every page; overall 48.60 -> 48.84. opendataloader-bench
+  unchanged on every document; the fabrication check and the gate documents' 541 tables unchanged.
+
 ### The line reader seats every number it can, and reads each chart's own axis (decision #89)
 
 Folded into `point-labels-v1`, which no release carries yet, so no rule id and no

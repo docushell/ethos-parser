@@ -1,6 +1,6 @@
 # A bar chart's printed labels as its table — scope (decision #42)
 
-**Status: shipped 2026-10-04 as `bar-labels-v1`; `bar-labels-v2` since 2026-10-09 (§7, decision #57); `bar-labels-v3` and a line chart's rule, `point-labels-v1`, since 2026-10-13 (§8, §9, decision #66).** A bar chart that prints its numbers states a
+**Status: shipped 2026-10-04 as `bar-labels-v1`; `bar-labels-v2` since 2026-10-09 (§7, decision #57); `bar-labels-v3` and a line chart's rule, `point-labels-v1`, since 2026-10-13 (§8, §9, decision #66); a pie's rule, `slice-labels-v1`, since 2026-10-21 (§10, decision #90).** A bar chart that prints its numbers states a
 table; this rule reads that table back. It never reads a value off a bar's length: a bar that carries
 no number leaves its cell empty, and a chart that prints none yields no table.
 
@@ -256,9 +256,10 @@ author structure, and keeps a table only where it overlaps none already found.
 6. **A table** is every series reading one row of categories, a row per category in the order its
    points stand, a column per series, each named by the block of lines beside a legend swatch of its
    colour — a small mark or a short level stroke, its name read line by line up to the next swatch
-   — or, alone, by the one-line title over it, measured from its highest number. A cell holds
-   exactly its label's runs; an empty cell is not emitted; a value is never read off a point's
-   height.
+   — or, alone, by the one-line title over it, measured from its highest number. A legend set in
+   rows names each row's swatch by its own line: the label nearest the swatch's height, and no line
+   led by another entry's swatch (decision #90). A cell holds exactly its label's runs; an empty
+   cell is not emitted; a value is never read off a point's height.
 
 **Measured**, with the shipped build on all 2,078 ParseBench pages and opendataloader-bench's 200,
 against decision #65's: ParseBench charts **0.1184 → 0.1248**, seven pages up and none down
@@ -280,3 +281,65 @@ TEDS 0.8667 → 0.7086 (the bench's NID 0.8841 → 0.8838, TEDS 0.5339 → 0.530
 point (moved no page); the transposed reader, for markers set down a column with their categories
 beside them, was not built.
 
+## 10. `slice-labels-v1`: a pie's printed values (2026-10-21, decision #90)
+
+**Why.** Offered after #89 with a census of the chart rules still failing on its build — 775 of
+1,295, sorted by the kind of chart — the owner chose "Pies and donuts": five pages whose pies print
+a number at each slice read nothing, all five drawn as vector slices (`FPA-guide-to-data-visualization`
+p20's twenty images are not its pies), at most +0.17 overall.
+
+**The rule.** Its own profile field, `table_detection.pies`, beside the bar and line rules': the
+evidence — filled slices, their colours, and the labels set at them — is its own. It runs after
+`point-labels-v1`, on runs no other rule's table holds, only on a document that declares no author
+structure, and keeps a table only where it overlaps none already found.
+
+1. **Slices.** The interpreter records each filled subpath of curves that has one point every other
+   point it reaches lies one distance from — its centre, where its two straight sides meet, the path
+   drawn from it, ending at it, or both — with the points its arc reaches in order and its fill. A
+   circle has no such point: a donut's hole, a legend's dot. Nothing else reads them.
+2. **A pie** is two slices or more about one centre, of one radius, to a point, turning a full
+   circle between them, to a degree. A slice drawn again, or within a larger slice of its colour, is
+   that slice: a donut's producer filled one slice twice.
+3. **Its numbers.** Each number on the page goes to the pie whose rim it stands nearest, within the
+   pie's radius of it, and one set over a pie's centre is no slice's. A year is never a value. A pie
+   takes as many numbers as it has slices, those nearest its rim first — a number set on a slice
+   stands at none — all of one kind, percentages or not, as a line's are (decision #89): a stray `5`
+   beside a pie whose slice printed no number stood in for that slice's.
+4. **Each slice's number.** The numbers, taken round the centre in order, are matched to the slices
+   in theirs, at the one turn of the one against the other that sets them nearest: numbers set beside
+   a pie on leader lines keep its slices' order, though a small slice's number stands over the next
+   slice (`FPA-guide-to-data-visualization` p20). Each stands within a quarter turn of its slice, and
+   no second turn sets them as near. A slice a tenth larger than another never carries a smaller
+   number, and one a third larger carries a larger one — a number in brackets by its size, for a
+   slice is drawn as large for `($60B)` as for `$60B`.
+5. **Names.** A slice is named by the block of lines beside a legend swatch of its colour, as a
+   line is (§9 item 6), or — where the legend cannot tell two slices of one colour apart, or there
+   is none — by the lines just over its number, each centred on it, the nearest first, none a
+   number. A pie is named by the label in its hole, or by the line nearest over everything it holds,
+   within four lines — its labels over this pie and no other of its chart — where that line is no
+   number but a year and ends in no full stop: a number set over a pie is a callout, and a
+   sentence's last line is prose.
+6. **A table** is the pies set side by side — at one height, sharing a colour — read as one: a row
+   per slice, a column per pie. A cell holds exactly its label's runs; an empty cell is not emitted;
+   a value is never read off a slice's size.
+
+**Folded in, as no release carries them.** A number may end in `b`, for billions, as `$1,581B` —
+the unit §7 measured and did not use, which a pie needs; it reads two bar charts more, each right
+against its drawing (`Activate_Consulting_Technology_&_Media_Outlook_2026_(10)` p60,
+`natural-catastrophe-and-climate-report-2023` p16), and moves no page's score
+(`bar-labels-v3`, `point-labels-v1`). A legend set in rows names each row's swatch by its own line:
+a legend of two rows had read each name as both rows together (§9 item 6, `point-labels-v1`).
+
+**Measured**, with the shipped build on every ParseBench page and opendataloader-bench's 200,
+against decision #89's: ParseBench charts **0.1363 → 0.1485**, nine pages up and none down
+(`FPA-guide-to-data-visualization` p20, `MonthlyTreasuryStatement_202411` p8 and `_202509` p8,
+`Technopak_Industry_Report` p18 and p6, `WEF_The_Global_Public_Impact_of_GovTech_2025` p29 0 → 1.0;
+`us-global-outsourcing-survey-2024-report` p13 0.6 → 1.0; `MonthlyTreasuryStatement_202509` p7
+0 → 0.3; `Renewables2025_1` p48 0 → 0.22); tables, content faithfulness, semantic formatting and
+visual grounding unchanged on every page; overall 48.60 → 48.84. Eleven pie tables, ten on chart
+pages and one on a layout page, each checked against its drawing, none on a table or text page;
+opendataloader-bench unchanged on every document; the gate documents' 541 tables unchanged; every
+cell its runs' text.
+
+**Still not read.** A pie whose slices are drawn as polygons, or as ring segments with no centre; a
+slice whose number shares a line with its name; a pie with a slice that prints no number.
