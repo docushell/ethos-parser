@@ -227,22 +227,32 @@ author structure, and keeps a table only where it overlaps none already found.
 2. **A series** is a stroked line of three points or more, each standing more than half a point
    right of the one before it, not all at one height — a line drawn twice read once — or three
    marks or more of one colour and size so set. A line drawn through a run of marks is that run;
-   marks all on a longer line are the line.
+   marks all on a longer line are the line. A line stroked segment by segment, from either end, is
+   one line: strokes of one colour joined end to end, each next running on to the right of where
+   the last ended (decision #89).
 3. **A value** is a number set at one point: centred over or under it within a line and a half, or
    beside it on its height within a line and a fifth. Every number goes to its nearest point over
    every series of the page, and **is no one's where another series' point stands nearly as near**
    (within one and a half times the distance and a third of a point) — round 1 asked each series
    alone, so two lines running close read each other's numbers as ambiguous and neither kept any.
-   Each point keeps its nearest number. **A year is never a value**: a timeline's dates set at its
-   marks, or a year axis set along a line, read so were a table of dates. A number set on a bar is
-   the bar's.
+   Numbers are seated so that as many are as can be, each at the nearest point it can take
+   (decision #89): a series that sets its numbers under its points, nearer the next line's points
+   than its own, had them taken by that line, which then left its own out; each point once kept its
+   nearest number. A series' numbers are of one kind: where most of the numbers reaching its points
+   end in a percent sign, one that does not is none of its values, and the other way round — a bar's
+   `398` set under a line of percentages' last point stood nearer it than the line's `4.6%`
+   (decision #89). **A year is never a value**: a timeline's dates set at its marks, or a year axis
+   set along a line, read so were a table of dates. A number set on a bar is the bar's.
 4. **A series keeps its numbers** only where six points in ten carry one, and **a point clearly
    higher on the page never carries a smaller number** (by half a line).
-5. **Categories** are the first row of labels below the plot — below the lowest point of every
-   series set at the same places, of the forty rows below it — holding one label under eight points
-   in ten, no label twice and at most half of them numbers but years. Round 1 looked twelve rows
-   below each series' own lowest point, under which a chart's other series print their numbers,
-   and refused a tenor's `3M` as a number.
+5. **Categories** are the first row of labels below the series' own lowest point, of the forty rows
+   below it — holding one label under eight points in ten, no label twice and at most half of them
+   numbers but years. Round 1 looked twelve rows below each series' own lowest point, under which a
+   chart's other series print their numbers, and refused a tenor's `3M` as a number; `-v1` then
+   looked below the lowest point of every series set at the same places, and three charts stacked
+   down a column at the same places read the bottom one's axis (decision #89). A label reaching over
+   a point beside its own is set across several — an axis's labels set close run together — and
+   names none of them, nor is its point counted against the row (decision #89).
 6. **A table** is every series reading one row of categories, a row per category in the order its
    points stand, a column per series, each named by the block of lines beside a legend swatch of its
    colour — a small mark or a short level stroke, its name read line by line up to the next swatch

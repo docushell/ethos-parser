@@ -39,6 +39,13 @@ type Reading = (usize, Vec<(usize, usize)>, Vec<usize>);
 /// The marks of one run: one colour, one width and one height, in half points.
 type MarkKey = (Fill, i64, i64);
 
+/// A number to seat (decision #89): its nearest distance, its label, and the points it reaches —
+/// each a series and a point — nearest first.
+type Candidate = (i64, usize, Vec<(usize, usize)>);
+
+/// The number seated at each `(series, point)`, by its index among the candidates.
+type Seats = std::collections::BTreeMap<(usize, usize), usize>;
+
 /// One series: its points left to right — each a centre and the half-width of what marks it — and
 /// its colour.
 #[derive(Debug)]
@@ -131,16 +138,9 @@ pub(crate) fn detect(
             continue;
         }
         let pitch = pitch(&s.points);
-        let low = series
-            .iter()
-            .filter(|o| {
-                s.points
-                    .iter()
-                    .all(|p| o.points.iter().any(|q| 5 * (q.0 - p.0).abs() <= pitch))
-            })
-            .flat_map(|o| o.points.iter().map(|p| p.1 + p.2))
-            .max()
-            .unwrap_or(0);
+        // Decision #89: below its own lowest point. Below the lowest point of every series set at
+        // the same places, three charts stacked down a column read the bottom one's axis.
+        let low = s.points.iter().map(|p| p.1 + p.2).max().unwrap_or(0);
         let taken: Vec<usize> = mine.iter().map(|m| m.1).collect();
         let pool: Vec<usize> = free
             .iter()
@@ -274,8 +274,44 @@ fn pitch(points: &[Point]) -> i64 {
 /// the one before. A line drawn over a series already read — through a run of marks, or the same
 /// line drawn twice — is that series; a run of marks all on a longer line is the line. A swatch is any small mark, or a short level
 /// stroke.
+/// The lines a page stroked, a line stroked segment by segment joined into one (decision #89):
+/// strokes of one colour, each turned to run left to right, the next starting where the last
+/// ended and running on to its right. A producer may stroke a line one segment at a time, from
+/// either end.
+fn chained(strokes: &[Stroke]) -> Vec<Stroke> {
+    let mut order: Vec<Stroke> = strokes
+        .iter()
+        .filter(|s| s.points.len() >= 2)
+        .map(|s| {
+            let mut s = s.clone();
+            if s.points.windows(2).all(|w| w[1].0 < w[0].0) {
+                s.points.reverse();
+            }
+            s
+        })
+        .collect();
+    order.sort_by_key(|s| s.points[0]);
+    let mut out: Vec<Stroke> = Vec::new();
+    for s in order {
+        let start = s.points[0];
+        match out.iter_mut().find(|o| {
+            o.colour.same(s.colour)
+                && o.points.last().is_some_and(|&e| {
+                    (e.0 - start.0).abs() <= crate::charts::SAME_EDGE
+                        && (e.1 - start.1).abs() <= crate::charts::SAME_EDGE
+                })
+                && s.points[1].0 > start.0
+        }) {
+            Some(o) => o.points.extend(&s.points[1..]),
+            None => out.push(s),
+        }
+    }
+    out
+}
+
 fn series(strokes: &[Stroke], marks: &[Mark]) -> (Vec<Series>, Vec<Mark>) {
     let mut swatches: Vec<Mark> = marks.to_vec();
+    let chained = chained(strokes);
     let mut lines: Vec<&Stroke> = Vec::new();
     for s in strokes {
         if let [a, b] = s.points[..] {
@@ -292,6 +328,8 @@ fn series(strokes: &[Stroke], marks: &[Mark]) -> (Vec<Series>, Vec<Mark>) {
                 });
             }
         }
+    }
+    for s in &chained {
         let rising = s.points.windows(2).all(|w| w[1].0 - w[0].0 > STEP);
         let level = s.points.windows(2).all(|w| (w[1].1 - w[0].1).abs() <= STEP);
         if s.points.len() >= 3 && rising && !level {
@@ -385,12 +423,15 @@ fn reach(l: &Label, p: Point, pitch: i64) -> Option<i64> {
     None
 }
 
-/// Each number to the one point it is set at, over every series of the page: its nearest, unless
-/// another series' point stands nearly as near; each point keeps its nearest number. As
-/// `(series, point, label)`.
+/// Each number to the one point it is set at, over every series of the page, never one that
+/// another series' point stands nearly as near. Decision #89: every number a chart prints is some
+/// point's, so as many are seated as can be, each at the nearest point it can take — a series
+/// that sets its numbers under its points, nearer the next line's points than its own, had them
+/// taken by that line, and that line's own numbers left out. As `(series, point, label)`.
 fn assign(series: &[Series], labels: &[Label], numbers: &[usize]) -> Vec<(usize, usize, usize)> {
     let pitches: Vec<i64> = series.iter().map(|s| pitch(&s.points)).collect();
-    let mut best: Vec<((usize, usize), (i64, usize))> = Vec::new();
+    // Each number that reads: its nearest distance, and the points it reaches, nearest first.
+    let mut options: Vec<Candidate> = Vec::new();
     for &k in numbers {
         let mut reached: Vec<(i64, usize, usize)> = Vec::new();
         for (si, s) in series.iter().enumerate() {
@@ -401,7 +442,7 @@ fn assign(series: &[Series], labels: &[Label], numbers: &[usize]) -> Vec<(usize,
             }
         }
         reached.sort_unstable();
-        let Some(&(d, si, pi)) = reached.first() else {
+        let Some(&(d, si, _)) = reached.first() else {
             continue;
         };
         let (num, den, slack) = AMBIGUOUS;
@@ -411,20 +452,74 @@ fn assign(series: &[Series], labels: &[Label], numbers: &[usize]) -> Vec<(usize,
         {
             continue;
         }
-        match best.iter_mut().find(|b| b.0 == (si, pi)) {
-            Some(b) if d < b.1 .0 => b.1 = (d, k),
-            Some(_) => {}
-            None => best.push(((si, pi), (d, k))),
+        options.push((d, k, reached.iter().map(|&(_, si, pi)| (si, pi)).collect()));
+    }
+    // A series' numbers are of one kind: where most of the numbers reaching its points end in a
+    // percent sign, one that does not is none of its values, and the other way round — a bar's
+    // `398`, set under a line of percentages' last point, stood nearer it than its own `4.6%`.
+    let percent = |k: usize| labels[k].text.trim_end().ends_with('%');
+    let mut kinds = vec![(0usize, 0usize); series.len()];
+    for o in &options {
+        for &(si, _) in &o.2 {
+            if percent(o.1) {
+                kinds[si].0 += 1;
+            } else {
+                kinds[si].1 += 1;
+            }
         }
     }
-    best.into_iter()
-        .map(|((si, pi), (_, k))| (si, pi, k))
+    for o in &mut options {
+        let with = percent(o.1);
+        o.2.retain(|&(si, _)| {
+            let (p, bare) = kinds[si];
+            if with {
+                p >= bare
+            } else {
+                bare >= p
+            }
+        });
+    }
+    options.sort_by_key(|o| (o.0, o.1));
+    let mut seats = Seats::new();
+    for i in 0..options.len() {
+        seat(i, &options, &mut seats, &mut Vec::new());
+    }
+    seats
+        .into_iter()
+        .map(|((si, pi), i)| (si, pi, options[i].1))
         .collect()
 }
 
-/// The labels naming a series' points: the first line of labels below the plot's lowest point —
+/// Seats number `i` at the nearest point it reaches that is free, or whose number can be seated at
+/// another point it reaches: whether it is seated.
+fn seat(
+    i: usize,
+    options: &[Candidate],
+    seats: &mut Seats,
+    tried: &mut Vec<(usize, usize)>,
+) -> bool {
+    for &point in &options[i].2 {
+        if tried.contains(&point) {
+            continue;
+        }
+        tried.push(point);
+        if seats
+            .get(&point)
+            .copied()
+            .is_none_or(|j| seat(j, options, seats, tried))
+        {
+            seats.insert(point, i);
+            return true;
+        }
+    }
+    false
+}
+
+/// The labels naming a series' points: the first line of labels below its lowest point —
 /// of the forty below it — holding one label under eight points in ten, no label twice and at most
-/// half of them numbers but years. Indexed by point.
+/// half of them numbers but years. Indexed by point. Decision #89: a label reaching over a point
+/// beside its own is set across several and names none of them — an axis's labels set close run
+/// together — and its point is not counted against the line.
 fn categories(
     points: &[Point],
     labels: &[Label],
@@ -446,18 +541,28 @@ fn categories(
         }
     }
     for line in lines.iter().take(CATEGORY_LINES) {
+        let across = |i: usize, k: usize| {
+            i.checked_sub(1)
+                .is_some_and(|j| labels[k].x0 <= points[j].0)
+                || points.get(i + 1).is_some_and(|n| labels[k].x1 >= n.0)
+        };
+        let mut spanned = 0;
         let got: Vec<Option<usize>> = points
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(i, p)| {
                 let under: Vec<usize> = line
                     .iter()
                     .copied()
                     .filter(|&k| 5 * (labels[k].cx() - p.0).abs() <= 2 * pitch)
                     .collect();
-                if let [k] = under[..] {
-                    Some(k)
-                } else {
-                    None
+                match under[..] {
+                    [k] if across(i, k) => {
+                        spanned += 1;
+                        None
+                    }
+                    [k] => Some(k),
+                    _ => None,
                 }
             })
             .collect();
@@ -469,7 +574,7 @@ fn categories(
             .iter()
             .filter(|&&k| number(&labels[k].text).is_some() && !is_year(&labels[k].text))
             .count();
-        if 10 * found.len() >= 8 * points.len()
+        if 10 * found.len() >= 8 * (points.len() - spanned)
             && 2 * numeric <= found.len()
             && distinct.len() == found.len()
         {
@@ -858,6 +963,217 @@ mod tests {
 
     /// **A number as near two lines' points is neither's**: set midway between them it stands
     /// nearly as near each, and a series that kept it would be guessing.
+    /// **A line stroked segment by segment is one line** (decision #89): a producer strokes each
+    /// segment on its own, from its right end, and in no order. A stroke of another colour that
+    /// starts where the line ends is no more of it, nor is one of its colour running down from it.
+    #[test]
+    fn a_line_stroked_segment_by_segment_is_one_line() {
+        let (mut runs, strokes) = one_line();
+        let p = &strokes[0].points;
+        let mut segments: Vec<Stroke> = [2, 0, 3, 1]
+            .into_iter()
+            .map(|i| Stroke {
+                points: vec![p[i + 1], p[i]],
+                colour: strokes[0].colour,
+            })
+            .collect();
+        segments.push(line(&[(300, 220), (350, 200)], rgb(900, 0, 0)));
+        segments.push(line(&[(300, 220), (300, 240)], strokes[0].colour));
+        runs.push(run(342, 196, 16, "6.1"));
+        runs.push(run(340, 340, 20, "2025"));
+        let t = detect(1, &runs, &segments, &[], &[], &mut alloc()).expect("reads");
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!((t[0].rows, t[0].columns), (6, 2));
+        assert_eq!(cell(&t[0], 1, 1).as_deref(), Some("4.1"));
+        assert_eq!(cell(&t[0], 5, 1).as_deref(), Some("5.7"));
+    }
+
+    /// **Every number a chart prints is some point's** (decision #89): two lines each set their
+    /// numbers under their points, and the upper line's stand nearer the lower line's points than
+    /// its own. Taken by the nearest point, they read as the lower line's and left its own out;
+    /// seated so that every number is, each line keeps its own.
+    #[test]
+    fn numbers_nearer_another_line_are_seated_with_their_own() {
+        let (blue, red) = (rgb(0, 0, 900), rgb(900, 0, 0));
+        let upper = [(100, 200), (150, 198), (200, 196), (250, 194), (300, 192)];
+        let lower = [(100, 222), (150, 220), (200, 218), (250, 216), (300, 214)];
+        let mut runs = Vec::new();
+        for i in 0..5 {
+            let (x, y) = upper[i];
+            runs.push(run(
+                x - 8,
+                y + 17,
+                16,
+                ["8.0", "8.2", "8.4", "8.6", "8.8"][i],
+            ));
+            let (x, y) = lower[i];
+            runs.push(run(
+                x - 8,
+                y + 14,
+                16,
+                ["2.0", "2.4", "2.8", "3.2", "3.6"][i],
+            ));
+            runs.push(run(
+                x - 10,
+                340,
+                20,
+                ["2020", "2021", "2022", "2023", "2024"][i],
+            ));
+        }
+        runs.push(run(125, 384, 40, "Imports"));
+        runs.push(run(225, 384, 40, "Exports"));
+        let strokes = vec![
+            line(&upper, blue),
+            line(&lower, red),
+            line(&[(100, 380), (120, 380)], blue),
+            line(&[(200, 380), (220, 380)], red),
+        ];
+        let t = detect(1, &runs, &strokes, &[], &[], &mut alloc()).expect("reads");
+        assert_eq!(t.len(), 1, "{t:?}");
+        let t = &t[0];
+        assert_eq!((t.rows, t.columns), (6, 3));
+        assert_eq!(cell(t, 0, 1).as_deref(), Some("Imports"));
+        assert_eq!(cell(t, 3, 1).as_deref(), Some("8.4"));
+        assert_eq!(cell(t, 3, 2).as_deref(), Some("2.8"));
+    }
+
+    /// **A label set across several points names none of them** (decision #89): an axis's last
+    /// labels set so close they run together reach over a point beside their own; that point is
+    /// not counted against the line, and its number is no row.
+    #[test]
+    fn a_label_set_across_points_names_none() {
+        let points = [
+            (100, 300),
+            (150, 290),
+            (200, 280),
+            (250, 270),
+            (300, 260),
+            (350, 250),
+            (400, 240),
+        ];
+        let mut runs = vec![run(220, 195, 80, "Wages growth")];
+        for (i, &(x, y)) in points.iter().enumerate() {
+            runs.push(run(
+                x - 8,
+                y - 4,
+                16,
+                ["4.1", "4.5", "4.9", "5.3", "5.7", "6.1", "6.5"][i],
+            ));
+        }
+        for (i, year) in ["2020", "2021", "2022", "2023", "2024"]
+            .into_iter()
+            .enumerate()
+        {
+            runs.push(run(points[i].0 - 10, 340, 20, year));
+        }
+        // Under the last point and over the one before it, or under the one before and over the
+        // last.
+        for x in [345, 335] {
+            let mut runs = runs.clone();
+            runs.push(run(x, 340, 70, "2025E 2026P"));
+            let t = detect(
+                1,
+                &runs,
+                &[line(&points, rgb(0, 0, 900))],
+                &[],
+                &[],
+                &mut alloc(),
+            )
+            .expect("reads");
+            assert_eq!(t.len(), 1, "at {x}: {t:?}");
+            assert_eq!(t[0].rows, 6, "at {x}: {t:?}");
+            assert!(
+                t[0].cells.iter().all(|c| c.text != "2025E 2026P"),
+                "at {x}: {t:?}"
+            );
+        }
+    }
+
+    /// **A series' numbers are of one kind** (decision #89): a line printing percentages takes no
+    /// number printed without one — a bar's value set under its last point, nearer it than the
+    /// line's own number beside it — and a line printing bare numbers takes no percentage.
+    #[test]
+    fn a_line_takes_numbers_of_its_own_kind() {
+        let points = [(100, 300), (150, 280), (200, 260), (250, 240), (300, 220)];
+        for (own, stray) in [
+            (["4.1%", "4.5%", "4.9%", "5.3%", "5.7%"], "398"),
+            (["4.1", "4.5", "4.9", "5.3", "5.7"], "39%"),
+        ] {
+            let mut runs = vec![run(160, 195, 80, "Wages growth")];
+            for (i, &(x, y)) in points.iter().enumerate() {
+                if i < 4 {
+                    runs.push(run(x - 8, y - 4, 16, own[i]));
+                }
+                runs.push(run(
+                    x - 10,
+                    340,
+                    20,
+                    ["2020", "2021", "2022", "2023", "2024"][i],
+                ));
+            }
+            runs.push(run(305, 224, 20, own[4]));
+            runs.push(run(292, 232, 16, stray));
+            let t = detect(
+                1,
+                &runs,
+                &[line(&points, rgb(0, 0, 900))],
+                &[],
+                &[],
+                &mut alloc(),
+            )
+            .expect("reads");
+            assert_eq!(t.len(), 1, "{t:?}");
+            assert_eq!(cell(&t[0], 5, 1).as_deref(), Some(own[4]), "{stray}");
+        }
+    }
+
+    /// **Charts stacked down a column read their own axes** (decision #89): two line charts set at
+    /// the same places, one above the other, each with its axis under it. Below the lowest point
+    /// of every series at those places, the upper one read the lower one's.
+    #[test]
+    fn stacked_charts_read_their_own_axes() {
+        let upper = [(100, 120), (150, 115), (200, 110), (250, 105), (300, 100)];
+        let lower = [(100, 270), (150, 265), (200, 260), (250, 255), (300, 250)];
+        let mut runs = Vec::new();
+        for i in 0..5 {
+            let (x, y) = upper[i];
+            runs.push(run(
+                x - 8,
+                y - 4,
+                16,
+                ["8.0", "8.2", "8.4", "8.6", "8.8"][i],
+            ));
+            runs.push(run(
+                x - 10,
+                150,
+                20,
+                ["2020", "2021", "2022", "2023", "2024"][i],
+            ));
+            let (x, y) = lower[i];
+            runs.push(run(
+                x - 8,
+                y - 4,
+                16,
+                ["2.0", "2.4", "2.8", "3.2", "3.6"][i],
+            ));
+            runs.push(run(
+                x - 10,
+                300,
+                20,
+                ["2015", "2016", "2017", "2018", "2019"][i],
+            ));
+        }
+        let strokes = vec![line(&upper, rgb(0, 0, 900)), line(&lower, rgb(900, 0, 0))];
+        let t = detect(1, &runs, &strokes, &[], &[], &mut alloc()).expect("reads");
+        assert_eq!(t.len(), 2, "{t:?}");
+        let top = t
+            .iter()
+            .find(|t| t.cells.iter().any(|c| c.text == "8.0"))
+            .expect("upper");
+        assert_eq!(cell(top, 1, 0).as_deref(), Some("2020"));
+        assert_eq!(cell(top, 1, 1).as_deref(), Some("8.0"));
+    }
+
     #[test]
     fn a_number_as_near_two_lines_is_neither_s() {
         let upper = [(100, 195), (150, 192), (200, 190), (250, 187), (300, 185)];

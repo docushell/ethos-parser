@@ -1030,6 +1030,16 @@ rounded bullet beside a paragraph had named a series as near as its legend. Char
 0.1337, 4 pages up and none down; tables, content faithfulness, semantic formatting and visual
 grounding unchanged on every page. Overall 48.47 -> 48.55.
 
+### After the line reader seats every number it can and reads each chart's own axis (decision #89, 2026-10-21)
+
+The line rule kept each point's nearest number, so a line's numbers set nearer the next line's
+points were that line's; it read no line stroked segment by segment; it took a series' categories
+from below every series at the same places, so charts stacked down a column read the bottom one's
+axis. Numbers are now seated so that as many are as can be, of the series' own kind, a line stroked
+in segments is one line, and each series reads the first row below its own points. Charts 0.1337
+-> 0.1363, 3 pages up and none down; visual grounding 0.5671 -> 0.5670, one page down where a chart
+now reads as its table, a trade the owner took. Overall 48.55 -> 48.60.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

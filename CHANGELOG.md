@@ -187,6 +187,42 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### The line reader seats every number it can, and reads each chart's own axis (decision #89)
+
+Folded into `point-labels-v1`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **Every number a chart prints is some point's**: numbers are seated so that as many are as can
+  be, each at the nearest point it can take. A chart setting each line's numbers under its points,
+  the upper line's nearer the lower line's points than its own, had the lower line take them and
+  leave its own out. Each point once kept its nearest number.
+- **A series' numbers are of one kind**: where most of the numbers reaching a series' points end in
+  a percent sign, one that does not is none of its values, and the other way round — a bar's `398`,
+  set under a line of percentages' last point, stood nearer it than the line's own `4.6%`.
+- **A line stroked segment by segment is one line**: strokes of one colour, each turned to run left
+  to right, are joined where each next starts where the last ended and runs on to its right. A
+  producer stroking each segment on its own, from its right end, drew no line this rule read.
+- **A series' categories are the first row below its own lowest point**: `-v1` looked below the
+  lowest point of every series set at the same places, and three charts stacked down a column read
+  the bottom one's axis — a table whose box covered all three.
+- **A label set across several points names none of them**: an axis's labels set so close they run
+  together — `2024E 2028P 2029P` — reached over the points beside their own and named one; such a
+  point is no longer counted against the row's eight in ten.
+- **Why this piece**: told "Fix line misreads" after a census of the chart pages whose value sits
+  in none of the page's tables, the line rule's tables were checked against ParseBench's rules, and
+  each clause above was found by a misread — in a shipped table, or in what joining a line stroked
+  in segments read next. Still open: `article_thebeatjun2025` p34 names its line from the label
+  right of the legend's mark, `Average`, where its own, `Current`, is set on the mark's left.
+- **Measured** on ParseBench: charts 0.1337 -> 0.1363, 3 pages up and none down
+  (`2024_Annual_Financial_Review_Upstream_FINAL` p9 0 -> 0.7, `pdf_d2e0103f64cd` p29 0 -> 0.5,
+  `article_thebeatjun2025` p22 0.1 -> 0.4); tables, content faithfulness and semantic formatting
+  unchanged on every page; overall 48.55 -> 48.60. opendataloader-bench unchanged on every
+  document; the fabrication check and the gate documents' 541 tables unchanged.
+- **The trade, taken by the owner**: visual grounding 0.5671 -> 0.5670, one page down — layout page
+  `fd97ccbb…` 0.91 -> 0.86, whose R&D chart, a line drawn in segments over bars, now reads as its
+  table, right against the drawing, where the layout key draws a picture: the trade decisions #42
+  and #66 took.
+
 ### A bar with rounded ends is a bar, and a legend's dot is its swatch (decision #88)
 
 Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`

@@ -1059,6 +1059,12 @@ pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 ///
 /// Decision #87, folded in as no release carries `-v1`: a lone series' title may be set over any
 /// part of the plot, as a bar chart's may.
+///
+/// Decision #89, folded in likewise: numbers are seated so that as many are as can be, each at the
+/// nearest point it can take, and only on a series whose numbers are of their kind — percentages
+/// or bare numbers; a line stroked segment by segment is one line; a label set across several
+/// points names none of them; and a series' categories are the first row below its own lowest
+/// point.
 pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
