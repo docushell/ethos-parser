@@ -179,6 +179,12 @@ struct Slots {
     of: Vec<Vec<usize>>,
 }
 
+/// A chart's rows: each a category's labels and its value in each series.
+type Rows = Vec<(Vec<usize>, Vec<Option<usize>>)>;
+
+/// The rows a chart reads, the bar length and number of each value, and the labels they hold.
+type Reading = (Rows, Vec<(i64, Value)>, Vec<usize>);
+
 /// What a chart's table holds before it is built: labels by index.
 #[derive(Debug)]
 struct Found {
@@ -800,76 +806,90 @@ fn table(
     }
 
     // Categories, and the rows they open.
-    let mut rows: Vec<(Vec<usize>, Vec<Option<usize>>)> = Vec::new();
-    let mut points: Vec<(i64, Value)> = Vec::new();
-    let mut used: Vec<usize> = taken.to_vec();
-    for (gi, g) in groups.iter().enumerate() {
-        let (lo, hi, base) = (g[0].lo, g[g.len() - 1].hi, g[0].base);
-        let category = match axis {
-            Axis::Vertical => {
-                let below: Vec<usize> = (0..labels.len())
-                    .filter(|&k| {
-                        let l = &labels[k];
-                        4 * (lo - l.cx()) <= gap
-                            && 4 * (l.cx() - hi) <= gap
-                            && l.y0 >= base - 3 * l.h / 10
-                            && l.y0 - base <= 8 * l.h
-                    })
-                    .collect();
-                below_label(labels, below, (lo - gap / 2, hi + gap / 2))
-                    .filter(|lab| 2 * (labels[lab[0]].y0 - base) <= 5 * labels[lab[0]].h)
+    let read_rows = |wraps: bool| -> Option<Reading> {
+        let mut rows: Rows = Vec::new();
+        let mut points: Vec<(i64, Value)> = Vec::new();
+        let mut used: Vec<usize> = taken.to_vec();
+        for (gi, g) in groups.iter().enumerate() {
+            let (lo, hi, base) = (g[0].lo, g[g.len() - 1].hi, g[0].base);
+            let category = match axis {
+                Axis::Vertical => {
+                    let below: Vec<usize> = (0..labels.len())
+                        .filter(|&k| {
+                            let l = &labels[k];
+                            4 * (lo - l.cx()) <= gap
+                                && 4 * (l.cx() - hi) <= gap
+                                && l.y0 >= base - 3 * l.h / 10
+                                && l.y0 - base <= 8 * l.h
+                        })
+                        .collect();
+                    below_label(labels, below, (lo - gap / 2, hi + gap / 2), wraps)
+                        .filter(|lab| 2 * (labels[lab[0]].y0 - base) <= 5 * labels[lab[0]].h)
+                }
+                // Decision #91: a panel of small multiples reads the categories of the panel to its
+                // left, each the one at its group's height.
+                Axis::Horizontal if !shared.is_empty() => {
+                    at_height(shared, labels, (lo - gap / 4, hi + gap / 4)).cloned()
+                }
+                Axis::Horizontal => {
+                    let left: Vec<usize> = (0..labels.len())
+                        .filter(|&k| {
+                            let l = &labels[k];
+                            4 * (lo - l.cy()) <= gap
+                                && 4 * (l.cy() - hi) <= gap
+                                && 10 * (l.x1 - base) <= 3 * l.h
+                                && base - l.x1 <= 15 * l.h
+                        })
+                        .collect();
+                    beside_label(labels, left)
+                }
+            };
+            let Some(category) = category else { continue };
+            let text = joined(labels, &category);
+            if (number(&text).is_some() && !is_year(&text))
+                || starts_with_value(&text)
+                || prose(&text)
+                || category.iter().any(|&k| on_ink(&labels[k], ink, chart))
+            {
+                continue;
             }
-            // Decision #91: a panel of small multiples reads the categories of the panel to its
-            // left, each the one at its group's height.
-            Axis::Horizontal if !shared.is_empty() => {
-                at_height(shared, labels, (lo - gap / 4, hi + gap / 4)).cloned()
+            let values: Vec<Option<usize>> = (0..series.len())
+                .map(|col| cells.iter().find(|c| c.0 == (gi, col)).map(|c| c.1))
+                .collect();
+            if values.iter().all(Option::is_none) {
+                continue;
             }
-            Axis::Horizontal => {
-                let left: Vec<usize> = (0..labels.len())
-                    .filter(|&k| {
-                        let l = &labels[k];
-                        4 * (lo - l.cy()) <= gap
-                            && 4 * (l.cy() - hi) <= gap
-                            && 10 * (l.x1 - base) <= 3 * l.h
-                            && base - l.x1 <= 15 * l.h
-                    })
-                    .collect();
-                beside_label(labels, left)
+            if category.iter().any(|k| used.contains(k)) {
+                return None; // one label read for two categories
             }
-        };
-        let Some(category) = category else { continue };
-        let text = joined(labels, &category);
-        if (number(&text).is_some() && !is_year(&text))
-            || starts_with_value(&text)
-            || prose(&text)
-            || category.iter().any(|&k| on_ink(&labels[k], ink, chart))
-        {
-            continue;
-        }
-        let values: Vec<Option<usize>> = (0..series.len())
-            .map(|col| cells.iter().find(|c| c.0 == (gi, col)).map(|c| c.1))
-            .collect();
-        if values.iter().all(Option::is_none) {
-            continue;
-        }
-        if category.iter().any(|k| used.contains(k)) {
-            return None; // one label read for two categories
-        }
-        used.extend(&category);
-        for c in cells.iter().filter(|c| c.0 .0 == gi) {
-            if let Some(v) = number(&labels[c.1].text) {
-                points.push((c.2, v));
+            used.extend(&category);
+            for c in cells.iter().filter(|c| c.0 .0 == gi) {
+                if let Some(v) = number(&labels[c.1].text) {
+                    points.push((c.2, v));
+                }
             }
+            rows.push((category, values));
         }
-        rows.push((category, values));
+        Some((rows, points, used))
+    };
+    let repeats = |rows: &Rows| {
+        let mut texts: Vec<String> = rows.iter().map(|(c, _)| joined(labels, c)).collect();
+        texts.sort_unstable();
+        texts.dedup();
+        texts.len() != rows.len()
+    };
+    let (mut rows, mut points, mut used) = read_rows(false)?;
+    // Decision #92: where two categories' first lines read alike, each reads the lines it wraps
+    // onto.
+    if repeats(&rows) {
+        if let Some(wrapped) = read_rows(true) {
+            (rows, points, used) = wrapped;
+        }
     }
     if rows.len() < MIN_BARS {
         return None;
     }
-    let mut texts: Vec<String> = rows.iter().map(|(c, _)| joined(labels, c)).collect();
-    texts.sort_unstable();
-    texts.dedup();
-    if texts.len() != rows.len() || !in_order(&points) {
+    if repeats(&rows) || !in_order(&points) {
         return None;
     }
     used.extend(rows.iter().flat_map(|(_, v)| v.iter().flatten()));
@@ -888,10 +908,28 @@ fn table(
             y1: a.y1.max(r.y1),
         }
     });
-    let mut headers: Vec<Option<usize>> = series
+    let mut headers: Vec<Vec<usize>> = series
         .iter()
-        .map(|&f| legend(f, chart, labels, ink, dots, (bars, near), boxes, &used))
+        .map(|&f| {
+            legend(f, chart, labels, ink, dots, (bars, near), boxes, &used)
+                .into_iter()
+                .collect()
+        })
         .collect();
+    // Decision #92: a series no legend names takes the lines set beside its bar, the first
+    // column's at its left or the last's at its right — none another series' name holds.
+    if axis == Axis::Vertical {
+        for (c, &f) in series.iter().enumerate() {
+            if headers[c].is_empty() {
+                let held: Vec<usize> = used
+                    .iter()
+                    .chain(headers.iter().flatten())
+                    .copied()
+                    .collect();
+                headers[c] = beside(f, chart, labels, ink, &held);
+            }
+        }
+    }
     // A series with no number printed in it is no column.
     let keep: Vec<usize> = (0..series.len())
         .filter(|&c| rows.iter().any(|(_, v)| v[c].is_some()))
@@ -901,20 +939,17 @@ fn table(
     // numbers takes the title, whatever else is drawn beside it — a progress bar's track, a colour
     // that prints none.
     if let [only] = keep[..] {
-        if headers[only].is_none() && !chart.by_category {
+        if headers[only].is_empty() && !chart.by_category {
             let top = rows
                 .iter()
                 .flat_map(|(_, v)| v.iter().flatten())
                 .map(|&k| labels[k].y0)
                 .fold(bars.y0, i64::min);
-            headers[only] = title(labels, QuantRect { y0: top, ..bars }, &used);
+            headers[only].extend(title(labels, QuantRect { y0: top, ..bars }, &used));
         }
     }
     Some(Found {
-        headers: keep
-            .iter()
-            .map(|&c| headers[c].into_iter().collect())
-            .collect(),
+        headers: keep.iter().map(|&c| headers[c].clone()).collect(),
         rows: rows
             .into_iter()
             .map(|(c, v)| (c, keep.iter().map(|&k| v[k]).collect()))
@@ -1104,7 +1139,15 @@ fn panel_title(labels: &[Label], rects: &[QuantRect], i: usize, held: &[usize]) 
 /// The label under a vertical chart's column: its nearest line, holding one label, and the lines
 /// below it the label wraps onto — under a line apart, inside the column's slot, and only where the
 /// first line fills most of the slot or a line ends in a hyphen.
-fn below_label(labels: &[Label], mut cand: Vec<usize>, slot: (i64, i64)) -> Option<Vec<usize>> {
+///
+/// `wraps` reads every line the label wraps onto (decision #92): where two categories' first lines
+/// read alike, each is a name wrapped onto the lines under it.
+fn below_label(
+    labels: &[Label],
+    mut cand: Vec<usize>,
+    slot: (i64, i64),
+    wraps: bool,
+) -> Option<Vec<usize>> {
     cand.sort_by_key(|&k| (labels[k].y0, labels[k].x0));
     let mut lines: Vec<Vec<usize>> = Vec::new();
     for k in cand {
@@ -1123,7 +1166,8 @@ fn below_label(labels: &[Label], mut cand: Vec<usize>, slot: (i64, i64)) -> Opti
         };
         if let Some(&first) = out.first() {
             let (l, prev) = (&labels[k], &labels[*out.last().expect("a line")]);
-            let wrapped = out.iter().any(|&o| labels[o].text.ends_with(['-', '–']))
+            let wrapped = wraps
+                || out.iter().any(|&o| labels[o].text.ends_with(['-', '–']))
                 || 10 * (labels[first].x1 - labels[first].x0) >= 6 * (slot.1 - slot.0);
             if 5 * (l.y0 - prev.y1) > 4 * l.h || !wrapped || l.x0 < slot.0 || l.x1 > slot.1 {
                 break;
@@ -1132,6 +1176,50 @@ fn below_label(labels: &[Label], mut cand: Vec<usize>, slot: (i64, i64)) -> Opti
         out.push(k);
     }
     (!out.is_empty()).then_some(out)
+}
+
+/// A series' name set beside its bar (decision #92): the lines just left of its bar in the chart's
+/// first column, or else just right of it in the last — each level with the bar, within a column's
+/// width of it, none a number but a year nor as long as a line of prose, and stacked each a line
+/// under the one before.
+fn beside(fill: Fill, chart: &Chart, labels: &[Label], ink: &[Bar], used: &[usize]) -> Vec<usize> {
+    let columns: Vec<&Column> = chart.groups.iter().flatten().collect();
+    for (column, left) in [(columns.first(), true), (columns.last(), false)] {
+        let Some(column) = column else { continue };
+        let Some(r) = column
+            .segs
+            .iter()
+            .map(|&s| ink[s])
+            .find(|b| b.fill.same(fill))
+            .map(|b| b.rect)
+        else {
+            continue;
+        };
+        let width = column.thickness();
+        let mut lines: Vec<usize> = (0..labels.len())
+            .filter(|&k| {
+                let l = &labels[k];
+                !used.contains(&k)
+                    && (r.y0..=r.y1).contains(&l.cy())
+                    && (number(&l.text).is_none() || is_year(&l.text))
+                    && l.text.chars().count() < crate::tracks::PROSE_LINE_CHARS
+                    && if left {
+                        l.x1 <= r.x0 && r.x0 - l.x1 <= width
+                    } else {
+                        l.x0 >= r.x1 && l.x0 - r.x1 <= width
+                    }
+            })
+            .collect();
+        lines.sort_by_key(|&k| (labels[k].y0, k));
+        if !lines.is_empty()
+            && lines
+                .windows(2)
+                .all(|w| 5 * (labels[w[1]].y0 - labels[w[0]].y1) <= 4 * labels[w[1]].h)
+        {
+            return lines;
+        }
+    }
+    Vec::new()
 }
 
 /// The label beside a horizontal chart's bar: the labels whose right edge lies nearest the base,
@@ -1383,6 +1471,9 @@ pub(crate) struct Value {
     mantissa: i128,
     /// How many of them are decimals.
     scale: u32,
+    /// The power of ten its unit stands for (decision #92): three for `k`, six for `m`, nine for
+    /// `bn` or `b`, nought for any other.
+    unit: u32,
 }
 
 impl Value {
@@ -1403,11 +1494,16 @@ impl PartialOrd for Value {
 }
 
 impl Ord for Value {
+    /// By size, its unit's included: `4.0bn` is larger than `600m`.
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let scale = self.scale.max(other.scale);
-        let a = self.mantissa * 10i128.pow(scale - self.scale);
-        let b = other.mantissa * 10i128.pow(scale - other.scale);
-        a.cmp(&b)
+        let unit = self.unit.min(other.unit);
+        let size = |v: &Value| {
+            v.mantissa
+                .saturating_mul(10i128.pow(scale - v.scale))
+                .saturating_mul(10i128.pow(v.unit - unit))
+        };
+        size(self).cmp(&size(other))
     }
 }
 
@@ -1458,9 +1554,8 @@ pub(crate) fn number(text: &str) -> Option<Value> {
     let rest: String = s[i..].iter().collect::<String>().to_lowercase();
     let unit = ["%", "x", "k", "m", "bn", "b", "pp"]
         .into_iter()
-        .find(|u| rest.starts_with(u))
-        .map_or(0, |u| u.chars().count());
-    i += unit;
+        .find(|u| rest.starts_with(u));
+    i += unit.map_or(0, |u| u.chars().count());
     let closed = s.get(i) == Some(&')');
     if closed {
         i += 1;
@@ -1473,6 +1568,12 @@ pub(crate) fn number(text: &str) -> Option<Value> {
     Some(Value {
         mantissa: if negative { -mantissa } else { mantissa },
         scale: decimals.len() as u32,
+        unit: match unit {
+            Some("k") => 3,
+            Some("m") => 6,
+            Some("bn" | "b") => 9,
+            _ => 0,
+        },
     })
 }
 
@@ -1509,6 +1610,7 @@ fn in_order(points: &[(i64, Value)]) -> bool {
     let zero = Value {
         mantissa: 0,
         scale: 0,
+        unit: 0,
     };
     let pts: Vec<&(i64, Value)> = points.iter().filter(|(l, v)| *l > 0 && *v > zero).collect();
     if pts.len() < 2 {
@@ -1971,6 +2073,147 @@ mod tests {
                 .all(|&i| seen.insert(i)),
             "{t:?}"
         );
+    }
+
+    /// Decision #92: three stacks at x = 100, 160 and 220, a billion forty points high, each a
+    /// retention in millions under a capacity in billions, each number on its segment; each
+    /// category two lines under its stack, the first lines repeating; `left` and `right` the names
+    /// set beside the first stack's segments and the last's.
+    fn stacks(
+        left: [(i64, &'static str); 2],
+        right: [(i64, &'static str); 2],
+    ) -> (Vec<TrackRun<'static>>, Vec<Bar>) {
+        let (a, b) = (rgb(0, 100, 400), rgb(500, 700, 900));
+        let mut runs = Vec::new();
+        let mut bars = Vec::new();
+        for (k, ((low, high), (top, under))) in [
+            (("600m", "2.0bn"), ("North ", "Coast")),
+            (("450m", "1.5bn"), ("North ", "Hills")),
+            (("400m", "1.0bn"), ("South ", "Coast")),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let x = 100 + 60 * k as i64;
+            let (lo, hi) = ([24, 18, 16][k], [80, 60, 40][k]);
+            bars.push(bar(x, 300 - lo, x + 30, 300, a));
+            bars.push(bar(x, 300 - lo - hi, x + 30, 300 - lo, b));
+            runs.push(run(x + 5, 300 - lo / 2 + 4, 20, low));
+            runs.push(run(x + 5, 300 - lo - hi / 2 + 4, 20, high));
+            runs.push(run(x + 2, 312, 26, top));
+            runs.push(run(x + 2, 322, 26, under));
+        }
+        for (x, (y, name)) in [
+            (50, left[0]),
+            (50, left[1]),
+            (260, right[0]),
+            (260, right[1]),
+        ] {
+            if !name.is_empty() {
+                runs.push(run(x, y, 40, name));
+            }
+        }
+        (runs, bars)
+    }
+
+    /// **A stacked chart names its series beside it, in its units, its categories whole**
+    /// (decision #92): the label set level with a series' segment, left of the first stack within
+    /// a column's width, names it; `2.0bn` is larger than `600m`; and categories whose first lines
+    /// repeat read the lines they wrap onto.
+    #[test]
+    fn a_stack_names_its_series_beside_it_in_its_units() {
+        let (runs, bars) = stacks([(292, "Retention"), (240, "Capacity")], [(0, ""), (0, "")]);
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec![
+                "|Retention|Capacity",
+                "North Coast|600m|2.0bn",
+                "North Hills|450m|1.5bn",
+                "South Coast|400m|1.0bn"
+            ]
+        );
+        // Set right of the last stack, level with its segments, they name them too.
+        let (runs, bars) = stacks([(0, ""), (0, "")], [(296, "Retention"), (264, "Capacity")]);
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|Capacity");
+    }
+
+    /// **A name beside a bar is set beside it**: level with its segment, within a column's width,
+    /// and no line as long as prose's — else the series is unnamed.
+    #[test]
+    fn only_a_name_set_beside_its_bar_names_it() {
+        for left in [
+            [(292, "Retention"), (180, "Capacity")],
+            [(292, "Retention"), (240, "")],
+        ] {
+            let (runs, bars) = stacks(left, [(0, ""), (0, "")]);
+            assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|");
+        }
+        // Further than a column's width from the stack.
+        let (mut runs, bars) = stacks([(292, "Retention"), (0, "")], [(0, ""), (0, "")]);
+        runs.push(run(10, 240, 40, "Capacity"));
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|");
+        // A line of prose's length.
+        let (runs, bars) = stacks(
+            [
+                (292, "Retention"),
+                (240, "Capacity drawn above the retention"),
+            ],
+            [(0, ""), (0, "")],
+        );
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|");
+        // Further than a column's width right of the last stack.
+        let (mut runs, bars) = stacks([(292, "Retention"), (0, "")], [(0, ""), (0, "")]);
+        runs.push(run(290, 264, 40, "Capacity"));
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|");
+        // A number set beside a stack, an axis's.
+        let (runs, bars) = stacks([(292, "Retention"), (240, "2.5bn")], [(0, ""), (0, "")]);
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|");
+        // Two lines level with one segment, not one under the next.
+        let (mut runs, bars) = stacks([(292, "Retention"), (210, "Capacity")], [(0, ""), (0, "")]);
+        runs.push(run(50, 262, 40, "Note"));
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|Retention|");
+        // A legend's name, level with the other series' segment, names that series alone.
+        let (mut runs, mut bars) = stacks([(0, ""), (0, "")], [(0, ""), (0, "")]);
+        bars.push(bar(42, 286, 48, 292, rgb(500, 700, 900)));
+        runs.push(run(52, 292, 40, "Capacity"));
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "||Capacity");
+        // A horizontal stack names none so.
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let mut bars = Vec::new();
+        let mut runs = Vec::new();
+        for (k, cat) in ["Men", "Women"].into_iter().enumerate() {
+            let y = 100 + 30 * k as i64;
+            let split = 220 + 60 * k as i64;
+            bars.push(bar(100, y, split, y + 20, a));
+            bars.push(bar(split, y, 400, y + 20, b));
+            runs.push(run(140, y + 14, 16, ["40", "60"][k]));
+            runs.push(run(300, y + 14, 16, ["60", "40"][k]));
+            runs.push(run(50, y + 14, 40, cat));
+        }
+        runs.push(run(410, 144, 30, "Total"));
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "||");
+    }
+
+    /// **Wrapped lines are read only where the first lines repeat**: categories whose first lines
+    /// differ keep their one line, as before.
+    #[test]
+    fn categories_read_their_wrapped_lines_only_where_first_lines_repeat() {
+        let (runs, bars) = stacks([(292, "Retention"), (240, "Capacity")], [(0, ""), (0, "")]);
+        let runs: Vec<TrackRun<'static>> = runs
+            .into_iter()
+            .enumerate()
+            .map(|(i, mut r)| {
+                // The second category's first line made "West ".
+                if i == 6 {
+                    r.text = "West ";
+                }
+                r
+            })
+            .collect();
+        let t = found(&runs, &bars);
+        assert_eq!(grid(&t[0])[1], "North |600m|2.0bn");
     }
 
     #[test]
@@ -2543,6 +2786,12 @@ mod tests {
         // Decision #90: billions as a pie's slices print them.
         assert_eq!(v("$1,581B"), Some((1581, 0)));
         assert_eq!(v("($60B)"), Some((-60, 0)));
+        // Decision #92: compared by their unit's size.
+        let n = |t: &str| number(t).expect("a number");
+        assert!(n("4.0bn") > n("600m") && n("1,200k") > n("1m") && n("2b") > n("1,999m"));
+        assert!(n("999k") < n("1m") && n("999m") < n("1bn"));
+        assert_eq!(n("1.5bn").cmp(&n("1,500m")), std::cmp::Ordering::Equal);
+        assert!(n("12%") < n("13%") && n("5x") < n("6x"));
         assert_eq!(v("-3"), Some((-3, 0)));
         for no in [
             "0.36670.3264",

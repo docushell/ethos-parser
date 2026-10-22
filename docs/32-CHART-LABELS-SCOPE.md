@@ -51,14 +51,19 @@ it overlaps none already found.
    it (horizontal), with the lines a long label wraps onto (only where the first line fills most of
    its slot, or a line ends in a hyphen). Never a number but a year, never a label that opens with a
    value — a range of two values, `$1.00bn–$5.00bn`, is a category (decision #87) — never a line of
-   prose (opening lower-case and thirty characters or more), never one set on a bar.
+   prose (opening lower-case and thirty characters or more), never one set on a bar. Where two
+   categories' first lines read alike, each reads every line it wraps onto (decision #92).
 8. **A series' name** is the one label beside a small swatch of its colour — a rectangle, or a dot,
    never a rounded bar (decision #88) — near the chart and nearer it than any other chart or bars
    of that colour, not running into the next legend entry, with its wrapped lines; a legend above
    the chart only where nothing but the chart's own labels stands between. A chart of one colour
    without one takes the one-line title just above it, where that line is the only label over the
    chart — over any part of it, not only its centre (decision #87) — and holds no number but a
-   year.
+   year. A series no legend names takes the lines set beside its bar — left of the first column,
+   or else right of the last — level with it, within a column's width, none a number but a year
+   nor as long as a line of prose, each a line under the one before, and none another series'
+   name holds (decision #92). Vertical charts only: beside a horizontal chart's bars stand its
+   categories and values.
 9. **Small multiples** (decision #91, §11). Horizontal charts set side by side — each the nearest
    chart right of the last and level with it — that read no categories of their own, while eight
    in ten of their groups stand each at one of the first's categories' heights, give or take a
@@ -73,7 +78,8 @@ it overlaps none already found.
 ## 3. What makes it a table and not a coincidence
 
 1. **The numbers agree with the bars in order**: a bar a tenth longer never carries a smaller number,
-   and one a third longer carries a larger one. A linear fit was measured first and refused: charts
+   and one a third longer carries a larger one — a number's unit counted in its size, `4.0bn` over
+   `600m` (decision #92). A linear fit was measured first and refused: charts
    are rarely drawn exactly to scale, and it rejected true charts whose labels are rounded.
 2. **Labels are systematic**: a series keeps its numbers only where six bars in ten of it carry one.
    An overlaid line's labels, printed over two bars of seven, are not those bars' values — the
@@ -381,3 +387,32 @@ tables unchanged; every cell its runs' text.
 draws a bar its number disagrees with — the survey's p22 draws a bar of about 21 under the number
 `12`, and p8 one of about 17 under `7` — end where that panel is, as the numbers' order asks.
 Panels a whitespace table reads first (the survey's p7).
+
+## 12. Names beside a bar, units, wrapped categories (2026-10-22, decision #92)
+
+**Why.** Offered after #91 with a census of the stacked charts still failing — 40 rules on six
+pages — the owner chose "Names, units, wraps": `67c07d7f417ce` p43 needed all three clauses, each
+general. Its series are named by `Capacity` and `Retention` set left of the first stack; its
+capacity `4.0bn` stood over a retention `600m`, which the order check read as 4.0 against 600; and
+its categories, two lines each — `Europe` / `Flood`, `Europe` / `Earthquake` — read alike on their
+first lines and were refused as repeats. The same names beside a bar name `Activate_Consulting…`
+p60's and p25's series and `Visa-Fiscal-2025-Annual-Report` p10's. Not taken: `aviva-plc…` p143
+prints each segment's share of its own stack, against which no order across stacks holds; the
+survey's p15 and p20 draw bars against their numbers; `SIA_State-of-Industry-Report` p11 draws one
+stack; `P505350…` p49 sets its categories in two tiers. Folded into `bar-labels-v3`,
+`point-labels-v1` and `slice-labels-v1`, which no release carries, so no rule id and no
+`profile_sha256` moves.
+
+**The rule** is §2 items 7 and 8 and §3 item 1. A name beside a bar is no line of prose: the first
+build read a sentence of the page's next column, set level with a chart's last bar, as its series'.
+
+**Measured**, with the shipped build on every ParseBench page and opendataloader-bench's 200,
+against decision #91's: ParseBench charts **0.1554 → 0.1590**, four pages up and none down
+(`67c07d7f417ce` p43 0 → 0.9, `Activate_Consulting_Technology_&_Media_Outlook_2026_(10)` p60 0 →
+0.8 and p25 0.5 → 0.6, `Visa-Fiscal-2025-Annual-Report` p10 0.2 → 0.4); tables, content
+faithfulness, semantic formatting and visual grounding unchanged on every page; overall 48.98 →
+49.05. Line and pie tables unchanged; opendataloader-bench unchanged on every document; the gate
+documents' 541 tables unchanged; every cell its runs' text.
+
+**Still not read.** `67c07d7f417ce` p43's `EU Windstorm` capacity: the page draws a second number,
+`3.9bn`, on that segment beneath the bar's paint, and a segment two numbers stand on takes neither.

@@ -187,6 +187,31 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Names beside a bar, units, wrapped categories (decision #92)
+
+Folded into `bar-labels-v3`, `point-labels-v1` and `slice-labels-v1`, which no release carries
+yet, so no rule id and no `profile_sha256` moves.
+
+- **A series is named beside its bar**: one no legend names takes the lines set beside its bar —
+  left of a vertical chart's first column, or else right of its last — level with it, within a
+  column's width, no number but a year, none as long as a line of prose, each a line under the one
+  before, and none another series' name holds.
+- **Numbers compare by their unit's size**: `4.0bn` is larger than `600m`, `999k` smaller than
+  `1m`. The order a chart's numbers must keep with its bars, a line's with its points and a pie's
+  with its slices compared their digits alone.
+- **Categories whose first lines repeat read the lines they wrap onto**: `Europe` / `Flood` and
+  `Europe` / `Earthquake` were refused as two `Europe`s.
+- **Why this piece**: offered after #91 with a census of the stacked charts still failing — 40
+  rules on six pages — the owner chose "Names, units, wraps": `67c07d7f417ce` p43 needed all three,
+  and the names also name three more pages' series. Not taken: a stack labelled in shares of its
+  own height, bars drawn against their numbers, one stack alone, categories in two tiers.
+- **Measured** on ParseBench: charts 0.1554 -> 0.1590, 4 pages up and none down (`67c07d7f417ce`
+  p43 0 -> 0.9, `Activate_Consulting_Technology_&_Media_Outlook_2026_(10)` p60 0 -> 0.8 and p25
+  0.5 -> 0.6, `Visa-Fiscal-2025-Annual-Report` p10 0.2 -> 0.4); tables, content faithfulness,
+  semantic formatting and visual grounding unchanged on every page; overall 48.98 -> 49.05. Line
+  and pie tables unchanged; opendataloader-bench unchanged on every document; the fabrication
+  check and the gate documents' 541 tables unchanged.
+
 ### Small multiples read as one table (decision #91)
 
 Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`

@@ -1049,6 +1049,10 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// their own, their groups at the heights of the first's rows, are panels of one table — a row per
 /// category, each panel's columns under its title, the legend's names under the first panel's
 /// alone.
+///
+/// Decision #92, folded in likewise: a series no legend names takes the lines set beside its bar,
+/// the first column's at its left or the last's at its right; numbers compare by their unit's
+/// size; and categories whose first lines repeat read the lines they wrap onto.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**
@@ -1076,6 +1080,8 @@ pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 /// Decision #90, folded in likewise: a number may end in `b`, for billions; and a legend set in
 /// rows names each row's swatch by the label nearest its height, a line led by another entry's
 /// swatch being that entry's.
+///
+/// Decision #92, folded in likewise: numbers compare by their unit's size.
 pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 
 /// The rule that reads **the numbers a pie prints at its slices back as its table** (decision #90,
@@ -1092,6 +1098,8 @@ pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 /// number, and a column per pie, named by the label in its hole or the line just over it. A value
 /// is never read off a slice's size. Runs after [`TABLE_DETECTION_LINES_V1`], on runs no other
 /// rule's table holds, only on a document that declares no author structure.
+///
+/// Decision #92, folded in as no release carries `-v1`: numbers compare by their unit's size.
 pub const TABLE_DETECTION_PIES_V1: &str = "slice-labels-v1";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.

@@ -1058,6 +1058,14 @@ each panel's title over its columns, the legend's names under the first panel's 
 sits in one cell. Charts 0.1485 -> 0.1554, 7 pages up and none down; tables, content faithfulness,
 semantic formatting and visual grounding unchanged on every page. Overall 48.84 -> 48.98.
 
+### After names beside a bar, units and wrapped categories (decision #92, 2026-10-22)
+
+A stacked chart that names its series beside its first or last stack, rather than in a legend,
+left them unnamed; `4.0bn` set over `600m` read as smaller; and categories of two lines, alike on
+their first, were refused as repeats. Each is now read. Charts 0.1554 -> 0.1590, 4 pages up and
+none down; tables, content faithfulness, semantic formatting and visual grounding unchanged on
+every page. Overall 48.98 -> 49.05.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English
