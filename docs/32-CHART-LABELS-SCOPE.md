@@ -59,6 +59,16 @@ it overlaps none already found.
    without one takes the one-line title just above it, where that line is the only label over the
    chart — over any part of it, not only its centre (decision #87) — and holds no number but a
    year.
+9. **Small multiples** (decision #91, §11). Horizontal charts set side by side — each the nearest
+   chart right of the last and level with it — that read no categories of their own, while eight
+   in ten of their groups stand each at one of the first's categories' heights, give or take a
+   quarter of the gap between groups, are panels of one chart, read left to right while each reads.
+   Each panel is named by the lines just over its bars, over it and no other panel, none a number
+   but a year; a panel without a title is no panel. One table: a row per category, a column per
+   panel and series, each panel's title over its columns, a cell spanning them, and the series'
+   names under the first panel's alone — a printed label sits in one cell, so a legend set once
+   names one panel. Panels of one series each are named by their titles, one header row and no
+   span. A title set between a legend and its panel no longer hides the legend.
 
 ## 3. What makes it a table and not a coincidence
 
@@ -343,3 +353,31 @@ cell its runs' text.
 
 **Still not read.** A pie whose slices are drawn as polygons, or as ring segments with no centre; a
 slice whose number shares a line with its name; a pie with a slice that prints no number.
+
+## 11. Small multiples (2026-10-22, decision #91)
+
+**Why.** Offered after #90 with a census of the chart rules still failing on its build, the owner
+chose "Census: small multiples": one survey, `US_Professional_Services_Partner_Compensation_Survey_2024`,
+fails 50 rules on 15 pages, 28 of them on panels set side by side that share one category column
+and one legend, at most +0.36 overall. Only the first panel read, and its series went unnamed: the
+panel's title stands between it and the legend. Shown that a printed label sits in one cell — so
+a legend set once can name one panel's series, and only the first panel and panels of one series
+can be named whole, about +0.12 — the owner chose "Small multiples". Folded into `bar-labels-v3`,
+which no release carries, so no rule id and no `profile_sha256` moves.
+
+**The rule** is §2 item 9. Panels of two series or more make a table with merged cells — each
+title over its panel's columns — so the Markdown projection declares the merges it cannot carry,
+and the HTML projection carries them.
+
+**Measured**, with the shipped build on every ParseBench page and opendataloader-bench's 200,
+against decision #90's: ParseBench charts **0.1485 → 0.1554**, seven pages up and none down
+(the survey's p26 0 → 1.0, p24 0 → 0.8, p25 0 → 0.6, p27 0.25 → 0.75, p22 and p9 0 → 0.4;
+`(Web_version)_E-Government_Survey_2024` p79 0.25 → 0.5, five regions' panels of one series);
+tables, content faithfulness, semantic formatting and visual grounding unchanged on every page;
+overall 48.84 → 48.98. opendataloader-bench unchanged on every document; the gate documents' 541
+tables unchanged; every cell its runs' text.
+
+**Still not read.** The series of every panel but the first, by the rule above. Panels whose page
+draws a bar its number disagrees with — the survey's p22 draws a bar of about 21 under the number
+`12`, and p8 one of about 17 under `7` — end where that panel is, as the numbers' order asks.
+Panels a whitespace table reads first (the survey's p7).

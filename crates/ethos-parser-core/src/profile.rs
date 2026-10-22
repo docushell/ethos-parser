@@ -1044,6 +1044,11 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// legend's dot names its series as a square swatch does; a rounded bar is never a swatch.
 ///
 /// Decision #90, folded in likewise: a number may end in `b`, for billions.
+///
+/// Decision #91, folded in likewise: horizontal charts side by side that read no categories of
+/// their own, their groups at the heights of the first's rows, are panels of one table — a row per
+/// category, each panel's columns under its title, the legend's names under the first panel's
+/// alone.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**

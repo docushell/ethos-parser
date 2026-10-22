@@ -938,6 +938,67 @@ fn a_pie_printing_its_numbers_reads_as_its_table() {
     assert_eq!(grid, vec!["|Share", "Alpha|50%", "Beta|30%", "Gamma|20%"]);
 }
 
+/// **Small multiples read as one table** (decision #91), through the whole extraction: two panels
+/// of horizontal bars side by side share the category column at the left and the legend over it,
+/// each panel titled; the titles span their panels' columns, and the legend names the first's.
+#[test]
+fn small_multiples_read_as_one_table() {
+    let text = |x: f64, y: f64, s: &str| format!("BT /F1 10 Tf {x} {y} Td ({s}) Tj ET ");
+    let mut stream = String::from("0 0 1 rg 10 240 6 6 re f 0 0.9 0.9 rg 50 240 6 6 re f ");
+    stream += &text(18.0, 241.0, "2024");
+    stream += &text(58.0, 241.0, "2022");
+    for (x, title, values) in [
+        (60.0, "North", [(10.0, 16.0), (20.0, 14.0)]),
+        (130.0, "South", [(15.0, 20.0), (25.0, 19.0)]),
+    ] {
+        stream += &text(x, 226.0, title);
+        for (r, (u, v)) in values.into_iter().enumerate() {
+            let top = 220.0 - 30.0 * r as f64;
+            stream += &format!(
+                "0 0 1 rg {x} {} {} 8 re f 0 0.9 0.9 rg {x} {} {} 8 re f ",
+                top - 8.0,
+                2.0 * u,
+                top - 17.0,
+                2.0 * v
+            );
+            stream += &text(x + 2.0 * u + 2.0, top - 7.0, &format!("{u}"));
+            stream += &text(x + 2.0 * v + 2.0, top - 16.0, &format!("{v}"));
+        }
+    }
+    stream += &text(10.0, 208.5, "A");
+    stream += &text(10.0, 178.5, "B");
+    let a = helvetica_page(0, stream.as_bytes());
+    let tables: Vec<_> = a.pages[0]
+        .tables
+        .iter()
+        .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_CHARTS_V3)
+        .collect();
+    assert_eq!(tables.len(), 1, "{:?}", a.pages[0].tables);
+    let t = tables[0];
+    let grid: Vec<String> = (0..t.rows)
+        .map(|r| {
+            (0..t.columns)
+                .map(|c| {
+                    t.cells
+                        .iter()
+                        .find(|x| x.position.row == r && x.position.column == c)
+                        .map_or("", |x| x.text.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect();
+    assert_eq!(
+        grid,
+        vec![
+            "|North||South|",
+            "|2024|2022||",
+            "A|10|16|15|20",
+            "B|20|14|25|19"
+        ]
+    );
+}
+
 /// **Text a producer turns upright on a turned page advances along its line** (decision #61,
 /// `docs/22-WORD-BOXES-SCOPE.md` §9 item 2's open half). A `/Rotate 90` page whose text matrix
 /// turns its text a quarter back draws it upright. Measured along the text matrix's x alone, each

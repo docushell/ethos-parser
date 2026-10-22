@@ -247,6 +247,7 @@ pub(crate) fn detect(
             page,
             &headers,
             &rows,
+            &[],
             &labels,
             runs,
             alloc,

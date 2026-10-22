@@ -182,8 +182,11 @@ struct Slots {
 /// What a chart's table holds before it is built: labels by index.
 #[derive(Debug)]
 struct Found {
-    headers: Vec<Option<usize>>,
+    headers: Vec<Vec<usize>>,
     rows: Vec<(Vec<usize>, Vec<Option<usize>>)>,
+    /// Small multiples' panels (decision #91), left to right: each one's title and how many of the
+    /// columns are its. Empty for a chart of one panel.
+    panels: Vec<(Vec<usize>, usize)>,
 }
 
 /// Every table `bar-labels-v2` finds on one page, top to bottom.
@@ -216,10 +219,12 @@ pub(crate) fn detect(
             fills(c, &ink).into_iter().map(move |f| (b, f))
         })
         .collect();
-    let mut found: Vec<Found> = charts
+    let mut read: Vec<Option<Found>> = charts
         .iter()
-        .filter_map(|c| table(c, &labels, &ink, dots, &boxes))
+        .map(|c| table(c, &labels, &ink, dots, &boxes, &[], &[]))
         .collect();
+    small_multiples(&charts, &mut read, &labels, &ink, dots, &boxes);
+    let mut found: Vec<Found> = read.into_iter().flatten().collect();
     // No run is in two tables: where two read the same labels, the one with more cells stands.
     found.sort_by_key(|f| std::cmp::Reverse(cells_of(f).len()));
     let mut taken: Vec<usize> = Vec::new();
@@ -255,6 +260,7 @@ pub(crate) fn chart_bars(bars: &[Bar], page_area: i128) -> Vec<QuantRect> {
 /// The labels a table reads: headers, categories, values.
 fn cells_of(f: &Found) -> Vec<usize> {
     let mut out: Vec<usize> = f.headers.iter().flatten().copied().collect();
+    out.extend(f.panels.iter().flat_map(|p| p.0.iter().copied()));
     for (category, values) in &f.rows {
         out.extend(category);
         out.extend(values.iter().flatten());
@@ -686,26 +692,22 @@ fn bars_box(chart: &Chart, ink: &[Bar]) -> QuantRect {
 }
 
 /// The table a chart prints, or `None` where it does not print one.
+///
+/// `shared` are the categories of the panel to its left, where this chart is a panel of small
+/// multiples (decision #91), and `taken` the labels other cells hold — the panels' titles.
 fn table(
     chart: &Chart,
     labels: &[Label],
     ink: &[Bar],
     dots: &[Bar],
     boxes: &[(QuantRect, Fill)],
+    shared: &[Vec<usize>],
+    taken: &[usize],
 ) -> Option<Found> {
     let axis = chart.axis;
     let groups = &chart.groups;
     let series = series(chart, ink);
-    let gaps: Vec<i64> = groups
-        .windows(2)
-        .map(|w| w[1][0].lo - w[0][w[0].len() - 1].hi)
-        .collect();
-    let mut sorted = gaps.clone();
-    sorted.sort_unstable();
-    let gap = sorted
-        .get(sorted.len() / 2)
-        .copied()
-        .unwrap_or_else(|| groups[0][0].thickness());
+    let gap = gap(chart);
 
     // Values: the one number on each segment, or just beyond a single bar's end.
     let mut cells: Vec<((usize, usize), usize, i64)> = Vec::new();
@@ -800,7 +802,7 @@ fn table(
     // Categories, and the rows they open.
     let mut rows: Vec<(Vec<usize>, Vec<Option<usize>>)> = Vec::new();
     let mut points: Vec<(i64, Value)> = Vec::new();
-    let mut used: Vec<usize> = Vec::new();
+    let mut used: Vec<usize> = taken.to_vec();
     for (gi, g) in groups.iter().enumerate() {
         let (lo, hi, base) = (g[0].lo, g[g.len() - 1].hi, g[0].base);
         let category = match axis {
@@ -816,6 +818,11 @@ fn table(
                     .collect();
                 below_label(labels, below, (lo - gap / 2, hi + gap / 2))
                     .filter(|lab| 2 * (labels[lab[0]].y0 - base) <= 5 * labels[lab[0]].h)
+            }
+            // Decision #91: a panel of small multiples reads the categories of the panel to its
+            // left, each the one at its group's height.
+            Axis::Horizontal if !shared.is_empty() => {
+                at_height(shared, labels, (lo - gap / 4, hi + gap / 4)).cloned()
             }
             Axis::Horizontal => {
                 let left: Vec<usize> = (0..labels.len())
@@ -904,12 +911,194 @@ fn table(
         }
     }
     Some(Found {
-        headers: keep.iter().map(|&c| headers[c]).collect(),
+        headers: keep
+            .iter()
+            .map(|&c| headers[c].into_iter().collect())
+            .collect(),
         rows: rows
             .into_iter()
             .map(|(c, v)| (c, keep.iter().map(|&k| v[k]).collect()))
             .collect(),
+        panels: Vec::new(),
     })
+}
+
+/// Small multiples (decision #91): horizontal charts set side by side, each right of the last,
+/// that read no categories of their own while their groups stand at the heights of the first's
+/// rows, are panels of one chart — one table, a row per category, each panel's columns under its
+/// title, the panels read left to right while each reads. Each printed label sits in one cell, so
+/// a legend names the first panel's series only.
+fn small_multiples(
+    charts: &[Chart],
+    read: &mut [Option<Found>],
+    labels: &[Label],
+    ink: &[Bar],
+    dots: &[Bar],
+    boxes: &[(QuantRect, Fill)],
+) {
+    for q in 0..charts.len() {
+        let Some(first) = &read[q] else { continue };
+        if charts[q].axis != Axis::Horizontal {
+            continue;
+        }
+        let categories: Vec<Vec<usize>> = first.rows.iter().map(|r| r.0.clone()).collect();
+        let mut panels = vec![q];
+        loop {
+            let last = bars_box(&charts[*panels.last().expect("a panel")], ink);
+            // The nearest chart to its right, level with it: a panel where it read nothing of its
+            // own and its groups stand at the categories' heights.
+            let next = (0..charts.len())
+                .filter(|&p| {
+                    let b = bars_box(&charts[p], ink);
+                    charts[p].axis == Axis::Horizontal
+                        && b.x0 > last.x1
+                        && b.y0 < last.y1
+                        && last.y0 < b.y1
+                })
+                .min_by_key(|&p| (bars_box(&charts[p], ink).x0, p));
+            match next {
+                Some(p) if read[p].is_none() && aligned(&charts[p], &categories, labels) => {
+                    panels.push(p);
+                }
+                _ => break,
+            }
+        }
+        if panels.len() < MIN_BARS {
+            continue;
+        }
+        let rects: Vec<QuantRect> = panels.iter().map(|&p| bars_box(&charts[p], ink)).collect();
+        // Its categories and numbers are no title; its header may be, read again below.
+        let held: Vec<usize> = first
+            .rows
+            .iter()
+            .flat_map(|(c, v)| c.iter().copied().chain(v.iter().flatten().copied()))
+            .collect();
+        let titles: Vec<Vec<usize>> = (0..panels.len())
+            .map(|i| panel_title(labels, &rects, i, &held))
+            .collect();
+        if titles.iter().any(Vec::is_empty) {
+            continue;
+        }
+        let taken: Vec<usize> = titles.iter().flatten().copied().collect();
+        // Read again, the titles taken: a title set between a legend and its panel hid it.
+        let Some(first) = table(&charts[q], labels, ink, dots, boxes, &[], &taken) else {
+            continue;
+        };
+        let mut merged = Found {
+            panels: vec![(titles[0].clone(), first.headers.len())],
+            headers: first.headers,
+            rows: first.rows,
+        };
+        // Panels read left to right, while each reads.
+        for (i, &p) in panels.iter().enumerate().skip(1) {
+            let Some(f) = table(&charts[p], labels, ink, dots, boxes, &categories, &taken) else {
+                break;
+            };
+            // A label naming an earlier panel's series names no other: a printed label sits in one
+            // cell, and the shared categories bring the legend as near every panel.
+            let named: Vec<usize> = merged.headers.iter().flatten().copied().collect();
+            merged.headers.extend(f.headers.iter().map(|h| {
+                if h.iter().any(|k| named.contains(k)) {
+                    Vec::new()
+                } else {
+                    h.clone()
+                }
+            }));
+            for row in &mut merged.rows {
+                let mine = f.rows.iter().find(|r| r.0 == row.0);
+                row.1
+                    .extend((0..f.headers.len()).map(|c| mine.and_then(|r| r.1[c])));
+            }
+            merged.panels.push((titles[i].clone(), f.headers.len()));
+        }
+        // Panels of one column each need no second header row: each title names its column.
+        if merged.panels.iter().all(|p| p.1 == 1) {
+            merged.headers = merged.panels.drain(..).map(|p| p.0).collect();
+        }
+        read[q] = Some(merged);
+    }
+}
+
+/// Whether a chart's groups stand at the heights of a panel's categories: two or more, and eight
+/// in ten of its groups, each at the height of one, give or take a quarter of the gap between
+/// groups — a group missing a bar is narrower than its row.
+fn aligned(chart: &Chart, categories: &[Vec<usize>], labels: &[Label]) -> bool {
+    let pad = gap(chart) / 4;
+    let at = chart
+        .groups
+        .iter()
+        .filter(|g| {
+            at_height(categories, labels, (g[0].lo - pad, g[g.len() - 1].hi + pad)).is_some()
+        })
+        .count();
+    at >= MIN_BARS && 10 * at >= 8 * chart.groups.len()
+}
+
+/// The gap between a chart's groups: the median, or a bar's thickness where it has one group.
+fn gap(chart: &Chart) -> i64 {
+    let groups = &chart.groups;
+    let mut gaps: Vec<i64> = groups
+        .windows(2)
+        .map(|w| w[1][0].lo - w[0][w[0].len() - 1].hi)
+        .collect();
+    gaps.sort_unstable();
+    gaps.get(gaps.len() / 2)
+        .copied()
+        .unwrap_or_else(|| groups[0][0].thickness())
+}
+
+/// The one category whose lines' middle stands between `lo` and `hi`.
+fn at_height<'a>(
+    categories: &'a [Vec<usize>],
+    labels: &[Label],
+    (lo, hi): (i64, i64),
+) -> Option<&'a Vec<usize>> {
+    let mut at = categories.iter().filter(|c| {
+        let y0 = c.iter().map(|&k| labels[k].y0).min().unwrap_or(0);
+        let y1 = c.iter().map(|&k| labels[k].y1).max().unwrap_or(0);
+        (lo..=hi).contains(&(y0 + y1).div_euclid(2))
+    });
+    let first = at.next()?;
+    at.next().is_none().then_some(first)
+}
+
+/// A panel's title (decision #91): the lines just over its bars, each over this panel and no
+/// other, none a number but a year — the nearest within four lines of its top, the rest each set
+/// just over the one below.
+fn panel_title(labels: &[Label], rects: &[QuantRect], i: usize, held: &[usize]) -> Vec<usize> {
+    let b = rects[i];
+    let over = |l: &Label, r: &QuantRect| l.x0 < r.x1 && r.x0 < l.x1;
+    let ok = |k: usize| {
+        let l = &labels[k];
+        !held.contains(&k)
+            && over(l, &b)
+            && rects.iter().enumerate().all(|(j, r)| j == i || !over(l, r))
+            && (number(&l.text).is_none() || is_year(&l.text))
+    };
+    let Some(first) = (0..labels.len())
+        .filter(|&k| ok(k) && labels[k].y1 <= b.y0 && b.y0 - labels[k].y1 <= 4 * labels[k].h)
+        .max_by_key(|&k| (labels[k].y1, k))
+    else {
+        return Vec::new();
+    };
+    let mut block = vec![first];
+    loop {
+        let top = &labels[*block.last().expect("a line")];
+        let next = (0..labels.len())
+            .filter(|&k| {
+                ok(k)
+                    && !block.contains(&k)
+                    && labels[k].cy() < top.cy()
+                    && 5 * (top.y0 - labels[k].y1) <= 3 * labels[k].h
+            })
+            .max_by_key(|&k| (labels[k].y1, k));
+        match next {
+            Some(k) => block.push(k),
+            None => break,
+        }
+    }
+    block.reverse();
+    block
 }
 
 /// The label under a vertical chart's column: its nearest line, holding one label, and the lines
@@ -1340,15 +1529,11 @@ fn build(
     runs: &[TrackRun<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<DetectedTable, EngineError> {
-    let headers: Vec<Vec<usize>> = f
-        .headers
-        .iter()
-        .map(|h| h.iter().copied().collect())
-        .collect();
     chart_table(
         page,
-        &headers,
+        &f.headers,
         &f.rows,
+        &f.panels,
         labels,
         runs,
         alloc,
@@ -1359,10 +1544,12 @@ fn build(
 /// A chart's table from what it printed (`bar-labels-v1`, and `point-labels-v1`'s too): a header
 /// row of its series' names — each the labels of one name, or none — then a row per category, a
 /// cell for each label and none where nothing was printed.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn chart_table(
     page: u32,
     headers: &[Vec<usize>],
     rows: &[(Vec<usize>, Vec<Option<usize>>)],
+    panels: &[(Vec<usize>, usize)],
     labels: &[Label],
     runs: &[TrackRun<'_>],
     alloc: &mut IdAllocator,
@@ -1370,7 +1557,7 @@ pub(crate) fn chart_table(
 ) -> Result<DetectedTable, EngineError> {
     let id = alloc.next(IdKind::Table)?;
     let mut cells = Vec::new();
-    let mut place = |row: usize, column: usize, ks: &[usize]| {
+    let mut place = |row: usize, column: usize, colspan: u32, ks: &[usize]| {
         let mut run_indices: Vec<usize> = ks
             .iter()
             .flat_map(|&k| labels[k].runs.iter().copied())
@@ -1392,7 +1579,7 @@ pub(crate) fn chart_table(
                 row: row as u32,
                 column: column as u32,
                 rowspan: 1,
-                colspan: 1,
+                colspan,
                 table_id: id.clone(),
             },
             rect,
@@ -1400,16 +1587,25 @@ pub(crate) fn chart_table(
             text,
         });
     };
+    // Decision #91: small multiples' panels, each title over its columns, the series' names under.
+    let top = usize::from(!panels.is_empty());
+    let mut at = 1;
+    for (title, n) in panels {
+        if !title.is_empty() {
+            place(0, at, *n as u32, title);
+        }
+        at += n;
+    }
     for (c, h) in headers.iter().enumerate() {
         if !h.is_empty() {
-            place(0, c + 1, h);
+            place(top, c + 1, 1, h);
         }
     }
     for (r, (category, values)) in rows.iter().enumerate() {
-        place(r + 1, 0, category);
+        place(r + 1 + top, 0, 1, category);
         for (c, v) in values.iter().enumerate() {
             if let Some(k) = v {
-                place(r + 1, c + 1, &[*k]);
+                place(r + 1 + top, c + 1, 1, &[*k]);
             }
         }
     }
@@ -1427,7 +1623,7 @@ pub(crate) fn chart_table(
         id,
         page,
         rect,
-        rows: rows.len() as u32 + 1,
+        rows: (rows.len() + 1 + top) as u32,
         columns: headers.len() as u32 + 1,
         cells,
         check: not_a_lattice(),
@@ -1540,6 +1736,241 @@ mod tests {
             runs.push(run(x + 3, 312, 24, years[k]));
         }
         (runs, bars)
+    }
+
+    /// Small multiples (decision #91): three panels of horizontal bars at x = 100, 200 and 300 —
+    /// each row a bar of each series, its length twice its number, the number just past its end —
+    /// sharing the category column at the left, a legend over it and a title over each panel.
+    /// `one` draws the first series alone, with no legend.
+    fn panels(
+        values: [[(&'static str, &'static str); 3]; 3],
+        titles: [&'static str; 3],
+        one: bool,
+    ) -> (Vec<TrackRun<'static>>, Vec<Bar>) {
+        let (a, b) = (rgb(0, 300, 800), rgb(0, 900, 900));
+        let mut runs = Vec::new();
+        let mut bars = Vec::new();
+        if !one {
+            runs.extend([run(28, 76, 20, "2024"), run(68, 76, 20, "2022")]);
+            bars.extend([bar(20, 70, 26, 76, a), bar(60, 70, 66, 76, b)]);
+        }
+        for (p, x) in [100, 200, 300].into_iter().enumerate() {
+            if !titles[p].is_empty() {
+                runs.push(run(x, 90, 40, titles[p]));
+            }
+            for (r, &(u, v)) in values[p].iter().enumerate() {
+                let y = 100 + 30 * r as i64;
+                let (lu, lv): (i64, i64) = (u.parse().unwrap(), v.parse().unwrap());
+                bars.push(bar(x, y, x + 2 * lu, y + 8, a));
+                runs.push(run(x + 2 * lu + 2, y + 7, 10, u));
+                if !one {
+                    bars.push(bar(x, y + 9, x + 2 * lv, y + 17, b));
+                    runs.push(run(x + 2 * lv + 2, y + 16, 10, v));
+                }
+            }
+        }
+        // Each category level with its row's bars.
+        let middle = if one { 7 } else { 12 };
+        for (r, cat) in ["North", "South", "East"].into_iter().enumerate() {
+            runs.push(run(20, 100 + middle + 30 * r as i64, 60, cat));
+        }
+        (runs, bars)
+    }
+
+    const PANELS: [[(&str, &str); 3]; 3] = [
+        [("10", "16"), ("20", "14"), ("30", "24")],
+        [("15", "20"), ("25", "19"), ("35", "29")],
+        [("5", "11"), ("15", "21"), ("25", "19")],
+    ];
+
+    /// **Small multiples read as one table** (decision #91): a row per category, each panel's
+    /// columns under its title — a cell spanning them — and the legend's names under the first
+    /// panel's alone, for each printed label sits in one cell. A title set between the legend and
+    /// its panel no longer hides the legend; a title may run to two lines; and a row a panel draws
+    /// one bar of still reads.
+    #[test]
+    fn small_multiples_read_as_one_table() {
+        // The middle panel's last row prints 0 for its second series and draws no bar for it.
+        let mut values = PANELS;
+        values[1][2] = ("35", "0");
+        let (mut runs, bars) = panels(values, ["Alpha", "Beta", "Gamma"], false);
+        let beta = runs.iter().position(|r| r.text == "Beta").expect("there");
+        runs.insert(beta, run(200, 80, 40, "Group "));
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec![
+                "|Alpha||Group Beta||Gamma|",
+                "|2024|2022||||",
+                "North|10|16|15|20|5|11",
+                "South|20|14|25|19|15|21",
+                "East|30|24|35||25|19"
+            ]
+        );
+        let spans: Vec<(u32, u32)> = t[0]
+            .cells
+            .iter()
+            .filter(|c| c.position.row == 0)
+            .map(|c| (c.position.column, c.position.colspan))
+            .collect();
+        assert_eq!(spans, vec![(1, 2), (3, 2), (5, 2)]);
+        for cell in &t[0].cells {
+            let joined: String = cell.run_indices.iter().map(|&i| runs[i].text).collect();
+            assert_eq!(cell.text, joined);
+        }
+    }
+
+    /// **Panels of one series each are named by their titles** — years, here — one header row and
+    /// no span.
+    #[test]
+    fn small_multiples_of_one_series_take_their_titles() {
+        let (runs, bars) = panels(PANELS, ["2021", "2022", "2023"], true);
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec![
+                "|2021|2022|2023",
+                "North|10|15|5",
+                "South|20|25|15",
+                "East|30|35|25"
+            ]
+        );
+    }
+
+    /// **Panels read left to right while each reads**: a panel whose numbers disagree with its
+    /// bars ends them, though one beyond it reads.
+    #[test]
+    fn a_panel_that_reads_nothing_ends_the_panels() {
+        let (mut runs, bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        // The middle panel's first bar, its length for 15, printing 45.
+        let k = runs
+            .iter()
+            .position(|r| r.text == "15" && r.x == 23200)
+            .expect("there");
+        runs[k].text = "45";
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(grid(&t[0])[0], "|Alpha|");
+        assert_eq!(grid(&t[0])[2], "North|10|16");
+    }
+
+    /// **Panels are panels only as small multiples**: untitled — a number over a panel, a line over
+    /// all three or one far over each is no title — the first reads alone; a chart beside it that
+    /// reads categories of its own ends them — the first reads alone, and that chart heads small
+    /// multiples of its own; and one whose groups stand at other heights — all of them, or one of
+    /// four — is none.
+    #[test]
+    fn only_titled_panels_at_the_categories_heights_are_one_table() {
+        let (mut runs, bars) = panels(PANELS, ["", "", ""], false);
+        runs.push(run(100, 80, 280, "Pay by region"));
+        for (x, n, far) in [(100, "5", "One"), (200, "6", "Two"), (300, "7", "Three")] {
+            runs.push(run(x, 94, 8, n));
+            runs.push(run(x, 40, 30, far));
+        }
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(grid(&t[0])[0], "|2024|2022");
+        // The middle panel with categories of its own, just left of its bars.
+        let (mut runs, bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        for (r, cat) in ["N", "S", "E"].into_iter().enumerate() {
+            runs.push(run(186, 112 + 30 * r as i64, 10, cat));
+        }
+        let t = found(&runs, &bars);
+        assert!(t.iter().any(|t| t.columns == 3), "{t:?}");
+        assert!(t.iter().all(|t| t.columns < 7), "{t:?}");
+        // The last panel set lower than the categories.
+        let (runs, bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        let bars: Vec<Bar> = bars
+            .into_iter()
+            .map(|b| {
+                if b.rect.x0 == 30000 {
+                    Bar {
+                        rect: QuantRect {
+                            y0: b.rect.y0 + 1300,
+                            y1: b.rect.y1 + 1300,
+                            ..b.rect
+                        },
+                        ..b
+                    }
+                } else {
+                    b
+                }
+            })
+            .collect();
+        let runs: Vec<TrackRun<'static>> = runs
+            .into_iter()
+            .map(|mut r| {
+                if r.x > 30000 && r.y > 10000 {
+                    r.y += 1300;
+                    r.rect = r.rect.map(|b| QuantRect {
+                        y0: b.y0 + 1300,
+                        y1: b.y1 + 1300,
+                        ..b
+                    });
+                }
+                r
+            })
+            .collect();
+        let t = found(&runs, &bars);
+        assert!(t.iter().all(|t| t.columns <= 5), "{t:?}");
+        // The last panel drawing a fourth row no category stands beside: three groups of four.
+        let (mut runs, mut bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        bars.push(bar(300, 190, 320, 198, rgb(0, 300, 800)));
+        bars.push(bar(300, 199, 316, 207, rgb(0, 900, 900)));
+        runs.push(run(322, 197, 10, "10"));
+        runs.push(run(318, 206, 10, "8"));
+        let t = found(&runs, &bars);
+        assert!(t.iter().all(|t| t.columns <= 5), "{t:?}");
+    }
+
+    /// **A panel stands level with the last, each of its groups at one category's height, and its
+    /// title is no other table's**: a chart set below, its left edge between two panels, ends none;
+    /// a panel whose bars span two categories each is none; and a chart over the panels that reads
+    /// their titles as its categories holds none of their runs.
+    #[test]
+    fn panels_keep_to_their_level_their_heights_and_their_titles() {
+        let grey = rgb(500, 500, 500);
+        let (runs, mut bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        bars.extend([bar(180, 300, 230, 308, grey), bar(180, 330, 220, 338, grey)]);
+        let t = found(&runs, &bars);
+        assert!(t.iter().any(|t| t.columns == 7), "{t:?}");
+        // The last panel's bars twenty points thick, its first group over two categories.
+        let (runs, bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        let (a, b) = (rgb(0, 300, 800), rgb(0, 900, 900));
+        let mut bars: Vec<Bar> = bars.into_iter().filter(|b| b.rect.x0 != 30000).collect();
+        bars.extend([
+            bar(300, 100, 310, 120, a),
+            bar(300, 121, 322, 141, b),
+            bar(300, 160, 330, 180, a),
+            bar(300, 181, 342, 201, b),
+        ]);
+        let mut runs: Vec<TrackRun<'static>> = runs
+            .into_iter()
+            .filter(|r| r.x <= 30000 || r.y < 10000)
+            .collect();
+        runs.extend([
+            run(312, 113, 10, "5"),
+            run(324, 134, 10, "11"),
+            run(332, 173, 10, "15"),
+            run(344, 194, 10, "21"),
+        ]);
+        let t = found(&runs, &bars);
+        assert!(t.iter().all(|t| t.columns <= 5), "{t:?}");
+        // A chart of two bars over the panels, the first two titles under them.
+        let (mut runs, mut bars) = panels(PANELS, ["Alpha", "Beta", "Gamma"], false);
+        bars.extend([bar(105, 60, 125, 80, grey), bar(205, 50, 225, 80, grey)]);
+        runs.extend([run(110, 57, 10, "20"), run(210, 47, 10, "30")]);
+        let t = found(&runs, &bars);
+        let mut seen = std::collections::BTreeSet::new();
+        assert!(
+            t.iter()
+                .flat_map(|t| &t.cells)
+                .flat_map(|c| &c.run_indices)
+                .all(|&i| seen.insert(i)),
+            "{t:?}"
+        );
     }
 
     #[test]

@@ -1050,6 +1050,14 @@ hole or the line over it. Charts 0.1363 -> 0.1485, 9 pages up and none down; tab
 faithfulness, semantic formatting and visual grounding unchanged on every page. Overall 48.60 ->
 48.84.
 
+### After small multiples read as one table (decision #91, 2026-10-22)
+
+Panels set side by side that share one category column and one legend read as their first panel
+alone, its series unnamed, and the rest not at all. They now read as one table: a row per category,
+each panel's title over its columns, the legend's names under the first panel's — a printed label
+sits in one cell. Charts 0.1485 -> 0.1554, 7 pages up and none down; tables, content faithfulness,
+semantic formatting and visual grounding unchanged on every page. Overall 48.84 -> 48.98.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

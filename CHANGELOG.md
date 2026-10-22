@@ -187,6 +187,32 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Small multiples read as one table (decision #91)
+
+Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **Panels side by side are one chart**: horizontal charts set side by side — each the nearest
+  right of the last and level with it — that read no categories of their own, while eight in ten
+  of their groups stand at the heights of the first's categories, are panels of one chart, read
+  left to right while each reads. Each is named by the lines just over its bars, over no other
+  panel, no number but a year; a panel without a title is none.
+- **One table**: a row per category, a column per panel and series, each panel's title over its
+  columns in a cell spanning them, and the series' names under the first panel's alone — a printed
+  label sits in one cell, so a legend set once names one panel. Panels of one series each are named
+  by their titles, one header row and no span. A title set between a legend and its panel no
+  longer hides the legend.
+- **Why this piece**: offered after #90 with a census of the 725 chart rules still failing, the
+  owner chose "Census: small multiples": one survey fails 28 rules on panels sharing one category
+  column and one legend. Shown that only the first panel and panels of one series can be named
+  whole — about +0.12 of the +0.36 — the owner chose "Small multiples".
+- **Measured** on ParseBench: charts 0.1485 -> 0.1554, 7 pages up and none down
+  (`US_Professional_Services_Partner_Compensation_Survey_2024` p26 0 -> 1.0, p24 0 -> 0.8, p25
+  0 -> 0.6, p27 0.25 -> 0.75, p22 and p9 0 -> 0.4; `(Web_version)_E-Government_Survey_2024` p79
+  0.25 -> 0.5); tables, content faithfulness, semantic formatting and visual grounding unchanged on
+  every page; overall 48.84 -> 48.98. opendataloader-bench unchanged on every document; the
+  fabrication check and the gate documents' 541 tables unchanged.
+
 ### A pie's printed values read as its table (decision #90)
 
 A new rule, `slice-labels-v1`, under a new profile field, `table_detection.pies`; the office
