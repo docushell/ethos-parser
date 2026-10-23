@@ -486,7 +486,8 @@ pub fn untagged_structure_tree_absent() -> Limitation {
 /// Declared only when the rule fired on at least one line. It names the count, the rule and the
 /// body reference it measured on this document, so a reader can re-derive the cut — six fifths of
 /// that reference — without the engine. [`untagged_structure_tree_absent`] stays declared beside
-/// it as the precondition: the catalog still declares no `/StructTreeRoot`.
+/// it as the precondition: the catalog still declares no `/StructTreeRoot`. Where the document
+/// declares a tree that tags no heading (decision #94), `tagged`, the detail says that instead.
 pub fn headings_inferred_from_type(
     lines: u32,
     bold: u32,
@@ -494,7 +495,15 @@ pub fn headings_inferred_from_type(
     as_text: u32,
     rule: &str,
     body_em: i64,
+    tagged: bool,
 ) -> Limitation {
+    let precondition = if tagged {
+        "The document's structure tree tags no heading — none of its elements is an `H` or \
+         `H1`–`H6`"
+    } else {
+        "The document declares no author structure — no `/StructTreeRoot`, or only one this \
+         engine wrote"
+    };
     let sized = lines.saturating_sub(bold).saturating_sub(labels);
     // Decision #77: said only where it happened, so a document with no lede reads as before.
     let ledes = if as_text > 0 {
@@ -523,10 +532,9 @@ pub fn headings_inferred_from_type(
              document share, at level 7, below every ranked level, which the projections write \
              as bold lines and never with `#`.{ledes} A level deeper than 1 travels as \
              `inferred_heading_level`. \
-             The document declares no author structure — no `/StructTreeRoot`, or only one this \
-             engine wrote — so EVERY heading in this artifact is this engine's measurement of type \
-             and NONE is the author's, and each level is a rank of type sizes, not the author's \
-             outline."
+             {precondition} — so EVERY heading in this artifact is this engine's measurement of \
+             type and NONE is the author's, and each level is a rank of type sizes, not the \
+             author's outline."
         ),
     )
 }

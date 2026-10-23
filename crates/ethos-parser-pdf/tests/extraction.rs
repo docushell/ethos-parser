@@ -7741,6 +7741,79 @@ fn a_replacement_character_a_font_maps_a_code_to_is_read_and_counted() {
     assert!(declared(&b).is_empty(), "no U+FFFD, nothing declared");
 }
 
+/// **A tagged document whose tree tags no heading has its headings read from type; one whose
+/// tree tags a heading has none read** (decision #94). One page — a display line at twice the body
+/// type above five body lines — under a tree that binds the display line as `/P`, then as `/H1`:
+/// under `/P` the line is an inferred heading and the artifact says why the rule ran, the tree
+/// tagging no heading; under `/H1` the author's heading stands and nothing is inferred.
+#[test]
+fn a_tree_that_tags_no_heading_leaves_headings_to_the_rule() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |role: &str, role_map: &str| {
+        let mut content =
+            String::from("/P << /MCID 0 >> BDC BT /F1 24 Tf 72 700 Td (Display line) Tj ET EMC\n");
+        for i in 0..5 {
+            content.push_str(&format!(
+                "/P << /MCID {} >> BDC BT /F1 12 Tf 72 {} Td (A line of body text, number {i}) Tj ET EMC\n",
+                i + 1,
+                650 - 20 * i
+            ));
+        }
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R \
+               >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(content.as_bytes()),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            format!("<< /Type /StructTreeRoot /K [7 0 R 8 0 R] {role_map} >>").into_bytes(),
+            format!("<< /Type /StructElem /S /{role} /P 6 0 R /Pg 3 0 R /K 0 >>").into_bytes(),
+            b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K [1 2 3 4 5] >>".to_vec(),
+        ])
+    };
+    let inferred = |a: &ExtractArtifact| {
+        runs(a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| r.text.clone())
+            .collect::<Vec<_>>()
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE)
+            .map(|l| l.detail.clone())
+    };
+    let paragraph = extracted(&document("P", "")).expect("reads");
+    assert_eq!(inferred(&paragraph), ["Display line"]);
+    let detail = declared(&paragraph).expect("the inference is declared");
+    assert!(
+        detail.contains("structure tree tags no heading"),
+        "{detail}"
+    );
+    assert!(detail.contains("NONE is the author's"), "{detail}");
+
+    for role in ["H", "H1", "H2", "H3", "H4", "H5", "H6"] {
+        let heading = extracted(&document(role, "")).expect("reads");
+        assert!(inferred(&heading).is_empty(), "the author tagged an {role}");
+        assert_eq!(declared(&heading), None);
+    }
+    let mapped = extracted(&document("Heading1", "/RoleMap << /Heading1 /H1 >>")).expect("reads");
+    assert!(
+        inferred(&mapped).is_empty(),
+        "a role the tree maps to /H1 is a heading"
+    );
+}
+
 /// **`/ActualText`, `/Alt` and `/E` are declared unread** (review 2026-09-26 N22). The page's
 /// `/Span << /ActualText (Example) >>` reads `Ex-`, the glyphs drawn, where a viewer copies
 /// `Example`; and a structure element's `/Alt` is in no node. Neither was declared.

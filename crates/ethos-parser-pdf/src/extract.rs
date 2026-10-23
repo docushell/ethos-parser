@@ -670,11 +670,13 @@ fn extract_page(
     // content order until the right-to-left rule reads it, before `reorder_page`. Never on a
     // `TextRun`.
     let mut code_chars: Vec<Vec<usize>> = Vec::new();
-    // The gate: the document declares no author structure (see `no_author_structure`), and the
-    // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
+    // The gate: the document declares no author structure (see `no_author_structure`) — or, since
+    // decision #94, its tree tags no heading — and the profile names the rule; any other id,
+    // `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
         == ethos_parser_core::HEADING_INFERENCE_RULE_V7
-        && no_author_structure(structure.as_ref());
+        && (no_author_structure(structure.as_ref())
+            || structure.as_ref().is_some_and(|t| !t.declares_headings()));
     let mut heading_lines: HeadingLines = Vec::new();
     let mut em_tally = crate::headings::EmTally::default();
     let page_extract;
@@ -2431,6 +2433,7 @@ fn extract_counted(
                 as_text,
                 &profile.heading_inference_rule,
                 body_em,
+                !no_author_structure(structure.as_ref()),
             ));
         }
     }

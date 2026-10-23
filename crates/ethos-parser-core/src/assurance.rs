@@ -472,7 +472,8 @@ pub mod codes {
     pub const STRUCTURE_TREE_ENGINE_WRITTEN: &str = "structure-tree-engine-written";
 
     /// Headings in this artifact were **inferred from the type the page draws**, because the
-    /// document declared no structure (decision #29, `docs/28-HEADINGS-SCOPE.md` §5.1).
+    /// document declared no structure (decision #29, `docs/28-HEADINGS-SCOPE.md` §5.1) — or,
+    /// since decision #94, a structure tree that tags no heading.
     ///
     /// Document-scoped and conditional: declared when the profile's `heading_inference_rule` set
     /// `TextRunAttributes::inferred_heading` on at least one run. The detail states how many
@@ -481,7 +482,8 @@ pub mod codes {
     /// measurement of type and none is the author's. A disclosure in the limitation slot on the
     /// precedent of [`STRUCTURE_TREE_ENGINE_WRITTEN`], and like it, it still names something
     /// missing: the author's structure. [`UNTAGGED_STRUCTURE_TREE_ABSENT`] stays declared beside
-    /// it as the precondition, because the catalog still declares no `/StructTreeRoot`.
+    /// it as the precondition, where the catalog declares no `/StructTreeRoot`; on a tree that tags
+    /// no heading the detail names that tree as its precondition instead.
     pub const HEADINGS_INFERRED_FROM_TYPE: &str = "headings-inferred-from-type";
 
     /// A `BDC` supplied its property list **by name**, so any id in it went unread.

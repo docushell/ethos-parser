@@ -159,8 +159,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
 /// column wrapped joined to the one above it, decision #83's mark set right after a bold run inside
 /// its `<strong>`, decision #84's runs of one block element as one `<p>` across the marked-content
-/// sequences they cite, and decision #85's tagged bold line read on to the one above, this id
-/// carries too.
+/// sequences they cite, decision #85's tagged bold line read on to the one above, and decision
+/// #94's tagged heading line read on to the one above it, this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------

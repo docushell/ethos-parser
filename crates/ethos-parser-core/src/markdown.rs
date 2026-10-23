@@ -249,7 +249,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// the column wrapped it, measured by the body lines straight below ([`wrapped_labels`]) —
 /// semantic formatting 0.4819 -> 0.4848 with no page down, content faithfulness unchanged at 0.6737
 /// with ten pages down by at most 0.006, a trade the owner took, opendataloader-bench NID six
-/// documents up.
+/// documents up. And so is decision #94's: on a tagged page the heading rule reads, a heading's
+/// next line of its level under one parent element, set straight below it within its height and
+/// over it, continues it, as a layout unit's heading lines are one heading, and labels there join
+/// under one parent element only ([`wrapped_labels`]).
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -844,9 +847,9 @@ pub fn normalize(s: &str) -> String {
 /// the artifact says which"**.
 ///
 /// **The declared sources win, structurally rather than by convention.** They return first, and
-/// the reader never sets the flag on a document that declares author structure (its gate), so the
-/// two can never both be present; a later edit reordering this function would still find the flag
-/// absent wherever a declaration exists.
+/// the reader never sets the flag on a document whose author structure tags a heading (its gate;
+/// since decision #94 a tree that tags none is read), so the two can never both be present; a later
+/// edit reordering this function would still find the flag absent wherever a declaration exists.
 ///
 /// **ODT and ODP**, since v2.4, are a fourth source and a declared one: the `text:outline-level`
 /// a `<text:h>` states, which `crate::OfficeParagraphAttributes::outline_level` and
@@ -1253,6 +1256,15 @@ pub(crate) fn unit_gap_continues(
 /// start — a tagged page has no inferred heading to stop at. And a second line opening with a
 /// lowercase letter continues the first whatever that measure says: a title its author broke by
 /// hand, `Building resilience` over `across markets`, reads on.
+///
+/// Decision #94: the heading rule reads a tagged page whose tree tags no heading, and a title set
+/// on two lines there is two inferred headings with no unit to join them. A heading line's next
+/// line of its level, under one parent element, set straight below it — within its own height,
+/// and over it — continues it, as a unit's heading lines are one heading; unless the first line
+/// ends a sentence or names what follows (`.`, `?`, `!`, `:`), ends in a hyphen, or is set in
+/// capitals over a line that is not, or the second opens with a number or a marker. And labels
+/// there join under one parent element only: `Select Board Meeting` over the date of its meeting,
+/// each its own element, stay two.
 pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections::BTreeSet<&str> {
     // One line: its first inked run, its text, its box, and the label, heading and unit it carries.
     struct Line<'a> {
@@ -1262,6 +1274,8 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         label: bool,
         bold: bool,
         heading: bool,
+        /// Decision #94: the level an inferred heading line carries, 1 where it states none.
+        level: Option<u8>,
         unit: Option<u32>,
         page: u32,
         /// Decision #85: the structure-tree path above a tagged line's first run, its parent's.
@@ -1284,6 +1298,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
                 label: false,
                 bold: true,
                 heading: false,
+                level: None,
                 unit: None,
                 page: key.page,
                 tagged: None,
@@ -1300,6 +1315,9 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         if line.first.is_empty() {
             line.first = node.id.as_str();
             line.heading = a.inferred_heading;
+            line.level = a
+                .inferred_heading
+                .then(|| a.inferred_heading_level.unwrap_or(1));
             line.label = a.inferred_heading && a.inferred_heading_level.unwrap_or(1) > 6;
             line.unit = a.layout_unit;
             line.tagged = match node.structural_locator.as_ref() {
@@ -1327,18 +1345,40 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
     for i in 1..lines.len() {
         let ((a, ra), (b, rb)) = (&lines[i - 1], &lines[i]);
         let height = rb.3 - rb.1;
+        // Two lines of a tagged page, under one parent element: what stands for a unit there.
+        let one_parent =
+            a.unit.is_none() && b.unit.is_none() && a.tagged.is_some() && a.tagged == b.tagged;
         let bold_body = a.bold
             && b.bold
             && !a.heading
             && !b.heading
-            && ((a.unit.is_some() && a.unit == b.unit)
-                || (a.unit.is_none()
-                    && b.unit.is_none()
-                    && a.tagged.is_some()
-                    && a.tagged == b.tagged));
+            && ((a.unit.is_some() && a.unit == b.unit) || one_parent);
         let caps =
             |t: &str| t.chars().any(char::is_alphabetic) && !t.chars().any(char::is_lowercase);
-        if !((a.label && b.label) || bold_body)
+        // Decision #94: a heading the rule read on a tagged page continues on its next line of its
+        // level under one parent element, set straight below it within a line's height and over
+        // it — as a layout unit's heading lines are one heading — unless the first line ends a
+        // sentence, names what follows or ends in a hyphen, the second opens with a number or a
+        // marker, or a line in capitals stands over one that is not.
+        if a.heading
+            && !a.label
+            && a.level == b.level
+            && one_parent
+            && a.page == b.page
+            && rb.1 >= ra.1
+            && rb.1 - ra.3 <= height
+            && rb.0 < ra.2
+            && ra.0 < rb.2
+            && !a.text.trim_end().ends_with(['?', '!', '.', ':', '-'])
+            && !opens_with_label(&b.text)
+            && (!caps(&a.text) || caps(&b.text))
+        {
+            out.insert(b.first);
+            continue;
+        }
+        // Decision #94: on a tagged page, labels of one parent element only.
+        let labels = a.label && b.label && (a.unit.is_some() || one_parent);
+        if !(labels || bold_body)
             || (bold_body && caps(&a.text) && !caps(&b.text))
             || (bold_body && a.text.trim_end().ends_with('-'))
             || a.page != b.page
@@ -6998,6 +7038,14 @@ pub(crate) mod tests {
     /// Lines, one run each, each tagged as an element of its own under `path` and carrying no
     /// layout unit, as a producer that tags every line of a title writes them (decision #85).
     pub(crate) fn tagged_lines_repr(lines: &[TaggedLine<'_>]) -> DocumentRepresentation {
+        tagged_lines_with(lines, |_, _| {})
+    }
+
+    /// [`tagged_lines_repr`], with `set` given each line's index and run attributes to amend.
+    fn tagged_lines_with(
+        lines: &[TaggedLine<'_>],
+        set: impl Fn(usize, &mut crate::TextRunAttributes),
+    ) -> DocumentRepresentation {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
             id: alloc.next(IdKind::Page).unwrap(),
@@ -7024,6 +7072,7 @@ pub(crate) mod tests {
             );
             if let NodeAttributes::TextRun(a) = &mut node.attributes {
                 a.bold = *bold;
+                set(i, a);
             }
             geometry.push(NodeGeometry {
                 node: node.id.clone(),
@@ -7162,6 +7211,158 @@ pub(crate) mod tests {
         .find(|e| e.code == LAYOUT_UNIT_LINE_JOINS)
         .map_or(0, |e| e.count);
         assert_eq!(joins, 1);
+    }
+
+    /// **A heading the rule read on a tagged page is one heading across the lines it is set on**
+    /// (decision #94): the next line of its level under one parent element, straight below it
+    /// within its height and over it, continues it. A line after a sentence's end or a colon, a
+    /// line opening with a number, another level, another parent, a gap wider than a line, a line
+    /// beside it rather than below, and capitals over a line that is not keep their lines; and
+    /// labels there join under one parent element only.
+    #[test]
+    fn a_tagged_headings_lines_are_one_heading() {
+        const P: &[&str] = &["Document", "Sect", "P"];
+        let project = |lines: &[TaggedLine<'_>], levels: &[u8]| {
+            let levels = levels.to_vec();
+            blocks_of(&artifact_of(tagged_lines_with(lines, |i, a| {
+                if let Some(&level) = levels.get(i) {
+                    a.inferred_heading = true;
+                    a.inferred_heading_level = (level > 1).then_some(level);
+                }
+            })))
+        };
+        let two = |first: &'static str, second: &'static str| -> Vec<TaggedLine<'static>> {
+            vec![
+                (first, (7200, 6300, 30000, 8300), false, P),
+                (second, (7200, 8500, 20000, 10500), false, P),
+            ]
+        };
+        assert_eq!(
+            project(&two("The 2026 State of AI", "Agents Report"), &[1, 1]),
+            ["# The 2026 State of AI Agents Report"]
+        );
+        for (first, second) in [
+            ("Press contacts:", "Jean-Baptiste Froville"),
+            ("The state of the report.", "Agents Report"),
+            ("Is this the state?", "Agents Report"),
+            ("The state of AI!", "Agents Report"),
+            ("The state of AI-", "Agents Report"),
+            ("The 2026 State of AI", "2. Agents Report"),
+            ("THE 2026 STATE OF AI", "Agents Report"),
+        ] {
+            assert_eq!(
+                project(&two(first, second), &[1, 1]).len(),
+                2,
+                "{first} / {second}"
+            );
+        }
+        assert_eq!(
+            project(&two("The 2026 State of AI", "Agents Report"), &[1, 2]),
+            ["# The 2026 State of AI", "## Agents Report"]
+        );
+        let mut parents = two("The 2026 State of AI", "Agents Report");
+        parents[1].3 = &["Document", "Div", "P"];
+        assert_eq!(project(&parents, &[1, 1]).len(), 2);
+        let mut apart = two("The 2026 State of AI", "Agents Report");
+        apart[1].1 = (7200, 10600, 20000, 12600);
+        assert_eq!(project(&apart, &[1, 1]).len(), 2, "a gap wider than a line");
+        let mut beside = two("The 2026 State of AI", "Agents Report");
+        beside[1].1 = (31000, 8500, 45000, 10500);
+        assert_eq!(project(&beside, &[1, 1]).len(), 2, "beside, not below");
+        let mut left = two("The 2026 State of AI", "Agents Report");
+        left[1].1 = (1000, 8500, 7000, 10500);
+        assert_eq!(project(&left, &[1, 1]).len(), 2, "left of it, not below");
+        let mut above = two("The 2026 State of AI", "Agents Report");
+        above[1].1 = (7200, 4100, 20000, 6100);
+        assert_eq!(project(&above, &[1, 1]).len(), 2, "above, not below");
+        // The next page's line set where this one's would be is on another page.
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let pages: Vec<PageRecord> = (1..=2)
+            .map(|index| PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index,
+                width: 61200,
+                height: 79200,
+                rotation: 0,
+                visible: None,
+            })
+            .collect();
+        let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
+        for (i, (text, b, _, path)) in two("The 2026 State of AI", "Agents Report")
+            .iter()
+            .enumerate()
+        {
+            let element = u32::try_from(i).unwrap() + 100;
+            let mut node = placed_run(
+                &mut alloc,
+                &pages[i].id,
+                1,
+                text,
+                tagged_in(i64::from(element), path, Some(element)),
+                b.0,
+                b.3,
+                Some(b.2 - b.0),
+                None,
+            );
+            if let NativeLocator::Pdf(at) = &mut node.native_locator {
+                at.page = pages[i].index;
+            }
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.inferred_heading = true;
+            }
+            geometry.push(NodeGeometry {
+                node: node.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(b.0, b.1, b.2, b.3).unwrap()),
+            });
+            nodes.push(node);
+        }
+        let paged = DocumentRepresentation::seal(payload(nodes, pages), geometry).unwrap();
+        assert_eq!(blocks_of(&artifact_of(paged)).len(), 2, "another page");
+
+        let labels = |path: &'static [&'static str]| {
+            project(
+                &[
+                    ("Select Board Meeting", (7200, 6300, 19000, 7300), true, P),
+                    (
+                        "Tuesday, April 22, 2025",
+                        (7200, 7400, 12000, 8400),
+                        true,
+                        path,
+                    ),
+                    ("The board met", (7200, 9600, 19500, 10600), false, P),
+                ],
+                &[7, 7],
+            )
+        };
+        assert_eq!(
+            labels(&["Document", "Div", "P"])[0],
+            "**Select Board Meeting**"
+        );
+        // Labels straight below one another under one parent keep their lines where the column did
+        // not wrap them: a heading's join is no label's.
+        let stacked = project(
+            &[
+                ("Select Board Meeting", (7200, 6300, 19000, 7300), true, P),
+                (
+                    "Tuesday, April 22, 2025",
+                    (7200, 7400, 12000, 8400),
+                    true,
+                    P,
+                ),
+                (
+                    "The board met in its usual room",
+                    (7200, 9600, 40000, 10600),
+                    false,
+                    P,
+                ),
+            ],
+            &[7, 7],
+        );
+        assert_eq!(
+            &stacked[..2],
+            ["**Select Board Meeting**", "**Tuesday, April 22, 2025**"],
+            "{stacked:?}"
+        );
     }
 
     /// **A bold line its column wrapped is one span; bold lines set one under the other keep

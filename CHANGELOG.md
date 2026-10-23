@@ -187,6 +187,40 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A tagged document whose tree tags no heading has its headings read (decision #94)
+
+Folded into `type-size-v7`, `markdown-blocks-v12` and `html-blocks-v12`, which no release carries
+yet, so no rule id and no `profile_sha256` moves.
+
+- **The heading rule runs where a document's structure tree tags no heading**: no element the tree
+  binds content under is an `H` or `H1`–`H6`, read through its `/RoleMap`. Until now it ran only
+  where the document declared no author structure, so a Word-style producer's tree, tagging every
+  line a `/P`, left the document with no heading at all. A tree tagging one heading or more keeps
+  the gate closed. `headings-inferred-from-type` names the tree as its precondition, and every
+  heading in the artifact is still this engine's measurement and none the author's
+  (`docs/28-HEADINGS-SCOPE.md` §6.1, amended).
+- **A heading set on two lines there is one heading**: a tagged page has no layout unit to join
+  them, so its next line of its level under one parent element, set straight below it within its
+  height and over it, continues it — unless the first line ends a sentence, names what follows
+  with a colon or ends in a hyphen, the second opens with a number or a marker, or a line in
+  capitals stands over one that is not. **Labels there join under one parent element only.**
+- **Why this piece**: told "Census: titles read as text", of the 652 titles ParseBench's formatting
+  pages fail with Markdown, 283 sit on text we never read; of the 370 our Markdown holds, the
+  heading rule's own trace put 140 on 44 tagged pages whose trees tag no heading, where it never
+  ran — the largest cause with one fix. Bold labels a little smaller than the text (133
+  sections in visual grounding) and enumerated labels (`a.`, `iv.`) were measured and not taken:
+  the first traded pages both ways, the second moved two.
+- **Measured** on ParseBench: semantic formatting 0.4952 -> 0.5100, 23 pages up and 4 down —
+  `text_simple__Earth-Day-Document-003` 0.5 -> 0, a heading writing its `nd` without its
+  superscript; `wclb` 1.0 -> 0.75, a four-line title block read as one heading; `hausa` 0.83 ->
+  0.73, its headings' levels against its ground truth's order; `text_multicolumns__zh` 0.30 ->
+  0.23, a Chinese label joined to the English line under it — a trade the owner took; content
+  faithfulness 0.6737 -> 0.6738, four pages up and nine down by 0.017 at most; visual grounding
+  0.5679 -> 0.5677, one page up and one down; tables and charts unchanged on every page; overall
+  49.28 -> 49.57. opendataloader-bench unchanged on every document; the heading bounds' eleven
+  documents, every one tagging its headings, read as before; the fabrication check and the gate
+  documents' 541 tables unchanged.
+
 ### A bare CFF or Type 1 program names its weight (decision #93)
 
 Folded into `page-observations-v4` and `type-size-v7`, which no release carries yet, so no rule id

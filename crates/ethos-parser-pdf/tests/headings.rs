@@ -115,20 +115,24 @@ fn a_display_line_on_an_untagged_page_is_an_inferred_heading() {
     );
 }
 
-/// **The same page plus a `/StructTreeRoot` infers nothing**, and declares neither code.
+/// **The same page plus a `/StructTreeRoot` that tags no heading reads its display line**
+/// (decision #94), and says why the rule ran.
 ///
-/// The tree cites nothing and binds no run. The gate is still closed, because it is the
-/// catalog's *declaration* of structure — a tree that reaches nothing is still a declaration,
-/// and filling around an author's structure invents a relation they did not state (§6.1).
+/// The tree cites nothing and binds no run. Until decision #94 the gate stayed closed on any
+/// tree, since a tree that reaches nothing is still a declaration; it now closes on a tree that
+/// tags a heading — the author's headings standing for the document's — and a tree that tags none
+/// states nothing about headings (§6.1). `untagged-structure-tree-absent` stays undeclared: a tree
+/// was declared, and the inference names that tree as its precondition instead.
 #[test]
-fn the_same_page_with_a_tree_infers_nothing() {
+fn the_same_page_with_a_tree_that_tags_no_heading_reads_its_display_line() {
     let repr = represent("heading-display-line-tagged", &Profile::default());
 
+    assert_eq!(inferred(&repr), vec!["Display line".to_string()]);
+    let detail = declared(&repr, HEADINGS).expect("the inference is declared");
     assert!(
-        inferred(&repr).is_empty(),
-        "a document that declares structure gets no inferred heading, whatever its type"
+        detail.contains("structure tree tags no heading"),
+        "the declaration names the tree as its precondition: {detail}"
     );
-    assert!(declared(&repr, HEADINGS).is_none());
     assert!(
         declared(&repr, UNTAGGED).is_none(),
         "a tree was declared, so `untagged-structure-tree-absent` would be false"

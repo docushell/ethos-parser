@@ -1078,6 +1078,17 @@ neither weight nor slant, and Medium only where the name says Medium too. Semant
 content faithfulness one page up and one down by 0.0002 at most; tables and charts unchanged on
 every page. Overall 49.05 -> 49.28; opendataloader-bench unchanged on every document.
 
+### After a tagged document whose tree tags no heading has its headings read (decision #94, 2026-10-24)
+
+Of the titles failing on pages with Markdown, 140 lie on 44 tagged pages whose structure trees tag
+every line a `/P` and nothing a heading, where the heading rule never ran. Told "Census: titles
+read as text", the rule now runs where a tree tags no heading, and on a tagged page a heading's
+next line of its level, straight below it under one parent element, continues it. Semantic
+formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; content faithfulness
+0.6737 -> 0.6738, nine pages down by at most 0.017; visual grounding 0.5679 -> 0.5677, one page up
+and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
+opendataloader-bench unchanged on every document.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

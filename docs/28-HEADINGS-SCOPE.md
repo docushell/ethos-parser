@@ -446,6 +446,20 @@ sequence is this engine, and the licence does not transfer."* The predicate is t
 `Extracted` binding. §11 settles this reading of the rider, on the measured cost of the
 one, because the alternative is a failing test rather than a smaller feature.
 
+**Amended by decision #94 (2026-10-24): a tree that tags no heading is no declaration of
+headings.** Shown that 44 of ParseBench's formatting pages carry a tree tagging every paragraph a
+`/P` and nothing an `H` — a Word-style producer's — and hold 140 of the titles the projections
+lost, the owner opened the gate there: the inference also runs where the tree binds no content
+under an `H` or `H1`–`H6`, read through its `/RoleMap` (`StructureTree::declares_headings`). Such
+a tree says what its paragraphs are and nothing of what its headings are, so the headings read
+fill a role it never assigned and contradict none it did; `headings-inferred-from-type` names the
+tree as its precondition, and every heading in the artifact is still this engine's measurement
+and none the author's. A tree that tags one heading or more keeps the gate closed — its author's
+headings stand for the document's — which is what the heading bounds' eleven documents, every one
+tagging its headings, measure, so §7.5 reads as before. A heading set on two lines there has no
+layout unit to join them, and the projections join its next line of its level under one parent
+element where it is set straight below (`markdown::wrapped_labels`).
+
 ### 6.2 Every other format: declared, or without an input, and out of scope either way
 
 | Format | What it declares | Why the inference does not run |

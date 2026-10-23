@@ -257,6 +257,19 @@ impl StructureTree {
     pub fn keys(&self) -> impl Iterator<Item = &Key> {
         self.bindings.keys()
     }
+
+    /// Whether the tree tags a heading (decision #94): some element it binds marked content under is
+    /// an `H` or `H1`–`H6`, read through its `/RoleMap` as the projections read it. A tree that tags
+    /// none states nothing about headings, and the heading rule reads them there.
+    pub fn declares_headings(&self) -> bool {
+        self.bindings.values().any(|t| {
+            t.standard_role_path
+                .as_ref()
+                .unwrap_or(&t.role_path)
+                .iter()
+                .any(|role| matches!(role.as_str(), "H" | "H1" | "H2" | "H3" | "H4" | "H5" | "H6"))
+        })
+    }
 }
 
 /// Walk a document's structure tree, if it has one.

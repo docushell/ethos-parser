@@ -1357,6 +1357,17 @@ pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 /// any release carried this id): a font whose name's style names neither weight nor slant takes
 /// the class its bare CFF or Type 1 program names, as `OBSERVATION_RULE_V4` reads it, and `Demi`
 /// is a weight word of 600. The heading bounds' eleven documents read as before, line for line.
+///
+/// **And a tree that tags no heading leaves the headings to the rule** (decision #94, folded in
+/// before any release carried this id): the rule runs where the document declares no author
+/// structure, as before, and now too where its structure tree binds no content under an `H` or
+/// `H1`–`H6`, read through its `/RoleMap` — a Word-style producer's tree that tags every line a `/P`
+/// says what its paragraphs are and nothing of its headings (`docs/28-HEADINGS-SCOPE.md` §6.1). A
+/// tree tagging one heading or more keeps the gate closed, and `headings-inferred-from-type` names
+/// the tree as its precondition. ParseBench semantic formatting 0.4952 → 0.5100, 23 pages up and 4
+/// down, a trade the owner took; content faithfulness 0.6737 → 0.6738; visual grounding 0.5679 →
+/// 0.5677; the heading bounds' eleven documents, every one tagging its headings, read as before;
+/// opendataloader-bench unchanged.
 pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.

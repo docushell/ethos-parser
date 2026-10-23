@@ -873,7 +873,7 @@
       "path": "heading-display-line-tagged/document.pdf",
       "sha256": "sha256:b50fe193b4f2f6568656cf9ce11fe7a41d6511fe65927ba38ee574e57c2b80a7",
       "owner": "engine",
-      "notes": "Decision #29, C1 S1. heading-display-line's content stream, byte for byte, plus a minimal /StructTreeRoot with /K []. The page cites no marked content and no run binds, and the heading rule still does not run: its gate is the catalog's declaration of structure, not what the tree reaches. Expect no inferred_heading anywhere, and neither headings-inferred-from-type nor untagged-structure-tree-absent declared."
+      "notes": "Decision #29, C1 S1. heading-display-line's content stream, byte for byte, plus a minimal /StructTreeRoot with /K []. The page cites no marked content and no run binds. Until decision #94 the heading rule did not run on any tree; it now runs where the tree tags no heading, and this one tags none. Expect `Display line` to carry inferred_heading, headings-inferred-from-type declared naming the tree as its precondition, and untagged-structure-tree-absent not declared."
     },
     {
       "id": "heading-display-line-tf-one",
