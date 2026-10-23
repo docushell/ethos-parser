@@ -1066,6 +1066,18 @@ their first, were refused as repeats. Each is now read. Charts 0.1554 -> 0.1590,
 none down; tables, content faithfulness, semantic formatting and visual grounding unchanged on
 every page. Overall 48.98 -> 49.05.
 
+### After a bare CFF or Type 1 program names its weight (decision #93, 2026-10-23)
+
+Of the bold rules failing on pages with Markdown, 43 lie under faces whose own program says Bold,
+Heavy or Demi — a bare CFF program's Top DICT `Weight`, a Type 1 program's `FontInfo` `/Weight` —
+under names whose style holds no word the reader reads: `HelveticaNeueLTStd-Bd`, `Futura-Bol`,
+`CMBX12`. Told "Census: formatting", such a program's weight is read where the font's name says
+neither weight nor slant, and Medium only where the name says Medium too. Semantic formatting
+0.4848 -> 0.4952, 9 pages up and none down; visual grounding 0.5670 -> 0.5679, six up and one down
+(`sig-alternate-sample` p3, whose bold `CMBX9` captions read as labels), a trade the owner took;
+content faithfulness one page up and one down by 0.0002 at most; tables and charts unchanged on
+every page. Overall 49.05 -> 49.28; opendataloader-bench unchanged on every document.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

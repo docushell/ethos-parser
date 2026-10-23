@@ -841,8 +841,8 @@ fn fallback_map(
 const BOLD_NAMES: [&str; 5] = ["Bold", "Black", "Heavy", "Semibold", "Demibold"];
 /// Weight words a `/BaseFont`'s style uses, with the weight class each names (decision #64), the
 /// longer before any they hold: `ExtraLight` before `Light`, `SemiBold` before `Bold`. `Medi` and
-/// `Regu` are URW's spellings.
-const WEIGHT_NAMES: [(&str, u32); 18] = [
+/// `Regu` are URW's spellings, `Demi` ITC's (decision #93).
+const WEIGHT_NAMES: [(&str, u32); 19] = [
     ("thin", 100),
     ("hairline", 100),
     ("extralight", 200),
@@ -850,6 +850,7 @@ const WEIGHT_NAMES: [(&str, u32); 18] = [
     ("light", 300),
     ("semibold", 600),
     ("demibold", 600),
+    ("demi", 600),
     ("extrabold", 800),
     ("ultrabold", 800),
     ("black", 900),
@@ -872,15 +873,19 @@ const ITALIC_NAMES: [&str; 2] = ["Italic", "Oblique"];
 /// flag (PDF 32000-1 Table 123, bit 19) for bold, its Italic flag (bit 7) for italic, and either one
 /// where the `/BaseFont` — the composite font's or its descendant's — holds a style word
 /// ([`BOLD_NAMES`], [`ITALIC_NAMES`]). **And since `-v4` from the program it embeds**
-/// ([`program_style`]): a subset font's dictionary often states no weight its program does. Nothing
-/// is estimated from stem widths or glyph outlines. It is a statement about the typeface the
-/// document chose, and the projections render it as emphasis; it says nothing about why the author
-/// chose it.
+/// ([`program_style`]): a subset font's dictionary often states no weight its program does.
+/// **And since decision #93 from the font's words**: bold where a weight word in its name's style
+/// names a class of 600 or more ([`weight_word`]) — `-Demi` — or, where the style names neither
+/// weight nor slant ([`slanted`]), the weight a program `skrifa` does not open names: a bare CFF
+/// one in its Top DICT ([`cff_weight`]), a Type 1 one in its `FontInfo` ([`type1_weight`]), read as
+/// [`stated_class`] reads it. Nothing is estimated from stem widths or glyph outlines. It is a
+/// statement about the typeface the document chose, and the projections render it as emphasis; it
+/// says nothing about why the author chose it.
 ///
 /// **The weight class** is the descriptor's `/FontWeight`, else the embedded program's `OS/2`
-/// weight class, else the one a weight word in the `/BaseFont`'s style names ([`weight_word`]):
-/// what the heading rule reads where a heading is set a weight heavier than its text yet lighter
-/// than bold.
+/// weight class, else the class the font's words state — a weight word in the `/BaseFont`'s style,
+/// else its program's weight name: what the heading rule reads where a heading is set a weight
+/// heavier than its text yet lighter than bold.
 fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool, Option<u32>) {
     // Type 0 fonts hold their descriptor, and their real name, on the descendant.
     let descendant = resolve_array(doc, fd.get(b"DescendantFonts").ok())
@@ -909,21 +914,110 @@ fn font_style(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> (bool, bool, Opt
             .or_else(|| resolve_stream(doc, d.get(b"FontFile3").ok()))
     });
     // A program whose filters do not decode states nothing, as for its ink metrics.
-    let decoded =
-        program.and_then(|s| crate::budget::decoded(&s, crate::budget::MAX_DECODED_BYTES).ok());
+    let decode =
+        |s: lopdf::Stream| crate::budget::decoded(&s, crate::budget::MAX_DECODED_BYTES).ok();
+    let decoded = program.and_then(decode);
     let stated = decoded.as_deref().and_then(program_style);
+    // The class the font's words state (decision #93): a weight word in its name's style, else the
+    // weight a program `skrifa` does not open names — but not under a style naming a slant alone,
+    // the text weight's, for where the two disagree the program is as often the one wrong:
+    // `Degular-Regular`'s and `Degular-Italic`'s name themselves Extra-bold.
+    let worded = names.iter().find_map(|n| weight_word(n)).or_else(|| {
+        if names.iter().any(|n| slanted(n)) {
+            return None;
+        }
+        decoded
+            .as_deref()
+            .and_then(cff_weight)
+            .or_else(|| {
+                let type1 = descriptor.as_ref()?.get(b"FontFile").ok();
+                type1_weight(&decode(resolve_stream(doc, type1)?)?)
+            })
+            .and_then(|word| stated_class(&word, &names))
+    });
     let bold = flags & (1 << 18) != 0
         || number(b"FontWeight").is_some_and(|w| w >= 600.0)
         || named(&BOLD_NAMES)
-        || stated.is_some_and(|(bold, _)| bold);
+        || stated.is_some_and(|(bold, _)| bold)
+        || worded.is_some_and(|w| w >= 600);
     let italic =
         flags & (1 << 6) != 0 || named(&ITALIC_NAMES) || stated.is_some_and(|(_, italic)| italic);
     let weight = number(b"FontWeight")
         .filter(|w| (1.0..=1000.0).contains(w))
         .map(|w| w as u32)
         .or_else(|| decoded.as_deref().and_then(program_weight))
-        .or_else(|| names.iter().find_map(|n| weight_word(n)));
+        .or(worded);
     (bold, italic, weight)
+}
+
+/// Whether a `/BaseFont`'s style names a slant (decision #93): `Degular-Italic`, `Face-Oblique`.
+fn slanted(name: &str) -> bool {
+    name.rsplit_once(['-', ',']).is_some_and(|(_, style)| {
+        let style = style.to_ascii_lowercase();
+        ITALIC_NAMES
+            .iter()
+            .any(|word| style.contains(&word.to_ascii_lowercase()))
+    })
+}
+
+/// The weight a bare CFF program names (decision #93): its Top DICT's `Weight` string (Adobe
+/// Technical Note #5176, Table 9), as the program spells it. `None` for bytes that are no CFF —
+/// an `sfnt`'s header reads as none — or a Top DICT that names no weight.
+fn cff_weight(bytes: &[u8]) -> Option<String> {
+    use skrifa::raw::tables::{cff::Cff, postscript::dict};
+    use skrifa::raw::{FontData, FontRead};
+    let cff = Cff::read(FontData::new(bytes)).ok()?;
+    let top = cff.top_dicts().get(0).ok()?;
+    // Each entry read takes at least one byte; the first that does not parse ends the read.
+    let id = dict::entries(top, None)
+        .map_while(Result::ok)
+        .find_map(|entry| match entry {
+            dict::Entry::Weight(id) => Some(id),
+            _ => None,
+        })?;
+    Some(cff.string(id)?.to_string())
+}
+
+/// The weight a Type 1 program names (decision #93): its `FontInfo`'s `/Weight (…)` (Adobe Type 1
+/// Font Format, §3.2), read in its clear text — what comes before `eexec`.
+fn type1_weight(bytes: &[u8]) -> Option<String> {
+    let find = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).position(|w| w == needle);
+    let clear = &bytes[..find(bytes, b"eexec").unwrap_or(bytes.len())];
+    let after = &clear[find(clear, b"/Weight")? + b"/Weight".len()..];
+    let string = after.trim_ascii_start().strip_prefix(b"(")?;
+    let end = string.iter().position(|&b| b == b')')?;
+    Some(String::from_utf8_lossy(&string[..end]).into_owned())
+}
+
+/// The weight class a program's weight name states (decision #93): the first of [`WEIGHT_NAMES`]
+/// its letters hold — `Extra Bold` and `Semi-bold` read as `ExtraBold` and `SemiBold`.
+///
+/// **Medium states a class only where the font's name says Medium too** ([`says_medium`]):
+/// PostScript's own faces name their book weight Medium — Helvetica, Courier, Computer Modern's
+/// `CMR10` — so a program's Medium alone does not tell a text face from one a class heavier.
+fn stated_class(word: &str, names: &[String]) -> Option<u32> {
+    let word: String = word
+        .chars()
+        .filter(char::is_ascii_alphabetic)
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+    let class = WEIGHT_NAMES
+        .iter()
+        .find(|(name, _)| word.contains(name))
+        .map(|&(_, class)| class)?;
+    (class != 500 || names.iter().any(|n| says_medium(n))).then_some(class)
+}
+
+/// Whether a `/BaseFont`'s style says Medium: holds `med`, or opens `md`, in any case —
+/// `Gotham-Medium`, `Futura-Med`, `HelveticaNeueLTStd-Md`, `JPMAMProMed`. The style is what follows
+/// the name's last `-` or `,`, or the whole name past its subset tag where it has neither.
+fn says_medium(name: &str) -> bool {
+    let name = name.split_once('+').map_or(name, |(_, rest)| rest);
+    let style = name
+        .rsplit_once(['-', ','])
+        .map_or(name, |(_, style)| style)
+        .to_ascii_lowercase();
+    style.contains("med") || style.starts_with("md")
 }
 
 /// The weight class a font name's style names (decision #64): the first of [`WEIGHT_NAMES`] the
@@ -1505,6 +1599,7 @@ mod tests {
             ("NimbusRomNo9L-Medi", Some(500)),
             ("NimbusRomNo9L-Regu", Some(400)),
             ("Lato-SemiBold", Some(600)),
+            ("ITCAvantGardeGothicStd-Demi", Some(600)),
             ("Poppins-ExtraLight", Some(200)),
             ("Helvetica-BoldOblique", Some(700)),
             ("Arial,Bold", Some(700)),
@@ -1556,6 +1651,197 @@ mod tests {
         assert_eq!(program_style(&both), Some((false, false)));
         assert_eq!(program_style(b"not a font"), None);
         assert_eq!(program_style(&[]), None);
+    }
+
+    /// A bare CFF program of one font, `Face`: `top` its Top DICT, `strings` its String INDEX —
+    /// string ids 391 on, in order (Adobe Technical Note #5176, §10) — and an empty Global Subr
+    /// INDEX, with a byte of the data a program holds after it.
+    fn cff(top: &[u8], strings: &[&[u8]]) -> Vec<u8> {
+        let index = |items: &[&[u8]]| {
+            let mut out = (items.len() as u16).to_be_bytes().to_vec();
+            if !items.is_empty() {
+                out.push(1);
+                let mut offset = 1;
+                out.push(offset);
+                for item in items {
+                    offset += item.len() as u8;
+                    out.push(offset);
+                }
+                items.iter().for_each(|item| out.extend_from_slice(item));
+            }
+            out
+        };
+        let mut out = vec![1, 0, 4, 1];
+        for part in [index(&[b"Face"]), index(&[top]), index(strings), index(&[])] {
+            out.extend(part);
+        }
+        out.push(0);
+        out
+    }
+
+    /// A Top DICT entry naming the weight whose string id is `sid`, 108 to 1131: the operand in
+    /// two bytes, then `Weight`'s operator, 4. Standard strings 384, 386, 387 and 390 are
+    /// `Bold`, `Light`, `Medium` and `Semibold`.
+    fn weight_entry(sid: u16) -> Vec<u8> {
+        let v = sid - 108;
+        vec![247 + (v >> 8) as u8, (v & 0xff) as u8, 4]
+    }
+
+    /// **A bare CFF program names its weight** (decision #93): its Top DICT's `Weight`, a standard
+    /// string or one of its own. A Top DICT that names none — its `FullName` is no weight — or one
+    /// that fails to parse before its `Weight` names nothing, nor do bytes that are no CFF, an
+    /// sfnt's among them.
+    #[test]
+    fn a_bare_cff_program_names_its_weight() {
+        let bold = cff(&weight_entry(384), &[]);
+        assert_eq!(cff_weight(&bold).as_deref(), Some("Bold"));
+        let heavy = cff(&weight_entry(391), &[b"Heavy"]);
+        assert_eq!(cff_weight(&heavy).as_deref(), Some("Heavy"));
+        assert_eq!(cff_weight(&cff(&[248, 20, 2], &[])), None);
+        let broken = [[255].as_slice(), &weight_entry(384)].concat();
+        assert_eq!(cff_weight(&cff(&broken, &[])), None);
+        assert_eq!(cff_weight(&sfnt(&[(b"OS/2", os2(700, 0))])), None);
+        assert_eq!(cff_weight(b"not a font"), None);
+    }
+
+    /// **A Type 1 program names its weight in its clear text** (decision #93): `/Weight` and the
+    /// string after it. A `/FullName`, a weight that is no string, and anything past `eexec`,
+    /// which the program encrypts, name nothing.
+    #[test]
+    fn a_type1_program_names_its_weight_in_its_clear_text() {
+        let program = |info: &str| {
+            format!(
+                "%!PS-AdobeFont-1.0: Face 001.000\n/FontInfo 2 dict dup begin\n{info}\nend \
+                 readonly def\ncurrentfile eexec\n"
+            )
+            .into_bytes()
+        };
+        let bold = program("/Weight (Bold) readonly def");
+        assert_eq!(type1_weight(&bold).as_deref(), Some("Bold"));
+        let spaced = program("/Weight  (Extra Bold) readonly def");
+        assert_eq!(type1_weight(&spaced).as_deref(), Some("Extra Bold"));
+        assert_eq!(type1_weight(&program("/FullName (Face Bold) def")), None);
+        let unstrung = program("/Weight /Bold def /FullName (Face Bold) def");
+        assert_eq!(type1_weight(&unstrung), None);
+        let mut late = program("");
+        late.extend_from_slice(b"/Weight (Bold) readonly def");
+        assert_eq!(type1_weight(&late), None);
+    }
+
+    /// **A program's weight name states the class its letters name** (decision #93), but Medium
+    /// only where the font's name says Medium too: `CMR10` and Helvetica call their book weight
+    /// Medium, a subset tag's letters are no style, and `md` counts where a style opens with it.
+    #[test]
+    fn a_program_s_weight_name_states_its_class() {
+        for (word, name, class) in [
+            ("Bold", "AAAAAB+CMBX12", Some(700)),
+            ("Extra Bold", "Futura-ExtBol", Some(800)),
+            ("Semi-bold", "Face", Some(600)),
+            ("Demi", "ITCFranklinGothicStd-Demi", Some(600)),
+            ("UltraBlack", "Gotham-Ultra", Some(900)),
+            ("Light", "JPMAMProLig", Some(300)),
+            ("Regular", "BNPPSans", Some(400)),
+            ("Ultra", "Gotham-Ultra", None),
+            ("Normal", "Face", None),
+            ("Medium", "AAAAAK+HelveticaNeueLTStd-Md", Some(500)),
+            ("Medium", "AAAAAD+JPMAMProMed", Some(500)),
+            ("Medium", "Gotham-Medium", Some(500)),
+            ("Medium", "AAAAAC+CMR10", None),
+            ("Medium", "Helvetica", None),
+            ("Medium", "AMEDAB+Helvetica", None),
+            ("Medium", "AAAAAA+CMDUNH10", None),
+            ("Medium", "Face,Md", Some(500)),
+            ("Medium", "HelveticaLTStd-Roman", None),
+        ] {
+            assert_eq!(
+                stated_class(word, &[name.to_string()]),
+                class,
+                "{word} {name}"
+            );
+        }
+    }
+
+    /// **Where `skrifa` opens no program, the program's weight name speaks** (decision #93): a
+    /// bare CFF `/FontFile3` or a Type 1 `/FontFile` naming Semibold, Bold or Heavy is bold, at
+    /// that class; a Medium one is a class heavier only under a name that says Medium. A name whose
+    /// style says a weight or a slant is read by that alone — `Degular-Regular` and
+    /// `Degular-Italic`, whose programs name Extra-bold; `-Demi`, a class of 600, is bold — and the
+    /// descriptor's `/FontWeight` stands before every other statement.
+    #[test]
+    fn a_program_skrifa_does_not_open_names_its_weight() {
+        let style = |key: &str, program: Vec<u8>, stated: Option<i64>, name: &str| {
+            let mut doc = lopdf::Document::with_version("1.7");
+            let mut desc = lopdf::Dictionary::new();
+            desc.set("Type", lopdf::Object::Name(b"FontDescriptor".to_vec()));
+            desc.set("Flags", lopdf::Object::Integer(32));
+            if let Some(w) = stated {
+                desc.set("FontWeight", lopdf::Object::Integer(w));
+            }
+            let id = doc.add_object(lopdf::Stream::new(lopdf::Dictionary::new(), program));
+            desc.set(key, lopdf::Object::Reference(id));
+            let desc = doc.add_object(desc);
+            let mut font = lopdf::Dictionary::new();
+            font.set("Type", lopdf::Object::Name(b"Font".to_vec()));
+            font.set("BaseFont", lopdf::Object::Name(name.as_bytes().to_vec()));
+            font.set("FontDescriptor", lopdf::Object::Reference(desc));
+            font_style(&doc, &font)
+        };
+        let named = |sid: u16| cff(&weight_entry(sid), &[]);
+        let type1 = b"%!PS-AdobeFont-1.0: Face\n/Weight (Heavy) readonly def\ncurrentfile eexec\n";
+        assert_eq!(
+            style("FontFile3", named(384), None, "AAAAAA+Face"),
+            (true, false, Some(700))
+        );
+        assert_eq!(
+            style("FontFile3", named(390), None, "AAAAAA+Face"),
+            (true, false, Some(600))
+        );
+        assert_eq!(
+            style("FontFile", type1.to_vec(), None, "AAAAAA+Face"),
+            (true, false, Some(900))
+        );
+        assert_eq!(
+            style("FontFile3", named(387), None, "AAAAAA+Face-Md"),
+            (false, false, Some(500))
+        );
+        assert_eq!(
+            style("FontFile3", named(387), None, "AAAAAA+CMR10"),
+            (false, false, None)
+        );
+        assert_eq!(
+            style("FontFile3", named(386), None, "AAAAAA+Face-Medium"),
+            (false, false, Some(500)),
+            "the name's class, not the program's"
+        );
+        let misnamed = cff(&weight_entry(391), &[b"Extra-bold"]);
+        assert_eq!(
+            style(
+                "FontFile3",
+                misnamed.clone(),
+                None,
+                "AAAAAA+Degular-Regular"
+            ),
+            (false, false, Some(400))
+        );
+        assert_eq!(
+            style("FontFile3", misnamed, None, "AAAAAA+Degular-Italic"),
+            (false, true, None)
+        );
+        assert_eq!(
+            style(
+                "FontFile3",
+                named(386),
+                None,
+                "AAAAAB+ITCFranklinGothicStd-Demi"
+            ),
+            (true, false, Some(600)),
+            "a name's weight word of 600 is bold"
+        );
+        assert_eq!(
+            style("FontFile3", named(384), Some(400), "AAAAAA+Face"),
+            (true, false, Some(400)),
+            "the descriptor's class before the program's"
+        );
     }
 
     fn font_with(widths: WidthSource, ink: FontInk) -> Font {

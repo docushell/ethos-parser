@@ -224,7 +224,7 @@ pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 /// bit — and italic where it sets the italic or oblique bit there; read with `skrifa`, as the
 /// program's ink metrics already are. A run shown in rendering mode 2 or 6, fill then stroke, is
 /// bold. Nothing is estimated from stem widths or outlines, and a program `skrifa` does not open — a
-/// bare CFF or Type 1 one — states nothing here.
+/// bare CFF or Type 1 one — stated nothing here until decision #93, below.
 ///
 /// **Measured** (`docs/measurements/parsebench/README.md`): ParseBench semantic formatting
 /// 0.4080 → 0.4296, 17 documents up and none down, every other dimension unchanged; the heading
@@ -237,6 +237,19 @@ pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 /// formatting 0.4646 → 0.4732, 8 pages up and none down, charts two pages up; opendataloader-bench
 /// NID 0.8876 → 0.8872 and MHS 0.5895 → 0.5893, a trade the owner took — its ground truth reads an
 /// arXiv paper's Medium author names and a chart's numbers as plain.
+///
+/// **And a program `skrifa` does not open names its weight** (decision #93, folded in before any
+/// release carried this id): a bare CFF program's Top DICT `Weight` and a Type 1 program's
+/// `FontInfo` `/Weight` — `Bold`, `Heavy`, `Demi` — are read for a font whose name's style says
+/// neither weight nor slant (`HelveticaNeueLTStd-Bd`, `Futura-Bol`, TeX's `CMBX12`), and a font is
+/// bold where the class its name's weight word or else its program's names is 600 or more
+/// (`-Demi`). A name that says a weight or a slant is read by that alone, for where name and
+/// program disagree the program is as often the one wrong — every `Degular` face's names itself
+/// Extra-bold — and Medium only under a name that says Medium too, for PostScript's own faces —
+/// Helvetica, Courier, Computer Modern's `CMR10` — name their book weight Medium. ParseBench
+/// semantic formatting 0.4848 → 0.4952, 9 pages up and none down; visual grounding 0.5670 →
+/// 0.5679, six up and one down — `sig-alternate-sample` p3, whose `CMBX9` captions now read as
+/// bold labels — a trade the owner took; opendataloader-bench and the heading bounds unchanged.
 pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
@@ -1339,6 +1352,11 @@ pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 /// counts. On ParseBench visual grounding 0.5582 -> 0.5606, nineteen pages up and none down, every
 /// other bound unchanged; on the heading bounds' documents four false headings and six false labels
 /// fewer, on `cfpb-home-loan-toolkit`, and no right one lost (§14 there).
+///
+/// **And a font's program states its class where its name cannot** (decision #93, folded in before
+/// any release carried this id): a font whose name's style names neither weight nor slant takes
+/// the class its bare CFF or Type 1 program names, as `OBSERVATION_RULE_V4` reads it, and `Demi`
+/// is a weight word of 600. The heading bounds' eleven documents read as before, line for line.
 pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.

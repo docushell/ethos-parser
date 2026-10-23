@@ -187,6 +187,39 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A bare CFF or Type 1 program names its weight (decision #93)
+
+Folded into `page-observations-v4` and `type-size-v7`, which no release carries yet, so no rule id
+and no `profile_sha256` moves.
+
+- **A font's program names its weight where its name cannot be read**: a bare CFF program's Top
+  DICT `Weight` and a Type 1 program's `FontInfo` `/Weight` — programs `skrifa` does not open — are
+  read for a font whose name's style says neither weight nor slant: `HelveticaNeueLTStd-Bd`, `-Hv`,
+  `-Blk`, `Futura-Bol`, TeX's `CMBX12`, `BreeSerifSb`. The class a font's words state — a weight
+  word in its name's style, else its program's — makes it bold from 600 up (`-Demi` too, now a
+  weight word), and is its weight class after its descriptor's and its `OS/2`'s, so `JPMAMProMed`
+  over `JPMAMProLig` text reads a class heavier, as decision #82 reads it.
+- **Medium only where the name says Medium too** (`-Md`, `Med`): PostScript's own faces name their
+  book weight Medium — Helvetica, Courier, Computer Modern's `CMR10` — and read as 500, a paper's
+  `n = 32` set in `CMMI10` over Times read bold.
+- **A name whose style says a weight or a slant is read by that alone**: where name and program
+  disagree, the program is as often the one wrong — every `Degular` face's names itself
+  Extra-bold, `MaerskTextProp-Bold`'s Regular — and read first it set a whole page bold.
+- **Why this piece**: of the 764 bold rules failing on ParseBench pages with Markdown, 289 sit on
+  text the run list does not hold, 226 under runs no signal marks bold, 212 under runs already bold
+  where the page's structure splits the phrase; 4,259 characters on 12 pages are set in faces
+  whose own program says Bold, Heavy or Demi, and 43 failing bold and title rules lie under them —
+  told "Census: formatting", the one cause with a single fix.
+- **Measured** on ParseBench: semantic formatting 0.4848 -> 0.4952, 9 pages up and none down
+  (`text_multicolumns__esd_end` 0 -> 0.97, `fund2col` 0 -> 0.87, `sbi` 0.42 -> 0.97,
+  `text_sparse__answer` 0.18 -> 0.88, `pap_2col` 0.41 -> 0.88); visual grounding 0.5670 -> 0.5679,
+  six pages up and one down — `sig-alternate-sample` p3 0.69 -> 0.56, whose `CMBX9` captions now
+  read as bold labels where its ground truth reads text, a trade the owner took; content
+  faithfulness one page up and one down by 0.0002 at most; tables and charts unchanged on every
+  page; overall 49.05 -> 49.28. opendataloader-bench unchanged on every document; the heading
+  bounds' eleven documents read as before, line for line; the fabrication check and the gate
+  documents' 541 tables unchanged.
+
 ### Names beside a bar, units, wrapped categories (decision #92)
 
 Folded into `bar-labels-v3`, `point-labels-v1` and `slice-labels-v1`, which no release carries
