@@ -1089,6 +1089,18 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After headers set row by row (decision #96, 2026-10-24)
+
+Of the table pages whose grid our rules read right (GriTS 0.8 or more), 59 matched almost no
+records, and on 50 tables the scorer matched no column: the ground truth writes a column name
+wrapped onto two lines as one header cell, where `whitespace-tracks` read the lines as two rows —
+a header whose every line names every column opens the table at its first line, and a header's
+last line naming years failed `-v13`'s no-digit test. Told "Table headers on several lines", the
+first rows of a table that each read as a header's line and sit closer to each other than the
+first row below are one header row, and a header's line may name two years or more. Tables
+0.5682 -> 0.5740, 8 pages up and none down; every other score unchanged on every page. Overall
+49.78 -> 49.90; opendataloader-bench's Markdown byte-identical.
+
 ### After icons, and the panels of a column of text (decision #95, 2026-10-24)
 
 Of the pictures visual grounding failed, 484 sat inside one of our figure regions far larger than

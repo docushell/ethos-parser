@@ -76,6 +76,17 @@
 //! line of prose and repeat no value of their columns — and that says not one word in every
 //! column — joins the header row, each column's lines top to bottom.
 //!
+//! **A header set row by row is one row** (`-v15`, decision #96, [`header_block`]): a header whose
+//! every line names every column opens the table at its first line, and each line stood as a row
+//! — `Year Ending` over `December 31,`, its columns' names wrapped. The first two to
+//! [`HEADER_MAX_LINES`] rows, or the header a band made and the rows under it, that each hold a
+//! cell on every column repeating no value its column holds below, read as a header's line as the
+//! `-v13` clause reads one, and sit closer to each other than the first row below sits to them, are
+//! one header row, each column's lines top to bottom. Set at the rows' own pitch they stay rows:
+//! a table's first rows of words. **And a header's line may name years** ([`heads`]): two cells or
+//! more of it each a year and nothing else, over columns of numbers that hold none, are a
+//! header's — `2024 | 2023` under `Fiscal` — where a year set beside words is still a value.
+//!
 //! **Two numbers set closer than an em are two cells** (`-v8`, [`split_number_pair`]): a line the
 //! table would end at, a cell of which holds two numbers — cut at the widest gap between its runs,
 //! each half on a track of its own, left before right — joins as the row it is with them split. A
@@ -216,6 +227,10 @@ pub const RUNNING_TEXT_ONE_IN: usize = 3;
 /// line of running text in a page's column holds forty to sixty.
 pub const PROSE_LINE_CHARS: usize = 30;
 
+/// The most lines a header set row by row is read as (`-v15`, decision #96): a column name set on
+/// three lines, `Issue` / `Age` / `(Male or Female)`, and one more.
+pub const HEADER_MAX_LINES: usize = 4;
+
 /// The signs a cell may hold alone and so join the amount after it.
 const CURRENCY_SIGNS: &str = "$¢£¥€₹₩₽";
 
@@ -331,27 +346,23 @@ pub(crate) fn detect(
                         // `-v13`: the header's last line, read as the first row, is the header's.
                         if header_last_line(&rows, runs) {
                             let row = rows.remove(0);
-                            for (cell, c) in header.cells.iter_mut().zip(&row.cells) {
-                                if c.runs.is_empty() {
-                                    continue;
-                                }
-                                if cell.runs.is_empty() {
-                                    (cell.x0, cell.x1) = (c.x0, c.x1);
-                                } else {
-                                    (cell.x0, cell.x1) = (cell.x0.min(c.x0), cell.x1.max(c.x1));
-                                }
-                                cell.runs.extend(&c.runs);
-                            }
+                            stack(&mut header, &row);
                             joined = Some(row);
                         }
                         rows.insert(0, header);
                         headed = true;
                     }
                 }
+                // `-v15` (decision #96): a header whose lines each read as a row is one row.
+                let lines = header_block(&rows, runs);
+                let stacked: Vec<Row> = rows.drain(1..lines).collect();
+                for row in &stacked {
+                    stack(&mut rows[0], row);
+                }
                 let mut table = build(page, &rows, runs, alloc)?;
                 // A header the table cannot be built with is none (`-v7`): the rows stand alone.
                 if table.is_none() && headed {
-                    rows.remove(0);
+                    rows.splice(0..1, stacked);
                     if let Some(row) = joined.take() {
                         rows.insert(0, row);
                     }
@@ -535,29 +546,103 @@ fn header_band(
 /// header. A first row opens its tracks, so it holds a cell on each; and a table under a band holds
 /// three rows or more, since two stand only clear of every line within four ems above them.
 fn header_last_line(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
-    let text = |r: &Row, k: usize| cell_text(&r.cells[k], runs).trim().to_string();
-    let columns = rows[0].cells.len();
-    let numeric: Vec<usize> = (1..columns)
+    heads(&rows[0], &rows[1..], runs)
+}
+
+/// The columns past the first whose rows in `below` hold a digit in half of them or more: a
+/// table's columns of numbers.
+fn numeric_columns(columns: usize, below: &[Row], runs: &[TrackRun<'_>]) -> Vec<usize> {
+    (1..columns)
         .filter(|&k| {
-            let digits = rows[1..]
+            let digits = below
                 .iter()
-                .filter(|r| text(r, k).chars().any(|c| c.is_ascii_digit()))
+                .filter(|r| {
+                    cell_text(&r.cells[k], runs)
+                        .chars()
+                        .any(|c| c.is_ascii_digit())
+                })
                 .count();
-            2 * digits >= rows.len() - 1
+            2 * digits >= below.len()
         })
-        .collect();
+        .collect()
+}
+
+/// Whether `row` reads as a header's line over the rows `below` it, as [`header_last_line`] reads
+/// a first row — and since `-v15` (decision #96) a line naming two years or more, each a cell of
+/// its own over a column of numbers that holds no year, is a header's: `2024 | 2023` under
+/// `Fiscal`, where a single year beside words is a value.
+fn heads(row: &Row, below: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    let text = |r: &Row, k: usize| cell_text(&r.cells[k], runs).trim().to_string();
+    let columns = row.cells.len();
+    let numeric = numeric_columns(columns, below, runs);
     let said: Vec<String> = (1..columns)
-        .map(|k| text(&rows[0], k))
+        .map(|k| text(row, k))
         .filter(|t| !t.is_empty())
         .collect();
+    let years = numeric.iter().filter(|&&k| is_year(&text(row, k))).count();
     !numeric.is_empty()
         && (said.len() < 3 || said.iter().any(|t| *t != said[0]))
         && numeric.iter().all(|&k| {
-            let head = text(&rows[0], k);
-            !head.chars().any(|c| c.is_ascii_digit())
+            let head = text(row, k);
+            let named = !head.chars().any(|c| c.is_ascii_digit())
+                || (years >= 2 && is_year(&head) && !below.iter().any(|r| is_year(&text(r, k))));
+            named
                 && head.chars().count() < PROSE_LINE_CHARS
-                && rows[1..].iter().all(|r| text(r, k) != head)
+                && below.iter().all(|r| text(r, k) != head)
         })
+}
+
+/// Whether `text` is a year and nothing more: four digits, 1900 to 2099.
+fn is_year(text: &str) -> bool {
+    text.len() == 4
+        && text.bytes().all(|b| b.is_ascii_digit())
+        && (text.starts_with("19") || text.starts_with("20"))
+}
+
+/// How many of a table's first rows are one header set on several lines (`-v15`, decision #96):
+/// the most, from two to [`HEADER_MAX_LINES`] with a row below them, that each hold a cell on every
+/// column repeating no value its column holds below them — a log's `COMMENT` set down its first
+/// column is no header's — and read as a header's line over the rows below them all, set closer to
+/// each other than the first row below is set to them: each line measured from where the one above
+/// it ends, a wrapped line from its last. One where no such lines open the table.
+fn header_block(rows: &[Row], runs: &[TrackRun<'_>]) -> usize {
+    let text = |r: &Row, k: usize| cell_text(&r.cells[k], runs).trim().to_string();
+    let bottom = |r: &Row| {
+        r.cells
+            .iter()
+            .flat_map(|c| c.runs.iter())
+            .map(|&i| runs[i].y)
+            .max()
+            .unwrap_or(r.y)
+    };
+    (2..=rows.len().saturating_sub(1).min(HEADER_MAX_LINES))
+        .rev()
+        .find(|&n| {
+            let below = &rows[n..];
+            let leading = (1..n).map(|k| rows[k].y - bottom(&rows[k - 1])).max();
+            rows[..n].iter().all(|row| {
+                (0..row.cells.len()).all(|k| {
+                    let head = text(row, k);
+                    !head.is_empty() && below.iter().all(|r| text(r, k) != head)
+                }) && heads(row, below, runs)
+            }) && leading.is_some_and(|leading| leading < rows[n].y - bottom(&rows[n - 1]))
+        })
+        .unwrap_or(1)
+}
+
+/// `row`'s runs set under `header`'s, column by column, each cell widened to hold both.
+fn stack(header: &mut Row, row: &Row) {
+    for (cell, c) in header.cells.iter_mut().zip(&row.cells) {
+        if c.runs.is_empty() {
+            continue;
+        }
+        if cell.runs.is_empty() {
+            (cell.x0, cell.x1) = (c.x0, c.x1);
+        } else {
+            (cell.x0, cell.x1) = (cell.x0.min(c.x0), cell.x1.max(c.x1));
+        }
+        cell.runs.extend(&c.runs);
+    }
 }
 
 /// The track each of `line`'s cells heads: the one it sits on, clear of its neighbours, where every
@@ -1865,6 +1950,263 @@ mod tests {
         );
     }
 
+    /// **A header's last line may name years** (`-v15`, decision #96): `2024` and `2023` — or
+    /// `1999` and `1998` — each a cell of its own over a column of figures, under `Current` and
+    /// `Prior`, are the header's. A year over a column of years, a number that is no year beside
+    /// the years, five digits and a year's letters leave the line a row.
+    #[test]
+    fn a_header_s_last_line_may_name_years() {
+        for years in [["2024", "2023"], ["1999", "1998"]] {
+            let found = ledger(true, ["Region", years[0], years[1], "Delta"]);
+            assert_eq!(
+                texts(&found[0])[0],
+                [
+                    "Region".to_string(),
+                    format!("Current {}", years[0]),
+                    format!("Prior {}", years[1]),
+                    "Change Delta".to_string()
+                ]
+            );
+            assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0", "1.5"]);
+        }
+        for (first, why) in [
+            (["Region", "2024", "24", "Delta"], "a number no year"),
+            (["Region", "2024", "20235", "Delta"], "five digits"),
+            (["Region", "2024", "20x4", "Delta"], "a year's letters"),
+            (
+                ["Region", "2024", "2023", "18"],
+                "a number beside the years",
+            ),
+        ] {
+            let found = ledger(true, first);
+            assert_eq!(
+                texts(&found[0])[0],
+                ["", "Current ", "Prior ", "Change "],
+                "{why}"
+            );
+            assert_eq!(texts(&found[0])[1], first, "{why}");
+        }
+        let mut runs = vec![
+            run(235, 172, 35, "Current "),
+            run(315, 172, 35, "Prior "),
+            run(100, 184, 40, "Region"),
+            run(240, 184, 30, "2024"),
+            run(320, 184, 30, "2023"),
+        ];
+        for (j, row) in [
+            ["North", "1998", "112.0"],
+            ["South", "2003", "9.1"],
+            ["East", "2010", "65.5"],
+            ["West", "2015", "70.25"],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 200 + 16 * j as i64;
+            runs.extend([
+                run(100, y, 40, row[0]),
+                run(240, y, 30, row[1]),
+                run(320, y, 30, row[2]),
+            ]);
+        }
+        assert_eq!(
+            texts(&tables(&runs)[0])[1],
+            ["Region", "2024", "2023"],
+            "a year over a column of years"
+        );
+    }
+
+    /// `lines` — each a baseline in points and its three cells, set on the columns of [`values`],
+    /// an empty one left out — above [`values`]' four rows.
+    fn headed_by(lines: &[(i64, [&'static str; 3])]) -> Vec<DetectedTable> {
+        let mut runs = Vec::new();
+        for &(y, cells) in lines {
+            for (x, text) in [100, 240, 335].into_iter().zip(cells) {
+                if !text.is_empty() {
+                    runs.push(run(x, y, 30, text));
+                }
+            }
+        }
+        under(runs)
+    }
+
+    /// **A header whose lines each read as a row is one row** (`-v15`, decision #96): `Year`,
+    /// `Number of` and `Average` over `Ending`, `Units` and `Price` — each line a cell on every
+    /// column, set closer to the next than the first row of figures is to them — are one header,
+    /// each column's lines top to bottom; so are three lines and four. Set at the rows' own pitch
+    /// they are two rows, as they are where the lower line holds a digit, leaves a column of numbers
+    /// empty or repeats a value its column holds, and five lines are no header.
+    #[test]
+    fn a_header_whose_lines_each_read_as_a_row_is_one_row() {
+        let found = headed_by(&[
+            (176, ["Year ", "Number of ", "Average "]),
+            (186, ["Ending", "Units", "Price"]),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Year Ending", "Number of Units", "Average Price"]
+        );
+        assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+        let found = headed_by(&[
+            (172, ["Year ", "Number ", "Average "]),
+            (180, ["Ending ", "of ", "Unit "]),
+            (188, ["Date", "Units", "Price"]),
+        ]);
+        assert_eq!(found[0].rows, 5);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Year Ending Date", "Number of Units", "Average Unit Price"]
+        );
+        let found = headed_by(&[
+            (168, ["Year ", "Number ", "Average "]),
+            (175, ["Ending ", "of ", "Unit "]),
+            (182, ["Close ", "Sold ", "Sale "]),
+            (189, ["Date", "Units", "Price"]),
+        ]);
+        assert_eq!(found[0].rows, 5, "four lines");
+        assert_eq!(
+            texts(&found[0])[0],
+            [
+                "Year Ending Close Date",
+                "Number of Sold Units",
+                "Average Unit Sale Price"
+            ]
+        );
+        let five = headed_by(&[
+            (164, ["Year ", "Number ", "Average "]),
+            (171, ["Ending ", "of ", "Unit "]),
+            (178, ["Close ", "Sold ", "Sale "]),
+            (185, ["Date ", "Units ", "Price "]),
+            (192, ["Here", "Now", "Then"]),
+        ]);
+        assert_eq!(five[0].rows, 9, "five lines");
+        for (upper, lower, why) in [
+            (168, ["Ending", "Units", "Price"], "set at the rows' pitch"),
+            (176, ["Ending", "Units", "Price (1)"], "a digit"),
+            (
+                176,
+                ["Ending", "Units", ""],
+                "a column of numbers left empty",
+            ),
+            (176, ["North", "Units", "Price"], "a value its column holds"),
+        ] {
+            let found = headed_by(&[
+                (upper, ["Year ", "Number of ", "Average "]),
+                (upper + if upper == 168 { 16 } else { 10 }, lower),
+            ]);
+            assert_eq!(found[0].rows, 6, "{why}");
+            assert_eq!(
+                texts(&found[0])[0],
+                ["Year ", "Number of ", "Average "],
+                "{why}"
+            );
+            assert_eq!(texts(&found[0])[1], lower, "{why}");
+        }
+    }
+
+    /// **A header is the most lines set closer than the rows below, each measured where the one
+    /// above it ends** (`-v15`, decision #96): lines 8 and then 10 points apart over a row 12 below
+    /// are one header of three; 8 and then 12 apart over a row 10 below, a header of two over a row
+    /// of words. A line whose wrap ends 12 points over the first row of figures is set closer to
+    /// them than to the line 14 above it, and stays a row. And two lines over a single row of
+    /// figures are its header.
+    #[test]
+    fn a_header_is_its_closest_lines_measured_where_each_ends() {
+        let three = headed_by(&[
+            (170, ["Year ", "Number ", "Average "]),
+            (178, ["Ending ", "of ", "Unit "]),
+            (188, ["Date", "Units", "Price"]),
+        ]);
+        assert_eq!(three[0].rows, 5);
+        assert_eq!(
+            texts(&three[0])[0],
+            ["Year Ending Date", "Number of Units", "Average Unit Price"]
+        );
+        let two = headed_by(&[
+            (170, ["Year ", "Number of ", "Average "]),
+            (178, ["Ending", "Units", "Price"]),
+            (190, ["Total", "Count", "Rate"]),
+        ]);
+        assert_eq!(two[0].rows, 6);
+        assert_eq!(
+            texts(&two[0])[0],
+            ["Year Ending", "Number of Units", "Average Price"]
+        );
+        assert_eq!(texts(&two[0])[1], ["Total", "Count", "Rate"]);
+        let wrapped = under(vec![
+            run(100, 166, 30, "Year "),
+            run(240, 166, 30, "Number "),
+            run(335, 166, 30, "Average "),
+            run(100, 180, 30, "Ending"),
+            run(240, 180, 30, "of Units "),
+            run(335, 180, 30, "Unit "),
+            run(240, 188, 30, "Sold"),
+            run(335, 188, 30, "Price"),
+        ]);
+        assert_eq!(wrapped[0].rows, 6, "a wrapped line");
+        assert_eq!(
+            texts(&wrapped[0])[1],
+            ["Ending", "of Units Sold", "Unit Price"]
+        );
+        let one = tables(&[
+            run(100, 176, 30, "Year "),
+            run(240, 176, 30, "Number of "),
+            run(335, 176, 30, "Average "),
+            run(100, 186, 30, "Ending"),
+            run(240, 186, 30, "Units"),
+            run(335, 186, 30, "Price"),
+            run(100, 200, 40, "North"),
+            run(250, 200, 20, "7.5"),
+            run(330, 200, 40, "112.0"),
+        ]);
+        assert_eq!(one[0].rows, 2, "a single row of figures");
+        assert_eq!(
+            texts(&one[0])[0],
+            ["Year Ending", "Number of Units", "Average Price"]
+        );
+    }
+
+    /// **A header's lines go on below its band** (`-v15`, decision #96): `in Millions`, `Sold`
+    /// and `Paid`, set under the header the band and its last line made, closer to it than the
+    /// first row of figures is, are its third line. And where that header cannot be built with —
+    /// `Units and price` covering a neighbour's column — its lines stand as rows again, every one.
+    #[test]
+    fn a_header_s_lines_go_on_below_its_band() {
+        let found = under(vec![
+            run(235, 172, 35, "Number of "),
+            run(335, 172, 35, "Average "),
+            run(100, 182, 40, "Region "),
+            run(245, 182, 25, "Units "),
+            run(345, 182, 25, "Price "),
+            run(100, 190, 40, "in Millions"),
+            run(245, 190, 25, "Sold"),
+            run(345, 190, 25, "Paid"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(
+            texts(&found[0])[0],
+            [
+                "Region in Millions",
+                "Number of Units Sold",
+                "Average Price Paid"
+            ]
+        );
+        let found = under(vec![
+            run(105, 172, 25, "Line"),
+            run(190, 172, 240, "Units and price"),
+            run(100, 182, 40, "Region "),
+            run(245, 182, 25, "Units "),
+            run(345, 182, 25, "Price "),
+            run(100, 190, 40, "in Millions"),
+            run(245, 190, 25, "Sold"),
+            run(345, 190, 25, "Paid"),
+        ]);
+        assert_eq!(found[0].rows, 6);
+        assert_eq!(texts(&found[0])[0], ["Region ", "Units ", "Price "]);
+        assert_eq!(texts(&found[0])[1], ["in Millions", "Sold", "Paid"]);
+    }
+
     /// **The band is a header's and nothing else's**: more than two and a half rows' pitch above the
     /// rows (`-v15`) it is apart from them; a line naming one column of three is a title, not a
     /// header; a cell of
@@ -2836,7 +3178,8 @@ mod tests {
 
     /// **Each side is read from the last table's end** (`-v14`): a panel's own first line, set a
     /// little off the other panel's baseline, opens no table across the page, and is still the
-    /// first row of its panel's.
+    /// first row of its panel's — the right panel's, set closer above `Age` and `Rate` than its
+    /// rows are to each other, as its header's first line (`-v15`, decision #96).
     #[test]
     fn each_side_is_read_from_the_last_table_s_end() {
         let side = |x: i64, top: i64| -> Vec<TrackRun<'static>> {
@@ -2857,8 +3200,9 @@ mod tests {
         runs.extend(side(300, 86));
         let found = tables(&runs);
         assert_eq!(found.len(), 2);
-        assert_eq!((found[0].rows, found[1].rows), (6, 6));
+        assert_eq!((found[0].rows, found[1].rows), (6, 5));
         assert_eq!(texts(&found[0])[0], ["Plan", "Monthly"]);
+        assert_eq!(texts(&found[1])[0], ["PlanAge", "MonthlyRate"]);
     }
 
     /// **A currency sign set alone is its amount's sign**: a `$` flush left in the column and the

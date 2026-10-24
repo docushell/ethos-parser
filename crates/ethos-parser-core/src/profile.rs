@@ -1000,6 +1000,17 @@ pub const TABLE_DETECTION_TRACKS_V14: &str = "whitespace-tracks-v14";
 ///
 /// **The change.** The band's first line may stand two and a half rows' pitch above the table —
 /// three ems — where `-v7` allowed two; the lines above it still climb a row and a half at most.
+///
+/// **And a header set row by row** (decision #96, folded in before any release carried this id):
+/// a header whose every line names every column — `Year Ending` over `December 31,` — opened the
+/// table at its first line, each line a row, and the ground truth's one header cell matched no
+/// column. The first two to four rows, or the header a band made and the rows under it, that each
+/// hold a cell on every column repeating no value its column holds below, read as a header's line
+/// as `-v13` reads one, and sit closer to each other than the first row below sits to them, are one
+/// header row; and a header's line may name two years or more, each a cell of its own over a
+/// column of numbers that holds no year — `2024 | 2023` under `Fiscal`. ParseBench tables 0.5682 →
+/// 0.5740, 8 pages up and none down; every other score, opendataloader-bench's Markdown and the
+/// gate documents' 541 tables unchanged.
 pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

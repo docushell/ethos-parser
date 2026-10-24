@@ -187,6 +187,28 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Headers set row by row, and years naming columns (decision #96)
+
+Folded into `whitespace-tracks-v15`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A header set row by row is one header row**: a column name wrapped onto two lines or more —
+  `Year Ending` over `December 31,` — whose every line names every column opened the table at its
+  first line, each line a row, and the lower read as a row of data. The first two to four rows, or
+  the header a band made and the rows under it, that each hold a cell on every column repeating no
+  value its column holds, read as a header's line and sit closer to each other than the first row
+  below sits to them, are now one header row, each column's lines top to bottom.
+- **A header's line may name years**: two cells or more each a year and nothing else, over columns
+  of numbers that hold none — `2024 | 2023` under `Fiscal` — are the header's. A single year beside
+  words is still a value.
+- **Why this piece**: told "Table headers on several lines", 59 ParseBench table pages read their
+  grid right but matched almost no records; the ground truth writes a wrapped column name as one
+  header cell, and no column of ours matched it.
+- **Measured** on ParseBench: tables 0.5682 -> 0.5740, 8 pages up and none down; content
+  faithfulness, semantic formatting, charts and visual grounding unchanged on every page; overall
+  49.78 -> 49.90. opendataloader-bench's 200 Markdown files byte-identical; the fabrication check
+  and the gate documents' 541 tables unchanged.
+
 ### Icons, and the panels of a column of text (decision #95)
 
 Folded into `figure-regions-v1`, which no release carries yet, so no rule id and no

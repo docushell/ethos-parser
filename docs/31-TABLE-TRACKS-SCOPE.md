@@ -1192,3 +1192,45 @@ tables unchanged cell for cell. **Not freed**: the chart rules read none of the 
 labels the grids had held — line charts of three series (`GWR-2024`) and paired bars and points
 (`cimquarterlychartbook` p15) are each their own reading. **Not caught**: `Consultancy-in-Spain`
 p19's bar charts, whose gridlines carry no axis numbers, keep their grids.
+
+## 31. A header set row by row, and years naming columns (2026-10-24, decision #96)
+
+**What `-v15` missed.** Offered after #95, the owner chose "Table headers on several lines". Of the
+ParseBench table pages whose grid our rules read right — GriTS 0.8 or more — 59 matched almost no
+records (record match under 0.2), and on 50 of their tables the scorer matched no column at all.
+The ground truth writes a column name wrapped onto two lines as one header cell — `Year Ending
+December 31,` — where this rule read two rows, the upper the header and the lower a row of data.
+Two shapes: a header whose every line names every column opens the table at its first line, each
+line a row, and `-v13`'s clause reads only a first row under a band (`Kimco-Realty-2023` p41, a
+rate filing's `Asset or revenue size` / `in Millions`); and a header's last line naming years —
+`2024 | 2023` under `Fiscal` — failed `-v13`'s no-digit test (`Home Depot 10-k` p45, p57, p58,
+`Goldman Sachs 10-k` p106, `IBM_Annual_Report_2018` p32).
+
+**The change.** Two clauses, folded into `-v15`, which no release carries:
+
+- **A header set row by row is one row.** The first two to four rows of a table, or the header a
+  band made and the rows under it, that each hold a cell on every column repeating no value its
+  column holds below them, read as a header's line as `-v13` reads one — no digit on a column of
+  numbers, shorter than a line of prose, not one word said across the row — and sit closer to each
+  other than the first row below sits to them, are one header row, each column's lines top to
+  bottom. Each line is measured from where the one above it ends, a wrapped line from its last; the
+  most such lines are taken. A header a band made that the table cannot be built with is none, and
+  its lines stand as rows again, every one (`-v7`).
+- **A header's line may name years**: two cells or more of it each a year and nothing else, 1900 to
+  2099, over columns of numbers that hold none. A single year set beside words is still a value.
+
+**Measured**, with the shipped build on every ParseBench group, against `f91cceb`: ParseBench
+tables **0.5682 → 0.5740**, 8 pages up and none down (`Kimco-Realty-2023` p41 0.46 → 0.99,
+`SERFF_CA_random_pages 1` p330 0.49 → 0.98, `SERFF_TX_random_pages 1` p301 0.24 → 0.80 — three
+lines, `Issue` / `Age` / `(Male or Female)` — `Home Depot 10-k` p45 0.39 → 0.84, p57 0.49 → 0.87 and
+p58 0.30 → 0.48, `Goldman Sachs 10-k` p106 0.40 → 0.59, `IBM_Annual_Report_2018` p32 0.15 → 0.28);
+content, formatting, charts and visual grounding unchanged on every page; overall 49.78 → 49.90.
+opendataloader-bench's 200 Markdown files byte-identical; no table on a document without one,
+every cell its runs' text; the gate documents' 541 tables unchanged cell for cell. Every bound of
+§4 holds. **Measured and not used**: the first row holding no value joined to its header in the
+Markdown alone, whatever drew the table — 0.5722, 23 pages up and 22 down, rows of words in ruled
+tables read as headers; a single year as a header's (0.5700: `SERFF_CA_random_pages 1` p2867's
+`Calendar Year | 2015` row, 1.00 → 0.58); header lines with no spacing test (0.5712: `Coca Cola
+10-k` p1's cover table, bold throughout, its first row of securities read into its header, 1.00 →
+0.58); the block only where no band stands (0.5719); and no test of a repeated value
+(`text_simple__clilogs`, a log's `COMMENT` lines read as a header, content faithfulness −0.003).
