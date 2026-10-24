@@ -187,6 +187,31 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Icons, and the panels of a column of text (decision #95)
+
+Folded into `figure-regions-v1`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **An icon is a figure**: a cluster of one or two painted paths, one of them drawing more than
+  rectangles and axis-aligned lines — a curve, a slant, a polygon — with no text set inside it and
+  its longer side at most four times its shorter. Until now a cluster needed three paths, and an
+  icon drawn in one or two read as nothing. A lone rectangle is still a panel or a rule, and a
+  rule set in a margin as one path is still none.
+- **A panel holding a column of text joins no drawing**: a path whose box holds 120 characters of
+  text or more, however short its lines. The 60-character prose test missed a narrow column's
+  shaded background, which set every icon on it into one region with it.
+- `Interpreter::painted` records, beside each path's box, whether the path is shaped.
+- **Why this piece**: told "Census: vector figures", of the 922 pictures visual grounding failed,
+  484 sat inside one of our regions far larger than they and 183 were icons drawn in one path or
+  two, near no other path.
+- **Measured** on ParseBench: visual grounding 0.5677 -> 0.5782, 61 pages up and 3 down — each a
+  figure drawn on a background holding 120 characters of its own labels, which the panel clause
+  now leaves out, so the figure reads in part — a trade the owner took; 211 more pictures placed,
+  every other class of element as before; tables, charts, content faithfulness and semantic
+  formatting unchanged on every page; overall 49.57 -> 49.78. opendataloader-bench's 200 Markdown
+  files byte-identical; the fabrication check and the gate documents' 541 tables unchanged; their
+  tree-stripped copies 265 -> 277 regions.
+
 ### A tagged document whose tree tags no heading has its headings read (decision #94)
 
 Folded into `type-size-v7`, `markdown-blocks-v12` and `html-blocks-v12`, which no release carries

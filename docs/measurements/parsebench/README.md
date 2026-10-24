@@ -1089,6 +1089,16 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After icons, and the panels of a column of text (decision #95, 2026-10-24)
+
+Of the pictures visual grounding failed, 484 sat inside one of our figure regions far larger than
+they, where a shaded column panel holding text in short lines joined every icon on the page, and
+183 were icons drawn in one path or two. Told "Census: vector figures", a path holding 120
+characters of text is a panel that joins no drawing, and a compact, text-free cluster of one or two
+paths, one of them shaped, is a figure. Visual grounding 0.5677 -> 0.5782, 61 pages up and 3 down,
+a trade the owner took; tables, charts, content faithfulness and semantic formatting unchanged on
+every page. Overall 49.57 -> 49.78; opendataloader-bench's Markdown byte-identical.
+
 ### Ethos + OCR pass (decision #45, 2026-10-05)
 
 Under `ETHOS_BENCH_OCR=1` the adapter reads scans through Tesseract outside the engine (English

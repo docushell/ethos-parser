@@ -1327,14 +1327,16 @@ fn extract_page(
         if profile.figure_rule == ethos_parser_core::FIGURE_RULE_V1
             && no_author_structure(structure.as_ref())
         {
-            let painted: Vec<crate::tables::QuantRect> = interp
+            let painted: Vec<(crate::tables::QuantRect, bool)> = interp
                 .painted
                 .iter()
-                .filter_map(|r| {
+                .filter_map(|&(r, shaped)| {
                     let (ax, ay) = geom.to_top_left(r.x0, r.y0);
                     let (bx, by) = geom.to_top_left(r.x1, r.y1);
                     // A path whose coordinates cannot be placed is no evidence of a figure.
-                    crate::tables::quantize_rect(ax, ay, bx, by).ok()
+                    crate::tables::quantize_rect(ax, ay, bx, by)
+                        .ok()
+                        .map(|q| (q, shaped))
                 })
                 .collect();
             let page_box =

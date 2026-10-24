@@ -397,8 +397,10 @@ pub struct Interpreter<'a> {
     pub inset: Vec<PathRect>,
     /// The box of every path a fill or a stroke painted, in user space, curves included and a
     /// form's paths kept (`figure-regions-v1`, decision #46) — the figure rule's only input. A
-    /// path ended with `n` painted nothing and is not here.
-    pub painted: Vec<PathRect>,
+    /// path ended with `n` painted nothing and is not here. Beside each box, since decision #95,
+    /// whether the path drew more than rectangles and axis-aligned lines — a curve, a slant, a
+    /// polygon — as an icon's outline does and a panel or a rule does not.
+    pub painted: Vec<(PathRect, bool)>,
     /// The lines a stroke painted (`point-labels-v1`): each subpath's points in order — where a
     /// curve ends, not its control points — in user space, with the stroke colour in force. A line
     /// chart's series are such lines, and a legend's short strokes name them. Read by the line
@@ -414,6 +416,9 @@ pub struct Interpreter<'a> {
     pub wedges: Vec<Wedge>,
     /// The box of the path being built: every point and control point it has named so far.
     path_box: Option<PathRect>,
+    /// Whether a subpath of the path being built drew more than a rectangle or an axis-aligned
+    /// line (decision #95), read as each subpath ends.
+    path_shaped: bool,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
     /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
@@ -524,6 +529,7 @@ impl<'a> Interpreter<'a> {
             marks: Vec::new(),
             wedges: Vec::new(),
             path_box: None,
+            path_shaped: false,
             filled: Vec::new(),
             filled_repeated: Vec::new(),
             filled_rounded: Vec::new(),
@@ -693,8 +699,25 @@ impl<'a> Interpreter<'a> {
     /// A rectangle is four or five points (the fifth closing back to the first), all segments
     /// axis-aligned, spanning exactly two distinct x values and two distinct y values. Anything
     /// else — an L, a triangle, a polyline, a curve — is discarded rather than approximated.
+    /// Decision #95: notes where `sub` draws more than a rectangle or an axis-aligned line — a
+    /// curve or a slant (what disqualifies it as a ruling line), or a polygon — for
+    /// [`Interpreter::painted`]. Its points are in page space already, so a rotated CTM reads
+    /// here as what it draws.
+    fn note_shape(&mut self, sub: &Subpath) {
+        if sub.disqualified {
+            self.path_shaped = true;
+        } else if sub.points.len() >= 2 {
+            let pts = &sub.points;
+            let (a, b) = (pts[0], pts[pts.len() - 1]);
+            let line = pts.len() == 2 && (approx_eq(a.0, b.0) || approx_eq(a.1, b.1));
+            let boxed = rectangle(pts).is_some() || rectangle(&once_each(pts)).is_some();
+            self.path_shaped |= !(line || boxed);
+        }
+    }
+
     fn flush_subpath(&mut self) {
         let sub = std::mem::take(&mut self.subpath);
+        self.note_shape(&sub);
         if sub.vertices.len() >= 2 {
             self.pending_polylines.push(sub.vertices.clone());
         }
@@ -930,8 +953,11 @@ impl<'a> Interpreter<'a> {
                 // bounding box would invent edges the document never drew, so it is dropped.
                 if self.ctm_is_axis_aligned() {
                     self.pending.push(PathRect::from_corners(a, b));
+                } else {
+                    self.path_shaped = true;
                 }
                 let before = std::mem::take(&mut self.subpath);
+                self.note_shape(&before);
                 if before.vertices.len() >= 2 {
                     self.pending_polylines.push(before.vertices);
                 }
@@ -1002,8 +1028,9 @@ impl<'a> Interpreter<'a> {
                 self.flush_subpath();
                 let strokes = !matches!(op, Fill | FillObsolete | FillEvenOdd);
                 let fills = !matches!(op, Stroke | CloseStroke);
+                let shaped = std::mem::take(&mut self.path_shaped);
                 if let Some(b) = self.path_box.take() {
-                    self.painted.push(b);
+                    self.painted.push((b, shaped));
                     // `point-labels-v1`: a small, near-square filled path is a mark.
                     let (w, h) = (b.x1 - b.x0, b.y1 - b.y0);
                     if fills
@@ -1068,6 +1095,7 @@ impl<'a> Interpreter<'a> {
             // line — this is also the operator that ends a clip-only path.
             EndPath => {
                 self.path_box = None;
+                self.path_shaped = false;
                 self.subpath = Subpath::default();
                 self.pending.clear();
                 self.pending_filled.clear();
@@ -1396,6 +1424,7 @@ impl<'a> Interpreter<'a> {
             std::mem::take(&mut self.pending),
             std::mem::take(&mut self.pending_segments),
             self.path_box.take(),
+            std::mem::take(&mut self.path_shaped),
         );
         self.gs.ctm = form.matrix.then(self.gs.ctm);
         self.form_stack.push((id, Arc::clone(&form), path));
@@ -1429,6 +1458,7 @@ impl<'a> Interpreter<'a> {
             self.pending,
             self.pending_segments,
             self.path_box,
+            self.path_shaped,
         ) = saved;
         outcome
     }
@@ -1837,6 +1867,61 @@ mod tests {
         let r = i.rects[0];
         assert!(approx_eq(r.x0, 40.0) && approx_eq(r.y0, 80.0));
         assert!(approx_eq(r.x1, 140.0) && approx_eq(r.y1, 120.0));
+    }
+
+    /// **A painted path says whether it drew more than rectangles and axis-aligned lines**
+    /// (decision #95): a rectangle, by `re` or by its four corners, and a line along an axis are
+    /// not shaped; a curve, a slant, a polygon, a rectangle under a rotated CTM and a curve before a
+    /// `re` in one path are. A path ended with `n` leaves nothing for the next path to inherit.
+    #[test]
+    fn a_painted_path_says_whether_it_is_shaped() {
+        let fonts = no_fonts();
+        let shaped = |content: &str| {
+            let mut i = Interpreter::new(&fonts);
+            i.run(&ops(content)).unwrap();
+            i.painted.iter().map(|&(_, s)| s).collect::<Vec<_>>()
+        };
+        assert_eq!(shaped("40 80 100 40 re f"), [false]);
+        assert_eq!(shaped("40 80 m 140 80 l 140 120 l 40 120 l h f"), [false]);
+        assert_eq!(
+            shaped("40 80 m 40 80 l 140 80 l 140 80 l 140 120 l 140 120 l 40 120 l 40 120 l h f"),
+            [false],
+            "every corner named twice"
+        );
+        assert_eq!(shaped("40 80 m 140 80 l S"), [false]);
+        assert_eq!(shaped("40 80 m 50 90 60 90 70 80 c f"), [true]);
+        assert_eq!(shaped("40 80 m 140 120 l S"), [true]);
+        assert_eq!(shaped("40 80 m 140 80 l 90 120 l h f"), [true]);
+        assert_eq!(
+            shaped("40 80 m 140 80 l 140 100 l 60 100 l 60 120 l 40 120 l h f"),
+            [true],
+            "an L of axis-aligned edges"
+        );
+        assert_eq!(
+            shaped("q 0.7 0.7 -0.7 0.7 0 0 cm 40 80 100 40 re f Q"),
+            [true]
+        );
+        assert_eq!(
+            shaped("40 80 m 50 90 60 90 70 80 c 10 10 20 20 re f"),
+            [true]
+        );
+        assert_eq!(
+            shaped("40 80 m 50 90 60 90 70 80 c n 40 80 100 40 re f"),
+            [false]
+        );
+        assert_eq!(
+            shaped("40 80 m 50 90 60 90 70 80 c 10 10 m 20 10 l n 40 80 100 40 re f"),
+            [false],
+            "a path ended with n, its curve already read"
+        );
+        assert_eq!(
+            shaped("40 80 100 40 re f 40 80 m 140 120 l S"),
+            [false, true]
+        );
+        assert_eq!(
+            shaped("40 80 m 140 120 l S 40 80 100 40 re f"),
+            [true, false]
+        );
     }
 
     /// **A stroked line carries its points and the stroke colour it was painted in**

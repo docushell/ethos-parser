@@ -18,10 +18,13 @@
 //! 1. **Every painted path's box**, on the page and in the forms it draws
 //!    ([`crate::content::Interpreter::painted`]), less any whose box covers [`BACKGROUND`] of the
 //!    page or more — that is the page's background — and any holding a line of prose, as clause 3
-//!    reads one: a panel text is set on, which joins no drawing set on it beside the text.
+//!    reads one, or since decision #95 [`PANEL_CHARS`] characters of text however short its lines:
+//!    a panel text is set on, which joins no drawing set on it beside the text.
 //! 2. **Clustered by touch**: two boxes are one cluster where the gap between them is at most
 //!    [`GAP`] across and at most [`GAP`] down.
-//! 3. **Kept** where the cluster holds [`MIN_PATHS`] paths or more, covers between
+//! 3. **Kept** where the cluster holds [`MIN_PATHS`] paths or more — or, since decision #95, fewer,
+//!    one of them shaped, no text set inside the cluster and its sides within [`ICON_ASPECT`] of
+//!    each other: an icon — covers between
 //!    [`MIN_AREA_PER_TEN_THOUSAND`] ten-thousandths and [`BACKGROUND`] of the page, has less than
 //!    half its area inside any one table found on the page, and holds no line of prose — no
 //!    baseline inside it carrying more than [`MAX_LINE_CHARS`] characters other than whitespace.
@@ -37,8 +40,21 @@ use crate::tables::QuantRect;
 /// at most this down: 3 points, in centipoints.
 pub const GAP: i64 = 300;
 
-/// A cluster of fewer painted paths is a rule or a panel, not a figure.
+/// A cluster of fewer painted paths is a rule or a panel, not a figure — unless one of them draws
+/// more than rectangles and axis-aligned lines, no text is set inside the cluster and it is compact
+/// ([`ICON_ASPECT`]) — decision #95: an icon drawn in one path or two, which ground truth boxes one
+/// by one.
 pub const MIN_PATHS: usize = 3;
+
+/// An icon is compact (decision #95): a cluster of fewer than [`MIN_PATHS`] paths is one only where
+/// its longer side is at most this many times its shorter — a rule set in the margin, a bracket or
+/// a connector drawn in one path is none.
+pub const ICON_ASPECT: i64 = 4;
+
+/// A path whose box holds this many characters of text, other than whitespace, is a panel text is
+/// set on, however short its lines (decision #95): a narrow column's shaded background, whose lines
+/// no [`MAX_LINE_CHARS`] reaches, set every drawing on it into one region with it.
+pub const PANEL_CHARS: usize = 120;
 
 /// A cluster covering less of the page than this many ten-thousandths is a speck: half a
 /// thousandth, where a page's hairline rule drawn in pieces covers less and an icon set beside a
@@ -64,21 +80,26 @@ pub struct DetectedFigure {
 
 /// The figure regions of one page, top to bottom and then left to right.
 ///
-/// `painted` is every painted path's box in page space; `page` is the page's own box; `tables`
-/// are the tables found on it; `runs` are its text runs, each its origin and its text.
+/// `painted` is every painted path's box in page space and whether the path is shaped — draws more
+/// than rectangles and axis-aligned lines; `page` is the page's own box; `tables` are the tables
+/// found on it; `runs` are its text runs, each its origin and its text.
 pub(crate) fn detect(
-    painted: &[QuantRect],
+    painted: &[(QuantRect, bool)],
     page: QuantRect,
     tables: &[QuantRect],
     runs: &[(i64, i64, &str)],
 ) -> Vec<DetectedFigure> {
     let area = |r: &QuantRect| i128::from(r.x1 - r.x0) * i128::from(r.y1 - r.y0);
     let page_area = area(&page);
-    let boxes: Vec<QuantRect> = painted
+    let (boxes, shaped): (Vec<QuantRect>, Vec<bool>) = painted
         .iter()
         .copied()
-        .filter(|b| area(b) * 10 < page_area * BACKGROUND && !holds_prose(b, runs))
-        .collect();
+        .filter(|(b, _)| {
+            area(b) * 10 < page_area * BACKGROUND
+                && !holds_prose(b, runs)
+                && text_inside(b, runs) < PANEL_CHARS
+        })
+        .unzip();
 
     // Swept in order of left edge, so the inner loop stops at the first box too far right.
     let mut order: Vec<usize> = (0..boxes.len()).collect();
@@ -99,11 +120,11 @@ pub(crate) fn detect(
         }
     }
 
-    let mut clusters: std::collections::BTreeMap<usize, (QuantRect, usize)> =
+    let mut clusters: std::collections::BTreeMap<usize, (QuantRect, usize, bool)> =
         std::collections::BTreeMap::new();
     for (i, b) in boxes.iter().enumerate() {
         let r = crate::tables::root(&mut parent, i);
-        let c = clusters.entry(r).or_insert((*b, 0));
+        let c = clusters.entry(r).or_insert((*b, 0, false));
         c.0 = QuantRect {
             x0: c.0.x0.min(b.x0),
             y0: c.0.y0.min(b.y0),
@@ -111,12 +132,17 @@ pub(crate) fn detect(
             y1: c.0.y1.max(b.y1),
         };
         c.1 += 1;
+        c.2 |= shaped[i];
     }
 
     let mut out: Vec<DetectedFigure> = clusters
         .into_values()
-        .filter(|(_, paths)| *paths >= MIN_PATHS)
-        .filter_map(|(b, _)| {
+        .filter(|(b, paths, shaped)| {
+            let (w, h) = (b.x1 - b.x0, b.y1 - b.y0);
+            *paths >= MIN_PATHS
+                || (*shaped && text_inside(b, runs) == 0 && ICON_ASPECT * w.min(h) >= w.max(h))
+        })
+        .filter_map(|(b, _, _)| {
             // Within the page: ink painted off it is not on it.
             let b = QuantRect {
                 x0: b.x0.max(page.x0),
@@ -144,6 +170,14 @@ pub(crate) fn detect(
     out
 }
 
+/// The characters of text, other than whitespace, set inside `b`: the runs whose origin lies in it.
+fn text_inside(b: &QuantRect, runs: &[(i64, i64, &str)]) -> usize {
+    runs.iter()
+        .filter(|&&(x, y, _)| x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1)
+        .map(|(_, _, text)| text.chars().filter(|c| !c.is_whitespace()).count())
+        .sum()
+}
+
 /// Whether `b` holds a line of prose: a band of baselines inside it carrying more than
 /// [`MAX_LINE_CHARS`] characters other than whitespace.
 fn holds_prose(b: &QuantRect, runs: &[(i64, i64, &str)]) -> bool {
@@ -160,6 +194,99 @@ fn holds_prose(b: &QuantRect, runs: &[(i64, i64, &str)]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// [`super::detect`] over paths that draw rectangles and lines alone, as every test before
+    /// decision #95 drew them.
+    fn detect(
+        painted: &[QuantRect],
+        page: QuantRect,
+        tables: &[QuantRect],
+        runs: &[(i64, i64, &str)],
+    ) -> Vec<DetectedFigure> {
+        let boxy: Vec<(QuantRect, bool)> = painted.iter().map(|&b| (b, false)).collect();
+        super::detect(&boxy, page, tables, runs)
+    }
+
+    /// **An icon of one path or two, set apart from text, is a figure** (decision #95): a shaped
+    /// path alone, or beside a rectangle, is one; the same with a word set inside it, one drawing
+    /// only rectangles, and one under half a thousandth of the page are none.
+    #[test]
+    fn an_icon_of_one_or_two_paths_set_apart_from_text_is_a_figure() {
+        let icon = (pt(100, 100, 120, 120), true);
+        assert_eq!(
+            super::detect(&[icon], page(), &[], &[]),
+            [DetectedFigure {
+                rect: pt(100, 100, 120, 120)
+            }]
+        );
+        let framed = [icon, (pt(98, 98, 122, 122), false)];
+        assert_eq!(super::detect(&framed, page(), &[], &[]).len(), 1);
+        let worded = super::detect(&[icon], page(), &[], &[(10500, 11000, "Go")]);
+        assert!(worded.is_empty(), "a word set inside it: {worded:?}");
+        let blank = super::detect(&[icon], page(), &[], &[(10500, 11000, " ")]);
+        assert_eq!(blank.len(), 1, "whitespace is no text");
+        let beside = super::detect(&[icon], page(), &[], &[(13000, 11000, "Go")]);
+        assert_eq!(beside.len(), 1, "a word beside it, not inside");
+        let boxes = [
+            (pt(100, 100, 120, 120), false),
+            (pt(121, 100, 140, 120), false),
+        ];
+        assert!(super::detect(&boxes, page(), &[], &[]).is_empty());
+        let speck = (pt(100, 100, 110, 110), true);
+        assert!(super::detect(&[speck], page(), &[], &[]).is_empty());
+        let (compact, rule) = (
+            (pt(100, 100, 180, 120), true),
+            (pt(100, 100, 181, 120), true),
+        );
+        assert_eq!(
+            super::detect(&[compact], page(), &[], &[]).len(),
+            1,
+            "four to one"
+        );
+        assert!(
+            super::detect(&[rule], page(), &[], &[]).is_empty(),
+            "longer than four to one: a rule or a connector"
+        );
+        let tall = (pt(100, 100, 120, 181), true);
+        assert!(super::detect(&[tall], page(), &[], &[]).is_empty());
+    }
+
+    /// **A panel holding a column's text joins no drawing** (decision #95): two charts on one
+    /// shaded panel are two figures where the panel holds 120 characters of text in lines too short
+    /// to be prose, and one with the panel where it holds 119.
+    #[test]
+    fn a_panel_holding_a_column_of_text_joins_no_drawing() {
+        let second: Vec<QuantRect> = chart()
+            .iter()
+            .map(|b| QuantRect {
+                x0: b.x0 + 20000,
+                x1: b.x1 + 20000,
+                ..*b
+            })
+            .collect();
+        let painted = [chart(), second, vec![pt(90, 90, 410, 300)]].concat();
+        let lines = |chars: usize| -> Vec<String> {
+            (0..4)
+                .map(|i| "x".repeat(chars / 4 + usize::from(i < chars % 4)))
+                .collect()
+        };
+        let found = |chars: usize| {
+            let text = lines(chars);
+            let runs: Vec<(i64, i64, &str)> = text
+                .iter()
+                .enumerate()
+                .map(|(i, t)| (10000, 22000 + 1500 * i as i64, t.as_str()))
+                .collect();
+            detect(&painted, page(), &[], &runs)
+        };
+        assert_eq!(found(120).len(), 2, "{:?}", found(120));
+        assert_eq!(
+            found(119),
+            [DetectedFigure {
+                rect: pt(90, 90, 410, 300)
+            }]
+        );
+    }
 
     /// A box from `x0, y0` to `x1, y1` points.
     fn pt(x0: i64, y0: i64, x1: i64, y1: i64) -> QuantRect {

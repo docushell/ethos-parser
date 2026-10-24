@@ -22,11 +22,15 @@ A **figure region** is a box this engine infers from the paths a page paints. Pe
    nothing) paints nothing and is not read. A path whose box covers 80% of the page or more is the
    page's background and is not read either, and nor is one whose box holds a line of prose as
    clause 3 reads one: a panel text is set on, which joins no drawing set on it beside the text
-   (§6.1, folded into `figure-regions-v1` before any release carried it).
+   (§6.1, folded into `figure-regions-v1` before any release carried it) — nor, since §6.3, one
+   holding 120 characters of text or more however short its lines.
 2. **Clustered by touch**: two boxes are one cluster where the gap between them is at most 3 points
    across and at most 3 points down.
 3. **Kept** where the cluster:
-   - holds **3 paths or more** — a lone rectangle is a panel or a rule, not a figure;
+   - holds **3 paths or more** — a lone rectangle is a panel or a rule, not a figure — or, since
+     §6.3, is an **icon**: one or two paths, one of them drawing more than rectangles and
+     axis-aligned lines, no text set inside it, and its longer side at most four times its
+     shorter;
    - covers **at least 0.05% and at most 80%** of the page — a speck, or a page background
      (0.1% until §6.2);
    - has **less than half its area inside any one table** a table rule found on the page;
@@ -147,10 +151,41 @@ them full width and under a point tall, 0.045% of a Letter page: a rule, not a f
 paths or of 1 was measured beside it — 0.5176 with 10 pages down, and 0.5186 with 18 — and not used.
 The floor moves to 5, folded into `figure-regions-v1`, which no release carries.
 
+### 6.3 Icons, and the panels of a column of text (decision #95, 2026-10-24)
+
+Of the pictures visual grounding failed after decision #94, 484 sat inside one of this rule's
+regions far larger than they — 18-point icons on a page whose three coloured column panels, each
+holding a column of text in lines no 60-character test reaches, set every drawing on the page into
+one region — and 183 were icons drawn in one path or two, under the 3-path floor, near no other
+path. Told "Census: vector figures", two clauses, measured together and apart against
+`2901d56`'s 0.5677:
+
+| Clause | Visual grounding | Pages up / down |
+| --- | ---: | ---: |
+| a path holding 120 characters of text is a panel | 0.5708 | 26 / 3 |
+| … 3 lines of 15 characters | 0.5703 | 25 / 5 |
+| … a line of 25 characters | 0.5701 | 24 / 6 |
+| a cluster of 1–2 paths with no text inside is a figure | 0.5729 | 36 / 0 |
+| **both** | **0.5783** | **61 / 3** |
+| both, the second with no condition on text | 0.5775 | 65 / 20 |
+
+Built, the icon clause asks two things more, so that a lone rectangle still reads as a panel or a
+rule: one of the cluster's paths **draws more than rectangles and axis-aligned lines** — a curve,
+a slant, a polygon — as `Interpreter::painted` now records of each path, and the cluster is
+**compact**, its longer side at most four times its shorter, so that a rule set in a margin, drawn
+as one path, is none. Without the second the tree-stripped gate copies gained 90 regions, 56 of
+them `nist-sp-800-207`'s 1.4 × 648-point margin bar on every page; with it they hold 277 (from
+265). **Measured**: visual grounding **0.5677 → 0.5782**, 61 pages up and 3 down — each a figure
+drawn on a background holding 120 characters of its own labels, which the panel clause now leaves
+out, so the figure reads in part — a trade the owner took; 211 more pictures placed, every other
+class of element as before; content, formatting, tables and charts unchanged on every page, and
+opendataloader-bench's 200 Markdown files byte-identical.
+
 ## 7. Not done
 
-- **Icons in rows.** Ground truth boxes each small icon; a row of them touching one rule clusters
-  as one region, which matches none.
+- **Icons in rows.** Ground truth boxes each small icon; a row of them touching one rule, or set
+  within 3 points of one another, clusters as one region, which matches none. An icon set apart
+  is read since §6.3.
 - **A figure's text.** Ground truth sometimes attributes the labels inside a figure to it; this
   rule claims no text.
 - **Captions** and the link from a figure to one.

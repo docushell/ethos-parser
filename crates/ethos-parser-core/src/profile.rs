@@ -1488,6 +1488,17 @@ pub const FURNITURE_RULE_V1: &str = "margin-bands-v1";
 /// no caption and says nothing about what the drawing shows; the runs inside it stay in the text
 /// and in reading order. Measured before it shipped, on ParseBench's visual-grounding pages
 /// (`docs/measurements/parsebench/README.md`).
+///
+/// **And icons, and the panels of a column of text** (decision #95, folded in before any release
+/// carried this id): a path whose box holds 120 characters of text or more, however short its
+/// lines, is a panel text is set on and joins no drawing — a narrow column's shaded background set
+/// every icon on it into one region with it — and a cluster of one or two paths is a figure where
+/// one of them draws more than rectangles and axis-aligned lines, no text is set inside it, and
+/// its longer side is at most four times its shorter: an icon, which ground truth boxes one by one.
+/// ParseBench visual grounding 0.5677 → 0.5782, 61 pages up and 3 down — figures drawn on a
+/// background holding 120 characters of their own labels, now read in part — a trade the owner
+/// took; 211 more pictures placed and every other class of element as before; the gate documents'
+/// tree-stripped copies 265 → 277 regions.
 pub const FIGURE_RULE_V1: &str = "figure-regions-v1";
 
 /// The right-to-left rule decision #54 ships: **a right-to-left line read right to left**, each
