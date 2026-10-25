@@ -159,8 +159,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
 /// column wrapped joined to the one above it, decision #83's mark set right after a bold run inside
 /// its `<strong>`, decision #84's runs of one block element as one `<p>` across the marked-content
-/// sequences they cite, decision #85's tagged bold line read on to the one above, and decision
-/// #94's tagged heading line read on to the one above it, this id carries too.
+/// sequences they cite, decision #85's tagged bold line read on to the one above, decision #94's
+/// tagged heading line read on to the one above it, and decision #98's section number set beside
+/// its title in a size of its own, this id carries too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -423,6 +424,10 @@ pub fn to_html(
     let mut open_block: Option<Option<u8>> = None;
     let mut open_group: Option<crate::markdown::GroupKey> = None;
     let mut open_prev: Option<&crate::Node> = None;
+    // Decision #98: where the open block's last run stands in `payload.nodes`, for its measured
+    // box — set where a block opens and where a run joins it at the ink. A block a gap join
+    // extends holds a space, and is no section number standing alone, so the join leaves it.
+    let mut open_at: Option<usize> = None;
     let mut pending_space = false;
     // Decision #65: the open block's text, as `crate::markdown` keeps it.
     let mut block_text = String::new();
@@ -638,7 +643,8 @@ pub fn to_html(
             Some(("\n", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
         } else if ht.is_none()
             && open_prev.is_some_and(|prev| {
-                crate::markdown::heading_number_continues(prev, node, &block_text)
+                let prev_box = open_at.and_then(|k| crate::markdown::measured_box(repr, k));
+                crate::markdown::heading_number_continues(prev, node, &block_text, prev_box)
             })
         {
             Some((" ", crate::markdown::HEADING_NUMBER_JOINS))
@@ -694,6 +700,7 @@ pub fn to_html(
             *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
             open_prev = Some(node);
+            open_at = Some(i);
             line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
             if line_ink.is_none() {
                 open_line = None;
@@ -709,6 +716,7 @@ pub fn to_html(
         block_text.push_str(&text);
         open_group = key;
         open_prev = Some(node);
+        open_at = Some(i);
         pending_space = false;
         open_line = crate::markdown::line_key(node);
         line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));

@@ -1089,6 +1089,17 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a section number set beside its title (decision #98, 2026-10-25)
+
+Of the titles semantic formatting failed with their text split across blocks, 34 on 12 documents
+had their number in a block of its own: set in a size or a weight of its own — a bold `5` before a
+heading `Fund Type`, a display `2.1` before a smaller heading — it was no heading of its title's
+level, and decision #65's join reads only those. Told "Census: number beside title", a number that
+stands out and is set just before its title, its title's baseline inside its box, takes it.
+Semantic formatting 0.5100 -> 0.5127, 4 pages up and none down; content faithfulness 0.6738 ->
+0.6739; every other score unchanged on every page. Overall 49.95 -> 50.00; opendataloader-bench's
+Markdown byte-identical.
+
 ### After figures and images name their runs (decision #97, 2026-10-24)
 
 Visual grounding passes an element only where our item's text matches the ground truth's, and the

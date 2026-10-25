@@ -187,6 +187,25 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A section number set beside its title takes it (decision #98)
+
+Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule id
+and no `profile_sha256` moves.
+
+- **A number set beside its title in a size or a weight of its own joins it**: a bold `5` before a
+  heading `Fund Type`, a display `2.1` before a smaller heading, a heading `7` before a plain
+  `PENYULUHAN`. Decision #65 joined a number and its title only as headings of one level on one
+  line, so these stood as two blocks. Now they join where the number stands out — a heading or
+  bold — the title does too or the number is a heading, and the title opens just after the number:
+  past its middle, within three of its heights of its right edge (`NUMBER_TITLE_GAP_HEIGHTS`), its
+  baseline inside the number's box. A folio set in a page's corner stands beside no title.
+- **Why this piece**: told "Census: number beside title", 34 ParseBench titles failed on 12
+  documents with their number in a block of its own.
+- **Measured** on ParseBench: semantic formatting 0.5100 -> 0.5127, 4 pages up and none down;
+  content faithfulness 0.6738 -> 0.6739, 3 up and none down; tables, charts and visual grounding
+  unchanged on every page; overall 49.95 -> 50.00. opendataloader-bench's 200 Markdown files
+  byte-identical; the fabrication check and the gate documents' 541 tables unchanged.
+
 ### Figures and images name the runs drawn inside them (decision #97)
 
 Folded into representation schema `0.8.0`, which no release carries yet; no rule id and no

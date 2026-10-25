@@ -252,7 +252,13 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// documents up. And so is decision #94's: on a tagged page the heading rule reads, a heading's
 /// next line of its level under one parent element, set straight below it within its height and
 /// over it, continues it, as a layout unit's heading lines are one heading, and labels there join
-/// under one parent element only ([`wrapped_labels`]).
+/// under one parent element only ([`wrapped_labels`]). And so is decision #98's: a section number
+/// set beside its title in a size or a weight of its own — a bold `5` before a heading `Fund
+/// Type`, a display `2.1` before a smaller heading — takes it as decision #65's number takes a
+/// title on its own line, where it stands out and the title opens just after it
+/// ([`heading_number_continues`], [`NUMBER_TITLE_GAP_HEIGHTS`]) — semantic formatting 0.5100 ->
+/// 0.5127 and content faithfulness 0.6738 -> 0.6739 with no page down, opendataloader-bench
+/// byte-identical.
 pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -365,6 +371,12 @@ pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
 /// is the heading rule's own line and the number's shape, neither the producer's word nor the ink
 /// geometry the baseline joins read, so it is counted apart from all three.
 pub const HEADING_NUMBER_JOINS: &str = "heading-number-joins-v1";
+
+/// A section number's title opens within this many of the number's heights past its right edge to
+/// be set beside it (decision #98, [`heading_number_continues`]): a tab stop past a number set in
+/// its text's size — `1.` and `CONTEXT OF THE PROPOSAL` stand two and a half apart. Measured
+/// against two: one ParseBench formatting page more, none fewer.
+pub const NUMBER_TITLE_GAP_HEIGHTS: i64 = 3;
 
 /// Runs of one line joined into one block across the gap between them, because the PDF reader set
 /// them in one layout unit (decision #68, [`unit_gap_continues`]): a page that places its words by
@@ -1180,10 +1192,19 @@ pub(crate) fn label_line_continues(prev: &crate::Node, node: &crate::Node) -> bo
 /// Only the gap after the number is bridged: two headings that share a baseline with nothing
 /// numbering one of them — a bilingual page's `INTRODUCTORY NOTE` and `NOTE INTRODUCTIVE` — stay
 /// two. Called by both projections.
+///
+/// **Or set beside it** (decision #98): a number set in a size or a weight of its own is no
+/// heading of its title's level, nor on its title's line — `5` before `Fund Type`, a display `2.1`
+/// before `WATERLOO IN HISTORIOGRAPHY` — and was a block of its own. It joins where it stands out,
+/// a heading or bold, its title does too or the number is a heading, and the title opens just after
+/// it: past the middle of `prev_box`, the measured box of the number's last run, within
+/// [`NUMBER_TITLE_GAP_HEIGHTS`] of its heights of its right edge, its baseline inside it. A folio
+/// set in a corner stands beside no title.
 pub(crate) fn heading_number_continues(
     prev: &crate::Node,
     node: &crate::Node,
     block: &str,
+    prev_box: Option<(i64, i64, i64, i64)>,
 ) -> bool {
     let level = |n: &crate::Node| {
         text_run_attributes(n)
@@ -1194,14 +1215,41 @@ pub(crate) fn heading_number_continues(
         (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) => b.origin_x > a.origin_x,
         _ => false,
     };
-    prev.parent == node.parent
-        && level(prev).is_some()
+    let one_line = level(prev).is_some()
         && level(prev) == level(node)
         && line_key(prev).is_some()
         && line_key(prev) == line_key(node)
-        && drawn_after
+        && drawn_after;
+    let bold = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.bold);
+    let origin = match &node.native_locator {
+        crate::NativeLocator::Pdf(b) => Some((b.origin_x, b.origin_y)),
+        _ => None,
+    };
+    let beside = (level(prev).is_some() || bold(prev))
+        && (level(prev).is_some() || level(node).is_some() || bold(node))
+        && prev_box
+            .zip(origin)
+            .is_some_and(|((x0, y0, x1, y1), (x, y))| {
+                2 * x >= x0 + x1
+                    && x - x1 <= NUMBER_TITLE_GAP_HEIGHTS * (y1 - y0)
+                    && (y0..=y1).contains(&y)
+            });
+    prev.parent == node.parent
+        && (one_line || beside)
         && is_label_head(block.trim())
         && node.text.chars().any(char::is_alphabetic)
+}
+
+/// The measured box of the node at `index`, `x0, y0, x1, y1` in the declared system, where it has
+/// one: what [`heading_number_continues`] reads a number's place by (decision #98).
+pub(crate) fn measured_box(
+    repr: &crate::DocumentRepresentation,
+    index: usize,
+) -> Option<(i64, i64, i64, i64)> {
+    match repr.geometry_at(index) {
+        Some(crate::GeometryPresence::Measured(r)) => Some((r.x0(), r.y0(), r.x1(), r.y1())),
+        _ => None,
+    }
 }
 
 /// Whether `node` continues `prev`'s block across the gap between them on one line (decision #68):
@@ -2851,6 +2899,10 @@ pub fn to_markdown(
     // the space between the two words IS a run, of its own, and it is skipped.
     let mut open_group: Option<GroupKey> = None;
     let mut open_prev: Option<&crate::Node> = None;
+    // Decision #98: where the open block's last run stands in `payload.nodes`, for its measured
+    // box — set where a block opens and where a run joins it at the ink. A block a gap join
+    // extends holds a space, and is no section number standing alone, so the join leaves it.
+    let mut open_at: Option<usize> = None;
     let mut pending_space = false;
     // Decision #65: the open block's text, which [`heading_number_continues`] reads for a section
     // number standing alone.
@@ -3112,7 +3164,10 @@ pub fn to_markdown(
         } else if open_prev.is_some_and(|prev| label_line_continues(prev, node)) {
             Some(("\n", LAYOUT_UNIT_LINE_JOINS))
         } else if ht.is_none()
-            && open_prev.is_some_and(|prev| heading_number_continues(prev, node, &block_text))
+            && open_prev.is_some_and(|prev| {
+                let prev_box = open_at.and_then(|k| measured_box(repr, k));
+                heading_number_continues(prev, node, &block_text, prev_box)
+            })
         {
             Some((" ", HEADING_NUMBER_JOINS))
         } else if ht.is_none()
@@ -3182,6 +3237,7 @@ pub fn to_markdown(
                 *erasures.entry(code).or_insert(0) += 1;
                 pending_space = false;
                 open_prev = Some(node);
+                open_at = Some(i);
                 line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
                 if line_ink.is_none() {
                     open_line = None;
@@ -3198,6 +3254,7 @@ pub fn to_markdown(
                 block_text.push_str(&text);
                 open_group = key;
                 open_prev = Some(node);
+                open_at = Some(i);
                 pending_space = false;
                 open_line = line_key(node);
                 line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
@@ -5945,11 +6002,174 @@ pub(crate) mod tests {
         }
     }
 
+    /// **A section number set beside its title takes it, whatever their sizes** (decision #98): a
+    /// bold `5` before a heading `Fund Type`, a display `2.1` before a smaller heading and a heading
+    /// `7` before a plain `PENYULUHAN` are one line in both projections, counted under
+    /// [`HEADING_NUMBER_JOINS`]. A title opening past three of the number's heights, before its
+    /// middle, or with its baseline outside its box stays apart, as do a plain number before a
+    /// heading and a bold number before plain text.
+    #[test]
+    fn a_number_set_beside_its_title_takes_it() {
+        // (text, x, baseline, height, level, bold, unit)
+        type Run<'a> = (&'a str, i64, i64, i64, Option<u8>, bool, u32);
+        let project = |runs: &[Run<'_>]| {
+            let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+            let page = PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index: 1,
+                width: 61200,
+                height: 79200,
+                rotation: 0,
+                visible: None,
+            };
+            let mut nodes = Vec::new();
+            let mut geometry = Vec::new();
+            for (i, &(text, x, y, height, level, bold, unit)) in runs.iter().enumerate() {
+                let width = 600 * text.chars().count() as i64;
+                let mut node = placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    text,
+                    None,
+                    x,
+                    y,
+                    Some(width),
+                    None,
+                );
+                if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                    a.inferred_heading = level.is_some();
+                    a.inferred_heading_level = level.filter(|&l| l > 1);
+                    a.bold = bold;
+                    a.layout_unit = Some(unit);
+                }
+                geometry.push(NodeGeometry {
+                    node: node.id.clone(),
+                    presence: GeometryPresence::Measured(
+                        QRect::new(x, y - height, x + width, y).unwrap(),
+                    ),
+                });
+                nodes.push(node);
+            }
+            let repr = DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap();
+            let profile = Profile::default();
+            let html = crate::html::to_html(
+                &repr,
+                &profile.parser_version,
+                &profile.profile_sha256().unwrap(),
+                &profile.html_rule,
+            )
+            .expect("projects");
+            let a = artifact_of(repr);
+            let joins = a
+                .coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == HEADING_NUMBER_JOINS)
+                .map_or(0, |e| e.count);
+            (a.markdown, html.html, joins)
+        };
+        let body: Run<'_> = ("Body text set under it", 2000, 14000, 1000, None, false, 90);
+        // `5`, 600 wide and 1000 tall, boxed 2000..2600 across and 7000..8000 down.
+        let fund = |x: i64, y: i64| -> [Run<'_>; 3] {
+            [
+                ("5", 2000, 8000, 1000, None, true, 1),
+                ("Fund Type", x, y, 1250, Some(2), true, 2),
+                body,
+            ]
+        };
+        let (md, html, joins) = project(&fund(4000, 7990));
+        assert_eq!(md, "**5 Fund Type**\n\nBody text set under it\n");
+        assert!(html.contains("<strong>5 Fund Type</strong>"), "{html}");
+        assert_eq!(joins, 1);
+        let (md, html, joins) = project(&[
+            ("2.1", 2000, 8000, 4000, Some(1), false, 3),
+            ("WATERLOO", 5000, 6500, 1500, Some(3), false, 4),
+            body,
+        ]);
+        assert_eq!(md, "# 2.1 WATERLOO\n\nBody text set under it\n");
+        assert!(html.contains("<h1>2.1 WATERLOO</h1>"), "{html}");
+        assert_eq!(joins, 1);
+        let (md, _, joins) = project(&[
+            ("7", 2000, 8000, 1800, Some(4), false, 5),
+            ("PENYULUHAN", 3700, 7990, 1100, None, false, 6),
+            body,
+        ]);
+        assert_eq!(md, "#### 7 PENYULUHAN\n\nBody text set under it\n");
+        assert_eq!(joins, 1);
+        // Where the title opens, by the display `2.1` boxed 2000..3800 across and 4000..8000 down:
+        // from its middle, 2900, to three of its heights past its right edge, 15800; its baseline
+        // from the box's top to its bottom.
+        let display = |x: i64, y: i64| -> [Run<'_>; 3] {
+            [
+                ("2.1", 2000, 8000, 4000, Some(1), false, 3),
+                ("WATERLOO", x, y, 1500, Some(3), false, 4),
+                body,
+            ]
+        };
+        for (x, y) in [(2900, 6500), (15800, 6500), (5000, 4000), (5000, 8000)] {
+            assert_eq!(
+                project(&display(x, y)).2,
+                1,
+                "a title opening at ({x}, {y})"
+            );
+        }
+        for (x, y) in [(2899, 6500), (15801, 6500), (5000, 3999), (5000, 8001)] {
+            let (md, _, joins) = project(&display(x, y));
+            assert_eq!(joins, 0, "a title opening at ({x}, {y})");
+            assert_eq!(
+                md, "# 2.1\n\n### WATERLOO\n\nBody text set under it\n",
+                "a title opening at ({x}, {y})"
+            );
+        }
+        // A number written in two runs the ink joins is measured from its last: `1` ends at 3800,
+        // three heights short of the title, where `2.` ends 600 further from it.
+        let (md, html, joins) = project(&[
+            ("2.", 2000, 8000, 1000, None, true, 9),
+            ("1", 3200, 8000, 1000, None, true, 9),
+            ("Fund Type", 6800, 7990, 1250, Some(2), true, 2),
+            body,
+        ]);
+        assert_eq!(md, "**2.1 Fund Type**\n\nBody text set under it\n");
+        assert!(html.contains("<strong>2.1 Fund Type</strong>"), "{html}");
+        assert_eq!(joins, 1);
+        // A plain number before a heading, and a bold number before plain text, stand out too
+        // little to be one heading line.
+        let (md, _, joins) = project(&[
+            ("5", 2000, 8000, 1000, None, false, 1),
+            ("Fund Type", 4000, 7990, 1250, Some(2), true, 2),
+            body,
+        ]);
+        assert_eq!(md, "5\n\n## Fund Type\n\nBody text set under it\n");
+        assert_eq!(joins, 0);
+        let (md, _, joins) = project(&[
+            ("1", 2000, 8000, 1000, None, true, 7),
+            ("Note text", 4000, 7990, 1000, None, false, 8),
+            body,
+        ]);
+        assert_eq!(md, "**1**\n\nNote text\n\nBody text set under it\n");
+        assert_eq!(joins, 0);
+        // Either side's emphasis is enough on the title's side: a heading title not set bold, and
+        // a bold title that is no heading.
+        let (md, _, _) = project(&[
+            ("5", 2000, 8000, 1000, None, true, 1),
+            ("Fund Type", 4000, 7990, 1250, Some(2), false, 2),
+            body,
+        ]);
+        assert_eq!(md, "**5** Fund Type\n\nBody text set under it\n");
+        let (md, _, _) = project(&[
+            ("1.", 2000, 8000, 1000, None, true, 7),
+            ("CONTEXT", 4000, 7990, 1000, None, true, 8),
+            body,
+        ]);
+        assert_eq!(md, "**1. CONTEXT**\n\nBody text set under it\n");
+    }
+
     /// **A heading's section number takes the title it opens, across the gap between them**
     /// (decision #65): `2.1` and `Methods` on one line, a tab apart, are one heading in both
     /// projections, counted under [`HEADING_NUMBER_JOINS`]. Each change below parts them: no
-    /// number, a number with no title after it, two levels, a title drawn before its number, or
-    /// two lines.
+    /// number, a number with no title after it, a title drawn before its number, or two lines —
+    /// and two levels did until decision #98 read a number set beside its title as its own.
     #[test]
     fn a_heading_number_and_its_title_are_one_line() {
         let project = |runs: &[(&str, i64, i64, Option<u8>, u32)]| {
@@ -6081,6 +6301,24 @@ pub(crate) mod tests {
             md,
             "**Loan terms and conditions**\n\nBody text set under it\n"
         );
+        // One line takes a gap of any width: a title set far along the number's line, past where a
+        // number set beside its title reaches (decision #98), is still the number's.
+        let (md, _, joins) = project(&[
+            ("2.1", 2000, 8000, Some(2), 40),
+            ("Methods", 30000, 8000, Some(2), 41),
+            body,
+        ]);
+        assert_eq!(md, "## 2.1 Methods\n\nBody text set under it\n");
+        assert_eq!(joins, 1);
+        // Two levels, since decision #98: a number set beside its title takes it whatever their
+        // sizes, at the number's level.
+        let (md, _, joins) = project(&[
+            ("2.1", 2000, 8000, Some(2), 24),
+            ("Methods", 9000, 8000, Some(3), 25),
+            body,
+        ]);
+        assert_eq!(md, "## 2.1 Methods\n\nBody text set under it\n");
+        assert_eq!(joins, 1);
         for (runs, why) in [
             (
                 [
@@ -6095,13 +6333,6 @@ pub(crate) mod tests {
                     ("7", 30000, 8000, Some(2), 23),
                 ],
                 "no title",
-            ),
-            (
-                [
-                    ("2.1", 2000, 8000, Some(2), 24),
-                    ("Methods", 9000, 8000, Some(3), 25),
-                ],
-                "two levels",
             ),
             (
                 [
