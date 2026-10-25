@@ -106,6 +106,9 @@ pub fn image_attributes(doc: &lopdf::Document, id: lopdf::ObjectId) -> Option<Im
             crate::fonts::resolve_object(doc, stream.dict.get(b"ImageMask").ok()),
             Some(lopdf::Object::Boolean(true))
         ),
+        // A placement's, not the stream's: the page names them once its runs are in reading
+        // order (decision #97).
+        runs_inside: Vec::new(),
     })
 }
 

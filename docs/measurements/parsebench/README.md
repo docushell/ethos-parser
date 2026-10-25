@@ -1089,6 +1089,16 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After figures and images name their runs (decision #97, 2026-10-24)
+
+Visual grounding passes an element only where our item's text matches the ground truth's, and the
+adapter gave every `Picture` empty text, which the scorer reads as none: 216 pictures we placed
+right failed on their labels alone. Told "Pictures carry their text", a figure record and an
+image's attributes name the runs whose origin their box holds (`runs_inside`, an index only), and
+the adapter gives each picture the text of the units with a run it names. Visual grounding 0.5782
+-> 0.5805, 31 pages up and none down; every other score unchanged on every page. Overall 49.90 ->
+49.95; opendataloader-bench's Markdown byte-identical.
+
 ### After headers set row by row (decision #96, 2026-10-24)
 
 Of the table pages whose grid our rules read right (GriTS 0.8 or more), 59 matched almost no

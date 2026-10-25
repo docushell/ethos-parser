@@ -24,7 +24,9 @@
 //! Folding the second into the first would leave a consumer unable to tell a placement the document
 //! made from a grouping this engine made. So it is a record of its own, on
 //! [`crate::TableRecord`]'s precedent, and it carries no text: the runs inside it stay nodes, in
-//! reading order, and nothing here claims one.
+//! reading order, and nothing here claims one. Since decision #97 it names them —
+//! [`FigureRecord::runs_inside`] — as an index a consumer can follow from a chart to its labels,
+//! and the naming moves no run out of the text.
 
 use serde::{Deserialize, Serialize};
 
@@ -45,4 +47,9 @@ pub struct FigureRecord {
     /// The rule that drew the box — `figure-regions-v1`
     /// ([`crate::FIGURE_RULE_V1`]).
     pub detection_rule: String,
+    /// The text runs whose origin the box holds, in reading order (decision #97): the text drawn
+    /// inside the figure — a chart's labels and values, a diagram's captions. **An index, not a
+    /// claim**: each run stays a node, in reading order and in every projection's text, and the
+    /// region reads none of them as its own. Empty where no run's origin falls inside.
+    pub runs_inside: Vec<NodeId>,
 }

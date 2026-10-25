@@ -187,6 +187,27 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Figures and images name the runs drawn inside them (decision #97)
+
+Folded into representation schema `0.8.0`, which no release carries yet; no rule id and no
+`profile_sha256` moves.
+
+- **`FigureRecord::runs_inside`**: the ids of the text runs whose origin the region's box holds, in
+  reading order — a chart's labels and values — by the test the figure rule already counts a box's
+  text by.
+- **`ImageAttributes::runs_inside`**: the same for the runs set over an image's placement; a
+  placement with no axis-aligned rectangle names none.
+- **An index, not a claim**: every run stays a node, in reading order and in every projection's
+  text; Markdown and HTML write the same text, and only their `representation_sha256` moves,
+  wherever a page holds a figure or an image. The draft schema lists both fields.
+- **Why this piece**: told "Pictures carry their text", ParseBench passes a picture only where its
+  text matches the ground truth's, and an item with no text is none to it — 216 pictures placed
+  right failed so. The adapter now gives each `Picture` the text of the units with a run it names.
+- **Measured** on ParseBench: visual grounding 0.5782 -> 0.5805, 31 pages up and none down; tables,
+  charts, content faithfulness and semantic formatting unchanged on every page; overall 49.90 ->
+  49.95. opendataloader-bench's 200 Markdown files byte-identical; the fabrication check and the
+  gate documents' 541 tables unchanged.
+
 ### Headers set row by row, and years naming columns (decision #96)
 
 Folded into `whitespace-tracks-v15`, which no release carries yet, so no rule id and no

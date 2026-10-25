@@ -86,8 +86,10 @@ pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.parser.representation.v0";
 /// [`RepresentationPayload::figures`], the regions the figure rule infers from painted paths —
 /// always written, empty where none was found, on `outlines`' argument for the version. Folded into
 /// it, as no release carries 0.8.0: `TextRunAttributes::inferred_heading_level` may be 7, a label
-/// (decision #47), where 0.7.0 stopped at 6; and [`PdfTaggedLocator::block_element`] is new
-/// (decision #84), absent under `struct-tree-v2` and wherever no numbered element holds a block.
+/// (decision #47), where 0.7.0 stopped at 6; [`PdfTaggedLocator::block_element`] is new
+/// (decision #84), absent under `struct-tree-v2` and wherever no numbered element holds a block;
+/// and a figure region and an image's attributes name the runs whose origin their box holds
+/// (decision #97), [`crate::FigureRecord::runs_inside`] and [`ImageAttributes::runs_inside`].
 pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.8.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
@@ -1319,6 +1321,12 @@ pub struct ImageAttributes {
     /// Reported because a stencil mask is a different thing from a picture, and a consumer
     /// counting "images on this page" should be able to tell them apart.
     pub image_mask: bool,
+    /// The text runs whose origin this placement's rectangle holds, in reading order (decision
+    /// #97): the text drawn over the picture — a chart's labels set as text on its bitmap, a
+    /// caption laid on a photograph. **An index, not a claim**: each run stays a node, in reading
+    /// order, and the image still carries no text of its own. Empty where the placement has no
+    /// rectangle or no run's origin falls inside it.
+    pub runs_inside: Vec<NodeId>,
 }
 
 /// Whether an image stream's stored bytes are a file in their own right (v1-S6).
@@ -2288,7 +2296,8 @@ pub struct RepresentationPayload {
     /// **An empty array means the rule found none, or did not run on a document that declares
     /// author structure** — `capabilities.figures` says whether the profile runs it at all.
     /// Carried as its own array rather than as `nodes`, on `tables`' precedent: a region claims
-    /// no text, and the runs inside it are nodes already.
+    /// no text, and the runs inside it are nodes already — named by each record's `runs_inside`
+    /// since decision #97, as an index only.
     #[serde(default)]
     pub figures: Vec<crate::figures::FigureRecord>,
     /// M4's L1 gate, carried forward by value: capabilities, limitations, per-page state,

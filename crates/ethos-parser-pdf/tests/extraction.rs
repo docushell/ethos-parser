@@ -1888,6 +1888,81 @@ fn pdf_with_only_unmappable_text() -> Vec<u8> {
     pdf_from_objects(&objects)
 }
 
+/// **A figure region and an image name the runs drawn inside them, and the runs stay text**
+/// (decision #97): `Over`, set on a placed image, is in the image's `runs_inside`; `Bar`, set
+/// inside a chart drawn as three touching bars, in the figure region's; `Below`, under both, in
+/// neither; `Tilted`, under an image placed at 45°, which has no rectangle, in none — and every
+/// one is still a run in the text.
+#[test]
+fn a_figure_and_an_image_name_the_runs_drawn_inside_them() {
+    let content = b"q 100 0 0 100 30 150 cm /Im1 Do Q\n\
+        q 35 35 -35 35 230 30 cm /Im1 Do Q\n\
+        180 150 30 100 re f 210 150 30 80 re f 240 150 30 60 re f\n\
+        BT /F1 10 Tf 1 0 0 1 40 200 Tm (Over) Tj ET\n\
+        BT /F1 10 Tf 1 0 0 1 185 160 Tm (Bar) Tj ET\n\
+        BT /F1 10 Tf 1 0 0 1 40 40 Tm (Below) Tj ET\n\
+        BT /F1 10 Tf 1 0 0 1 225 60 Tm (Tilted) Tj ET";
+    let stream = |dict: &str, data: &[u8]| -> Vec<u8> {
+        let mut out = format!("<< {dict} /Length {} >>\nstream\n", data.len()).into_bytes();
+        out.extend_from_slice(data);
+        out.extend_from_slice(b"\nendstream");
+        out
+    };
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 5 0 R \
+           >> /XObject << /Im1 6 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream("", content),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        stream(
+            "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+             /BitsPerComponent 8",
+            &[0x80],
+        ),
+    ];
+    let a = extract_bytes(&pdf_from_objects(&objects)).expect("extracts");
+    let rep = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    let payload = rep.payload();
+    let id = |text: &str| -> ethos_parser_core::NodeId {
+        payload
+            .nodes
+            .iter()
+            .find(|n| n.text == text)
+            .unwrap_or_else(|| panic!("`{text}` is still a run"))
+            .id
+            .clone()
+    };
+    assert_eq!(payload.figures.len(), 1, "the three bars");
+    assert_eq!(payload.figures[0].runs_inside, [id("Bar")]);
+    let images: Vec<_> = payload
+        .nodes
+        .iter()
+        .filter_map(|n| match (&n.attributes, &n.native_locator) {
+            (
+                ethos_parser_core::NodeAttributes::Image(image),
+                ethos_parser_core::NativeLocator::PdfImage(at),
+            ) => Some((&at.rect, image)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 2, "the placed image and the tilted one");
+    for (rect, image) in images {
+        match rect {
+            ethos_parser_core::PaintedRect::Painted(_) => {
+                assert_eq!(image.runs_inside, [id("Over")]);
+            }
+            other => assert!(
+                image.runs_inside.is_empty(),
+                "a placement with no rectangle ({other:?}) holds no run: {:?}",
+                image.runs_inside
+            ),
+        }
+    }
+    let _ = (id("Below"), id("Tilted"));
+}
+
 // -------------------------------------------------------------------------------------------
 // What a page may cost (review 2026-09-25 F08)
 // -------------------------------------------------------------------------------------------

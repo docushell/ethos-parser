@@ -42,7 +42,8 @@ A **figure region** is a box this engine infers from the paths a page paints. Pe
    beside it.
 
 **Never text.** A region claims no run, carries no caption and no alt text, and moves nothing:
-the runs inside it stay in their units, in reading order. It is a box and the rule that drew it.
+the runs inside it stay in their units, in reading order. It is a box and the rule that drew it —
+and since decision #97 the runs whose origin that box holds, named as an index (§6.4).
 
 ## 3. On the artifact
 
@@ -61,7 +62,8 @@ one capability, and on the office profiles one limitation. The profile gains `fi
 
 **Not projected.** Markdown and HTML project no figure, as they project no image node today
 (`non-text-nodes-not-projected`), and the grounding artifact reads `nodes`, so it is unchanged. The
-ParseBench adapter labels each record `Picture`, as it labels each image node.
+ParseBench adapter labels each record `Picture`, as it labels each image node, and since decision
+#97 gives each the text of the units with a run it names (§6.4).
 
 ## 4. Why not an `Image` node
 
@@ -181,13 +183,38 @@ out, so the figure reads in part — a trade the owner took; 211 more pictures p
 class of element as before; content, formatting, tables and charts unchanged on every page, and
 opendataloader-bench's 200 Markdown files byte-identical.
 
+### 6.4 The text inside a figure, and over an image (decision #97, 2026-10-24)
+
+ParseBench's visual grounding passes an element only where our item's text matches its ground
+truth's (token F1 0.8 or more), and the scorer reads an item with no text as no text at all: every
+picture we placed whose ground truth lists the labels inside it failed however exactly it was
+boxed — 216 of them, a quarter of an overall point. Told "Pictures carry their text", a figure
+record names the runs whose origin its box holds, `runs_inside`, the test the rule already counts
+a box's text by, and an image's attributes name the runs set over its placement the same way — a
+placement with no axis-aligned rectangle names none. **An index, not a claim**: every run stays a
+node, in reading order and in every projection's text: Markdown and HTML write the same text,
+and only their `representation_sha256` moves, wherever a page holds a figure or an image.
+
+| prototype, against 0.5782 | grounding | pages up / down |
+|---|---|---|
+| figures and images, the adapter reading units by box centre | 0.5802 | 30 / 0 |
+| figures only | 0.5795 | 22 / 0 |
+| built: a unit counts where every run of it is named | 0.5798 | 25 / 0 |
+| built: where half its runs are | 0.5802 | 28 / 0 |
+| **built: where any run of it is** | **0.5805** | **31 / 0** |
+
+**Measured**, with the shipped build on every ParseBench group: visual grounding **0.5782 →
+0.5805**, 31 pages up and none down; tables, charts, content and formatting unchanged on every
+page; overall 49.90 → 49.95. opendataloader-bench's 200 Markdown files byte-identical; the
+fabrication check and the gate documents' 541 tables unchanged. The rest stays unmatched: a chart
+picture's ground-truth content is often the data an annotator wrote out (`year revenue in billions
+…`), which no page prints, and a picture drawn as a bitmap with no text layer has none to name.
+
 ## 7. Not done
 
 - **Icons in rows.** Ground truth boxes each small icon; a row of them touching one rule, or set
   within 3 points of one another, clusters as one region, which matches none. An icon set apart
   is read since §6.3.
-- **A figure's text.** Ground truth sometimes attributes the labels inside a figure to it; this
-  rule claims no text.
 - **Captions** and the link from a figure to one.
 - **A raster image and the paths drawn over it**, read as one figure.
 - **Row bands.** A column of lines each set on a band of its own — and the underlines of its links —

@@ -303,6 +303,18 @@ pub struct PageObjectRecord {
     pub structural: Option<ethos_parser_core::StructuralLocator>,
 }
 
+/// The ids of `runs` whose origin the box `(x0, y0, x1, y1)` holds, its edges included, in their
+/// order (decision #97): the text drawn inside a figure region or over an image, as the figure
+/// rule itself counts the text a box holds.
+pub(crate) fn runs_inside(runs: &[TextRun], (x0, y0, x1, y1): (i64, i64, i64, i64)) -> Vec<NodeId> {
+    runs.iter()
+        .filter(|r| {
+            (x0..=x1).contains(&r.locator.origin_x) && (y0..=y1).contains(&r.locator.origin_y)
+        })
+        .map(|r| r.id.clone())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,6 +353,39 @@ mod tests {
             structural: None,
             derivation: DerivationClass::Extracted,
         }
+    }
+
+    /// **A box holds the runs whose origin it holds, its edges included** (decision #97): a run
+    /// set on any corner of the box is inside it, and one a centipoint past any edge is not.
+    #[test]
+    fn a_box_holds_the_runs_whose_origin_it_holds_edges_included() {
+        let at = |text: &str, x: i64, y: i64| {
+            let mut r = run(text, vec![65]);
+            r.locator.origin_x = x;
+            r.locator.origin_y = y;
+            r
+        };
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let mut runs = vec![
+            at("A", 100, 200),
+            at("B", 300, 200),
+            at("C", 100, 400),
+            at("D", 300, 400),
+            at("E", 99, 300),
+            at("F", 301, 300),
+            at("G", 200, 199),
+            at("H", 200, 401),
+        ];
+        for r in &mut runs {
+            r.id = alloc.next(IdKind::Span).unwrap();
+        }
+        let ids = |names: &str| -> Vec<NodeId> {
+            runs.iter()
+                .filter(|r| names.contains(r.text.as_str()))
+                .map(|r| r.id.clone())
+                .collect()
+        };
+        assert_eq!(runs_inside(&runs, (100, 200, 300, 400)), ids("ABCD"));
     }
 
     #[test]

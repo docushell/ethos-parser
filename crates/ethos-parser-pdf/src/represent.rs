@@ -211,13 +211,18 @@ pub fn to_representation(
                 tagged_check: None,
             });
         }
-        // Decision #46. A region is a box and the rule that drew it: no text, no id of its own.
+        // Decision #46. A region is a box and the rule that drew it: no text, no id of its own —
+        // and since decision #97 the runs its box holds, named as an index and left in the text.
         for f in &page.figures {
             figures.push(ethos_parser_core::FigureRecord {
                 page: page_id.clone(),
                 geometry: ethos_parser_core::GeometryPresence::Measured(rect_to_qrect(f.rect)?),
                 derivation: ethos_parser_core::DerivationClass::Computed,
                 detection_rule: ethos_parser_core::FIGURE_RULE_V1.to_string(),
+                runs_inside: crate::nodes::runs_inside(
+                    &page.runs,
+                    (f.rect.x0, f.rect.y0, f.rect.x1, f.rect.y1),
+                ),
             });
         }
         pages.push(PageRecord {

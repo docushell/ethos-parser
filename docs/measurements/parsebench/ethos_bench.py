@@ -136,14 +136,25 @@ def _layout(extract: dict, grounding: dict) -> dict:
         if geometry.get("state") == "measured":
             text = " ".join(c.get("text", "") for c in table.get("cells", []))
             items.append({"page": page_of.get(table.get("page"), 1), "bbox": geometry["value"], "label": "Table", "text": text})
+    # A picture carries the text drawn inside it (decision #97): the record names the runs whose
+    # origin its box holds, and the picture's text is that of each unit with a run it names. The
+    # scorer reads an item with no text as no text at all, so a picture whose ground truth lists
+    # its labels failed however exactly it was placed. Measured against a unit counted only when
+    # every run of it is named, or half: grounding 0.5805 against 0.5798 and 0.5802.
+    def text_inside(named: list[str]) -> str:
+        named = set(named)
+        return " ".join(g["text"] for g in groups if any(r in named for r in g["runs"]))
+
     for node in rep["nodes"]:
         rect = ((node.get("native_locator") or {}).get("pdf_image") or {}).get("rect") or {}
         if node["kind"] == "image" and rect.get("state") == "painted":
-            items.append({"page": node["native_locator"]["pdf_image"]["page"], "bbox": rect["value"], "label": "Picture", "text": ""})
+            inside = text_inside(node["attributes"]["image"]["runs_inside"])
+            items.append({"page": node["native_locator"]["pdf_image"]["page"], "bbox": rect["value"], "label": "Picture", "text": inside})
     for figure in rep.get("figures", []):
         geometry = figure.get("geometry") or {}
         if geometry.get("state") == "measured":
-            items.append({"page": page_of.get(figure.get("page"), 1), "bbox": geometry["value"], "label": "Picture", "text": ""})
+            inside = text_inside(figure["runs_inside"])
+            items.append({"page": page_of.get(figure.get("page"), 1), "bbox": geometry["value"], "label": "Picture", "text": inside})
     pages = [{"index": p["index"], "width": p["width"], "height": p["height"], "visible": p.get("visible")} for p in rep["pages"]]
     return {"pages": pages, "items": items}
 

@@ -1733,15 +1733,26 @@ fn extract_page(
                 continue;
             }
             let corners = placement.corners.map(|(x, y)| geom.to_top_left(x, y));
+            let rect = crate::images::painted_rect(corners);
+            // Decision #97: the runs drawn over the placement, now that `runs` is in reading order.
+            let runs_inside = match &rect {
+                ethos_parser_core::PaintedRect::Painted(q) => {
+                    crate::nodes::runs_inside(&runs, (q.x0(), q.y0(), q.x1(), q.y1()))
+                }
+                _ => Vec::new(),
+            };
             images.push(crate::nodes::ImageRecord {
                 id: alloc.next(IdKind::Image)?,
                 locator: ethos_parser_core::PdfImageLocator {
                     page: page_number,
                     object: placement.object.0,
                     generation: u32::from(placement.object.1),
-                    rect: crate::images::painted_rect(corners),
+                    rect,
                 },
-                attributes,
+                attributes: ethos_parser_core::ImageAttributes {
+                    runs_inside,
+                    ..attributes
+                },
             });
         }
 

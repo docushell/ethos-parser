@@ -97,7 +97,7 @@
         },
         "figures": {
           "type": "array",
-          "$comment": "Decision #46, docs/34-FIGURE-REGIONS-SCOPE.md. The regions `figure-regions-v1` infers from the paths a page paints, in page order. Optional on the wire and always written: an empty array means the rule found none, or did not run on a document that declares author structure, and `assurance.capabilities.figures` says whether the profile runs it at all. Never `nodes`: a region claims no text, and the runs inside it are nodes already.",
+          "$comment": "Decision #46, docs/34-FIGURE-REGIONS-SCOPE.md. The regions `figure-regions-v1` infers from the paths a page paints, in page order. Optional on the wire and always written: an empty array means the rule found none, or did not run on a document that declares author structure, and `assurance.capabilities.figures` says whether the profile runs it at all. Never `nodes`: a region claims no text, and the runs inside it are nodes already — since decision #97 each record names them in `runs_inside`, as an index only.",
           "items": { "$ref": "#/$defs/figure_record" }
         },
         "assurance": {
@@ -589,7 +589,7 @@
       "$comment": "No description, caption or alt text: that would be OCR or a model's opinion, and neither is evidence.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["stream_sha256", "stream_bytes", "filters", "media_type", "image_mask"],
+      "required": ["stream_sha256", "stream_bytes", "filters", "media_type", "image_mask", "runs_inside"],
       "properties": {
         "stream_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "$comment": "Digest of the XObject's stream bytes as the file stores them." },
         "stream_bytes": { "type": "integer", "minimum": 0 },
@@ -614,7 +614,8 @@
         },
         "pixel_width": { "type": "integer", "minimum": 0, "$comment": "/Width, when declared." },
         "pixel_height": { "type": "integer", "minimum": 0, "$comment": "/Height, when declared." },
-        "image_mask": { "type": "boolean" }
+        "image_mask": { "type": "boolean" },
+        "runs_inside": { "type": "array", "items": { "type": "string" }, "$comment": "Decision #97: the ids of the text runs whose origin this placement's rectangle holds, in reading order — labels set as text over a bitmap chart. An index, not a claim: the image still carries no text. Empty where the placement has no rectangle or none falls inside." }
       }
     },
 
@@ -830,12 +831,13 @@
       "title": "One figure region (decision #46, docs/34-FIGURE-REGIONS-SCOPE.md)",
       "type": "object",
       "additionalProperties": false,
-      "required": ["page", "geometry", "derivation", "detection_rule"],
+      "required": ["page", "geometry", "derivation", "detection_rule", "runs_inside"],
       "properties": {
         "page": { "type": "string", "$comment": "The id of the page record the region was found on." },
         "geometry": { "$ref": "urn:ethos-parser:draft-schema:geometry:0", "$comment": "Always `measured`: the union of the clustered paths' boxes, within the page." },
         "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "Always `computed`: the paths are the document's, the grouping is this engine's." },
-        "detection_rule": { "type": "string", "examples": ["figure-regions-v1"], "$comment": "The rule that drew the box, from profile.figure_rule." }
+        "detection_rule": { "type": "string", "examples": ["figure-regions-v1"], "$comment": "The rule that drew the box, from profile.figure_rule." },
+        "runs_inside": { "type": "array", "items": { "type": "string" }, "$comment": "Decision #97: the ids of the text runs whose origin the box holds, in reading order — a chart's labels and values. An index, not a claim: each stays a node, in reading order and in every projection's text. Empty where none falls inside." }
       }
     },
 
