@@ -1234,3 +1234,35 @@ tables read as headers; a single year as a header's (0.5700: `SERFF_CA_random_pa
 10-k` p1's cover table, bold throughout, its first row of securities read into its header, 1.00 →
 0.58); the block only where no band stands (0.5719); and no test of a repeated value
 (`text_simple__clilogs`, a log's `COMMENT` lines read as a header, content faithfulness −0.003).
+
+## 32. A band of abutting fills, one cell (2026-10-26, decision #100)
+
+**What `ruled-rects-v13` missed.** Found while measuring #99: `1 timetable (1)` sets each
+timetable's title — `Weekdays` at the band's left, `to The Bronx` at its right — on two fills of
+one grey that abut with nothing drawn between them, and the grid read them as two cells, five and
+eight stations wide. The ground truth reads one title over every station, and on p2, p6, p7 and
+p27 the table scored 0.45 to 0.50. The owner chose "Title band of abutting fills".
+
+**The change**, folded into `-v13`, which no release carries:
+
+- **Two cells side by side are one** where they sit in one row and over the same rows, each holds
+  text over columns the row under it divides — two of that row's cells or more start within each
+  — each box is a rectangle a fill alone painted, the two of one colour (the one painted last) and
+  abutting, and nothing else draws the edge they share: no stroked segment and no other painted
+  rectangle runs along it over half their height, and no paint but those fills drew either
+  rectangle. A band of three fills is one cell. The joined cell holds the cells' runs in the page's
+  order, and the table's cross-check is taken again over the cells it then has.
+
+**Measured**, with the shipped build on every ParseBench group, against `0d7a876`: ParseBench tables
+**0.5783 → 0.5821**, 4 pages up and none down (`1 timetable (1)` p2 0.50 → 1.00, p6 0.49 → 0.87, p7
+0.50 → 1.00, p27 0.45 → 1.00); content, formatting, charts and visual grounding unchanged on every
+page; overall 50.09 → 50.16. Across ParseBench's 2,037 documents, opendataloader-bench's 200 and the
+eight gate documents, those four bands — and p2's again in the layout group — are the only cells
+joined. opendataloader-bench's 200 Markdown files byte-identical; no table on a document without
+one, every cell its runs' text; the gate documents' 541 tables unchanged cell for cell. **Measured
+and not used**: the first build, asking each half only to span two columns or more — 4 pages up and
+3 down (tables 0.5820): a cash-flow statement striped row by row (`Home Depot 10-k` p47, 0.20 →
+0.17) read 37 rows' labels and values as one cell each, and a rate filing (`SERFF_TX_random_pages 1`
+p92, 0.26 → 0.24) and a segment table (`Coca Cola 10-k` p51, 0.114 → 0.109) the same. **Not
+guarded**: group heads centred over their columns on one shading, with no line between them, would
+join; none stands in the three corpora.

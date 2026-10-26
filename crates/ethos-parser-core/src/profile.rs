@@ -674,6 +674,11 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 ///   it, and stands where it keeps its outline and no white fill on one of its panels drew the
 ///   line — a white fill's edge refused whole tables. And **a label whose text holds half the rows
 ///   it spans or fewer is one cell**, not a column the page left unruled.
+/// - **A band of abutting fills of one colour is one cell** (decision #100): two cells side by side
+///   in one row, each holding text over columns the row under it divides, each box a rectangle a
+///   fill alone painted, of one colour and abutting, nothing drawn along the edge they share. A
+///   timetable's title set on two such fills was two cells over its stations; a striped body row's
+///   label and value, over a row that divides neither, stay two.
 ///
 /// # Measured
 ///
@@ -688,7 +693,8 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// and down on none. With decision #75's, tables 0.5601 -> 0.5631, three pages up and none down,
 /// visual grounding 0.5577 -> 0.5582 on one page, opendataloader-bench unchanged. With decision
 /// #76's, tables 0.5631 -> 0.5682, six pages up and none down, nothing else on ParseBench moving,
-/// opendataloader-bench unchanged.
+/// opendataloader-bench unchanged. With decision #100's, tables 0.5783 -> 0.5821, four pages up
+/// and none down, nothing else on ParseBench moving, opendataloader-bench unchanged.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

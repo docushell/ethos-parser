@@ -1102,7 +1102,7 @@ fn extract_page(
 
         // v1-S2, widened at v1-S8: ruled first, then the ruling lines, then the alignment rule on
         // whatever text neither has claimed.
-        let detected = crate::tables::detect(
+        let mut detected = crate::tables::detect(
             page_number,
             &table_rects,
             &table_white,
@@ -1117,6 +1117,19 @@ fn extract_page(
             &field_rects,
             &mut alloc,
         )?;
+        // `ruled-rects-v13` (decision #100): two cells a ruled grid read on one band of fills,
+        // one cell.
+        let mut table_fills = Vec::with_capacity(interp.filled_alone.len());
+        for f in &interp.filled_alone {
+            let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
+            let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
+            table_fills.push((crate::tables::quantize_rect(ax, ay, bx, by)?, f.fill));
+        }
+        for t in &mut detected.tables {
+            if t.rule == ethos_parser_core::TABLE_DETECTION_V13 {
+                crate::tables::join_band_cells(t, &table_fills, &table_rects, &uprights, &origins);
+            }
+        }
         let mut tables = detected.tables;
 
         // `ruled-rects-v13` (decision #74): a ruled table's header set above its top rule, read

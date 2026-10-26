@@ -1963,6 +1963,62 @@ fn a_figure_and_an_image_name_the_runs_drawn_inside_them() {
     let _ = (id("Below"), id("Tilted"));
 }
 
+/// **A band of abutting fills of one colour is one cell** (`ruled-rects-v13`, decision #100): a
+/// timetable's title drawn as two grey fills, `Weekdays` on one and `to The Bronx` on the other,
+/// over four stations. Filled and stroked, the fills draw their edges; a form's copy of one is
+/// dropped with the form's ink.
+#[test]
+fn a_band_of_abutting_fills_of_one_colour_is_one_cell() {
+    let band = |paint: &str, form: bool| -> Vec<(u32, String)> {
+        let content = format!(
+            "0.5 g 20 200 200 40 re {paint} 220 200 200 40 re {paint}\n\
+             0 g 20 160 100 40 re S 120 160 100 40 re S 220 160 100 40 re S 320 160 100 40 re S\n\
+             {}\
+             BT /F1 10 Tf 1 0 0 1 30 215 Tm (Weekdays) Tj ET\n\
+             BT /F1 10 Tf 1 0 0 1 340 215 Tm (to The Bronx) Tj ET\n\
+             BT /F1 8 Tf 1 0 0 1 25 175 Tm (Fordham) Tj ET\n\
+             BT /F1 8 Tf 1 0 0 1 125 175 Tm (Tremont) Tj ET\n\
+             BT /F1 8 Tf 1 0 0 1 225 175 Tm (Burnside) Tj ET\n\
+             BT /F1 8 Tf 1 0 0 1 325 175 Tm (Kingsbridge) Tj ET",
+            if form { "/Fm1 Do\n" } else { "" }
+        );
+        let stream = |dict: &str, data: &[u8]| -> Vec<u8> {
+            let mut out = format!("<< {dict} /Length {} >>\nstream\n", data.len()).into_bytes();
+            out.extend_from_slice(data);
+            out.extend_from_slice(b"\nendstream");
+            out
+        };
+        let objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 450 300] /Resources << /Font << /F1 5 0 R \
+               >> /XObject << /Fm1 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream("", content.as_bytes()),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            stream(
+                "/Type /XObject /Subtype /Form /BBox [0 0 450 300]",
+                b"0.5 g 20 200 200 40 re f",
+            ),
+        ];
+        let a = extract_bytes(&pdf_from_objects(&objects)).expect("extracts");
+        assert_eq!(a.pages[0].tables.len(), 1, "{paint}, form {form}");
+        let t = &a.pages[0].tables[0];
+        t.cells
+            .iter()
+            .filter(|c| c.position.row == 0)
+            .map(|c| (c.position.colspan, c.text.clone()))
+            .collect()
+    };
+    let one = vec![(4, "Weekdaysto The Bronx".to_string())];
+    assert_eq!(band("f", false), one);
+    assert_eq!(band("f", true), one);
+    assert_eq!(
+        band("B", false),
+        [(2, "Weekdays".to_string()), (2, "to The Bronx".to_string())]
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // What a page may cost (review 2026-09-25 F08)
 // -------------------------------------------------------------------------------------------

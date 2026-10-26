@@ -1089,6 +1089,19 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a band of abutting fills is one cell (decision #100, 2026-10-26)
+
+`1 timetable (1)` sets each timetable's title on two fills of one grey that abut with nothing drawn
+between them, `Weekdays` at the band's left and `to The Bronx` at its right, and the ruled grid read
+two cells over its stations where the ground truth reads one title over all of them. Told "Title
+band of abutting fills", two cells side by side are one where each holds text over columns the row
+under it divides, each box a rectangle a fill alone painted, the two of one colour and abutting, and
+nothing else draws the edge they share. Tables 0.5783 -> 0.5821, 4 pages up and none down; every
+other score unchanged on every page. Overall 50.09 -> 50.16; opendataloader-bench's Markdown
+byte-identical. Measured and not used: the first build, asking each half only to span two columns or
+more (4 pages up and 3 down: a cash-flow statement striped row by row read each row's label and
+value as one cell).
+
 ### After a column group's head is the HTML header (decision #99, 2026-10-26)
 
 A table holding a merged cell reaches the scorer through our HTML projection, so that its spans

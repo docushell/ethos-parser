@@ -2251,6 +2251,92 @@ impl Lattice {
     }
 }
 
+/// Cells side by side that a ruled grid read where the page drew one band, joined into one
+/// (`ruled-rects-v13`, decision #100). Two are joined when they sit in one row and over the same
+/// rows, each holding text over columns the row under it divides — two of that row's cells or more
+/// start within each — each box a rectangle a fill alone painted, the two of one colour (the one
+/// painted last) and abutting, and the edge they share drawn by nothing else: no stroked segment
+/// and no other painted rectangle runs along it over half their height, and no paint but those
+/// fills drew either rectangle. A timetable's title, `Weekdays` and `to The Bronx` set on two
+/// abutting fills of one grey over thirteen stations, was two cells, and the stations stood under
+/// no one title. A body row striped in one colour, a label and its value over a row that divides
+/// neither, is never joined, nor is a cell on one column: abutting header cells name columns of
+/// their own. The joined cell holds the cells' runs in the page's order, and their text, and the
+/// table's cross-check is taken again over the cells it now has.
+pub(crate) fn join_band_cells(
+    table: &mut DetectedTable,
+    fills: &[(QuantRect, crate::text_state::Fill)],
+    painted: &[QuantRect],
+    uprights: &[crate::stroke_ruled::Upright],
+    runs: &[RunOrigin<'_>],
+) {
+    let near = |a: i64, b: i64| (a - b).abs() <= LATTICE_TOLERANCE;
+    let fill_of = |r: &QuantRect| {
+        fills.iter().rfind(|(f, _)| {
+            near(f.x0, r.x0) && near(f.y0, r.y0) && near(f.x1, r.x1) && near(f.y1, r.y1)
+        })
+    };
+    // Painted as often as it was filled: no stroke went round it.
+    let alone = |r: &QuantRect| {
+        painted.iter().filter(|p| *p == r).count() == fills.iter().filter(|(f, _)| f == r).count()
+    };
+    let overlap = |a0: i64, a1: i64, b0: i64, b1: i64| (a1.min(b1) - a0.max(b0)).max(0);
+    // The row under a cell divides it: two of that row's cells or more start within its columns.
+    let divided = |c: &DetectedCell| {
+        let p = &c.position;
+        let columns = p.column..p.column + p.colspan;
+        let under = table.cells.iter().filter(|d| {
+            d.position.row == p.row + p.rowspan && columns.contains(&d.position.column)
+        });
+        under.count() >= 2
+    };
+    // Cells are row-major, so a cell's neighbour on its right in its row comes next, and two
+    // whose fills abut stand side by side. Each pair is judged on the cells as read, and joined
+    // from the right, so a band of three fills is one.
+    let pairs: Vec<usize> = (1..table.cells.len())
+        .filter(|&j| {
+            let (a, b) = (&table.cells[j - 1], &table.cells[j]);
+            let beside =
+                b.position.row == a.position.row && b.position.rowspan == a.position.rowspan;
+            if !beside || a.text.trim().is_empty() || b.text.trim().is_empty() {
+                return false;
+            }
+            let Some(((ra, fa), (rb, fb))) = fill_of(&a.rect).zip(fill_of(&b.rect)) else {
+                return false;
+            };
+            if !divided(a) || !divided(b) {
+                return false;
+            }
+            let (edge, y0, y1) = (ra.x1, a.rect.y0, a.rect.y1);
+            let height = y1 - y0;
+            let drawn = uprights
+                .iter()
+                .any(|u| near(u.x, edge) && 2 * overlap(u.y0, u.y1, y0, y1) > height)
+                || painted.iter().any(|r| {
+                    r != ra
+                        && r != rb
+                        && (near(r.x0, edge) || near(r.x1, edge))
+                        && 2 * overlap(r.y0, r.y1, y0, y1) > height
+                })
+                || !alone(ra)
+                || !alone(rb);
+            fa.same(*fb) && near(ra.x1, rb.x0) && !drawn
+        })
+        .collect();
+    for &j in pairs.iter().rev() {
+        let b = table.cells.remove(j);
+        let a = &mut table.cells[j - 1];
+        a.position.colspan += b.position.colspan;
+        a.rect.x1 = b.rect.x1;
+        a.run_indices.extend(b.run_indices);
+        a.run_indices.sort_unstable();
+        a.text = a.run_indices.iter().map(|&k| runs[k].text).collect();
+    }
+    if !pairs.is_empty() {
+        table.check = cross_check(table.rect, table.rows, table.columns, &table.cells);
+    }
+}
+
 /// Sorted distinct values, folding anything within [`LATTICE_TOLERANCE`] together.
 fn cluster(values: impl Iterator<Item = i64>) -> Vec<i64> {
     let mut all: Vec<i64> = values.collect();
@@ -2305,6 +2391,8 @@ pub const TABLE_DERIVATION: DerivationClass = DerivationClass::Computed;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stroke_ruled::Upright;
+    use crate::text_state::Fill;
     use ethos_parser_core::{Profile, SlotFault};
 
     fn alloc() -> IdAllocator {
@@ -3950,5 +4038,303 @@ mod tests {
         let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap().0;
         assert_eq!(t[0].check.check_id, LOCATOR_CHECK_V1);
         assert!(!t[0].check.check_version.is_empty());
+    }
+
+    const GREY: Fill = Fill {
+        components: [800, 0, 0, 0],
+        count: 1,
+    };
+
+    /// A run whose origin is `(x, y)`, in points.
+    fn run_at(x: i64, y: i64, text: &'static str) -> RunOrigin<'static> {
+        RunOrigin {
+            x: pt(x),
+            y: pt(y),
+            text,
+        }
+    }
+
+    /// A timetable's title band over four stations, `1 timetable (1)` page 6 reduced: `Weekdays`
+    /// and `to The Bronx` on two rectangles that abut at x = 200, each over two columns, and a
+    /// run in every cell.
+    fn band() -> (Vec<QuantRect>, Vec<RunOrigin<'static>>) {
+        let mut rects = vec![r(0, 0, 200, 40), r(200, 0, 400, 40)];
+        rects.extend((0..4).map(|c| r(100 * c, 40, 100 * c + 100, 80)));
+        let mut runs = vec![run_at(5, 25, "Weekdays"), run_at(205, 25, "to The Bronx")];
+        runs.extend(
+            ["Fordham", "Tremont", "Burnside", "Kingsbridge"]
+                .iter()
+                .zip(0..)
+                .map(|(text, c)| run_at(100 * c + 5, 65, text)),
+        );
+        (rects, runs)
+    }
+
+    /// The one grid `rects` draw, its band's cells joined given the page's `fills`, `painted`
+    /// rectangles and stroked `uprights`.
+    fn join(
+        rects: &[QuantRect],
+        runs: &[RunOrigin<'_>],
+        fills: &[(QuantRect, Fill)],
+        painted: &[QuantRect],
+        uprights: &[Upright],
+    ) -> DetectedTable {
+        let (mut t, refusal) = detect_ruled(1, rects, runs, &mut alloc()).unwrap();
+        assert_eq!((t.len(), refusal), (1, None));
+        let mut t = t.remove(0);
+        join_band_cells(&mut t, fills, painted, uprights, runs);
+        t
+    }
+
+    /// The first row's cells, as (column, colspan, text).
+    fn first_row(t: &DetectedTable) -> Vec<(u32, u32, &str)> {
+        t.cells
+            .iter()
+            .filter(|c| c.position.row == 0)
+            .map(|c| (c.position.column, c.position.colspan, c.text.as_str()))
+            .collect()
+    }
+
+    const TWO: [(u32, u32, &str); 2] = [(0, 2, "Weekdays"), (2, 2, "to The Bronx")];
+    const ONE: [(u32, u32, &str); 1] = [(0, 4, "Weekdaysto The Bronx")];
+
+    #[test]
+    fn a_band_of_abutting_fills_of_one_colour_is_one_cell() {
+        // Decision #100. The rule between the middle stations stops at the band, and the
+        // stations' own boxes meet the edge the band's fills share only at its foot.
+        let (rects, runs) = band();
+        let fills = [(rects[0], GREY), (rects[1], GREY)];
+        let rule = Upright {
+            x: pt(200),
+            y0: pt(40),
+            y1: pt(80),
+        };
+        let t = join(&rects, &runs, &fills, &rects, &[rule]);
+        assert_eq!(first_row(&t), ONE);
+        assert_eq!(t.cells[0].rect, r(0, 0, 400, 40));
+        assert_eq!(t.cells[0].run_indices, [0, 1]);
+        assert_eq!(t.cells.len(), 5);
+        assert_eq!(t.check.outcome, CheckStatus::Ok);
+        // With nothing to join, the table is as it was read.
+        let read = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap().0;
+        assert_eq!(join(&rects, &runs, &[], &rects, &[]), read[0]);
+        // The joined cell's runs are in the page's order, whichever cell held them.
+        let mut listed = runs.clone();
+        listed.swap(0, 1);
+        let t = join(&rects, &listed, &fills, &rects, &[]);
+        assert_eq!(first_row(&t), [(0, 4, "to The BronxWeekdays")]);
+        assert_eq!(t.cells[0].run_indices, [0, 1]);
+        // Three fills in a row are one band.
+        let mut rects = vec![r(0, 0, 200, 40), r(200, 0, 400, 40), r(400, 0, 600, 40)];
+        rects.extend((0..6).map(|c| r(100 * c, 40, 100 * c + 100, 80)));
+        let mut runs = vec![
+            run_at(5, 25, "Weekdays"),
+            run_at(205, 25, "to The Bronx"),
+            run_at(405, 25, " via Fordham"),
+        ];
+        runs.extend((0..6).map(|c| run_at(100 * c + 5, 65, "stop")));
+        let fills: Vec<_> = rects[..3].iter().map(|&f| (f, GREY)).collect();
+        let t = join(&rects, &runs, &fills, &rects, &[]);
+        assert_eq!(first_row(&t), [(0, 6, "Weekdaysto The Bronx via Fordham")]);
+        assert_eq!(t.cells.len(), 7);
+    }
+
+    #[test]
+    fn fills_of_two_colours_or_of_none_known_stay_two_cells() {
+        let (rects, runs) = band();
+        let other = Fill {
+            components: [700, 0, 0, 0],
+            count: 1,
+        };
+        for (a, b) in [(GREY, other), (Fill::UNKNOWN, Fill::UNKNOWN)] {
+            let t = join(&rects, &runs, &[(rects[0], a), (rects[1], b)], &rects, &[]);
+            assert_eq!(first_row(&t), TWO, "{a:?} beside {b:?}");
+        }
+        // A rectangle filled twice is the colour painted last.
+        let white = Fill {
+            components: [1000, 0, 0, 0],
+            count: 1,
+        };
+        let mut painted = rects.clone();
+        painted.push(rects[0]);
+        for (beneath, over, want) in [(white, GREY, &ONE[..]), (GREY, white, &TWO[..])] {
+            let fills = [(rects[0], beneath), (rects[1], GREY), (rects[0], over)];
+            let t = join(&rects, &runs, &fills, &painted, &[]);
+            assert_eq!(first_row(&t), want, "{over:?} over {beneath:?}");
+        }
+        // White painted after, over a cell's box but one edge: no fill of that box.
+        let over = [
+            r(300, 0, 400, 40),
+            r(0, 0, 100, 40),
+            r(0, 25, 200, 40),
+            r(0, 0, 200, 15),
+        ];
+        let mut fills = vec![(rects[0], GREY), (rects[1], GREY)];
+        fills.extend(over.iter().map(|&f| (f, white)));
+        let painted: Vec<QuantRect> = rects.iter().chain(&over).copied().collect();
+        let t = join(&rects, &runs, &fills, &painted, &[]);
+        assert_eq!(first_row(&t), ONE);
+    }
+
+    #[test]
+    fn a_line_along_the_edge_two_fills_share_parts_them() {
+        let (rects, runs) = band();
+        let fills = [(rects[0], GREY), (rects[1], GREY)];
+        let edge = pt(200);
+        // The band is 40 points high. A stroke along the edge over half of it is no line through
+        // it, and over a centipoint more is one; one tolerance off the edge is on it.
+        let upright = |x: i64, y1: i64| Upright { x, y0: 0, y1 };
+        for (u, want) in [
+            (upright(edge, pt(40)), &TWO[..]),
+            (upright(edge, pt(20)), &ONE[..]),
+            (upright(edge, pt(20) + 1), &TWO[..]),
+            (upright(edge + LATTICE_TOLERANCE, pt(40)), &TWO[..]),
+            (upright(edge + LATTICE_TOLERANCE + 1, pt(40)), &ONE[..]),
+        ] {
+            let t = join(&rects, &runs, &fills, &rects, &[u]);
+            assert_eq!(first_row(&t), want, "{u:?}");
+        }
+        // So with a painted rule, either side of it along the edge — two points wide, its other
+        // side well off it.
+        for (rule, want) in [
+            (cp(edge - pt(2), 0, edge, pt(40)), &TWO[..]),
+            (cp(edge, 0, edge + pt(2), pt(40)), &TWO[..]),
+            (cp(edge - 50, 0, edge, pt(20)), &ONE[..]),
+            (cp(edge - 50, 0, edge, pt(20) + 1), &TWO[..]),
+        ] {
+            let mut painted = rects.clone();
+            painted.push(rule);
+            let t = join(&rects, &runs, &fills, &painted, &[]);
+            assert_eq!(first_row(&t), want, "{rule:?}");
+        }
+        // And with a stroke round either fill.
+        for k in [0, 1] {
+            let mut painted = rects.clone();
+            painted.push(rects[k]);
+            let t = join(&rects, &runs, &fills, &painted, &[]);
+            assert_eq!(first_row(&t), TWO, "fill {k} stroked");
+        }
+    }
+
+    #[test]
+    fn fills_apart_stay_two_cells() {
+        // One tolerance between the two fills still abuts; a centipoint more does not.
+        let (rects, runs) = band();
+        for (gap, want) in [
+            (LATTICE_TOLERANCE, &ONE[..]),
+            (LATTICE_TOLERANCE + 1, &TWO[..]),
+        ] {
+            let a = cp(0, 0, pt(200) - 75, pt(40));
+            let b = cp(pt(200) - 75 + gap, 0, pt(400), pt(40));
+            let mut painted = vec![a, b];
+            painted.extend(&rects[2..]);
+            let t = join(&rects, &runs, &[(a, GREY), (b, GREY)], &painted, &[]);
+            assert_eq!(first_row(&t), want, "a gap of {gap}cp");
+        }
+    }
+
+    #[test]
+    fn a_striped_row_a_column_s_own_cell_and_a_blank_cell_stay_apart() {
+        // A body row striped in one colour: a label and its value, over a label the row under
+        // does not divide. The header above divides both, which is no row under them.
+        let mut rects: Vec<QuantRect> = (0..4).map(|c| r(100 * c, 0, 100 * c + 100, 40)).collect();
+        rects.extend([r(0, 40, 200, 80), r(200, 40, 400, 80)]);
+        rects.extend([
+            r(0, 80, 200, 120),
+            r(200, 80, 300, 120),
+            r(300, 80, 400, 120),
+        ]);
+        let runs = [
+            run_at(5, 65, "Net earnings"),
+            run_at(205, 65, "14,806"),
+            run_at(5, 105, "Capital expenditures"),
+        ];
+        let fills = [(rects[4], GREY), (rects[5], GREY)];
+        let t = join(&rects, &runs, &fills, &rects, &[]);
+        assert_eq!(t.cells.len(), 9);
+        // A cell on one column beside one on two, either way round: header cells naming columns.
+        for split in [100, 200] {
+            let mut rects = vec![r(0, 0, split, 40), r(split, 0, 300, 40)];
+            rects.extend((0..3).map(|c| r(100 * c, 40, 100 * c + 100, 80)));
+            let runs = [run_at(5, 25, "Route"), run_at(split + 5, 25, "Stops")];
+            let fills = [(rects[0], GREY), (rects[1], GREY)];
+            let t = join(&rects, &runs, &fills, &rects, &[]);
+            assert_eq!(first_row(&t).len(), 2, "split at {split}");
+        }
+        // A band's half holding no text, or only a space.
+        let (rects, runs) = band();
+        let fills = [(rects[0], GREY), (rects[1], GREY)];
+        for k in [0, 1] {
+            let mut none = runs.clone();
+            none.remove(k);
+            let t = join(&rects, &none, &fills, &rects, &[]);
+            assert_eq!(first_row(&t).len(), 2, "cell {k} empty");
+            let mut space = runs.clone();
+            space[k].text = " ";
+            let t = join(&rects, &space, &fills, &rects, &[]);
+            assert_eq!(first_row(&t).len(), 2, "cell {k} a space");
+        }
+    }
+
+    #[test]
+    fn a_band_is_divided_by_the_row_under_it_and_its_halves_share_their_rows() {
+        let runs = [run_at(5, 25, "Weekdays"), run_at(205, 25, "to The Bronx")];
+        // A band two rows tall, beside a column that divides them, over a row that divides both
+        // its halves: one band.
+        let mut rects = vec![
+            r(0, 0, 200, 80),
+            r(200, 0, 400, 80),
+            r(400, 0, 500, 40),
+            r(400, 40, 500, 80),
+        ];
+        rects.extend((0..5).map(|c| r(100 * c, 80, 100 * c + 100, 120)));
+        let fills = [(rects[0], GREY), (rects[1], GREY)];
+        let t = join(&rects, &runs, &fills, &rects, &[]);
+        assert_eq!(first_row(&t), [(0, 4, "Weekdaysto The Bronx"), (4, 1, "")]);
+        // A band's half beside a cell over two rows.
+        let mut rects = vec![
+            r(0, 0, 200, 80),
+            r(200, 0, 400, 40),
+            r(200, 40, 300, 80),
+            r(300, 40, 400, 80),
+        ];
+        rects.extend((0..4).map(|c| r(100 * c, 80, 100 * c + 100, 120)));
+        let fills = [(rects[0], GREY), (rects[1], GREY)];
+        let t = join(&rects, &runs, &fills, &rects, &[]);
+        assert_eq!(first_row(&t).len(), 2);
+        // Two cells over two rows each, a row apart, each over a row that divides it: the last
+        // cell starting in its row, and the first in the next, at the column after it.
+        let mut rects = vec![
+            r(0, 0, 200, 40),
+            r(200, 0, 400, 80),
+            r(0, 40, 200, 120),
+            r(200, 80, 400, 160),
+            r(0, 120, 100, 160),
+            r(100, 120, 200, 160),
+        ];
+        rects.extend((0..4).map(|c| r(100 * c, 160, 100 * c + 100, 200)));
+        let runs = [run_at(5, 65, "Weekdays"), run_at(205, 105, "to The Bronx")];
+        let fills = [(rects[2], GREY), (rects[3], GREY)];
+        let t = join(&rects, &runs, &fills, &rects, &[]);
+        assert_eq!(t.cells.len(), 10);
+    }
+
+    #[test]
+    fn a_joined_table_s_check_is_taken_over_its_cells() {
+        // The second fill ends a centipoint past the line the grid's right edge folds to, which
+        // the check's geometric half records against the cell it bounds.
+        let (mut rects, runs) = band();
+        rects[1].x1 += 1;
+        let read = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap().0;
+        let t = join(
+            &rects,
+            &runs,
+            &[(rects[0], GREY), (rects[1], GREY)],
+            &rects,
+            &[],
+        );
+        assert_eq!(first_row(&t), ONE);
+        assert_eq!(t.check, cross_check(t.rect, t.rows, t.columns, &t.cells));
+        assert_ne!(t.check, read[0].check);
     }
 }

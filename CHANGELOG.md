@@ -187,6 +187,26 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A band of abutting fills of one colour is one cell (decision #100)
+
+Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **Two cells side by side that a ruled grid read on one band are one**: in one row and over the
+  same rows, each holding text over columns the row under it divides, each box a rectangle a fill
+  alone painted, the two of one colour and abutting, and nothing else drawn along the edge they
+  share — `Weekdays` and `to The Bronx`, set on two fills of one grey over a timetable's stations,
+  are one title. A striped body row's label and value, over a row that divides neither, stay two;
+  so does a cell on one column. The table's cross-check is taken again over the cells it then has.
+- **Why this piece**: found while measuring decision #99 — the timetable pages' title band, drawn
+  as two abutting fills with no rule between them, read as two cells; the owner chose "Title band
+  of abutting fills".
+- **Measured** on ParseBench: tables 0.5783 -> 0.5821, 4 pages up and none down — `1 timetable
+  (1)` p2, p7 and p27 to 1.00, p6 0.49 -> 0.87; charts, content faithfulness, semantic formatting
+  and visual grounding unchanged on every page; overall 50.09 -> 50.16. opendataloader-bench's 200
+  Markdown files byte-identical; the fabrication check and the gate documents' 541 tables
+  unchanged.
+
 ### A column group's head and the row that divides it are the HTML header (decision #99)
 
 Folded into `html-blocks-v12`, which no release carries yet, so no rule id and no `profile_sha256`

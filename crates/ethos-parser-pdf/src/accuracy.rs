@@ -1257,6 +1257,7 @@ mod tests {
                 // `docs/31-TABLE-TRACKS-SCOPE.md` §4 and `docs/32-CHART-LABELS-SCOPE.md` §4 are
                 // where they are measured. Decision #74's header row, read above a ruled table,
                 // runs only where a document declares no structure, and these declare theirs.
+                // Decision #100's band join changes a ruled table's cells, never its shape.
                 for t in p.tables.iter().filter(|t| {
                     t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V15
                         && t.rule != ethos_parser_core::TABLE_DETECTION_CHARTS_V2

@@ -395,6 +395,11 @@ pub struct Interpreter<'a> {
     /// painted over its background, whose edges no reader sees and whose area the fill beneath
     /// already covers. Dropped with a form's ink, as `rects` is.
     pub inset: Vec<PathRect>,
+    /// The rectangles a fill alone painted, each with its colour (`ruled-rects-v13`, decision
+    /// #100), also in [`Interpreter::rects`]: no stroke drew their edges, so where two of one
+    /// colour abut, the edge they share is no line a reader sees. Dropped with a form's ink, as
+    /// `rects` is.
+    pub filled_alone: Vec<FilledRect>,
     /// The box of every path a fill or a stroke painted, in user space, curves included and a
     /// form's paths kept (`figure-regions-v1`, decision #46) — the figure rule's only input. A
     /// path ended with `n` painted nothing and is not here. Beside each box, since decision #95,
@@ -523,6 +528,7 @@ impl<'a> Interpreter<'a> {
             undecodable: Vec::new(),
             rects: Vec::new(),
             white: Vec::new(),
+            filled_alone: Vec::new(),
             inset: Vec::new(),
             painted: Vec::new(),
             polylines: Vec::new(),
@@ -626,6 +632,7 @@ impl<'a> Interpreter<'a> {
                 self.rects.clear();
                 self.white.clear();
                 self.inset.clear();
+                self.filled_alone.clear();
                 self.segments.clear();
                 self.pending.clear();
                 self.pending_filled.clear();
@@ -1053,6 +1060,7 @@ impl<'a> Interpreter<'a> {
                 if matches!(op, Fill | FillObsolete | FillEvenOdd) {
                     let fill = self.gs.fill;
                     for &rect in &self.pending {
+                        self.filled_alone.push(FilledRect { rect, fill });
                         if fill.is_white() {
                             self.white.push(rect);
                         }
@@ -1411,6 +1419,7 @@ impl<'a> Interpreter<'a> {
             self.segments.len(),
             self.white.len(),
             self.inset.len(),
+            self.filled_alone.len(),
         );
         let saved = (
             self.gs,
@@ -1445,6 +1454,7 @@ impl<'a> Interpreter<'a> {
         self.rects.truncate(painted.0);
         self.white.truncate(painted.2);
         self.inset.truncate(painted.3);
+        self.filled_alone.truncate(painted.4);
         self.segments.truncate(painted.1);
         (
             self.gs,
@@ -2236,9 +2246,38 @@ mod tests {
         // touched may survive to be read as a complete reading of the page.
         let fonts = no_fonts();
         let mut i = Interpreter::new(&fonts);
-        let e = i.run(&ops("40 80 100 40 re S UnknownOp")).unwrap_err();
+        let e = i
+            .run(&ops("40 80 100 40 re S 0 0 10 10 re f UnknownOp"))
+            .unwrap_err();
         assert_eq!(e.code(), "unsupported");
         assert!(i.rects.is_empty(), "geometry must go with the text");
+        assert!(i.filled_alone.is_empty());
+    }
+
+    #[test]
+    fn a_rectangle_filled_alone_is_kept_with_its_colour() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "0.5 g 0 0 10 10 re f 20 0 10 10 re B 40 0 10 10 re S 1 0 0 rg 60 0 10 10 re f* \
+             0.5 g 80 0 10 10 re F 100 0 10 10 re b",
+        ))
+        .unwrap();
+        // Filled by `f`, `f*` and `F`; not filled and stroked, nor stroked alone.
+        let kept: Vec<(f64, [i32; 4])> = i
+            .filled_alone
+            .iter()
+            .map(|f| (f.rect.x0, f.fill.components))
+            .collect();
+        assert_eq!(
+            kept,
+            vec![
+                (0.0, [500, 0, 0, 0]),
+                (60.0, [1000, 0, 0, 0]),
+                (80.0, [500, 0, 0, 0])
+            ]
+        );
+        assert_eq!(i.rects.len(), 6, "and every one is still painted");
     }
 
     // ---------------------------------------------------------------------------------------
