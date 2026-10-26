@@ -25,10 +25,12 @@
 //! out as one `<td colspan="2">` and the slot it covers produces **nothing**, which is what the
 //! document actually drew.
 //!
-//! It also never invents a header. GFM's delimiter row makes row 0 a header on every renderer
-//! there is, whatever the document said; HTML has no such requirement, so **every cell is a
-//! `<td>`** and there is no `<th>` in this file at all. No detector reads `/TH`, so a `<th>`
-//! here would be this exporter deciding what the document meant.
+//! It also never invents a header from what a cell says. GFM's delimiter row makes row 0 a header
+//! on every renderer there is, whatever the document said; HTML has no such requirement, so **a
+//! cell is a `<td>`** — except where a table's own spans say a header is there (decision #99): a
+//! cell spanning columns, divided by the row under it into cells that span no rows, heads a column
+//! group, and those two rows are written `<th>` in a `<thead>`. No detector reads `/TH`, so a
+//! `<th>` anywhere else would be this exporter deciding what the document meant.
 //!
 //! # Which erasures this artifact declares, and which two it does not
 //!
@@ -37,7 +39,7 @@
 //!
 //! | code | here | why |
 //! | --- | --- | --- |
-//! | `gfm-row-zero-separator-v1` | **dropped** | GFM's delimiter row asserts a header on every renderer; HTML emits only `<td>` and asserts none |
+//! | `gfm-row-zero-separator-v1` | **dropped** | GFM's delimiter row asserts a header on every renderer; HTML asserts one only where a table's own spans head a column group (decision #99) |
 //! | `gfm-span-slots-unrepresentable-v1` | **recomputed** | GFM pays a slot for every merge; `<td rowspan>` pays nothing — unless the grid could not hold the span, and then it is counted |
 //! | `gfm-cell-not-placed-v1` | **kept** | a cell outside the declared grid has nowhere to print in either projection |
 //! | `gfm-cell-run-claimed-twice-v1` | **kept** | a run two cells claim is kept by the first in both, or one node's characters would be counted twice |
@@ -160,8 +162,10 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// column wrapped joined to the one above it, decision #83's mark set right after a bold run inside
 /// its `<strong>`, decision #84's runs of one block element as one `<p>` across the marked-content
 /// sequences they cite, decision #85's tagged bold line read on to the one above, decision #94's
-/// tagged heading line read on to the one above it, and decision #98's section number set beside
-/// its title in a size of its own, this id carries too.
+/// tagged heading line read on to the one above it, decision #98's section number set beside its
+/// title in a size of its own, and decision #99's header — a column group's head and the row that
+/// divides it as `<th>` in a `<thead>`, the one header this projection writes — this id carries
+/// too.
 pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
 
 // -------------------------------------------------------------------------------------------
@@ -351,7 +355,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 ///    italic (decision #38), as the Markdown projection's rule 9 places `**` and `*`.
 ///    No font size is read here: the reader measured the type, and this reads its flag.
 /// 3. **`<table>`** at the position of the first run one of its cells claims, with the merge
-///    carried as `rowspan`/`colspan` and covered slots emitting nothing. Every cell is a `<td>`.
+///    carried as `rowspan`/`colspan` and covered slots emitting nothing. A cell is a `<td>`, a
+///    column group's head and the row dividing it `<th>` (decision #99).
 /// 4. **`<ul>`/`<li>`** for runs the tree places in an `/L`, nested from nested `/L`. The document
 ///    drew no bullet, so the marker here is a tag rather than a `- `; where it drew its own
 ///    `/Lbl`, that is source text inside the `<li>`.
@@ -805,7 +810,8 @@ pub fn to_html(
     Ok(artifact)
 }
 
-/// Write one table: `<tr>` per row, one `<td>` per slot that is not covered by a merge.
+/// Write one table: `<tr>` per row, one cell per slot that is not covered by a merge — `<th>` in
+/// the header [`header_rows`] reads, `<td>` everywhere else.
 ///
 /// **The merge is carried rather than counted.** An origin cell spanning two columns comes out as
 /// one `<td colspan="2">`, and the slot it covers emits nothing at all — emitting an empty `<td>`
@@ -822,8 +828,13 @@ fn emit_table(
     stretches: &crate::markdown::Stretches<'_>,
 ) {
     e.table(true);
+    let header = header_rows(plan);
     e.syntax("<table>\n");
     for row in 0..plan.rows {
+        if row == 0 && header > 0 {
+            e.syntax("<thead>\n");
+        }
+        let tag = if row < header { "th" } else { "td" };
         e.syntax("<tr>\n");
         for column in 0..plan.columns {
             let index = row * plan.columns + column;
@@ -834,12 +845,14 @@ fn emit_table(
                 SlotRole::Empty => (1, 1),
             };
 
-            // **Always `<td>`, never `<th>`.** No detector reads `/TH` and the representation
-            // carries no header declaration, so a `<th>` would be this exporter deciding what the
+            // **`<td>`, and `<th>` only where the table's own spans say so** (decision #99,
+            // [`header_rows`]). No detector reads `/TH` and the representation carries no header
+            // declaration, so a header anywhere else would be this exporter deciding what the
             // document meant. GFM had no such choice — its delimiter row makes row 0 a header on
             // every renderer — which is why `gfm-row-zero-separator-v1` exists there and no
             // equivalent is needed here.
-            e.syntax("<td");
+            e.syntax("<");
+            e.syntax(tag);
             if rowspan != 1 {
                 e.syntax(&format!(" rowspan=\"{rowspan}\""));
             }
@@ -867,12 +880,56 @@ fn emit_table(
                 first = false;
                 escaped_source(e, &text, node.id.as_str());
             }
-            e.syntax("</td>\n");
+            e.syntax("</");
+            e.syntax(tag);
+            e.syntax(">\n");
         }
         e.syntax("</tr>\n");
+        if header > 0 && row + 1 == header {
+            e.syntax("</thead>\n<tbody>\n");
+        }
+    }
+    if header > 0 {
+        e.syntax("</tbody>\n");
     }
     e.syntax("</table>\n");
     e.table(false);
+}
+
+/// How many of a table's first rows are its header (decision #99): two, where its first row holds
+/// a cell spanning columns and the row under it divides every such cell — two cells or more
+/// starting within its columns, none spanning rows and none reaching past it — a column group's
+/// head over the columns it names, with a row of the table under both; none anywhere else. The
+/// one header this projection writes, and it rests on nothing but the spans the table's own
+/// geometry gave it: a span the first data row repeats (`Parameter` over two columns, then a
+/// parameter's name over the same two) divides nothing, and a row-group label set down the rows
+/// under a span is a row of data.
+fn header_rows(plan: &crate::markdown::TablePlan<'_>) -> usize {
+    let origin = |row: usize, column: usize| match plan.roles.get(row * plan.columns + column) {
+        Some(SlotRole::Origin { rowspan, colspan }) => Some((*rowspan, *colspan)),
+        _ => None,
+    };
+    let parents: Vec<(usize, usize)> = (0..plan.columns)
+        .filter_map(|c| {
+            origin(0, c)
+                .filter(|&(_, colspan)| colspan > 1)
+                .map(|(_, colspan)| (c, colspan))
+        })
+        .collect();
+    let divided = |&(start, colspan): &(usize, usize)| {
+        let children: Vec<(usize, usize)> = (start..start + colspan)
+            .filter_map(|c| origin(1, c).map(|(rowspan, span)| (rowspan, c + span)))
+            .collect();
+        children.len() >= 2
+            && children
+                .iter()
+                .all(|&(rowspan, end)| rowspan == 1 && end <= start + colspan)
+    };
+    if plan.rows > 2 && !parents.is_empty() && parents.iter().all(divided) {
+        2
+    } else {
+        0
+    }
 }
 
 /// The digest of an artifact's canonical bytes, for callers that want to pin one.
@@ -1374,6 +1431,133 @@ mod tests {
         );
     }
 
+    /// **A column group's head and the row that divides it are the header** (decision #99):
+    /// `Sales` spanning two columns over `2024` and `2023`, `Region` beside them down both rows, are
+    /// `<th>` in a `<thead>`, the rows below `<td>` in a `<tbody>`. A span the next row repeats, a
+    /// row-group label set down the rows under a span, a child reaching past its head, one head of
+    /// two left undivided, a table of two rows and a table with no span at all have no header.
+    #[test]
+    fn a_column_group_s_head_and_the_row_it_divides_are_the_header() {
+        let a = artifact_of(repr_with_table(
+            &["Region", "Sales", "2024", "2023", "North", "7", "9"],
+            3,
+            3,
+            &[
+                spanning(0, 0, 2, 1, &[0]),
+                spanning(0, 1, 1, 2, &[1]),
+                cell(1, 1, &[2]),
+                cell(1, 2, &[3]),
+                cell(2, 0, &[4]),
+                cell(2, 1, &[5]),
+                cell(2, 2, &[6]),
+            ],
+        ));
+        assert_eq!(
+            a.html,
+            "<table>\n<thead>\n<tr>\n<th rowspan=\"2\">Region</th>\n<th colspan=\"2\">Sales</th>\n\
+             </tr>\n<tr>\n<th>2024</th>\n<th>2023</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>North</td>\n\
+             <td>7</td>\n<td>9</td>\n</tr>\n</tbody>\n</table>\n"
+        );
+        assert_tiles(&a);
+        let none = |texts: &[&str],
+                    rows: u32,
+                    columns: u32,
+                    cells: &[crate::markdown::tests::Cell],
+                    why: &str| {
+            let a = artifact_of(repr_with_table(texts, rows, columns, cells));
+            assert!(!a.html.contains("<th"), "{why}: {}", a.html);
+            assert!(!a.html.contains("<thead>"), "{why}: {}", a.html);
+        };
+        none(
+            &["Parameter", "Unit", "Threshold", "V", "Hysteresis", "mV"],
+            3,
+            3,
+            &[
+                spanning(0, 0, 1, 2, &[0]),
+                cell(0, 2, &[1]),
+                spanning(1, 0, 1, 2, &[2]),
+                cell(1, 2, &[3]),
+                spanning(2, 0, 1, 2, &[4]),
+                cell(2, 2, &[5]),
+            ],
+            "a span the next row repeats",
+        );
+        none(
+            &["Parameter", "Unit", "Switch", "High", "m", "Low", "m"],
+            3,
+            3,
+            &[
+                spanning(0, 0, 1, 2, &[0]),
+                cell(0, 2, &[1]),
+                spanning(1, 0, 2, 1, &[2]),
+                cell(1, 1, &[3]),
+                cell(1, 2, &[4]),
+                cell(2, 1, &[5]),
+                cell(2, 2, &[6]),
+            ],
+            "a row-group label under a span",
+        );
+        none(
+            &["Sales", "Notes", "2024", "2023 and notes", "7", "9", "x"],
+            3,
+            3,
+            &[
+                spanning(0, 0, 1, 2, &[0]),
+                cell(0, 2, &[1]),
+                cell(1, 0, &[2]),
+                spanning(1, 1, 1, 2, &[3]),
+                cell(2, 0, &[4]),
+                cell(2, 1, &[5]),
+                cell(2, 2, &[6]),
+            ],
+            "a child reaching past its head",
+        );
+        none(
+            &[
+                "Sales", "Costs", "2024", "2023", "Total", "1", "2", "3", "4",
+            ],
+            3,
+            4,
+            &[
+                spanning(0, 0, 1, 2, &[0]),
+                spanning(0, 2, 1, 2, &[1]),
+                cell(1, 0, &[2]),
+                cell(1, 1, &[3]),
+                spanning(1, 2, 1, 2, &[4]),
+                cell(2, 0, &[5]),
+                cell(2, 1, &[6]),
+                cell(2, 2, &[7]),
+                cell(2, 3, &[8]),
+            ],
+            "one head of two left undivided",
+        );
+        none(
+            &["Sales", "2024", "2023"],
+            2,
+            2,
+            &[
+                spanning(0, 0, 1, 2, &[0]),
+                cell(1, 0, &[1]),
+                cell(1, 1, &[2]),
+            ],
+            "two rows",
+        );
+        none(
+            &["Region", "Sales", "North", "7", "South", "9"],
+            3,
+            2,
+            &[
+                cell(0, 0, &[0]),
+                cell(0, 1, &[1]),
+                cell(1, 0, &[2]),
+                cell(1, 1, &[3]),
+                cell(2, 0, &[4]),
+                cell(2, 1, &[5]),
+            ],
+            "no span",
+        );
+    }
+
     #[test]
     fn a_rowspan_is_carried_too_and_the_covered_slot_below_emits_nothing() {
         let a = artifact_of(repr_with_table(
@@ -1468,8 +1652,9 @@ mod tests {
         assert_tiles(&a);
     }
 
-    /// **Never `<th>`.** No detector reads `/TH`, so a header row would be invented — which
-    /// is exactly what GFM forces and `gfm-row-zero-separator-v1` had to disclose.
+    /// **No `<th>` from what a cell says.** No detector reads `/TH`, so a header row would be
+    /// invented — which is exactly what GFM forces and `gfm-row-zero-separator-v1` had to disclose.
+    /// Only a column group's head over the row that divides it is one (decision #99).
     #[test]
     fn no_header_row_is_synthesized() {
         let a = artifact_of(repr_with_table(

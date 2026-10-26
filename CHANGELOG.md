@@ -187,6 +187,28 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A column group's head and the row that divides it are the HTML header (decision #99)
+
+Folded into `html-blocks-v12`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **HTML writes a header where a table's own spans say one is there**: a first row holding cells
+  that span columns, each divided by the row under it into two cells or more that span no rows and
+  reach past it nowhere — `Total Book of Business` over nine column names, `Basic Limit` over four
+  limits — is written with that row as `<th>` in a `<thead>`, the rows below in a `<tbody>`. Every
+  other cell is still a `<td>`: the projection reads no `/TH` and infers no header from what a cell
+  says. Markdown is unchanged.
+- **The ParseBench adapter** takes a table from the HTML projection wherever a cell spans, `<th>` or
+  `<td>` alike.
+- **Why this piece**: told "Census: table title rows, spans", 88 tables on 65 ParseBench pages carry
+  a merged cell and reach the scorer through our HTML, every cell `<td>`; the scorer can then promote
+  only one row to a header, and a header of two rows matched no column.
+- **Measured** on ParseBench: tables 0.5740 -> 0.5783, 7 pages up and 1 down — `FBLB-134215544`
+  p112 0.34 -> 0.32, its table headed as its ground truth heads tables but the page's several tables
+  paired differently, a trade the owner took; charts, content faithfulness, semantic formatting and
+  visual grounding unchanged on every page; overall 50.00 -> 50.09. opendataloader-bench's 200
+  Markdown files byte-identical; the fabrication check and the gate documents' 541 tables unchanged.
+
 ### A section number set beside its title takes it (decision #98)
 
 Folded into `markdown-blocks-v12` and `html-blocks-v12`, which no release carries yet, so no rule id

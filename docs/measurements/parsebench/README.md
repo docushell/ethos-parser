@@ -1089,6 +1089,21 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a column group's head is the HTML header (decision #99, 2026-10-26)
+
+A table holding a merged cell reaches the scorer through our HTML projection, so that its spans
+survive, and every cell there was a `<td>`: the scorer then promotes only the first row it finds a
+ground-truth column name in, and a header of two rows — a group's head over the columns it names —
+matched no column, however exactly the grid was read. 88 such tables stood on 65 pages. Told
+"Census: table title rows, spans", the HTML writes a first row of cells spanning columns, each
+divided by the row under it into cells that span no rows, and that row as `<th>` in a `<thead>`;
+the adapter takes a table from the HTML wherever a `<th>` or a `<td>` spans. Tables 0.5740 ->
+0.5783, 7 pages up and 1 down (a trade the owner took); every other score unchanged on every page.
+Overall 50.00 -> 50.09; opendataloader-bench's Markdown byte-identical. Measured and not used: every
+such table's first row as its header (-0.73 page-points: the scorer reads a ground truth with no
+header against our positions, and a header row breaks it), and that row only where #96's header
+test reads it as one (-0.004).
+
 ### After a section number set beside its title (decision #98, 2026-10-25)
 
 Of the titles semantic formatting failed with their text split across blocks, 34 on 12 documents

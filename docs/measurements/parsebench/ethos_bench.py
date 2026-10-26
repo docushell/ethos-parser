@@ -239,7 +239,7 @@ class EthosProvider(Provider):
         projected = raw_result.raw_output.get("html_tables") or []
         converted = re.findall(r"<table>.*?</table>", markdown, re.S)
         if len(projected) == len(converted):
-            spans = re.compile(r'<td [^>]*(?:row|col)span="')
+            spans = re.compile(r'<t[dh] [^>]*(?:row|col)span="')
             chosen = iter([p if spans.search(p) else c for p, c in zip(projected, converted)])
             markdown = re.sub(r"<table>.*?</table>", lambda _: next(chosen), markdown, flags=re.S)
         layout = raw_result.raw_output.get("layout") or {"pages": [], "items": []}
