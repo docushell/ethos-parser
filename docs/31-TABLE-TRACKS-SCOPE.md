@@ -1266,3 +1266,41 @@ and not used**: the first build, asking each half only to span two columns or mo
 p92, 0.26 → 0.24) and a segment table (`Coca Cola 10-k` p51, 0.114 → 0.109) the same. **Not
 guarded**: group heads centred over their columns on one shading, with no line between them, would
 join; none stands in the three corpora.
+
+## 33. Tables stacked on one set of columns (2026-10-26, decision #101)
+
+**What `ruled-rects-v13` missed.** The census after #100 found 147 of ParseBench's ground-truth
+tables read as text, 40 of them where a ruled grid was refused for a line not traced end to end.
+Read group by group (§13), several of those pages' grids were found and then left out by `-v8`'s
+first clause, which reads three or more grids sharing their column lines as one table shaded in
+bands: `AZ LIC Rate Tables 2.0.v2` p60 sets three rate tables — Forms LEM03, LEM04 and LEM05 — one
+under another on the same columns, each boxed with its own title and whitespace between, and
+`SERFF_CA_random_pages 1` p22 four such tables in one column of the page; every one was dropped.
+Turning the clause off read them (+1.08 page-points), but opendataloader-bench `01030000000078`, the
+table the clause was written for, fell (TEDS 0.5827 → 0.5756). The owner chose "Build P5, trade
+taken".
+
+**The change**, folded into `-v13`, which no release carries:
+
+- **Three grids or more sharing their column lines are one table's bands only where a row of the
+  table sits between a grid and the nearest of them above or below**: text no grid holds, set in the
+  gap in two of their columns or more — a table shaded in bands sets its unshaded rows there.
+  Whitespace, a caption in one column, spaces, or another table's cells between them make no row of
+  theirs. Two such grids stand as before, whatever lies between them.
+
+**Measured**, with the shipped build on every ParseBench group, against `f5fbcfe`: ParseBench tables
+**0.5821 → 0.5833**, 2 pages up and 1 down (`SERFF_CA_random_pages 1` p22 0.16 → 0.55, `AZ LIC Rate
+Tables 2.0.v2` p60 0.11 → 0.40; `FBLB-134215544` p46 0.61 → 0.52, a page of seven near-identical
+tables one more of which is read as a ruled grid and which the scorer then pairs differently — a
+trade the owner took); content, formatting, charts and visual grounding unchanged on every page;
+overall 50.16 → 50.19. opendataloader-bench unchanged on every document, `01030000000078` included;
+no table on a document without one, every cell its runs' text; on the gate documents read with their
+trees stripped, 540 of 541 tables unchanged, one grown and one new (`nist-sp-800-171r3` p113 and
+p105, ruled grids where the tagged original declares its tables). **Measured and not used**: the
+clause dropped (+1.08 page-points, opendataloader-bench TEDS −0.007); the fourth clause dropped
+(−0.81 page-points, 11 pages down: a row's shading drawn around a currency sign splits it again).
+**Found and not built**: the other refusals of the 40 — outer lines left undrawn where a header or a
+label column is set outside the rules, cells drawn as white fills on a ruled ground, sliver bands
+from inset shading that the fourth clause rejects (`SERFF_CA_random_pages 1` p96, p1551) — each
+needs a reading of its own; counting every outer line of a grid read through its merged cells as
+drawn reads one more of their pages.

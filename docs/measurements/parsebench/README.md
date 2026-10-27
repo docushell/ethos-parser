@@ -1089,6 +1089,17 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After tables stacked on one set of columns stand (decision #101, 2026-10-26)
+
+A ruled grid read group by group was left out where three grids or more shared their column lines,
+as the bands of one shaded table — and so were a rate filing's tables set one under another on the
+same columns, each boxed with its own title and whitespace between (`AZ LIC Rate Tables` p60,
+`SERFF_CA_random_pages 1` p22). Told "Build P5, trade taken", grids are bands only where text no
+grid holds sits between a grid and the nearest of the others in two of their columns or more. Tables
+0.5821 -> 0.5833, 2 pages up and 1 down (a trade the owner took); every other score unchanged on
+every page. Overall 50.16 -> 50.19; opendataloader-bench unchanged. Measured and not used: the bands
+clause dropped (+1.08 page-points, opendataloader-bench TEDS -0.007).
+
 ### After a band of abutting fills is one cell (decision #100, 2026-10-26)
 
 `1 timetable (1)` sets each timetable's title on two fills of one grey that abut with nothing drawn

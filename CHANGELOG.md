@@ -187,6 +187,26 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### Tables stacked on one set of columns are tables of their own (decision #101)
+
+Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **Three grids or more sharing their column lines are one table's bands only where a row of the
+  table sits between them**: text no grid holds, set between a grid and the nearest of the others in
+  two of their columns or more. A rate filing's tables set one under another on the same columns,
+  each boxed with its own title and whitespace between, now stand; a table shaded in bands, its
+  unshaded rows between the bands, still has its bands left out as fragments of it.
+- **Why this piece**: told "Untraced ruled grids", the census found such grids already read group
+  by group and then left out as bands (`AZ LIC Rate Tables` p60, `SERFF_CA_random_pages 1` p22); the
+  owner chose "Build P5, trade taken".
+- **Measured** on ParseBench: tables 0.5821 -> 0.5833, 2 pages up and 1 down — `FBLB-134215544`
+  p46 0.61 -> 0.52, seven near-identical tables paired differently, a trade the owner took; charts,
+  content faithfulness, semantic formatting and visual grounding unchanged on every page; overall
+  50.16 -> 50.19. opendataloader-bench unchanged on every document; the fabrication check unchanged;
+  the gate documents' tables unchanged but for two ruled grids read where their tagged originals
+  declare tables.
+
 ### A band of abutting fills of one colour is one cell (decision #100)
 
 Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`

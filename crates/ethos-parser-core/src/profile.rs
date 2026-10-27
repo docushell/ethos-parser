@@ -679,6 +679,11 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 ///   fill alone painted, of one colour and abutting, nothing drawn along the edge they share. A
 ///   timetable's title set on two such fills was two cells over its stations; a striped body row's
 ///   label and value, over a row that divides neither, stay two.
+/// - **Tables stacked on one set of columns are tables of their own** (decision #101): three grids
+///   or more sharing their column lines are one table's bands only where text no grid holds sits
+///   between a grid and the nearest of them, in two of their columns or more — a table shaded in
+///   bands sets its unshaded rows there. A rate filing's tables set one under another on the same
+///   columns, each boxed with its own title and whitespace between, were all left out as bands.
 ///
 /// # Measured
 ///
@@ -694,7 +699,9 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// visual grounding 0.5577 -> 0.5582 on one page, opendataloader-bench unchanged. With decision
 /// #76's, tables 0.5631 -> 0.5682, six pages up and none down, nothing else on ParseBench moving,
 /// opendataloader-bench unchanged. With decision #100's, tables 0.5783 -> 0.5821, four pages up
-/// and none down, nothing else on ParseBench moving, opendataloader-bench unchanged.
+/// and none down, nothing else on ParseBench moving, opendataloader-bench unchanged. With decision
+/// #101's, tables 0.5821 -> 0.5833, two pages up and one down (seven near-identical tables paired
+/// differently), nothing else on ParseBench moving, opendataloader-bench unchanged.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

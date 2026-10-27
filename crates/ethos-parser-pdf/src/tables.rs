@@ -63,10 +63,11 @@
 //! 6. **Where the page's rectangles as one lattice are refused, each group of them that touch is a
 //!    candidate of its own** (`ruled-rects-v8`, [`detect_ruled`]): a footer's rule or a logo's box
 //!    across the page no longer refuses a grid drawn whole. A group's grid stands only where it is
-//!    the table's: not one of three or more grids sharing their column lines (a table shaded in
-//!    bands), not a grid whose ruled rows each hold several rows of text (rows the page did not
-//!    rule), not one whose rows run on beside it on their own baselines (part of a wider table),
-//!    and not one with a column holding no letter or digit (a split the text does not make).
+//!    the table's: not one of three or more grids sharing their column lines with a row of text
+//!    between it and the nearest of them (a table shaded in bands; decision #101), not a grid
+//!    whose ruled rows each hold several rows of text (rows the page did not rule), not one whose
+//!    rows run on beside it on their own baselines (part of a wider table), and not one with a
+//!    column holding no letter or digit (a split the text does not make).
 //!    The page's lattice is refused, and so read group by group, where its rows break at
 //!    whitespace into blocks two neighbouring ones of which each draw a column line the other does
 //!    not: tables stacked on their own columns (`ruled-rects-v13`, decision #73,
@@ -929,9 +930,13 @@ pub(crate) fn root(parent: &mut [usize], mut i: usize) -> usize {
 
 /// The groups' grids that are the page's tables, in the order found.
 ///
-/// 1. **Not one of three or more grids sharing their column lines**: a table shaded in bands is
-///    one table, and each band read alone would be a fragment of it. Two such grids can be two
-///    tables, one above the other with a caption between.
+/// 1. **Not one of three or more grids sharing their column lines with a row of the table between
+///    it and the nearest of them above or below** — text set in the gap in two of their columns or
+///    more: a table shaded in bands is one table, and each band read alone would be a fragment of
+///    it. Two such grids can be two tables, one above the other with a caption between; and since
+///    `ruled-rects-v13` (decision #101) so can three or more with nothing but whitespace or a
+///    caption between each and the next — a rate filing's tables set one under another on the
+///    same columns, each boxed with its own title.
 /// 2. **Not a grid with a ruled row whose every cell holding text holds three or more lines on
 ///    shared baselines**: those are rows the page did not rule, and the grid would fold them into
 ///    one. A row whose long cells wrap beside a one-line label is one row.
@@ -959,21 +964,52 @@ fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTa
                 .zip(&cb)
                 .all(|(p, q)| (p.0 - q.0).abs() <= GROUP_GAP && (p.1 - q.1).abs() <= GROUP_GAP)
     };
+    let held: std::collections::BTreeSet<usize> = grids
+        .iter()
+        .flat_map(|t| t.cells.iter().flat_map(|c| c.run_indices.iter().copied()))
+        .collect();
+    // Decision #101: text no grid holds, set between two grids in two of their columns or more,
+    // is a row of theirs.
+    let row_between = |a: &DetectedTable, b: &DetectedTable| {
+        let (top, bottom) = if a.rect.y0 <= b.rect.y0 {
+            (a, b)
+        } else {
+            (b, a)
+        };
+        let cols = columns(a);
+        let hit: std::collections::BTreeSet<usize> = runs
+            .iter()
+            .enumerate()
+            .filter(|&(i, o)| {
+                !held.contains(&i)
+                    && !o.text.trim().is_empty()
+                    && o.y > top.rect.y1
+                    && o.y < bottom.rect.y0
+            })
+            .filter_map(|(_, o)| cols.iter().position(|&(x0, x1)| o.x >= x0 && o.x < x1))
+            .collect();
+        hit.len() >= 2
+    };
     let banded: Vec<bool> = grids
         .iter()
         .enumerate()
         .map(|(i, a)| {
-            grids
+            let sharing: Vec<&DetectedTable> = grids
                 .iter()
                 .enumerate()
                 .filter(|&(j, b)| i != j && shared(a, b))
-                .count()
-                >= 2
+                .map(|(_, b)| b)
+                .collect();
+            let above = sharing
+                .iter()
+                .filter(|b| b.rect.y1 <= a.rect.y0)
+                .max_by_key(|b| b.rect.y1);
+            let below = sharing
+                .iter()
+                .filter(|b| b.rect.y0 >= a.rect.y1)
+                .min_by_key(|b| b.rect.y0);
+            sharing.len() >= 2 && above.into_iter().chain(below).any(|b| row_between(a, b))
         })
-        .collect();
-    let held: std::collections::BTreeSet<usize> = grids
-        .iter()
-        .flat_map(|t| t.cells.iter().flat_map(|c| c.run_indices.iter().copied()))
         .collect();
     let tol = crate::blocks::LINE_TOLERANCE;
     let unruled_rows = |t: &DetectedTable| rows_not_ruled(t, runs);
@@ -2475,6 +2511,8 @@ mod tests {
         assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
     }
 
+    /// Three grids on one set of columns with the table's own rows set between them: one table
+    /// shaded in bands (opendataloader-bench `01030000000078`), each band read alone a fragment.
     #[test]
     fn three_grids_sharing_their_columns_are_one_table_in_bands() {
         let mut rects = vec![footer()];
@@ -2484,9 +2522,63 @@ mod tests {
             rects.extend(g);
             runs.extend(t);
         }
+        for gap in [190, 290] {
+            runs.extend([run_at(105, gap, "u1"), run_at(205, gap, "u2")]);
+        }
         let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
         assert!(refused.is_some(), "the page-wide refusal is the page's");
+    }
+
+    /// Decision #101: three tables set one under another on the same columns, with whitespace or
+    /// a caption between each and the next, are three tables — a rate filing's, each boxed with its
+    /// own title. A row of text between a grid and the nearest of the others makes both bands of
+    /// one table; a caption in one column, or spaces, does not.
+    #[test]
+    fn three_tables_stacked_on_one_set_of_columns_are_three_tables() {
+        let stack = |between: &[RunOrigin<'static>]| -> Vec<i64> {
+            let mut rects = vec![footer()];
+            let mut runs = Vec::new();
+            for k in 0..3 {
+                let (g, t) = grid(100, 100 + 100 * k, 2, 2, label);
+                rects.extend(g);
+                runs.extend(t);
+            }
+            runs.extend_from_slice(between);
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            tables.iter().map(|t| t.rect.y0 / pt(1)).collect()
+        };
+        assert_eq!(stack(&[]), [100, 200, 300]);
+        assert_eq!(stack(&[run_at(105, 190, "Form LEM04")]), [100, 200, 300]);
+        assert_eq!(
+            stack(&[run_at(105, 190, " "), run_at(205, 190, " ")]),
+            [100, 200, 300]
+        );
+        // A row between the first two makes them bands; the third, whitespace above it, stands.
+        assert_eq!(
+            stack(&[run_at(105, 190, "u1"), run_at(205, 190, "u2")]),
+            [300]
+        );
+        // And between the last two, the first stands.
+        assert_eq!(
+            stack(&[run_at(105, 290, "u1"), run_at(205, 290, "u2")]),
+            [100]
+        );
+        // A table on other columns set between two of them holds no row of theirs.
+        let mut rects = vec![footer()];
+        let mut runs = Vec::new();
+        for (y, cols) in [(100, 2), (200, 2), (300, 3), (400, 2)] {
+            let (g, t) = grid(100, y, 2, cols, label);
+            rects.extend(g);
+            runs.extend(t);
+        }
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let mut shapes: Vec<(i64, u32)> = tables
+            .iter()
+            .map(|t| (t.rect.y0 / pt(1), t.columns))
+            .collect();
+        shapes.sort_unstable();
+        assert_eq!(shapes, [(100, 2), (200, 2), (300, 3), (400, 2)]);
     }
 
     #[test]
@@ -2498,6 +2590,8 @@ mod tests {
             rects.extend(g);
             runs.extend(t);
         }
+        // Even with a row of text between them.
+        runs.extend([run_at(105, 215, "u1"), run_at(205, 215, "u2")]);
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 2);
     }
@@ -3326,6 +3420,10 @@ mod tests {
             let (g, t) = grid(100, 100 + 100 * band, 2, 2, label);
             rects.extend(g);
             runs.extend(t);
+        }
+        // One table's bands, its rows between them: no group stands.
+        for gap in [190, 290] {
+            runs.extend([run_at(105, gap, "u1"), run_at(205, gap, "u2")]);
         }
         let (mut a, mut b) = (alloc(), alloc());
         detect_ruled(1, &rects, &runs, &mut a).unwrap();
