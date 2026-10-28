@@ -187,6 +187,33 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A string set under character spacing of an em or more is a run per glyph (decision #102)
+
+Folded into `advance-over-font-envelope-v2`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A string shown under `Tc` of an em or more is a run per glyph, each its own width**: each
+  glyph's run starts where the glyph is drawn, and its advance and box end where its own width
+  does, so the spacing after it is a gap between runs. Every other string is one run, as before. A
+  producer setting a row of figures as one `TJ` under 3.59 ems of spacing, closed between strings
+  by numbers as wide, read as one cell, `32483380`, where the page draws `3`, `24`, `83` and `380`
+  (`KEY.2014` p103); it now reads four. A string holding a code of no known width stays one run,
+  with no box, and spacing under an em — the tracking of ordinary type — keeps a string whole.
+- **Why this piece**: told "Census: multi-table pages", the 75 tables the whitespace rule missed
+  had no one cause, but one ran through several: 40 of ParseBench's 503 table pages set strings
+  so, and none of the gate's documents. The owner chose "Build P6, trades taken".
+- **Measured** on ParseBench: tables 0.5833 -> 0.5871, 10 pages up and none down — `KEY.2014` p103
+  0.14 -> 0.79, `SERFF_CA_random_pages 1` p1551 0.00 -> 0.43; content faithfulness 0.6739 ->
+  0.6746, 8 pages up and 1 down — `text_ocr__santacruz` 0.664 -> 0.662, a line of OCR dots one of
+  which now passes the subscript test; visual grounding 0.5805 -> 0.5806; charts and semantic
+  formatting unchanged on every page; overall 50.19 -> 50.28. opendataloader-bench: reading order
+  0.0003 and 0.0005 lower on `01030000000030` and `01030000000031` and headings 0.0002 lower on
+  `01030000000031`, a math font's two parentheses drawn far apart now read apart (`ð Þ`); every
+  other document unchanged. The fabrication check and the gate documents' tables unchanged. `tag`
+  now refuses `SERFF_CA_random_pages 1` p687, one of whose strings the cut places in two blocks —
+  the refusal the writer already gives a `TJ` whose strings it places in two. The three trades
+  were the owner's to take, and taken.
+
 ### Tables stacked on one set of columns are tables of their own (decision #101)
 
 Folded into `ruled-rects-v13`, which no release carries yet, so no rule id and no `profile_sha256`

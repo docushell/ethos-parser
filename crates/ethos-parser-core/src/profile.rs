@@ -1248,7 +1248,8 @@ pub const OUTLINE_RULE_V3: &str = "outlines-v3";
 pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 
 /// [`TEXT_BOX_RULE_V1`] **with a run shown in a font under `/Identity-V` given no advance and no
-/// box** (decision #80).
+/// box** (decision #80), **and a string set under character spacing of an em or more a run per
+/// glyph, each its own width** (decision #102).
 ///
 /// **What `-v1` got wrong.** A composite font under `/Identity-V` writes down the page: PDF
 /// 32000-1 §9.7.4.3 moves its pen by each glyph's vertical displacement, from the descendant's
@@ -1258,9 +1259,16 @@ pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
 ///
 /// **The change.** This profile reads no metric of that direction, so the run's advance is absent
 /// and its box `not_reported_by_reader`, declared under `font-widths-absent`; its text is
-/// unchanged. The pen does not travel over its glyphs, as over any code of no known width. Every
-/// other run's box is built as `-v1` builds it, and no font in the 2,247 documents measured on
-/// 2026-10-18 is under `/Identity-V`.
+/// unchanged. The pen does not travel over its glyphs, as over any code of no known width. No font
+/// in the 2,247 documents measured on 2026-10-18 is under `/Identity-V`.
+///
+/// **Folded in by decision #102, before any release carried this id.** `-v1` boxed a string shown
+/// under `Tc` of an em or more as one run, to where the pen stood after the spacing following its
+/// last glyph, so a string whose glyphs a producer spreads across a table's columns was boxed
+/// across every gap between them. Each glyph of such a string is now a run of its own, from where
+/// it is drawn, its advance and box its own width: the spacing after it is a gap between runs. A
+/// string holding a code of no known width stays one run, with no box. Every other run's box is
+/// built as `-v1` builds it.
 pub const TEXT_BOX_RULE_V2: &str = "advance-over-font-envelope-v2";
 
 /// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3), repaired on

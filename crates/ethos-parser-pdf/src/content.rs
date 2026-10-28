@@ -54,7 +54,13 @@ const _: () = assert!(
     "a positive TJ adjustment closes a gap and must never synthesize a space"
 );
 
-/// One decoded show-text event, before it becomes a node.
+/// A glyph of a string shown a run per glyph (decision #102): the origin it is drawn from, as
+/// [`ShownText::origin`] is, and its own travel, in the space [`ShownText::displacement`] is
+/// carried from.
+type Glyph = ((f64, f64), (f64, f64));
+
+/// One decoded show-text event — or one glyph of it, under decision #102's spacing — before it
+/// becomes a node.
 #[derive(Debug, Clone)]
 pub struct ShownText {
     /// Decoded characters.
@@ -82,6 +88,10 @@ pub struct ShownText {
     /// only `Tm.e` kept its x and lost its y, and `ctm.x_scale()` kept the CTM's length and lost
     /// its direction: text drawn up the page advanced 0, and text drawn under a turned CTM got a
     /// box along x. On upright text this is bit for bit `(advance, ±0)`.
+    ///
+    /// A glyph of a string set under character spacing of an em or more travels its own width
+    /// alone, here and in [`Self::advance`]: the spacing after it is a gap between runs (decision
+    /// #102).
     pub displacement: Option<(f64, f64)>,
     /// The rendered glyph's y axis in user space: the text rendering matrix's second row,
     /// `(c, d)`.
@@ -146,8 +156,9 @@ pub struct ShownText {
     /// text (auto-tagging S2).
     ///
     /// The writer's join key back into the page's content stream: a `Tj` is one operation and
-    /// one run, a `TJ` is one operation and as many runs as it holds strings, so several runs
-    /// may share one index and no index is ever skipped by a run that was shown. Crate-private
+    /// one run, a `TJ` is one operation and as many runs as it holds strings, and a string set
+    /// under character spacing of an em or more is as many runs as it has glyphs (decision #102),
+    /// so several runs may share one index and no index is ever skipped by a run that was shown. Crate-private
     /// and never on the wire — `TextRun` does not carry it and `ExtractArtifact` does not change
     /// (docs/23-AUTO-TAGGING-SCOPE.md §6); it leaves this crate only through
     /// `extract::extract_with_positions`.
@@ -1206,6 +1217,10 @@ impl<'a> Interpreter<'a> {
 
         let trm = self.ts.rendering_matrix(self.gs.ctm);
         let origin = (trm.e, trm.f);
+        // Decision #102: spacing of an em or more sets this string's glyphs apart, and each is a
+        // run of its own ([`Self::push_glyphs`]): where it is drawn from, and its own travel.
+        let spread = self.ts.font_size != 0.0 && self.ts.char_spacing >= self.ts.font_size.abs();
+        let mut glyphs = Vec::new();
 
         let mut text = String::new();
         let mut kept_codes = Vec::with_capacity(codes.len());
@@ -1272,6 +1287,12 @@ impl<'a> Interpreter<'a> {
 
             match font.advance_glyph_space(code) {
                 Some(w0) => {
+                    if spread {
+                        // `ts.advance`'s travel without the spacing after the glyph.
+                        let own = w0 * self.ts.font_size * self.ts.horizontal_scale;
+                        let (at, tm) = (self.ts.rendering_matrix(self.gs.ctm), self.ts.text_matrix);
+                        glyphs.push(((at.e, at.f), (own * tm.a, own * tm.b)));
+                    }
                     let is_space = word_spacing_applies && code == 32;
                     let before = self.ts.text_matrix.e;
                     let before_f = self.ts.text_matrix.f;
@@ -1294,8 +1315,7 @@ impl<'a> Interpreter<'a> {
         }
 
         let scale = self.gs.ctm.x_scale();
-        self.last_run = Some(self.shown.len());
-        self.shown.push(ShownText {
+        let run = ShownText {
             text,
             codes: kept_codes,
             code_chars,
@@ -1318,9 +1338,55 @@ impl<'a> Interpreter<'a> {
             op_index: self.op_index,
             font,
             in_form: !self.form_stack.is_empty(),
-        });
+        };
+        if spread && advance_known {
+            self.push_glyphs(run, glyphs, scale);
+        } else {
+            self.last_run = Some(self.shown.len());
+            self.shown.push(run);
+        }
 
         Ok(())
+    }
+
+    /// **A string set under character spacing of an em or more is a run per glyph, each its own
+    /// width** (decision #102): `run` pushed a code at a time, each from the origin its glyph is
+    /// drawn from, its advance and box the glyph's own width, so the spacing after a glyph is a
+    /// gap between runs and not part of one.
+    ///
+    /// Spacing that wide sets glyphs apart as columns are. `KEY.2014` p103 sets each row of figures
+    /// as one `TJ` under 3.59 ems of `Tc`, a number as wide closing it between strings: `(32)` is
+    /// the `3` ending one value and the `2` starting the next. Read a run per string, each box
+    /// spanned the gap between two columns, and the row read as one cell, `32483380`, where the
+    /// page draws `3`, `24`, `83` and `380`. 40 of ParseBench's 503 table pages set strings so, and
+    /// none of the gate's documents. Spacing under an em — the tracking of ordinary type — keeps a
+    /// string one run, and so does a string holding a code of no known width, which has no box.
+    fn push_glyphs(&mut self, mut run: ShownText, glyphs: Vec<Glyph>, scale: f64) {
+        debug_assert_eq!(
+            glyphs.len(),
+            run.codes.len(),
+            "one origin and travel per code"
+        );
+        let text = std::mem::take(&mut run.text);
+        let codes = std::mem::take(&mut run.codes);
+        let code_chars = std::mem::take(&mut run.code_chars);
+        run.code_advances = None;
+        let mut chars = text.chars();
+        for ((origin, (dx, dy)), (code, n)) in
+            glyphs.into_iter().zip(codes.into_iter().zip(code_chars))
+        {
+            self.last_run = Some(self.shown.len());
+            self.shown.push(ShownText {
+                text: chars.by_ref().take(n).collect(),
+                codes: vec![code],
+                code_chars: vec![n],
+                origin,
+                advance: Some(dx * scale),
+                displacement: Some(self.gs.ctm.apply_linear(dx, dy)),
+                code_advances: Some(vec![dx * scale]),
+                ..run.clone()
+            });
+        }
     }
 
     /// `Do` — run the form it names, record an image placement, or count a name that did not
@@ -2537,6 +2603,161 @@ mod tests {
             }
         }
         assert_eq!(cases, 96);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Decision #102 — a string set under character spacing of an em or more, a run per glyph
+    // ---------------------------------------------------------------------------------------
+
+    /// Every run's text, origin x and advance, so a row is compared whole.
+    fn glyph_runs(i: &Interpreter<'_>) -> Vec<(String, f64, Option<f64>)> {
+        i.shown
+            .iter()
+            .map(|s| (s.text.clone(), s.origin.0, s.advance))
+            .collect()
+    }
+
+    fn glyph_row(row: &[(&str, f64)], advance: f64) -> Vec<(String, f64, Option<f64>)> {
+        row.iter()
+            .map(|&(t, x)| (t.to_string(), x, Some(advance)))
+            .collect()
+    }
+
+    /// **A string set under character spacing of an em or more is a run per glyph, each its own
+    /// width**, from where its glyph is drawn: 5 pt glyphs at 10 pt under 12 pt of `Tc` stand 17
+    /// pt apart and are 5 pt wide each, and the pen still travels the spacing to the next string.
+    #[test]
+    fn a_string_set_an_em_or_more_apart_is_a_run_per_glyph_each_its_own_width() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 Tc 100 700 Td (ab c) Tj (d) Tj ET"))
+            .unwrap();
+        let row = [
+            ("a", 100.0),
+            ("b", 117.0),
+            (" ", 134.0),
+            ("c", 151.0),
+            ("d", 168.0),
+        ];
+        assert_eq!(glyph_runs(&i), glyph_row(&row, 5.0));
+        for s in &i.shown {
+            assert_eq!(s.codes.len(), 1, "{:?}", s.text);
+            assert_eq!(s.code_chars, vec![1], "{:?}", s.text);
+            assert_eq!(s.code_advances, Some(vec![5.0]), "{:?}", s.text);
+            assert_eq!(s.displacement, Some((5.0, 0.0)), "{:?}", s.text);
+            assert_eq!(s.origin.1, 700.0, "{:?}", s.text);
+        }
+    }
+
+    /// **Spacing under an em keeps a string one run**, as the tracking of ordinary type does, and
+    /// an em exactly spreads it. The em is the size's magnitude, so a mirrored size compares the
+    /// same; a size of 0 and a spacing that pulls glyphs together spread nothing.
+    #[test]
+    fn spacing_under_an_em_keeps_a_string_one_run() {
+        let fonts = one_font();
+        for (src, runs) in [
+            ("BT /F1 10 Tf 9.99 Tc (ab) Tj ET", 1),
+            ("BT /F1 10 Tf 10 Tc (ab) Tj ET", 2),
+            ("BT /F1 -10 Tf 5 Tc (ab) Tj ET", 1),
+            ("BT /F1 -10 Tf 10 Tc (ab) Tj ET", 2),
+            ("BT /F1 0 Tf 1 Tc (ab) Tj ET", 1),
+            ("BT /F1 10 Tf -12 Tc (ab) Tj ET", 1),
+        ] {
+            let mut i = Interpreter::new(&fonts);
+            i.run(&ops(src)).unwrap();
+            assert_eq!(i.shown.len(), runs, "{src}");
+        }
+    }
+
+    /// **The corpus shape** (`KEY.2014` p103): a `TJ` number as wide as the spacing closes it
+    /// between strings, so one value's glyphs abut across two strings while a string's own two
+    /// glyphs stand a column apart — `(32)` ends one value and starts the next.
+    #[test]
+    fn a_tj_number_as_wide_as_the_spacing_closes_it_between_strings() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 Tc [(32) 1200 (48)] TJ ET"))
+            .unwrap();
+        let row = [("3", 0.0), ("2", 17.0), ("4", 22.0), ("8", 39.0)];
+        assert_eq!(
+            glyph_runs(&i),
+            glyph_row(&row, 5.0),
+            "`2` ends where `4` starts"
+        );
+    }
+
+    /// **A glyph's travel is carried as a run's is**: through a text matrix that sets the size
+    /// (`Tf 1` under `Tm`, as `KEY.2014` sets it) and a CTM that scales, and along a turned
+    /// baseline, where it runs up the page and not along x.
+    #[test]
+    fn a_spread_glyph_travels_its_own_width_through_the_matrices() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "q 2 0 0 2 0 0 cm BT /F1 1 Tf 3.5 Tc 10 0 0 10 50 60 Tm (ab) Tj ET Q",
+        ))
+        .unwrap();
+        // Half a unit wide, four apart, under a text matrix of 10 and a CTM of 2.
+        assert_eq!(
+            glyph_runs(&i),
+            glyph_row(&[("a", 100.0), ("b", 180.0)], 10.0)
+        );
+        assert_eq!(i.shown[1].displacement, Some((10.0, 0.0)));
+        assert_eq!(i.shown[1].code_advances, Some(vec![10.0]));
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 Tc 0 1 -1 0 100 100 Tm (ab) Tj ET"))
+            .unwrap();
+        let placed: Vec<_> = i.shown.iter().map(|s| (s.origin, s.displacement)).collect();
+        assert_eq!(
+            placed,
+            [
+                ((100.0, 100.0), Some((0.0, 5.0))),
+                ((100.0, 117.0), Some((0.0, 5.0)))
+            ]
+        );
+    }
+
+    /// **A code decoding to several characters is one glyph and one run**, its characters whole: a
+    /// ligature's `fi` is not cut in two.
+    #[test]
+    fn a_spread_glyph_keeps_every_character_its_code_decodes_to() {
+        let fonts = one_composite_font(
+            b"1 begincodespacerange <0000> <ffff> endcodespacerange \
+              2 beginbfchar <0001> <00660069> <0002> <0078> endbfchar",
+        );
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 Tc <00010002> Tj ET")).unwrap();
+        let runs: Vec<_> = i
+            .shown
+            .iter()
+            .map(|s| (s.text.as_str(), s.codes.clone(), s.code_chars.clone()))
+            .collect();
+        assert_eq!(runs, [("fi", vec![1], vec![2]), ("x", vec![2], vec![1])]);
+    }
+
+    /// **A string holding a code of no known width stays one run**, with no advance and so no box,
+    /// as any such string has: no width sets a glyph's run.
+    #[test]
+    fn a_spread_string_with_a_code_of_no_known_width_stays_one_run() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 Tc (a\\351) Tj ET")).unwrap();
+        assert_eq!(glyph_runs(&i), [("aé".to_string(), 0.0, None)]);
+    }
+
+    /// **A `TJ` gap after a spread string writes its space on the string's last glyph**, where the
+    /// gap opens, as it writes it on the last run of any string.
+    #[test]
+    fn a_tj_gap_after_a_spread_string_writes_its_space_on_its_last_glyph() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 Tc [(ab) -400 (c)] TJ ET"))
+            .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("a", &[]), run_of("b ", &[1]), run_of("c", &[])]
+        );
     }
 
     /// Fail-closed means *nothing* survives, including text shown before the bad token.

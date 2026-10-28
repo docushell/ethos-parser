@@ -1089,6 +1089,18 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a string under wide character spacing is a run per glyph (decision #102, 2026-10-27)
+
+Some producers set a table's figures into columns with character spacing (`Tc`) of two to seven ems
+inside one string, a `TJ` number as wide closing it between strings: `KEY.2014` p103's `(32)` is the
+`3` ending one value and the `2` starting the next. A run per string boxed each across the gap
+between two columns, and the whitespace rule read the row as one cell, `32483380`. 40 of the 503
+table pages set strings so. Told "Build P6, trades taken", a string shown under `Tc` of an em or
+more is a run per glyph, each its own width. Tables 0.5833 -> 0.5871, 10 pages up and none down;
+content faithfulness 0.6739 -> 0.6746, 8 up and 1 down; visual grounding 0.5805 -> 0.5806; charts
+and formatting unchanged on every page. Overall 50.19 -> 50.28; opendataloader-bench's reading order
+and headings lower by at most 0.0005 on two documents, a math font's spaced parentheses read apart.
+
 ### After tables stacked on one set of columns stand (decision #101, 2026-10-26)
 
 A ruled grid read group by group was left out where three grids or more shared their column lines,

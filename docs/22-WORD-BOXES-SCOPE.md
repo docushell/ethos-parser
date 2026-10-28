@@ -191,6 +191,13 @@ to is recorded below with the version it ships in.
   the old advance put it that run's width to the right. Both are wrong; this one is declared. No
   font in the 2,247 documents censused that day (ParseBench, opendataloader-bench, the gate corpus)
   is under `/Identity-V`, so none of their artifacts can move but for its profile.
+- **A string set under character spacing of an em or more — changed 2026-10-27, decision #102.**
+  Its run's box ran to where the pen stood after the spacing that followed its last glyph, so a
+  string whose glyphs a producer spreads across a table's columns — `KEY.2014` p103, under 3.59 ems
+  — was boxed across every gap between them, and the row's values read as one cell. Each glyph of
+  such a string is now a run of its own, boxed by its own width from where it is drawn; a string
+  holding a code of no known width stays one run, with no box. §3 states the exception;
+  `text_box_rule` stays `advance-over-font-envelope-v2`, which no release carries.
 
 ---
 
@@ -229,6 +236,9 @@ from both are folded in.
 array, becomes its own run; a `TJ` number only moves the text matrix between runs, and nothing merges
 adjacent runs afterwards (`content.rs:500-520`, `815-834`; `extract.rs:339-475`). Probe p12,
 `[(W) 80 (ord) -300 (next) -100 (word)] TJ`, extracts as four runs: `W`, `ord `, `next`, `word`.
+**Or a run per glyph, under spacing of an em or more** (decision #102, 2026-10-27): a string shown
+under `Tc` of at least its font size is a run per glyph, each from where it is drawn, its advance and
+box its own width, so the spacing after a glyph is a gap between runs and not part of one.
 
 **The box is not glyph ink.** Horizontally it is the pen: the run's origin to origin plus the summed
 advance, from `/Widths`, a CID `/W` and `/DW`, or a vendored standard-14 AFM, with `Tc`, `Tw`, `Tz`,

@@ -167,7 +167,9 @@ interim `composite-font-codes-from-tounicode` divides the string — advances th
 width from `/Widths`, a composite font's `/W` and `/DW`, or the vendored AFM of a standard-14 face
 the document names, with the text state applied as PDF 32000-1 §9.4.4 composes it. So a code that
 decodes to several characters, such as a ligature, widens the box by one glyph, not by its letters.
-Across the baseline it is the font's ascent and descent — from the embedded font program, the
+**A string set under character spacing of an em or more is the exception** (decision #102): each of
+its glyphs is a run of its own, whose box runs from where the glyph is drawn to the end of its own
+width, so the spacing after a glyph is a gap between runs and not part of one. Across the baseline it is the font's ascent and descent — from the embedded font program, the
 descriptor's `/Ascent` and `/Descent` or its `/FontBBox`, or that AFM — scaled to the rendered em,
 on the side the glyph tops point. Every glyph of a font gets the same two numbers, so **this is the
 ascent-to-descent construction the paragraph above describes**, over the document's own advance.
@@ -190,8 +192,10 @@ The table record names that rule, and the profile's `table_detection` names the 
 `advance-over-font-envelope-v2`, and the id is the declaration — it says the box is the pen's
 advance along the baseline over the font's ascent-to-descent envelope across it, which is not glyph
 ink. Narrowing the box to ink would be a different construction and would move the id. `-v2`
-(decision #80) differs from `-v1` only for a run in a font under `/Identity-V`, which `-v1` gave a
-box laid across the page by the font's horizontal widths.
+differs from `-v1` for a run in a font under `/Identity-V`, which `-v1` gave a box laid across the
+page by the font's horizontal widths (decision #80), and for a string set under character spacing
+of an em or more, which `-v1` boxed as one run to where the pen stood after its last spacing
+(decision #102).
 
 It is on the **profile** and not on each box, because every text-run box in an artifact is built the
 same way: a per-box field would repeat one fact per run and still not say it where a consumer sizing

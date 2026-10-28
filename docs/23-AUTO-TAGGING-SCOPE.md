@@ -60,7 +60,10 @@ The body is not rewritten; read it with these.
   1. *A text-showing operator whose runs the cut placed in two blocks*, added while building S2. A
      `TJ` is one operation holding as many runs as it has strings. When its strings straddle a
      gutter it is an operator for two elements, and a sequence holds operators for one. The
-     refusal names the operation and both blocks.
+     refusal names the operation and both blocks. Since decision #102 (2026-10-27) a string set
+     under character spacing of an em or more holds a run per glyph, and is refused alike where
+     the cut places its glyphs in two blocks: one page, of the 138 benchmark documents that set
+     such strings, measured that day.
   2. *An object carrying `/StructParents` or `/StructParent` with no tree*, added on review
      2026-09-17 (`8500ab3`); a null value counts as no key. Either key indexes a `/ParentTree` (§14.7.4.4), and the tree the
      writer adds would answer it with elements that do not hold that object's content: a page
