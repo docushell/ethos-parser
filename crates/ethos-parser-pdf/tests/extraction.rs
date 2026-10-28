@@ -4205,6 +4205,62 @@ fn a_line_is_read_where_the_reading_order_reads_it_and_its_words_where_they_stan
     );
 }
 
+/// **A line set at its page's own leading continues its unit** (decision #103), end to end: 12-point
+/// Helvetica on a 20-point pitch leaves more than half a line between its lines' boxes, and the page
+/// reads its two paragraphs, the 40-point pitch between them still opening the second. A line set
+/// at the leading but opening with a sign, `¤`, opens a unit of its own, and so does one opening
+/// with a lone `o` set apart from its item, as a symbol font's bullet reads — the item then cut
+/// from it, as a label set apart from its value is.
+#[test]
+fn lines_set_at_their_page_s_leading_are_read_as_their_paragraphs() {
+    let mut content = [
+        (
+            700,
+            "The first line of a paragraph set on a pitch wider than usual",
+        ),
+        (
+            680,
+            "runs on to a second line set at the same pitch as the first one",
+        ),
+        (
+            660,
+            "and to a third line set at that pitch, which ends the paragraph.",
+        ),
+        (
+            620,
+            "The second paragraph is set forty points below the one before it",
+        ),
+        (
+            600,
+            "and runs on at the pitch of the first paragraph, line under line",
+        ),
+        (
+            580,
+            "to a last line set at that same pitch, which ends the paragraph.",
+        ),
+        (
+            560,
+            "\\244 An aside opening with a sign is set at the same pitch too.",
+        ),
+    ]
+    .iter()
+    .map(|(y, text)| format!("BT /F1 12 Tf 1 0 0 1 72 {y} Tm ({text}) Tj ET\n"))
+    .collect::<String>();
+    content += "BT /F1 12 Tf 1 0 0 1 72 540 Tm (o) Tj ET\n\
+                BT /F1 12 Tf 1 0 0 1 100 540 Tm (An item drawn after a glyph set apart from it.) Tj ET";
+    let a = helvetica_letter_page(&content);
+    let units: Vec<(String, Option<u32>)> = runs(&a)
+        .iter()
+        .filter(|r| !r.text.trim().is_empty())
+        .map(|r| (r.text.clone(), r.layout_unit))
+        .collect();
+    assert_eq!(
+        units.iter().map(|(_, u)| *u).collect::<Vec<_>>(),
+        [1, 1, 1, 2, 2, 2, 3, 4, 5].map(Some),
+        "{units:?}"
+    );
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.

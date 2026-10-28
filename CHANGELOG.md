@@ -187,6 +187,36 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line set at its page's own leading continues its unit (decision #103)
+
+Folded into `line-units-v5`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **A line further below its unit than half its height still continues it where its page sets its
+  lines that far apart**: where its gap is within the page's body leading — the median gap from
+  one body line to the next it could continue, in twentieths of the lower line's height, read where
+  the page sets three such gaps or more — and a twentieth more, where it opens with a word, a letter
+  or a digit on a piece of more than one glyph, and where it starts no more than its own height
+  right of where the unit starts. A page setting its lines a line and a half apart read each line
+  as a unit of its own; it now reads its paragraphs, and a paragraph's own space, wider than its
+  lines', still opens the next. A bullet the marker clause does not know (`✪`), a symbol font's
+  bullet read as a letter (`Ȟ`) and an entry set in past its height keep their items apart.
+- **Why this piece**: told "Split text units", the 697 `Text` elements ParseBench's visual grounding
+  could not place, though the units of ours inside each would place it joined, were read for the
+  clause that opened each unit: the gap clause alone parted 57 of them on 28 pages. Raised across
+  every page, half a line joins as many lines of two ground-truth elements as of one — 0.5 to 0.7
+  joins 357 lines of one element and 361 of two — so half a line stays; read against the page's
+  own leading, 281 lines of one element join for 37 of two, and the word and the start the line
+  must open with leave 253 for 8. The owner chose "Build P103, trades taken".
+- **Measured** on ParseBench: visual grounding 0.5806 -> 0.5859, 8 pages up and 2 down —
+  `9d21767c…` 0.15 -> 0.85, `8908b703…` 0.33 -> 0.83, `ac4c1fcc…` 0.25 -> 0.75; `dec97470…`
+  0.91 -> 0.74, a list of four entries set without markers at its paragraph's leading now one unit,
+  and `annual-report-2020` p48 0.24 -> 0.22, two numbers drawn inside an infographic now one unit;
+  content faithfulness one page down by 0.0003 and one up by 0.0001; tables, charts and semantic
+  formatting unchanged on every page; overall 50.28 -> 50.39. opendataloader-bench unchanged on
+  every document, whose Markdown the units do not touch but for headings; the fabrication check and
+  the gate documents' tables unchanged. The two falls were the owner's to take, and taken.
+
 ### A string set under character spacing of an em or more is a run per glyph (decision #102)
 
 Folded into `advance-over-font-envelope-v2`, which no release carries yet, so no rule id and no

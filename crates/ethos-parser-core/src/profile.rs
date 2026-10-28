@@ -1485,6 +1485,20 @@ pub const LAYOUT_UNIT_RULE_V4: &str = "line-units-v4";
 /// units read it is the pieces of one line that follow each other in reading order. The text the
 /// list-marker clause and the first word are read from has a space wherever two runs' boxes stand
 /// a tenth of the line's height apart or more. Units stay where, never what.
+///
+/// **And a line set at its page's own leading continues its unit** (decision #103, folded in
+/// before any release carried this id): a line further below its unit than half its height still
+/// continues it where its gap is within the page's body leading — the median gap from one body
+/// line to the next it could continue, in twentieths of the lower line's height, read where the
+/// page sets three such gaps or more — and a twentieth more, where it opens with a word, a letter
+/// or a digit on a piece of more than one glyph, and where it starts no more than its own height
+/// right of where the unit starts. Told "Split text units", the gap clause alone parted 57 of the
+/// `Text` elements visual grounding could not place, on 28 pages setting their lines a line and a
+/// half apart, and half a line raised on every page joined as many lines of two elements as of
+/// one. ParseBench visual grounding 0.5806 → 0.5859, eight pages up and two down — an unmarked list
+/// set at its paragraph's leading, and two numbers inside an infographic, the trades the owner
+/// took; content faithfulness one page down by 0.0003 and one up by 0.0001; tables, charts and
+/// formatting unchanged on every page; opendataloader-bench unchanged.
 pub const LAYOUT_UNIT_RULE_V5: &str = "line-units-v5";
 
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom

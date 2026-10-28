@@ -1647,7 +1647,11 @@ pub struct TextRunAttributes {
     /// own — is part of the line it is set in. Since `line-units-v5` a line is the pieces of one
     /// baseline that follow each other in reading order, so a baseline running across columns the
     /// reading order reads apart is a line per column, and its text has a space where its words
-    /// stand apart with none drawn, so a bullet set apart by its position opens a list item.
+    /// stand apart with none drawn, so a bullet set apart by its position opens a list item. Since
+    /// decision #103 a line further below its unit than half its height still continues it where
+    /// its page sets its lines that far apart — within the page's body leading, the median gap
+    /// between its body lines, and a twentieth of its height more — opening with a letter or a digit
+    /// and starting where the unit starts.
     ///
     /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
     /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a

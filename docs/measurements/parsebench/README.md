@@ -1089,6 +1089,20 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a line set at its page's own leading continues its unit (decision #103, 2026-10-28)
+
+Of the `Text` elements visual grounding could not place, 697 would be placed by the units of ours
+inside each, joined; a scratch build naming the clause that opened each unit found the gap clause
+alone parting 57 of them, on 28 pages that set their lines a line and a half apart. Raised on every
+page, half a line joins as many lines of two elements as of one. Told "Build P103, trades taken",
+a line further below its unit than half its height continues it where its gap is within its page's
+body leading — the median gap between body lines, read from three gaps or more — and a twentieth
+more, opening with a letter or a digit on a piece of more than one glyph, and starting no more than
+its height right of where the unit starts. Visual grounding 0.5806 -> 0.5859, 8 pages up and 2 down
+(an unmarked list at its paragraph's leading, two numbers inside an infographic); content
+faithfulness one page down by 0.0003 and one up by 0.0001; tables, charts and formatting unchanged
+on every page. Overall 50.28 -> 50.39; opendataloader-bench unchanged on every document.
+
 ### After a string under wide character spacing is a run per glyph (decision #102, 2026-10-27)
 
 Some producers set a table's figures into columns with character spacing (`Tc`) of two to seven ems

@@ -60,6 +60,18 @@
 //! sets its words by moving its pen draws no space between them, so a bullet set apart that way
 //! opened no list item, and a line's first word was the whole line.
 //!
+//! **And a line set at its page's own leading continues its unit** (decision #103, folded into
+//! `line-units-v5`, [`page_lead`]): a body line further below its unit than half its height still
+//! continues it where its gap is within the page's body leading — the median gap from one body line
+//! to the next it could continue, in twentieths of the lower line's height, read where the page
+//! sets [`LEAD_MIN_GAPS`] such gaps or more — and [`LEAD_MARGIN_TWENTIETHS`] more, where it opens
+//! with a word ([`opens_with_word`]), and where it starts no more than its own height right of
+//! where the unit starts. A page that sets its lines a line and a half apart read each line as a
+//! unit; a paragraph's own space, wider than its lines', still opens the next. A bullet the marker
+//! clause does not know, an icon, or a symbol font's glyph read as a letter opens no word, and an
+//! entry set in further than its height starts its own unit, so lists set at their paragraph's
+//! leading keep their items apart.
+//!
 //! **Where, never what.** A unit says these lines read as one piece of text; it is not the
 //! author's paragraph, and nothing reads a role from it — decision #19's rule for `region` and
 //! `block` holds here too. A table's runs and an `/Artifact`'s get no unit, nor does a line of
@@ -107,6 +119,20 @@ pub const SCRIPT_HEIGHT_TWENTIETHS: i64 = 17;
 /// well under the narrowest word space, a quarter of one, and over the kerning between two pieces
 /// of one word.
 pub const SPACE_GAP_TENTHS: i64 = 1;
+
+/// A line no further below its unit than its page's body leading and this many twentieths of its
+/// height more continues the unit, where it opens with a word and starts where the unit starts
+/// (decision #103): a twentieth of a line, over the rounding of the leading read in twentieths.
+pub const LEAD_MARGIN_TWENTIETHS: i64 = 1;
+
+/// A gap from one body line to the next of more than this many of the lower line's heights is no
+/// leading — a section's space, a figure's — and is not read into the page's body leading
+/// (decision #103).
+pub const LEAD_GAP_HEIGHTS: i64 = 3;
+
+/// The fewest gaps from one body line to the next a page's body leading is read from (decision
+/// #103): two lines alone set no leading but their own.
+pub const LEAD_MIN_GAPS: usize = 3;
 
 /// The most words a heading holds (`type-size-v7`, decision #77): a unit of heading lines past it,
 /// counted as [`spaced`] reads its lines, is a lede set in display type, and its lines are read as
@@ -194,17 +220,32 @@ pub(crate) struct UnitLine {
     pub heading: Option<u8>,
     /// Its text opens with a list marker.
     pub marker: bool,
+    /// Its text opens with a word ([`opens_with_word`]), so it may continue a unit set at its
+    /// page's body leading (decision #103).
+    pub worded: bool,
 }
 
 /// Each line's unit, 1-based in reading order. A line with no measured box is a unit of its own.
 pub(crate) fn units(lines: &[UnitLine]) -> Vec<u32> {
+    let lead = page_lead(lines);
+    // Decision #103: further below than half its height, a line set at the page's body leading,
+    // opening with a word and starting where the unit starts, continues it.
+    let at_lead = |unit: Rect, b: Rect, line: &UnitLine| {
+        lead.is_some_and(|lead| {
+            line.worded
+                && b.0 - unit.0 <= b.3 - b.1
+                && continues_within(unit, b, lead + LEAD_MARGIN_TWENTIETHS)
+        })
+    };
     let mut out = Vec::with_capacity(lines.len());
     let mut open: Option<(Rect, Option<u8>)> = None;
     let mut n = 0u32;
     for line in lines {
         match (open, line.rect) {
             (Some((unit, kind)), Some(b))
-                if kind == line.heading && !line.marker && continues(unit, b) =>
+                if kind == line.heading
+                    && !line.marker
+                    && (continues(unit, b) || at_lead(unit, b, line)) =>
             {
                 let joined = (
                     unit.0.min(b.0),
@@ -342,11 +383,56 @@ fn pieces_of(runs: &[(i64, Option<Rect>)], height: i64) -> Vec<(Option<Rect>, Ve
 
 /// Whether a line boxed `b` continues the unit boxed `unit`: clauses 1 and 2, in integers.
 pub(crate) fn continues(unit: Rect, b: Rect) -> bool {
+    continues_within(unit, b, 10)
+}
+
+/// Clauses 1 and 2 with the line's gap below the unit bounded by `twentieths` of its height:
+/// [`continues`] bounds it by ten, half a line.
+fn continues_within(unit: Rect, b: Rect, twentieths: i64) -> bool {
     let height = b.3 - b.1;
     let gap = b.1 - unit.3;
     let overlap = unit.2.min(b.2) - unit.0.max(b.0);
     let narrower = (unit.2 - unit.0).min(b.2 - b.0);
-    height > 0 && 2 * gap <= height && 2 * gap >= -height && 2 * overlap >= narrower
+    height > 0 && 20 * gap <= twentieths * height && 2 * gap >= -height && 2 * overlap >= narrower
+}
+
+/// A page's body leading (decision #103): the median gap from one body line to the next in reading
+/// order, in twentieths of the lower line's height, over the next lines that open no list marker,
+/// overlap the line above across half the narrower width or more, and sit no more than half their
+/// height above it nor more than [`LEAD_GAP_HEIGHTS`] heights below it. `None` where a page sets
+/// fewer than [`LEAD_MIN_GAPS`] such gaps.
+pub(crate) fn page_lead(lines: &[UnitLine]) -> Option<i64> {
+    let mut gaps: Vec<i64> = lines
+        .windows(2)
+        .filter(|w| w[0].heading.is_none() && w[1].heading.is_none() && !w[1].marker)
+        .filter_map(|w| {
+            let (a, b) = (w[0].rect?, w[1].rect?);
+            let height = b.3 - b.1;
+            let gap = b.1 - a.3;
+            let overlap = a.2.min(b.2) - a.0.max(b.0);
+            let narrower = (a.2 - a.0).min(b.2 - b.0);
+            (height > 0
+                && 2 * overlap >= narrower
+                && 2 * gap >= -height
+                && gap <= LEAD_GAP_HEIGHTS * height)
+                .then(|| 20 * gap / height)
+        })
+        .collect();
+    if gaps.len() < LEAD_MIN_GAPS {
+        return None;
+    }
+    gaps.sort_unstable();
+    Some(gaps[(gaps.len() - 1) / 2])
+}
+
+/// Whether a line whose first piece reads `first`, of `pieces` pieces on the line, opens with a
+/// word (decision #103): its first character a letter or a digit, and the piece more than one
+/// glyph where another follows it. A bullet the marker clause does not know (`✪`, `➢`), and a
+/// symbol font's bullet read as a letter, set apart from its item, open none.
+pub(crate) fn opens_with_word(first: &str, pieces: usize) -> bool {
+    let first = first.trim();
+    first.chars().next().is_some_and(char::is_alphanumeric)
+        && !(pieces > 1 && first.chars().count() == 1)
 }
 
 /// Whether `text` opens with a list marker: a bullet, or a number of up to three digits or a
@@ -469,10 +555,12 @@ pub(crate) fn assign(page: &mut PageExtract) {
                 .find(|run| !run.text.trim().is_empty())
                 .filter(|run| run.inferred_heading)
                 .map(|run| run.inferred_heading_level.unwrap_or(1));
+            let height = rect.map_or(0, |r| r.3 - r.1);
             UnitLine {
                 rect,
                 heading,
-                marker: opens_with_marker(&text(&line, rect.map_or(0, |r| r.3 - r.1))),
+                marker: opens_with_marker(&text(&line, height)),
+                worded: opens_with_word(&text(&cut[range.start].2, height), range.len()),
             }
         })
         .collect();
@@ -519,12 +607,185 @@ pub(crate) fn assign(page: &mut PageExtract) {
 mod tests {
     use super::*;
 
-    /// A body line 10 points tall at `top`, from `x0` to `x1` points.
+    /// A body line 10 points tall at `top`, from `x0` to `x1` points, opening with a word.
     fn body(top: i64, x0: i64, x1: i64) -> UnitLine {
         UnitLine {
             rect: Some((x0 * 100, top * 100, x1 * 100, (top + 10) * 100)),
             heading: None,
             marker: false,
+            worded: true,
+        }
+    }
+
+    /// A body line 20 points tall at `top`, from 72 to 500 points, opening with a word: a point of
+    /// gap is a twentieth of its height.
+    fn tall(top: i64) -> UnitLine {
+        UnitLine {
+            rect: Some((7_200, top * 100, 50_000, (top + 20) * 100)),
+            ..body(top, 72, 500)
+        }
+    }
+
+    /// Lines 20 points tall, each `gaps[i]` points below the one before it.
+    fn set_apart(gaps: &[i64]) -> Vec<UnitLine> {
+        let mut top = 100;
+        let mut lines = vec![tall(top)];
+        for gap in gaps {
+            top += 20 + gap;
+            lines.push(tall(top));
+        }
+        lines
+    }
+
+    /// **A line set at its page's own leading continues its unit** (decision #103): a page setting
+    /// its 20-point lines 14 points apart, over half a line, reads its paragraphs, and a paragraph's
+    /// own 30 points, wider than its lines', still opens the next.
+    #[test]
+    fn lines_set_at_their_page_s_leading_are_one_unit() {
+        let lines = set_apart(&[14, 14, 30, 14, 14]);
+        assert_eq!(units(&lines), [1, 1, 1, 2, 2, 2]);
+        assert_eq!(page_lead(&lines), Some(14));
+    }
+
+    /// The boundary is where it is stated: a twentieth of a line past the page's leading joins, two
+    /// do not.
+    #[test]
+    fn a_twentieth_past_the_leading_joins_and_two_do_not() {
+        assert_eq!(units(&set_apart(&[14, 14, 15])), [1, 1, 1, 1]);
+        assert_eq!(units(&set_apart(&[14, 14, 16])), [1, 1, 1, 2]);
+    }
+
+    /// **The leading is the median gap**, not the widest nor the tightest: a page of three gaps of
+    /// 14 points and two of 40 reads 14, and a line 40 points down opens a unit.
+    #[test]
+    fn the_leading_is_the_median_gap() {
+        let lines = set_apart(&[14, 40, 14, 40, 14]);
+        assert_eq!(page_lead(&lines), Some(14));
+        assert_eq!(units(&lines), [1, 1, 2, 2, 3, 3]);
+        // The lower of two middles, so a page split evenly reads its tighter gap.
+        assert_eq!(page_lead(&set_apart(&[14, 14, 40, 40])), Some(14));
+        // Nor the tightest: one gap of 11 points among three of 14 reads 14, and every line joins.
+        let lines = set_apart(&[11, 14, 14, 14]);
+        assert_eq!(page_lead(&lines), Some(14));
+        assert_eq!(units(&lines), [1, 1, 1, 1, 1]);
+    }
+
+    /// **Two lines set no leading but their own**: a page needs three gaps for one, so two or three
+    /// lines set over half a line apart keep half a line, and a page set tight keeps it too.
+    #[test]
+    fn a_leading_is_read_from_three_gaps_or_more() {
+        assert_eq!(page_lead(&set_apart(&[14, 14])), None);
+        assert_eq!(units(&set_apart(&[14, 14])), [1, 2, 3]);
+        assert_eq!(page_lead(&set_apart(&[14, 14, 14])), Some(14));
+        // Lines 2 points apart read a leading of two twentieths: half a line still joins under it,
+        // and more than half still opens a unit.
+        assert_eq!(page_lead(&set_apart(&[2, 2, 2])), Some(2));
+        assert_eq!(units(&set_apart(&[2, 2, 2, 10])), [1, 1, 1, 1, 1]);
+        assert_eq!(units(&set_apart(&[2, 2, 2, 11])), [1, 1, 1, 1, 2]);
+    }
+
+    /// **The leading is read from body lines that could continue the line above**: a heading's
+    /// gaps, a list item's, a line beside the one above, one set over it and one further below than
+    /// three of its heights are no body leading.
+    #[test]
+    fn the_leading_is_read_from_body_lines_that_could_continue() {
+        let base = set_apart(&[14, 14, 14]);
+        assert_eq!(page_lead(&base), Some(14));
+        let with = |k: usize, line: UnitLine| {
+            let mut lines = base.clone();
+            lines[k] = line;
+            lines
+        };
+        let r = |line: &UnitLine| line.rect.expect("measured");
+        let heading = UnitLine {
+            heading: Some(2),
+            ..base[1]
+        };
+        assert_eq!(page_lead(&with(1, heading)), None, "a heading's gaps");
+        let item = UnitLine {
+            marker: true,
+            ..base[2]
+        };
+        assert_eq!(page_lead(&with(2, item)), None, "a list item's gap");
+        let (x0, y0, x1, y1) = r(&base[2]);
+        let beside = UnitLine {
+            rect: Some((x1 + 1_000, y0, x1 + 30_000, y1)),
+            ..base[2]
+        };
+        assert_eq!(
+            page_lead(&with(2, beside)),
+            None,
+            "a line beside the one above"
+        );
+        let over = UnitLine {
+            rect: Some((x0, y0 - 4_500, x1, y1 - 4_500)),
+            ..base[2]
+        };
+        assert_eq!(
+            page_lead(&with(2, over)),
+            None,
+            "a line set over the one above"
+        );
+        // The last line, 20 points tall, 61 and then 60 points below the line above it.
+        let (_, _, _, above) = r(&base[2]);
+        let below = |gap: i64| UnitLine {
+            rect: Some((x0, above + gap, x1, above + gap + 2_000)),
+            ..base[3]
+        };
+        assert_eq!(
+            page_lead(&with(3, below(6_100))),
+            None,
+            "past three heights below"
+        );
+        assert_eq!(
+            page_lead(&with(3, below(6_000))),
+            Some(14),
+            "three heights below"
+        );
+    }
+
+    /// **A line set at the page's leading continues its unit only opening with a word and starting
+    /// where the unit starts**: one opening with a bullet the marker clause does not know, and one
+    /// set in further than its height, each open a unit; set in exactly its height, a line joins.
+    #[test]
+    fn at_the_leading_a_line_joins_opening_with_a_word_where_the_unit_starts() {
+        let lines = set_apart(&[14, 14, 14]);
+        let mut symbol = lines.clone();
+        symbol[2].worded = false;
+        assert_eq!(units(&symbol), [1, 1, 2, 2]);
+        let indent = |by: i64| {
+            let mut lines = lines.clone();
+            let (x0, y0, x1, y1) = lines[2].rect.expect("measured");
+            lines[2].rect = Some((x0 + by, y0, x1, y1));
+            units(&lines)
+        };
+        assert_eq!(indent(2_000), [1, 1, 1, 1], "set in its height");
+        assert_eq!(indent(2_001), [1, 1, 2, 2], "set in further");
+        // Under half a line, neither is asked: clause 1 joins as it did.
+        let mut tight = set_apart(&[2, 2, 2]);
+        tight[2].worded = false;
+        assert_eq!(units(&tight), [1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn a_word_opens_with_a_letter_or_a_digit_on_a_piece_of_more_than_one_glyph() {
+        for (first, pieces) in [
+            ("Alpha beta", 1),
+            ("3,015,132 tCO₂e", 1),
+            ("A", 1),
+            ("état", 2),
+            ("Ab", 2),
+        ] {
+            assert!(opens_with_word(first, pieces), "{first:?} of {pieces}");
+        }
+        for (first, pieces) in [
+            ("✪ 2023", 1),
+            ("(Brown County)", 1),
+            ("Ȟ", 2),
+            ("  ", 1),
+            ("", 1),
+        ] {
+            assert!(!opens_with_word(first, pieces), "{first:?} of {pieces}");
         }
     }
 
