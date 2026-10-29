@@ -46,7 +46,11 @@ it overlaps none already found.
    a line height separates one run's ink from the next; a space the page drew as a run of its own,
    inside a label, is the label's.
 6. **A value** is the one number whose centre lies on its bar's segment, or — for a bar of one
-   segment — the one just beyond its end. A number two cells could read fills neither.
+   segment — the one just beyond its end. A segment that could read two numbers or more sets aside
+   each that just one other segment reads alone, and reads the one left: thin bars set side by side
+   each print their number past their own end, and the longer one's lies past the shorter's end as
+   well (decision #104). Where the chart is then refused, it is read with none set aside. A number
+   two cells could read fills neither.
 7. **A category** is the one label nearest the base under its column or group (vertical) or beside
    it (horizontal), with the lines a long label wraps onto (only where the first line fills most of
    its slot, or a line ends in a hyphen). Never a number but a year, never a label that opens with a

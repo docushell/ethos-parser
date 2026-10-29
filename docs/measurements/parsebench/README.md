@@ -1089,6 +1089,19 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a number another bar reads alone is not this bar's (decision #104, 2026-10-29)
+
+The chart data points whose value the page prints and no table of ours holds were read for the
+bar-labels rule's own reason, from a scratch build naming it: of 2.19 overall points, 0.41 sit on
+no bars the rule finds, and 0.31, 54 data points on 26 pages, on a bar that could read two numbers —
+thin bars side by side, the longer one's number lying past the shorter's end as well. Told "Build
+P104", a segment that could read two numbers or more sets aside each that just one other segment
+reads alone and reads the one left; where the chart is then refused, it is read with none set
+aside. Charts 0.1590 -> 0.1633, 9 pages up and none down (four of them the E-Government Survey's
+paired horizontal bars, 0.4-0.8 -> 1.0); the data points on a bar that could read two numbers
+54 -> 42; tables, content faithfulness, formatting and visual grounding unchanged on every page.
+Overall 50.39 -> 50.47; opendataloader-bench unchanged on every document.
+
 ### After a line set at its page's own leading continues its unit (decision #103, 2026-10-28)
 
 Of the `Text` elements visual grounding could not place, 697 would be placed by the units of ours

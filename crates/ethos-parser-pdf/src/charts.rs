@@ -35,7 +35,10 @@
 //! # What makes a cell
 //!
 //! - **A value** is the one number whose centre lies on its bar's segment — or, for a bar of one
-//!   segment, the one just beyond its end. A number two cells could read fills neither.
+//!   segment, the one just beyond its end. A segment that could read two numbers or more sets
+//!   aside each that just one other segment reads alone, and reads the one left (decision #104);
+//!   where the chart is then refused, it is read with none set aside. A number two cells could
+//!   read fills neither.
 //! - **A category** is the one label nearest the base under its column or group (vertical) or
 //!   beside it (horizontal), with the lines a long label wraps onto. Never a number but a year,
 //!   never a label that starts with a value but a range of two, never a line of prose, never one
@@ -701,6 +704,9 @@ fn bars_box(chart: &Chart, ink: &[Bar]) -> QuantRect {
 ///
 /// `shared` are the categories of the panel to its left, where this chart is a panel of small
 /// multiples (decision #91), and `taken` the labels other cells hold — the panels' titles.
+///
+/// Decision #104: a chart is read first with the numbers other segments read alone set aside
+/// ([`seated`]); where that reading is refused, it is read with none set aside.
 fn table(
     chart: &Chart,
     labels: &[Label],
@@ -710,13 +716,30 @@ fn table(
     shared: &[Vec<usize>],
     taken: &[usize],
 ) -> Option<Found> {
+    reading(chart, labels, ink, dots, boxes, shared, taken, true)
+        .or_else(|| reading(chart, labels, ink, dots, boxes, shared, taken, false))
+}
+
+/// [`table`]'s reading of a chart, `aside` whether a segment sets aside the numbers other
+/// segments read alone.
+#[allow(clippy::too_many_arguments)]
+fn reading(
+    chart: &Chart,
+    labels: &[Label],
+    ink: &[Bar],
+    dots: &[Bar],
+    boxes: &[(QuantRect, Fill)],
+    shared: &[Vec<usize>],
+    taken: &[usize],
+    aside: bool,
+) -> Option<Found> {
     let axis = chart.axis;
     let groups = &chart.groups;
     let series = series(chart, ink);
     let gap = gap(chart);
 
     // Values: the one number on each segment, or just beyond a single bar's end.
-    let mut cells: Vec<((usize, usize), usize, i64)> = Vec::new();
+    let mut segments: Vec<((usize, usize), Vec<usize>, i64)> = Vec::new();
     for (gi, g) in groups.iter().enumerate() {
         for (ci, c) in g.iter().enumerate() {
             for &s in &c.segs {
@@ -765,16 +788,15 @@ fn table(
                             && (on(&labels[k]) || (c.segs.len() == 1 && beyond(&labels[k])))
                     })
                     .collect();
-                if let [k] = picks[..] {
-                    let length = match axis {
-                        Axis::Vertical => r.y1 - r.y0,
-                        Axis::Horizontal => r.x1 - r.x0,
-                    };
-                    cells.push(((gi, col), k, length));
-                }
+                let length = match axis {
+                    Axis::Vertical => r.y1 - r.y0,
+                    Axis::Horizontal => r.x1 - r.x0,
+                };
+                segments.push(((gi, col), picks, length));
             }
         }
     }
+    let mut cells = seated(segments, aside);
     // A number two cells could read fills neither.
     let mut readers: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
     for &(_, k, _) in &cells {
@@ -956,6 +978,43 @@ fn table(
             .collect(),
         panels: Vec::new(),
     })
+}
+
+/// The cells a chart's segments read, from each segment's cell, the numbers it could read — set on
+/// it, or just past a single bar's end — and its length: a segment reads its one number.
+///
+/// Decision #104: with `aside`, a segment that could read two numbers or more first sets aside each
+/// that just one other segment reads alone, and reads the one left. Thin bars set side by side
+/// each print their number past their own end, and where the second is the longer its number lies
+/// just past the first's end as well: the first could read both, the second only its own.
+fn seated(
+    segments: Vec<((usize, usize), Vec<usize>, i64)>,
+    aside: bool,
+) -> Vec<((usize, usize), usize, i64)> {
+    let alone: Vec<usize> = segments
+        .iter()
+        .filter_map(|(_, picks, _)| match picks[..] {
+            [k] => Some(k),
+            _ => None,
+        })
+        .collect();
+    segments
+        .into_iter()
+        .filter_map(|(cell, picks, length)| {
+            let left: Vec<usize> = if aside && picks.len() > 1 {
+                picks
+                    .into_iter()
+                    .filter(|k| alone.iter().filter(|&a| a == k).count() != 1)
+                    .collect()
+            } else {
+                picks
+            };
+            match left[..] {
+                [k] => Some((cell, k, length)),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 /// Small multiples (decision #91): horizontal charts set side by side, each right of the last,
@@ -2422,6 +2481,83 @@ mod tests {
         ];
         assert!(found(&runs, &bars).is_empty());
     }
+
+    /// Three categories of two horizontal bars 5 points thick, the first series' over the
+    /// second's, each `lengths` long from x = 100 with its number just past its end on its lower
+    /// edge, and a legend over them. Where the second bar is the longer, its number lies just past
+    /// the first's end as well.
+    fn thin_pairs(
+        values: [(&'static str, &'static str); 3],
+        lengths: [(i64, i64); 3],
+    ) -> (Vec<TrackRun<'static>>, Vec<Bar>) {
+        let (a, b) = (rgb(0, 300, 800), rgb(0, 900, 900));
+        let mut runs = vec![run(28, 76, 20, "2024"), run(68, 76, 20, "2022")];
+        let mut bars = vec![bar(20, 70, 26, 76, a), bar(60, 70, 66, 76, b)];
+        for (r, cat) in ["North", "South", "East"].into_iter().enumerate() {
+            let y = 100 + 25 * r as i64;
+            let ((u, v), (lu, lv)) = (values[r], lengths[r]);
+            bars.push(bar(100, y, 100 + lu, y + 5, a));
+            runs.push(run(100 + lu + 2, y + 5, 10, u));
+            bars.push(bar(100, y + 5, 100 + lv, y + 10, b));
+            runs.push(run(100 + lv + 2, y + 10, 10, v));
+            runs.push(run(20, y + 8, 60, cat));
+        }
+        (runs, bars)
+    }
+
+    const THIN: [(i64, i64); 3] = [(40, 48), (60, 66), (50, 56)];
+
+    /// **A number another bar reads alone is not this bar's** (decision #104): each first bar could
+    /// read its own number and the longer second's past it, the second reads its own alone, so the
+    /// first reads the one left — and both series are read.
+    #[test]
+    fn a_number_another_bar_reads_alone_is_not_this_bars() {
+        let (runs, bars) = thin_pairs([("20", "24"), ("30", "33"), ("25", "28")], THIN);
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2024|2022", "North|20|24", "South|30|33", "East|25|28"]
+        );
+    }
+
+    /// Decision #104: where the numbers left to the first bars go against their lengths, the chart
+    /// is read with none set aside — the second series alone.
+    #[test]
+    fn a_chart_refused_with_numbers_set_aside_reads_without() {
+        let (runs, bars) = thin_pairs([("50", "24"), ("10", "33"), ("25", "28")], THIN);
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2022", "North|24", "South|33", "East|28"]
+        );
+    }
+
+    /// Decision #104: a segment that could read two numbers or more sets aside each that just one
+    /// other segment reads alone, and reads the one left — nothing where none or two are left; a
+    /// number two segments read alone is set aside from neither, and a segment reading one keeps it.
+    #[test]
+    fn a_segment_sets_aside_a_number_one_other_reads_alone() {
+        let read = |picks: &[&[usize]], aside: bool| -> Vec<(usize, usize)> {
+            let segments = picks
+                .iter()
+                .enumerate()
+                .map(|(c, p)| ((0, c), p.to_vec(), 100))
+                .collect();
+            seated(segments, aside)
+                .into_iter()
+                .map(|(cell, k, _)| (cell.1, k))
+                .collect()
+        };
+        assert_eq!(read(&[&[7], &[7, 8]], true), [(0, 7), (1, 8)]);
+        assert_eq!(read(&[&[7], &[7, 8]], false), [(0, 7)]);
+        assert_eq!(read(&[&[7], &[8], &[7, 8]], true), [(0, 7), (1, 8)]);
+        assert_eq!(read(&[&[7], &[7, 8, 9]], true), [(0, 7)]);
+        assert_eq!(read(&[&[7], &[7], &[7, 8]], true), [(0, 7), (1, 7)]);
+        assert_eq!(read(&[&[7, 8], &[7, 8]], true), []);
+    }
+
     #[test]
     fn bars_of_one_length_are_shading() {
         // Rows shaded one length, a number in each: a table's banding, not a chart's bars.

@@ -1090,6 +1090,11 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// Decision #92, folded in likewise: a series no legend names takes the lines set beside its bar,
 /// the first column's at its left or the last's at its right; numbers compare by their unit's
 /// size; and categories whose first lines repeat read the lines they wrap onto.
+///
+/// Decision #104, folded in likewise: a segment that could read two numbers or more sets aside
+/// each that just one other segment reads alone, and reads the one left — thin bars side by side,
+/// the longer one's number lying past the shorter's end as well — and where the chart is then
+/// refused, it is read with none set aside.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**

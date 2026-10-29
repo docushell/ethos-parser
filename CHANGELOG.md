@@ -187,6 +187,34 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A number another bar reads alone is not this bar's (decision #104)
+
+Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **A bar segment that could read two numbers or more sets aside each that just one other segment
+  reads alone, and reads the one left**; where the chart is then refused, it is read with none set
+  aside. Thin bars set side by side each print their number past their own end, and where the
+  second is the longer its number lies just past the first's end as well: the first could read
+  both, so it read neither, and a series carrying a number on too few of its bars was dropped. The
+  E-Government Survey's figures of two horizontal bars per category, some 6 points thick, now read
+  both series.
+- **Why this piece**: told "Chart printed values", the chart data points whose value the page
+  prints and no table of ours holds were read for the bar-labels rule's own reason, from a scratch
+  build naming it: of 2.19 overall points, 0.41 sit on no bars this rule finds, and 0.31, 54 data
+  points on 26 pages, on a bar that could read two numbers — the largest share one change could
+  take. Built without its last clause, the rule refused one chart not drawn to scale
+  (`2025-Business-Megatrends-Outlook` p25 0.8 -> 0: a number left to a bar went against its
+  length), so where the reading with numbers set aside is refused, the reading without stands.
+  The owner chose "Build P104".
+- **Measured** on ParseBench: charts 0.1590 -> 0.1633, 9 pages up and none down —
+  `(Web_version)_E-Government_Survey_2024` p172 to p175 0.8, 0.6, 0.4 and 0.6 -> 1.0,
+  `Digital_News-Report_2022` p52 0.75 -> 1.0, `ADL_Future_of_automotive_mobility_2024` p10 0.7 ->
+  0.9; the data points on a bar that could read two numbers 54 -> 42; tables, content
+  faithfulness, semantic formatting and visual grounding unchanged on every page; overall 50.39 ->
+  50.47. opendataloader-bench unchanged on every document; the fabrication check unchanged (0 of
+  1,307 cells); the gate documents' 542 tables unchanged.
+
 ### A line set at its page's own leading continues its unit (decision #103)
 
 Folded into `line-units-v5`, which no release carries yet, so no rule id and no `profile_sha256`
