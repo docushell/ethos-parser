@@ -23,14 +23,16 @@
 //! # What it reads
 //!
 //! **Bars**: rectangles the page filled, in a colour this reader knows and not white, a point or
-//! more each way — or bars it filled with their ends or corners rounded. **Columns**: bars of one width set end to end, each a colour the one before it
+//! more each way — or bars it filled with their ends or corners rounded, or straight lines it
+//! stroked a point wide or more (decision #105). **Columns**: bars of one width set end to end, each a colour the one before it
 //! is not — a stack, its segments listed from the base out. **A chart**: two or more columns on one base, of one width, side by side;
 //! its categories are the columns, one each — or, where the columns' colours repeat with a period
 //! of two or more and the gaps inside a period are narrower than between them, each period. Its
 //! series are the stack's colours, the period's positions, or the one colour it has.
 //!
 //! **Labels**: the upright runs no other rule's table holds, joined along a baseline wherever less
-//! than half a line height separates them.
+//! than half a line height separates them. What the page clips away is neither a bar nor a label
+//! (decision #105).
 //!
 //! # What makes a cell
 //!
@@ -43,8 +45,8 @@
 //!   beside it (horizontal), with the lines a long label wraps onto. Never a number but a year,
 //!   never a label that starts with a value but a range of two, never a line of prose, never one
 //!   set on a bar.
-//! - **A series** is named by the one label beside a legend swatch of its colour — a small
-//!   rectangle or a dot, never a rounded bar — near this chart
+//! - **A series** is named by the one label beside a legend swatch of its colour, within five
+//!   thousandths (decision #105) — a small rectangle or a dot, never a rounded bar — near this chart
 //!   and nearer it than any other bars of that colour; a chart of one colour without one is named
 //!   by the title just above it, where that title is a line of its own.
 //!
@@ -1368,7 +1370,7 @@ fn legend(
         .collect();
     let mut found: Vec<(i64, usize)> = Vec::new();
     for s in &swatches {
-        if !s.fill.same(fill) {
+        if !s.fill.near(fill) {
             continue;
         }
         let (sx, sy) = (
@@ -2603,6 +2605,33 @@ mod tests {
             grid(&t[0]),
             vec!["|2023|2024", "North|11|14", "South|15|18", "East|19|22"]
         );
+    }
+
+    /// Decision #105: a legend's swatch painted a few thousandths off its bars' colour names them
+    /// — five in each component, not six.
+    #[test]
+    fn a_swatch_a_few_thousandths_off_names_its_bars() {
+        let header = |off: i32| {
+            let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+            let mut bars = Vec::new();
+            let mut runs = Vec::new();
+            for (k, cat) in ["North", "South", "East"].into_iter().enumerate() {
+                let x = 100 + 80 * k as i64;
+                let (ha, hb) = (30 + 20 * k as i64, 40 + 20 * k as i64);
+                bars.push(bar(x, 300 - ha, x + 30, 300, a));
+                bars.push(bar(x + 30, 300 - hb, x + 60, 300, b));
+                runs.push(run(x + 5, 300 - ha - 3, 18, ["11", "15", "19"][k]));
+                runs.push(run(x + 35, 300 - hb - 3, 18, ["14", "18", "22"][k]));
+                runs.push(run(x + 15, 312, 30, cat));
+            }
+            bars.push(bar(100, 330, 106, 336, rgb(off, 300 - off, 800 + off)));
+            runs.push(run(110, 336, 30, "2023"));
+            bars.push(bar(200, 330, 206, 336, rgb(900 - off, 500 + off, 100)));
+            runs.push(run(210, 336, 30, "2024"));
+            grid(&found(&runs, &bars)[0])[0].clone()
+        };
+        assert_eq!(header(5), "|2023|2024");
+        assert_eq!(header(6), "||");
     }
 
     #[test]

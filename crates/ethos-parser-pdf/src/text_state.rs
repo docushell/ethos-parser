@@ -115,12 +115,12 @@ impl Matrix {
     }
 }
 
-/// Graphics state that matters to text placement, and the fill colour a chart's bars are told
-/// apart by.
+/// Graphics state that matters to text placement, and what a chart's bars are read from.
 ///
-/// Line width and dash patterns are deliberately absent: they cannot move a glyph and no rule
-/// reads them. The fill colour is here since decision #42: a chart's series is the bars painted in
-/// one colour, and its legend names that colour.
+/// The fill colour is here since decision #42: a chart's series is the bars painted in one colour,
+/// and its legend names that colour. The line width, cap and dash, and the rectangle the page clips
+/// to, are here since decision #105: a straight line stroked a point wide or more is a chart's
+/// bar, and what the page clips away feeds no chart.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GraphicsState {
     /// The current transformation matrix.
@@ -130,6 +130,16 @@ pub struct GraphicsState {
     /// The colour the next stroke paints in (`point-labels-v1`), set and compared as
     /// [`Self::fill`] is: a line chart's series are told apart by it.
     pub stroke: Fill,
+    /// The width the next stroke paints, in user space (`w`; 1 to begin with, 32000-1 Table 52).
+    pub line_width: f64,
+    /// The cap the next stroke ends in (`J`): 0 butt, 1 round, 2 projecting square.
+    pub line_cap: i64,
+    /// Whether a dash pattern is set (`d` with dashes): a dashed line is no bar.
+    pub dashed: bool,
+    /// The rectangle the page clips to, where each clip path set is one rectangle; `None` where
+    /// none is. A clip path of any other shape leaves it as it was: text and paths are clipped
+    /// away only where the clip is known.
+    pub clip: Option<crate::content::PathRect>,
 }
 
 impl Default for GraphicsState {
@@ -138,6 +148,10 @@ impl Default for GraphicsState {
             ctm: Matrix::IDENTITY,
             fill: Fill::BLACK,
             stroke: Fill::BLACK,
+            line_width: 1.0,
+            line_cap: 0,
+            dashed: false,
+            clip: None,
         }
     }
 }
@@ -208,7 +222,24 @@ impl Fill {
     pub fn same(self, other: Fill) -> bool {
         self.count != 0 && self == other
     }
+
+    /// Whether a legend's swatch painted in this colour keys bars painted in `other` (decision
+    /// #105): a known colour with as many components, each within [`NEAR_COLOUR`] thousandths of
+    /// the bars' — one colour to the eye, where a producer painted the swatch apart from the bars.
+    pub fn near(self, other: Fill) -> bool {
+        self.count != 0
+            && self.count == other.count
+            && self
+                .components
+                .iter()
+                .zip(other.components)
+                .all(|(a, b)| (a - b).abs() <= NEAR_COLOUR)
+    }
 }
+
+/// How many thousandths a legend swatch's colour may stand from its bars' in each component
+/// (decision #105).
+pub const NEAR_COLOUR: i32 = 5;
 
 /// Text state, per PDF 32000-1 Table 105, restricted to what affects position.
 #[derive(Debug, Clone, PartialEq)]
@@ -326,6 +357,25 @@ mod tests {
 
     fn approx(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
+    }
+
+    /// Decision #105: a colour is near another with as many components, each within five
+    /// thousandths; a colour this reader does not know is near nothing.
+    #[test]
+    fn a_colour_a_few_thousandths_off_is_near() {
+        let rgb = |r, g, b| Fill {
+            components: [r, g, b, 0],
+            count: 3,
+        };
+        assert!(rgb(392, 718, 800).near(rgb(394, 717, 801)));
+        assert!(rgb(0, 300, 800).near(rgb(5, 295, 805)));
+        assert!(!rgb(0, 300, 800).near(rgb(6, 300, 800)));
+        let gray = Fill {
+            components: [0; 4],
+            count: 1,
+        };
+        assert!(!gray.near(rgb(0, 0, 0)));
+        assert!(!Fill::UNKNOWN.near(Fill::UNKNOWN));
     }
 
     /// The three ways a page can specify 10pt text must all measure 10pt.

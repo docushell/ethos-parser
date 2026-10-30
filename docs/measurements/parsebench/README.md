@@ -1089,6 +1089,21 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a line stroked wide is a bar, and what the page clips away feeds no chart (decision #105, 2026-10-29)
+
+Of the chart data points no table of ours holds, 0.41 overall points sat on no bars the rule
+finds; `Consultancy-in-Spain` draws every bar as a straight line stroked 28 points wide or more.
+Read as bars they moved nothing: each page also carries a copy of its legend in another language,
+in the bars' exact colours, where its clip hides it, and the legend a reader sees is painted two
+thousandths off the bars' colours. Told "Build all three if trades hold": a straight line stroked
+solid a point wide or more is a bar; a run, or a path whose middle, lies outside a clip that is one
+rectangle is no chart's; a legend's swatch matches its bars within five thousandths. Charts 0.1633
+-> 0.1650, 3 pages up and none down (`Consultancy-in-Spain` p16, two E-Government Survey pages
+whose duplicate labels sit outside their clips); tables one page up (`Coca Cola 10-k` p107, a
+clipped-away fill no longer the paint beneath a ruled table's cells); content faithfulness,
+formatting and visual grounding unchanged on every page. Overall 50.47 -> 50.51;
+opendataloader-bench unchanged on every document.
+
 ### After a number another bar reads alone is not this bar's (decision #104, 2026-10-29)
 
 The chart data points whose value the page prints and no table of ours holds were read for the

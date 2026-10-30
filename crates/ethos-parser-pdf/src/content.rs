@@ -172,6 +172,9 @@ pub struct ShownText {
     /// Whether it was drawn inside a form XObject, where the tag writer has no operator of the
     /// page's to mark (`docs/30-FORM-XOBJECTS-SCOPE.md` §8).
     pub(crate) in_form: bool,
+    /// Whether its origin lies outside the rectangle the page clips to (decision #105): the chart
+    /// rules read no such run.
+    pub(crate) clipped: bool,
 }
 
 /// One image XObject a page painted with `Do`, in **user space** (v1-S6).
@@ -386,7 +389,8 @@ pub struct Interpreter<'a> {
     /// The rectangles a fill painted, each with its fill colour (decision #42). A rectangle only
     /// stroked is not here: an outline is not a bar. A form's filled rectangles are kept, where
     /// [`Interpreter::rects`] drops a form's ink: a chart is often drawn as a form, and its bars are
-    /// not the page furniture the ruled rule keeps out.
+    /// not the page furniture the ruled rule keeps out. A fill whose middle the page clips away is
+    /// not here (decision #105).
     pub filled: Vec<FilledRect>,
     /// The rectangles a fill painted with a corner named twice in a row (`bar-labels-v2`): a
     /// producer's rounded corner of radius nought draws a bar so. Kept apart from
@@ -397,12 +401,18 @@ pub struct Interpreter<'a> {
     /// a subpath [`rounded_bar`] reads. Kept apart from [`Interpreter::filled`], as
     /// [`Interpreter::filled_repeated`] is, for the chart rule alone.
     pub filled_rounded: Vec<FilledRect>,
+    /// The bars straight lines a stroke painted draw (decision #105): each line run along an axis,
+    /// stroked solid [`STROKE_BAR_MIN`] wide or more, as the box its stroke covers — a round or
+    /// square cap half a width past each end — in the stroke colour, and whether its cap is round.
+    /// For the chart rules alone.
+    pub stroked: Vec<(FilledRect, bool)>,
     /// The rectangles a fill alone painted white (`ruled-rects-v10`), also in
     /// [`Interpreter::rects`]. On white paper they draw no line a reader sees, so a grid's merged
     /// cells are never read from their edges. Dropped with a form's ink, as `rects` is.
     pub white: Vec<PathRect>,
     /// The rectangles a fill alone painted over paint of their own colour (`ruled-rects-v12`) —
-    /// the last fill beneath that contains them — also in [`Interpreter::rects`]: a cell's padding
+    /// the last fill beneath that contains them, which since decision #105 the page does not clip
+    /// away — also in [`Interpreter::rects`]: a cell's padding
     /// painted over its background, whose edges no reader sees and whose area the fill beneath
     /// already covers. Dropped with a form's ink, as `rects` is.
     pub inset: Vec<PathRect>,
@@ -550,6 +560,7 @@ impl<'a> Interpreter<'a> {
             filled: Vec::new(),
             filled_repeated: Vec::new(),
             filled_rounded: Vec::new(),
+            stroked: Vec::new(),
             segments: Vec::new(),
             subpath: Subpath::default(),
             pending: Vec::new(),
@@ -686,6 +697,17 @@ impl<'a> Interpreter<'a> {
             });
         }
         self.dispatch(operator, &op.operands)
+    }
+
+    /// Whether a point lies outside the rectangle the page clips to by more than [`CLIP_SLACK`]
+    /// (decision #105).
+    fn outside_clip(&self, (x, y): (f64, f64)) -> bool {
+        self.gs.clip.is_some_and(|c| {
+            x < c.x0 - CLIP_SLACK
+                || x > c.x1 + CLIP_SLACK
+                || y < c.y0 - CLIP_SLACK
+                || y > c.y1 + CLIP_SLACK
+        })
     }
 
     /// Whether the current CTM maps axis-aligned rectangles to axis-aligned rectangles.
@@ -927,8 +949,18 @@ impl<'a> Interpreter<'a> {
             // NEW operator cannot join them by accident.
             //
             // Line and colour state:
-            LineWidth | LineCap | LineJoin | MiterLimit | DashPattern | RenderingIntent
-            | Flatness | ExtGState => {}
+            LineJoin | MiterLimit | RenderingIntent | Flatness | ExtGState => {}
+            // Decision #105: a stroke's width, cap and dash, for a straight line stroked wide as a
+            // chart's bar. Operands that are not numbers stroke no bar rather than stopping the
+            // parse.
+            LineWidth => self.gs.line_width = num(operands, 0).unwrap_or(0.0),
+            LineCap => self.gs.line_cap = num(operands, 0).map_or(0, |cap| cap as i64),
+            DashPattern => {
+                self.gs.dashed = matches!(
+                    operands.first(),
+                    Some(lopdf::Object::Array(dashes)) if !dashes.is_empty()
+                );
+            }
             // `point-labels-v1`: the stroke colour, read as the fill colour is.
             StrokeColor | StrokeColorN | StrokeGray | StrokeRgb | StrokeCmyk => {
                 self.gs.stroke = crate::text_state::Fill::of(operands)
@@ -1047,11 +1079,17 @@ impl<'a> Interpreter<'a> {
                 let strokes = !matches!(op, Fill | FillObsolete | FillEvenOdd);
                 let fills = !matches!(op, Stroke | CloseStroke);
                 let shaped = std::mem::take(&mut self.path_shaped);
+                // Decision #105: a path whose middle the page clips away is no chart's, nor the fill
+                // beneath an inset cell.
+                let gone = self
+                    .path_box
+                    .is_some_and(|b| self.outside_clip(((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0)));
                 if let Some(b) = self.path_box.take() {
                     self.painted.push((b, shaped));
                     // `point-labels-v1`: a small, near-square filled path is a mark.
                     let (w, h) = (b.x1 - b.x0, b.y1 - b.y0);
                     if fills
+                        && !gone
                         && (1.0..=15.0).contains(&w)
                         && (1.0..=15.0).contains(&h)
                         && 20.0 * (w - h).abs() <= 7.0 * w.max(h)
@@ -1064,7 +1102,7 @@ impl<'a> Interpreter<'a> {
                 }
                 let stroke = self.gs.stroke;
                 let lines = std::mem::take(&mut self.pending_polylines);
-                if strokes {
+                if strokes && !gone {
                     self.polylines
                         .extend(lines.into_iter().map(|points| Polyline { points, stroke }));
                 }
@@ -1083,7 +1121,41 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                 }
-                if !matches!(op, Stroke | CloseStroke) {
+                // Decision #105: a straight line stroked solid is a bar the width of its stroke, a
+                // round or square cap half a width past each end.
+                if strokes && !self.gs.dashed && !gone {
+                    let m = self.gs.ctm;
+                    let width = self.gs.line_width.abs();
+                    let (across_x, across_y) = (width * m.a.hypot(m.c), width * m.b.hypot(m.d));
+                    let capped = matches!(self.gs.line_cap, 1 | 2);
+                    for s in &self.pending_segments {
+                        let (rect, across) = if s.is_horizontal() {
+                            let end = if capped { across_x / 2.0 } else { 0.0 };
+                            let rect = PathRect {
+                                x0: s.x0 - end,
+                                y0: s.y0 - across_y / 2.0,
+                                x1: s.x1 + end,
+                                y1: s.y1 + across_y / 2.0,
+                            };
+                            (rect, across_y)
+                        } else {
+                            let end = if capped { across_y / 2.0 } else { 0.0 };
+                            let rect = PathRect {
+                                x0: s.x0 - across_x / 2.0,
+                                y0: s.y0 - end,
+                                x1: s.x1 + across_x / 2.0,
+                                y1: s.y1 + end,
+                            };
+                            (rect, across_x)
+                        };
+                        if across >= STROKE_BAR_MIN {
+                            let fill = self.gs.stroke;
+                            self.stroked
+                                .push((FilledRect { rect, fill }, self.gs.line_cap == 1));
+                        }
+                    }
+                }
+                if !matches!(op, Stroke | CloseStroke) && !gone {
                     let fill = self.gs.fill;
                     self.filled
                         .extend(self.pending.iter().map(|&rect| FilledRect { rect, fill }));
@@ -1126,6 +1198,24 @@ impl<'a> Interpreter<'a> {
             // A clip path bounds what is visible; it draws nothing. Treating one as a table edge
             // would find a grid in every document that clips to its margins.
             Clip | ClipEvenOdd => {
+                // Decision #105: a clip path that is one rectangle, and nothing else, narrows the
+                // clip to it. Any other shape leaves the clip as it was.
+                self.flush_subpath();
+                if let ([r], Some(b)) = (&self.pending[..], self.path_box) {
+                    let same = |p: f64, q: f64| approx_eq(p, q);
+                    if same(r.x0, b.x0) && same(r.y0, b.y0) && same(r.x1, b.x1) && same(r.y1, b.y1)
+                    {
+                        self.gs.clip = Some(match self.gs.clip {
+                            Some(c) => PathRect {
+                                x0: c.x0.max(r.x0),
+                                y0: c.y0.max(r.y0),
+                                x1: c.x1.min(r.x1),
+                                y1: c.y1.min(r.y1),
+                            },
+                            None => *r,
+                        });
+                    }
+                }
                 self.subpath = Subpath::default();
                 self.pending.clear();
                 self.pending_filled.clear();
@@ -1338,6 +1428,7 @@ impl<'a> Interpreter<'a> {
             op_index: self.op_index,
             font,
             in_form: !self.form_stack.is_empty(),
+            clipped: self.outside_clip(origin),
         };
         if spread && advance_known {
             self.push_glyphs(run, glyphs, scale);
@@ -1376,7 +1467,9 @@ impl<'a> Interpreter<'a> {
             glyphs.into_iter().zip(codes.into_iter().zip(code_chars))
         {
             self.last_run = Some(self.shown.len());
+            let clipped = self.outside_clip(origin);
             self.shown.push(ShownText {
+                clipped,
                 text: chars.by_ref().take(n).collect(),
                 codes: vec![code],
                 code_chars: vec![n],
@@ -1618,6 +1711,14 @@ fn num(operands: &[lopdf::Object], i: usize) -> Result<f64, EngineError> {
 /// same coordinate, and using a different tolerance here than the wire uses would let the
 /// interpreter distinguish points the artifact cannot.
 pub(crate) const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT as f64;
+
+/// The least width, in points, a straight line's stroke has as a bar (decision #105):
+/// [`crate::charts::MIN_BAR`], the least side of a filled bar, which counts centipoints.
+const STROKE_BAR_MIN: f64 = crate::charts::MIN_BAR as f64 / 100.0;
+
+/// How far outside the clip rectangle, in points, a run's origin or a path's middle lies to be
+/// clipped away (decision #105): a run set on the clip's edge is drawn.
+const CLIP_SLACK: f64 = 1.0;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < COORD_EPSILON
@@ -2147,6 +2248,117 @@ mod tests {
         assert_eq!(bars, vec![(0.0, 0.0, 60.0, 20.0)]);
         assert!(i.filled.is_empty() && i.filled_repeated.is_empty());
         assert!(i.rects.is_empty(), "{:?}", i.rects);
+    }
+
+    /// **A straight line stroked a point wide or more is a bar the width of its stroke** (decision
+    /// #105): a round or square cap reaches half a width past each end, a butt cap none, and the
+    /// width is measured through the CTM. A dashed line, a line under a point wide, a line on a
+    /// slant and a line only filled are none; and every straight line is still the segment the
+    /// ruled rules read.
+    #[test]
+    fn a_line_stroked_wide_is_a_bar() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("0.2 0.4 0.6 RG 28 w 1 J 100 100 m 100 200 l S \
+             10 w 0 J 300 100 m 400 100 l S \
+             2 J 300 300 m 400 300 l S \
+             q 2 0 0 2 0 0 cm 5 w 0 J 250 10 m 250 50 l S Q \
+             q 2 0 0 1 0 0 cm 5 w 0 J 300 400 m 300 450 l S Q \
+             [3 2] 0 d 500 100 m 500 200 l S [] 0 d \
+             0.5 w 600 100 m 600 200 l S \
+             10 w 700 100 m 750 150 l S \
+             800 100 m 800 200 l f"))
+            .unwrap();
+        let bars: Vec<((f64, f64, f64, f64), bool)> = i
+            .stroked
+            .iter()
+            .map(|(f, round)| ((f.rect.x0, f.rect.y0, f.rect.x1, f.rect.y1), *round))
+            .collect();
+        assert_eq!(
+            bars,
+            vec![
+                ((86.0, 86.0, 114.0, 214.0), true),
+                ((300.0, 95.0, 400.0, 105.0), false),
+                ((295.0, 295.0, 405.0, 305.0), false),
+                ((495.0, 20.0, 505.0, 100.0), false),
+                ((595.0, 400.0, 605.0, 450.0), false),
+            ]
+        );
+        let blue = crate::text_state::Fill {
+            components: [200, 400, 600, 0],
+            count: 3,
+        };
+        assert!(i.stroked.iter().all(|(f, _)| f.fill == blue));
+        assert_eq!(i.segments.len(), 8, "{:?}", i.segments);
+    }
+
+    /// **What the page clips away is marked** (decision #105): a run whose origin lies outside a
+    /// clip that is one rectangle by more than a point — each glyph of a string spread under wide
+    /// character spacing by its own origin — and a path whose middle does, are no chart's: such a
+    /// fill is no bar and no mark, such a line no polyline and no stroked bar. Clips intersect and
+    /// `Q` restores the clip; a clip of any other shape, or a rectangle with another subpath,
+    /// leaves it as it was.
+    #[test]
+    fn what_the_page_clips_away_is_marked() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "q 0 0 100 100 re W n \
+             BT /F1 10 Tf 50 50 Td (A) Tj ET \
+             BT /F1 10 Tf 100.5 50 Td (B) Tj ET \
+             BT /F1 10 Tf 101.5 50 Td (C) Tj ET \
+             1 0 0 rg 10 10 20 20 re f 40 40 5 5 re f 200 200 20 20 re f 150 10 5 5 re f \
+             BT /F1 10 Tf 10 Tc 90 30 Td (IJ) Tj 0 Tc ET \
+             10 80 m 20 90 l 30 80 l S 150 150 m 160 160 l 170 150 l S \
+             20 w 50 50 m 50 90 l S 150 50 m 150 90 l S 1 w \
+             q 50 0 100 100 re W n BT /F1 10 Tf 20 50 Td (D) Tj ET \
+             BT /F1 10 Tf 120 50 Td (K) Tj ET Q \
+             BT /F1 10 Tf 20 50 Td (E) Tj ET Q \
+             BT /F1 10 Tf 150 50 Td (F) Tj ET \
+             q 0 0 m 100 0 l 50 100 l h W n BT /F1 10 Tf 150 50 Td (G) Tj ET Q \
+             q 0 0 100 100 re 200 200 m 210 200 l W n BT /F1 10 Tf 150 50 Td (H) Tj ET Q",
+        ))
+        .unwrap();
+        let away: Vec<(&str, bool)> = i
+            .shown
+            .iter()
+            .map(|s| (s.text.as_str(), s.clipped))
+            .collect();
+        assert_eq!(
+            away,
+            vec![
+                ("A", false),
+                ("B", false),
+                ("C", true),
+                ("I", false),
+                ("J", true),
+                ("D", true),
+                ("K", true),
+                ("E", false),
+                ("F", false),
+                ("G", false),
+                ("H", false),
+            ]
+        );
+        let corner = |f: &FilledRect| (f.rect.x0, f.rect.y0);
+        assert_eq!(
+            i.filled.iter().map(corner).collect::<Vec<_>>(),
+            vec![(10.0, 10.0), (40.0, 40.0)]
+        );
+        assert_eq!(
+            i.marks.iter().map(corner).collect::<Vec<_>>(),
+            vec![(40.0, 40.0)]
+        );
+        assert_eq!(i.rects.len(), 4, "the ruled rules read every rectangle");
+        assert_eq!(i.polylines.len(), 2, "the bar inside is a line too");
+        assert_eq!(i.polylines[0].points[0], (10.0, 80.0));
+        assert_eq!(
+            i.stroked
+                .iter()
+                .map(|(f, _)| (f.rect.x0, f.rect.y0))
+                .collect::<Vec<_>>(),
+            vec![(40.0, 50.0)]
+        );
     }
 
     /// **A slice of a pie filled is a wedge** (decision #90): curves, and one point every other

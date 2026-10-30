@@ -187,6 +187,36 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line stroked wide is a bar, and what the page clips away feeds no chart (decision #105)
+
+Folded into `bar-labels-v3`, `point-labels-v1`, `slice-labels-v1` and `ruled-rects-v13`, which no
+release carries yet, so no rule id and no `profile_sha256` moves.
+
+- **A straight line run along an axis and stroked solid a point wide or more is a chart's bar**:
+  the box its stroke covers, its width measured through the CTM, a round or square cap reaching
+  half a width past each end, in its stroke colour. Bars drawn as pills — a line stroked 28 points
+  wide with round caps — were no bars at all: the bar reader read only what a fill paints.
+- **What the page clips away feeds no chart**: where every clip path set is one rectangle, a run
+  whose origin lies more than a point outside it is no chart's label, and a path whose middle does
+  is no bar, swatch, line, mark or slice. A clip of any other shape leaves what it clips read. Nor
+  is such a fill the paint beneath an inset cell any longer, which the ruled rule reads.
+- **A legend's swatch names bars of its colour give or take five thousandths** in each component.
+- **Why this piece**: told "Chart printed values" and then "Bars drawn as wide strokes", the chart
+  data points the page prints but no table of ours holds were read for the bar-labels rule's own
+  reason: 0.41 of 2.19 overall points sat on no bars it found, and `Consultancy-in-Spain` draws
+  every bar as a stroked line. Read as bars, they moved nothing: each page also draws a copy of its
+  legend, in another language and the bars' exact colours, where its clip hides it, and the rule
+  named the series from it; the legend a reader sees is painted two thousandths off the bars'
+  colours. The owner chose "Build all three if trades hold".
+- **Measured** on ParseBench: charts 0.1633 -> 0.1650, 3 pages up and none down —
+  `Consultancy-in-Spain` p16 0 -> 0.5, and two pages of the E-Government Survey whose duplicate
+  labels sit outside their clips, p101 0.25 -> 0.5 and p77 0 -> 0.2; tables 1 page up and none
+  down, `Coca Cola 10-k` p107 0.08 -> 0.10, a ruled table's rows read now that a fill its clip
+  hides is no paint beneath its cells; content faithfulness, semantic formatting and visual
+  grounding unchanged on every page; overall 50.47 -> 50.51. opendataloader-bench unchanged on
+  every document; the fabrication check unchanged (0 of 1,307 cells); the gate documents' 542
+  tables unchanged.
+
 ### A number another bar reads alone is not this bar's (decision #104)
 
 Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no `profile_sha256`

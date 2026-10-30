@@ -864,6 +864,86 @@ fn rounded_bars_and_a_legend_of_dots_read_as_their_table() {
     );
 }
 
+/// **Bars stroked wide, named by a legend the page draws, read as their table** (decision #105),
+/// through the whole extraction: each bar a vertical line stroked 20 points wide with round caps,
+/// the legend's dots painted two thousandths off the bars' colours, and a copy of the legend in
+/// the bars' exact colours, its names another language's, set where the page clips it away, as is
+/// a second number on the first bar. A short line stroked with round caps in a series' colour,
+/// beside a line of text, is no swatch.
+#[test]
+fn bars_stroked_wide_read_as_their_table_and_a_legend_clipped_away_names_nothing() {
+    // A dot of radius 3 at (x, y).
+    let dot = |x: f64, y: f64| {
+        let k = 1.657;
+        format!(
+            "{a} {y} m {a} {u} {p} {t} {x} {t} c {q} {t} {b} {u} {b} {y} c \
+             {b} {v} {q} {s} {x} {s} c {p} {s} {a} {v} {a} {y} c h f ",
+            a = x + 3.0,
+            b = x - 3.0,
+            t = y + 3.0,
+            s = y - 3.0,
+            u = y + k,
+            v = y - k,
+            p = x + k,
+            q = x - k,
+        )
+    };
+    let text = |x: f64, y: f64, s: &str| format!("BT /F1 10 Tf {x} {y} Td ({s}) Tj ET ");
+    // A bar from (x - 10, 100) to (x + 10, 100 + h): its line runs half a width short of each end.
+    let bar = |x: f64, h: f64| format!("20 w 1 J {x} 110 m {x} {} l S ", 90.0 + h);
+    let mut stream = String::new();
+    for (k, cat) in ["North", "South", "East"].into_iter().enumerate() {
+        let x = 50.0 + 60.0 * k as f64;
+        let (ha, hb) = (30.0 + 10.0 * k as f64, 35.0 + 10.0 * k as f64);
+        stream += &format!("0 0 1 RG {}1 0.5 0 RG {}", bar(x, ha), bar(x + 20.0, hb));
+        stream += &text(x - 5.0, 103.0 + ha, ["11", "15", "19"][k]);
+        stream += &text(x + 15.0, 103.0 + hb, ["14", "18", "22"][k]);
+        stream += &text(x + 10.0 - 2.5 * cat.len() as f64, 88.0, cat);
+    }
+    stream += &format!(
+        "0.002 0 0.998 rg {}1 0.502 0 rg {}",
+        dot(20.0, 60.0),
+        dot(20.0, 48.0)
+    );
+    stream += &text(28.0, 57.5, "2023");
+    stream += &text(28.0, 45.5, "2024");
+    stream += &format!(
+        "q 0 70 600 600 re W n 0 0 1 rg {}1 0.5 0 rg {}{}{}Q ",
+        dot(120.0, 60.0),
+        dot(120.0, 48.0),
+        text(128.0, 57.5, "Uno"),
+        text(128.0, 45.5, "Dos")
+    );
+    stream += &format!("q 300 0 300 800 re W n {}Q ", text(45.0, 120.0, "99"));
+    stream += "1 0.5 0 RG 8 w 1 J 100 60 m 106 60 l S ";
+    stream += &text(112.0, 57.5, "Most trust");
+    let a = helvetica_page(0, stream.as_bytes());
+    let tables: Vec<_> = a.pages[0]
+        .tables
+        .iter()
+        .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_CHARTS_V3)
+        .collect();
+    assert_eq!(tables.len(), 1, "{:?}", a.pages[0].tables);
+    let t = tables[0];
+    let grid: Vec<String> = (0..t.rows)
+        .map(|r| {
+            (0..t.columns)
+                .map(|c| {
+                    t.cells
+                        .iter()
+                        .find(|x| x.position.row == r && x.position.column == c)
+                        .map_or("", |x| x.text.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect();
+    assert_eq!(
+        grid,
+        vec!["|2023|2024", "North|11|14", "South|15|18", "East|19|22"]
+    );
+}
+
 /// **A pie printing a number on each slice reads as its table** (decision #90), through the whole
 /// extraction: each slice drawn from the centre with curves, its number on it, a legend of squares
 /// set in rows under the pie and a title over it.

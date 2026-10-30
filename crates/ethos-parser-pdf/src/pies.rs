@@ -19,7 +19,8 @@
 //! does (`crate::charts`): each slice's number set on it or beside it, the slice named in the
 //! legend beside a swatch of its colour or by the lines set over its number, each pie by the line
 //! over it or the label in its hole. This rule reads that table back. A value is never read off a
-//! slice's size: a pie that prints no number at a slice yields no table.
+//! slice's size: a pie that prints no number at a slice yields no table. A slice, a mark or a run
+//! the page clips away is not read (decision #105).
 
 use std::f64::consts::{PI, TAU};
 

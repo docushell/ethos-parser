@@ -251,7 +251,8 @@ pub(crate) struct TrackRun<'a> {
     pub rect: Option<QuantRect>,
     /// The run's text.
     pub text: &'a str,
-    /// Another rule's table already holds this run's origin.
+    /// Another rule's table already holds this run's origin — or, for the chart rules, the page
+    /// clips it away (decision #105).
     pub claimed: bool,
 }
 

@@ -6,7 +6,7 @@
 //! paired with the one point it is set at, a point with the one label under it at the foot of the
 //! plot, and a series with the legend swatch of its colour. A value is never read off a point's
 //! height: a point that carries no number leaves its cell empty, and a line that prints none yields
-//! no table.
+//! no table. A line, a mark or a run the page clips away is not read (decision #105).
 
 use ethos_parser_core::{EngineError, IdAllocator};
 

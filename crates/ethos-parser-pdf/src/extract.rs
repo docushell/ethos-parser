@@ -286,6 +286,14 @@ fn rule_runs<'a>(
         .collect()
 }
 
+/// Decision #105: the chart rules read no run the page clips away. It is marked as held, so every
+/// run keeps its place.
+fn hide_clipped(runs: &mut [crate::tracks::TrackRun<'_>], clipped: &[bool]) {
+    for (run, &away) in runs.iter_mut().zip(clipped) {
+        run.claimed |= away;
+    }
+}
+
 /// A page's candidate heading lines: each line's run indices in the final order, and the line
 /// reduced to what the verdict needs (decision #29).
 /// The advance of a run's trailing whitespace, in the units of `per_code` — the run's advance per
@@ -748,6 +756,8 @@ fn extract_page(
         // interpreter fields (rects, segments, counters) are read below and stay put.
         let shown_runs = std::mem::take(&mut interp.shown);
         let mut runs = Vec::with_capacity(shown_runs.len());
+        // Decision #105: which runs the page clips away, for the chart rules.
+        let mut clipped = Vec::with_capacity(shown_runs.len());
         op_indices.reserve(shown_runs.len());
         ems.reserve(shown_runs.len());
         code_chars.reserve(shown_runs.len());
@@ -917,6 +927,7 @@ fn extract_page(
 
             let scalar_code_mismatch = shown.text.chars().count() != shown.codes.len();
 
+            clipped.push(shown.clipped);
             runs.push(TextRun {
                 id: alloc.next(IdKind::Span)?,
                 text: shown.text,
@@ -1213,6 +1224,8 @@ fn extract_page(
         for (f, rounded) in square
             .map(|f| (f, false))
             .chain(interp.filled_rounded.iter().map(|f| (f, true)))
+            // Decision #105: a straight line stroked wide, rounded where its cap is round.
+            .chain(interp.stroked.iter().map(|(f, round)| (f, *round)))
         {
             let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
             let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
@@ -1227,7 +1240,8 @@ fn extract_page(
         if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V3
             && no_author_structure(structure.as_ref())
         {
-            let chart_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            let mut chart_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            hide_clipped(&mut chart_runs, &clipped);
             // Decision #88: the small marks a fill painted, a legend's dots among them.
             let mut dots = Vec::with_capacity(interp.marks.len());
             for m in &interp.marks {
@@ -1282,7 +1296,8 @@ fn extract_page(
                 });
             }
             let chart_bars = crate::charts::chart_bars(&bars, page_area);
-            let line_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            let mut line_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            hide_clipped(&mut line_runs, &clipped);
             for table in crate::lines::detect(
                 page_number,
                 &line_runs,
@@ -1325,7 +1340,8 @@ fn extract_page(
                     colour: m.fill,
                 });
             }
-            let pie_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            let mut pie_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            hide_clipped(&mut pie_runs, &clipped);
             for table in crate::pies::detect(page_number, &pie_runs, &slices, &marks, &mut alloc)? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);

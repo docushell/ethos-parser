@@ -33,7 +33,11 @@ it overlaps none already found.
 2. **Bars.** Filled rectangles in a known colour that is not white, a point or more each way, under
    a quarter of the page; one drawn twice counts once. A bar drawn with its ends or corners rounded
    — curves and straight sides only, two sides or more straight and none on a slant, every point
-   on the edge of its box — is its box (decision #88).
+   on the edge of its box — is its box (decision #88). A straight line run along an axis and
+   stroked solid a point wide or more is the box its stroke covers, a round or square cap reaching
+   half a width past each end, in its stroke colour; a round cap makes it a rounded bar. A path
+   whose middle the page clips away — outside a clip that is one rectangle — is no bar and no
+   swatch (decision #105).
 3. **Columns.** Bars sharing one span across their direction, set end to end, each a colour the one
    before it is not — a stack. Two touching segments of one colour are a row of shaded table cells
    or a bar drawn in pieces, never one stack.
@@ -44,7 +48,7 @@ it overlaps none already found.
    the stack's colours, the period's positions, or its one colour.
 5. **Labels.** Upright runs (the tracks rule's test), joined along a baseline wherever less than half
    a line height separates one run's ink from the next; a space the page drew as a run of its own,
-   inside a label, is the label's.
+   inside a label, is the label's. A run whose origin the page clips away is none (decision #105).
 6. **A value** is the one number whose centre lies on its bar's segment, or — for a bar of one
    segment — the one just beyond its end. A segment that could read two numbers or more sets aside
    each that just one other segment reads alone, and reads the one left: thin bars set side by side
@@ -57,8 +61,9 @@ it overlaps none already found.
    value — a range of two values, `$1.00bn–$5.00bn`, is a category (decision #87) — never a line of
    prose (opening lower-case and thirty characters or more), never one set on a bar. Where two
    categories' first lines read alike, each reads every line it wraps onto (decision #92).
-8. **A series' name** is the one label beside a small swatch of its colour — a rectangle, or a dot,
-   never a rounded bar (decision #88) — near the chart and nearer it than any other chart or bars
+8. **A series' name** is the one label beside a small swatch of its colour — within five
+   thousandths in each component (decision #105) — a rectangle, or a dot, never a rounded bar
+   (decision #88) — near the chart and nearer it than any other chart or bars
    of that colour, not running into the next legend entry, with its wrapped lines; a legend above
    the chart only where nothing but the chart's own labels stands between. A chart of one colour
    without one takes the one-line title just above it, where that line is the only label over the
@@ -420,3 +425,39 @@ documents' 541 tables unchanged; every cell its runs' text.
 
 **Still not read.** `67c07d7f417ce` p43's `EU Windstorm` capacity: the page draws a second number,
 `3.9bn`, on that segment beneath the bar's paint, and a segment two numbers stand on takes neither.
+
+## 13. Bars stroked wide, and what the page clips away (2026-10-29, decision #105)
+
+**Why.** Of the chart data points the page prints and no table of ours holds, 0.41 overall points
+sat on no bars the rule finds, the largest share of any one reason. `Consultancy-in-Spain` draws
+every bar as a pill — a straight line stroked 28 to 53 points wide with round caps — and the bar
+reader read only what a fill paints. Read as bars, the pills moved nothing: each page also carries a
+copy of its legend, its names Spanish and its dots in the bars' exact colours, set where the page's
+clip rectangle hides it, and the legend rule named the series from that copy; the legend a reader
+sees is painted two thousandths off the bars' colours, which an exact comparison never matches.
+Shown the three together, the owner chose "Build all three if trades hold". Folded into
+`bar-labels-v3`, `point-labels-v1`, `slice-labels-v1` and — for the paint beneath an inset cell —
+`ruled-rects-v13`, which no release carries, so no rule id and no `profile_sha256` moves.
+
+**The rule** is §2 items 2, 5 and 8. The interpreter now carries the line width (`w`), cap (`J`)
+and dash (`d`) in its graphics state, and the rectangle the page clips to where each clip path set
+is one rectangle and nothing else; a clip of any other shape leaves the clip as it was, so nothing
+is clipped away on a guess. A run is clipped away where its origin lies more than a point outside
+the clip, a path where its middle does; such a path is no bar, swatch, line, mark or slice, and no
+fill beneath an inset cell. The line rule's own test — a number set on a bar is the bar's — reads
+the stroked bars too.
+
+**Measured**, with the shipped build on every ParseBench page and opendataloader-bench's 200,
+against decision #104's: ParseBench charts **0.1633 → 0.1650**, three pages up and none down
+(`Consultancy-in-Spain` p16 0 → 0.5, the E-Government Survey's p101 0.25 → 0.5 and p77 0 → 0.2,
+whose duplicate labels sit outside their clips); tables one page up and none down (`Coca Cola
+10-k` p107 0.08 → 0.10, a ruled table's rows read once a fill its clip hides is no longer the paint
+beneath its cells); content faithfulness, semantic formatting and visual grounding unchanged on
+every page; overall 50.47 → 50.51. opendataloader-bench unchanged on every document; the gate
+documents' 542 tables unchanged; every cell its runs' text.
+
+**Still not read.** A form's own `/BBox`, which also clips, is not kept, nor a clip of another
+shape. Most of the E-Government Survey's duplicate labels still read: they lie outside no clip that
+is one rectangle.
+`Consultancy-in-Spain` p10 prints two numbers on each pill — its revenue over it and its growth
+inside it — and a bar two numbers stand on takes neither; p19 is read as a table of text.

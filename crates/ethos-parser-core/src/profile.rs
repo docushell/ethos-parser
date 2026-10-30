@@ -684,6 +684,9 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 ///   between a grid and the nearest of them, in two of their columns or more — a table shaded in
 ///   bands sets its unshaded rows there. A rate filing's tables set one under another on the same
 ///   columns, each boxed with its own title and whitespace between, were all left out as bands.
+/// - **A fill the page clips away is no paint beneath a cell** (decision #105): the fill an inset
+///   rectangle is painted over is one whose middle lies inside the page's clip, where that clip is
+///   one rectangle.
 ///
 /// # Measured
 ///
@@ -701,7 +704,9 @@ pub const TABLE_DETECTION_V12: &str = "ruled-rects-v12";
 /// opendataloader-bench unchanged. With decision #100's, tables 0.5783 -> 0.5821, four pages up
 /// and none down, nothing else on ParseBench moving, opendataloader-bench unchanged. With decision
 /// #101's, tables 0.5821 -> 0.5833, two pages up and one down (seven near-identical tables paired
-/// differently), nothing else on ParseBench moving, opendataloader-bench unchanged.
+/// differently), nothing else on ParseBench moving, opendataloader-bench unchanged. With decision
+/// #105's, one page up and none down — `Coca Cola 10-k` p107 0.082 -> 0.095 — beside the chart
+/// rules' three, opendataloader-bench unchanged.
 pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
@@ -1095,6 +1100,11 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// each that just one other segment reads alone, and reads the one left — thin bars side by side,
 /// the longer one's number lying past the shorter's end as well — and where the chart is then
 /// refused, it is read with none set aside.
+///
+/// Decision #105, folded in likewise: a straight line run along an axis and stroked solid a point
+/// wide or more is a bar, the box its stroke covers; a run, or a path whose middle, the page clips
+/// away — outside a clip that is one rectangle — is neither label nor bar nor swatch; and a
+/// legend's swatch names bars of its colour give or take five thousandths in each component.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**
@@ -1124,6 +1134,9 @@ pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 /// swatch being that entry's.
 ///
 /// Decision #92, folded in likewise: numbers compare by their unit's size.
+///
+/// Decision #105, folded in likewise: a line, a mark or a run the page clips away is not read, and
+/// a number set on a bar drawn as a line stroked wide is the bar's.
 pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 
 /// The rule that reads **the numbers a pie prints at its slices back as its table** (decision #90,
@@ -1142,6 +1155,8 @@ pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 /// rule's table holds, only on a document that declares no author structure.
 ///
 /// Decision #92, folded in as no release carries `-v1`: numbers compare by their unit's size.
+///
+/// Decision #105, folded in likewise: a slice, a mark or a run the page clips away is not read.
 pub const TABLE_DETECTION_PIES_V1: &str = "slice-labels-v1";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
