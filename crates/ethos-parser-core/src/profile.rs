@@ -1137,6 +1137,9 @@ pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 ///
 /// Decision #105, folded in likewise: a line, a mark or a run the page clips away is not read, and
 /// a number set on a bar drawn as a line stroked wide is the bar's.
+///
+/// Decision #106, folded in likewise: a line that prints a number at its first and last points and
+/// nowhere else keeps those two, its categories the first row naming each end.
 pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 
 /// The rule that reads **the numbers a pie prints at its slices back as its table** (decision #90,

@@ -6,7 +6,9 @@
 //! paired with the one point it is set at, a point with the one label under it at the foot of the
 //! plot, and a series with the legend swatch of its colour. A value is never read off a point's
 //! height: a point that carries no number leaves its cell empty, and a line that prints none yields
-//! no table. A line, a mark or a run the page clips away is not read (decision #105).
+//! no table. A line that prints a number at each end and nowhere else is read at its ends, its
+//! categories the labels under them (decision #106). A line, a mark or a run the page clips away is
+//! not read (decision #105).
 
 use ethos_parser_core::{EngineError, IdAllocator};
 
@@ -62,7 +64,8 @@ const STEP: i64 = 50;
 /// drawn through its marks.
 const SAME_POINT: i64 = 150;
 
-/// A series keeps its numbers only where six points in ten carry one.
+/// A series keeps its numbers only where six points in ten carry one — or, since decision #106,
+/// where its two numbers stand at its two ends.
 const LABELLED_IN_TEN: usize = 6;
 
 /// A number nearly as near another series' point is neither's: within one and a half times its
@@ -118,7 +121,10 @@ pub(crate) fn detect(
             .map(|&(_, p, k)| (p, k))
             .collect();
         let n = s.points.len();
-        if mine.len() < 2 || 10 * mine.len() < LABELLED_IN_TEN * n {
+        // Decision #106: a line that prints a number at each end and nowhere else keeps those two.
+        let ends =
+            mine.len() == 2 && mine.iter().any(|m| m.0 == 0) && mine.iter().any(|m| m.0 + 1 == n);
+        if mine.len() < 2 || (10 * mine.len() < LABELLED_IN_TEN * n && !ends) {
             continue;
         }
         let values: Option<Vec<(usize, Value)>> = mine
@@ -147,7 +153,7 @@ pub(crate) fn detect(
             .copied()
             .filter(|k| !taken.contains(k))
             .collect();
-        let Some(categories) = categories(&s.points, &labels, &pool, pitch, low) else {
+        let Some(categories) = categories(&s.points, &labels, &pool, pitch, low, ends) else {
             continue;
         };
         let rows: Vec<(usize, usize)> = mine
@@ -520,13 +526,15 @@ fn seat(
 /// of the forty below it — holding one label under eight points in ten, no label twice and at most
 /// half of them numbers but years. Indexed by point. Decision #89: a label reaching over a point
 /// beside its own is set across several and names none of them — an axis's labels set close run
-/// together — and its point is not counted against the line.
+/// together — and its point is not counted against the line. Decision #106: for a line read at its
+/// `ends`, a label under each end will do.
 fn categories(
     points: &[Point],
     labels: &[Label],
     pool: &[usize],
     pitch: i64,
     low: i64,
+    ends: bool,
 ) -> Option<Vec<Option<usize>>> {
     let mut below: Vec<usize> = pool
         .iter()
@@ -575,7 +583,8 @@ fn categories(
             .iter()
             .filter(|&&k| number(&labels[k].text).is_some() && !is_year(&labels[k].text))
             .count();
-        if 10 * found.len() >= 8 * (points.len() - spanned)
+        let at_ends = ends && got[0].is_some() && got[points.len() - 1].is_some();
+        if (10 * found.len() >= 8 * (points.len() - spanned) || at_ends)
             && 2 * numeric <= found.len()
             && distinct.len() == found.len()
         {
@@ -797,15 +806,70 @@ mod tests {
         assert!(detect(1, &runs, &strokes, &[], &[], &mut alloc())
             .expect("reads")
             .is_empty());
-        // Three of five points bare.
+        // Three of five points bare, the last among them.
         let (runs, strokes) = one_line();
         let runs: Vec<TrackRun<'static>> = runs
             .into_iter()
-            .filter(|r| !["4.5", "4.9", "5.3"].contains(&r.text))
+            .filter(|r| !["4.9", "5.3", "5.7"].contains(&r.text))
             .collect();
         assert!(detect(1, &runs, &strokes, &[], &[], &mut alloc())
             .expect("reads")
             .is_empty());
+    }
+
+    /// **A line that prints a number at each end and nowhere else is read at its ends** (decision
+    /// #106): a row for its first category and one for its last. Its category row may name its
+    /// ends alone; a row naming one end and a middle point names none, and a row over the axis
+    /// naming only one end is passed over for the axis. A third number, or a number
+    /// at one end and a middle point, keeps the six in ten asked of a line; and a higher end still
+    /// never carries the smaller number.
+    #[test]
+    fn a_line_numbered_at_its_ends_is_read_at_its_ends() {
+        // Seven points rising left to right, numbers over those in `numbered`, years under those in
+        // `named`, a title over the chart.
+        let read = |numbered: &[usize], named: &[usize], last: &'static str, note: Option<i64>| {
+            let values = ["4.1", "4.3", "4.5", "4.7", "4.9", "5.1", last];
+            let years = ["2018", "2019", "2020", "2021", "2022", "2023", "2024"];
+            let points: Vec<(i64, i64)> = (0..7).map(|i| (100 + 50 * i, 300 - 10 * i)).collect();
+            let mut runs = vec![run(220, 195, 80, "Wages growth")];
+            if let Some(i) = note {
+                runs.push(run(90 + 50 * i, 320, 20, "Note"));
+            }
+            for (i, &(x, y)) in points.iter().enumerate() {
+                if numbered.contains(&i) {
+                    runs.push(run(x - 8, y - 4, 16, values[i]));
+                }
+                if named.contains(&i) {
+                    runs.push(run(x - 10, 340, 20, years[i]));
+                }
+            }
+            let strokes = vec![line(&points, rgb(0, 0, 900))];
+            detect(1, &runs, &strokes, &[], &[], &mut alloc()).expect("reads")
+        };
+        let all = [0, 1, 2, 3, 4, 5, 6];
+        let t = read(&[0, 6], &all, "5.3", None);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!((t[0].rows, t[0].columns), (3, 2));
+        assert_eq!(cell(&t[0], 0, 1).as_deref(), Some("Wages growth"));
+        assert_eq!(cell(&t[0], 1, 0).as_deref(), Some("2018"));
+        assert_eq!(cell(&t[0], 1, 1).as_deref(), Some("4.1"));
+        assert_eq!(cell(&t[0], 2, 0).as_deref(), Some("2024"));
+        assert_eq!(cell(&t[0], 2, 1).as_deref(), Some("5.3"));
+        let t = read(&[0, 6], &[0, 6], "5.3", None);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(cell(&t[0], 2, 0).as_deref(), Some("2024"));
+        assert!(read(&[0, 6], &[0, 3], "5.3", None).is_empty());
+        assert!(read(&[0, 6], &[3, 6], "5.3", None).is_empty());
+        assert!(read(&[0, 3, 6], &all, "5.3", None).is_empty());
+        assert!(read(&[0, 3], &all, "5.3", None).is_empty());
+        assert!(read(&[3, 6], &all, "5.3", None).is_empty());
+        assert!(read(&[0, 6], &all, "3.0", None).is_empty());
+        for end in [0, 6] {
+            let t = read(&[0, 6], &[0, 6], "5.3", Some(end));
+            assert_eq!(t.len(), 1, "{t:?}");
+            assert_eq!(cell(&t[0], 1, 0).as_deref(), Some("2018"));
+            assert_eq!(cell(&t[0], 2, 0).as_deref(), Some("2024"));
+        }
     }
 
     /// **Two lines sharing one row of categories are one table**, each named by the label beside a

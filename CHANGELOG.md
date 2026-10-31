@@ -187,6 +187,29 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A line that prints its ends alone is read at its ends (decision #106)
+
+Folded into `point-labels-v1`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A line that prints a number at its first and last points and nowhere else keeps those two**,
+  a row for its first category and one for its last; its category row may name its two ends alone.
+  The line rule kept a series' numbers only where six points in ten carry one, which a line
+  labelled at its ends never does, and asked the row under it to name eight points in ten, which a
+  chart naming only its first and last years never does. No value is read off the line, and a
+  higher end still never carries the smaller number.
+- **Why this piece**: told "Lines labelled at their ends", the chart data points the page prints
+  but no table of ours holds on `Digital_News-Report_2022` were read point by point: its line
+  charts print each line's value at its first and last year only. Lines crowded at one end, whose
+  end labels stack where several lines meet, keep one end each (p24, p11) and are not read: a line
+  read at one end would ask a guard across lines, which this change does not add.
+- **Measured** on ParseBench: charts 0.1650 -> 0.1683, 4 pages up and none down —
+  `Digital_News-Report_2022` p15 0 -> 0.67, p12 0 -> 0.5 (country small multiples named only at
+  their end years), p23 0.5 -> 1.0, p63 0.25 -> 0.5; tables, content faithfulness, semantic
+  formatting and visual grounding unchanged on every page; overall 50.51 -> 50.57.
+  opendataloader-bench unchanged on every document; the fabrication check unchanged (0 of 1,307
+  cells); the gate documents' 542 tables unchanged.
+
 ### A line stroked wide is a bar, and what the page clips away feeds no chart (decision #105)
 
 Folded into `bar-labels-v3`, `point-labels-v1`, `slice-labels-v1` and `ruled-rects-v13`, which no

@@ -1089,6 +1089,16 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a line that prints its ends alone is read at its ends (decision #106, 2026-10-31)
+
+`Digital_News-Report_2022`'s line charts print each line's value at its first and last year only,
+which the line rule's six-in-ten guard never let through, and some name only those two years under
+the plot. Told "Build P106", a line that prints a number at its first and last points and nowhere
+else keeps those two, and its category row may name its two ends alone; a higher end still never
+carries the smaller number. Charts 0.1650 -> 0.1683, 4 pages up and none down; tables, content
+faithfulness, formatting and visual grounding unchanged on every page. Overall 50.51 -> 50.57;
+opendataloader-bench unchanged on every document.
+
 ### After a line stroked wide is a bar, and what the page clips away feeds no chart (decision #105, 2026-10-29)
 
 Of the chart data points no table of ours holds, 0.41 overall points sat on no bars the rule

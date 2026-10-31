@@ -268,8 +268,9 @@ author structure, and keeps a table only where it overlaps none already found.
    `398` set under a line of percentages' last point stood nearer it than the line's `4.6%`
    (decision #89). **A year is never a value**: a timeline's dates set at its marks, or a year axis
    set along a line, read so were a table of dates. A number set on a bar is the bar's.
-4. **A series keeps its numbers** only where six points in ten carry one, and **a point clearly
-   higher on the page never carries a smaller number** (by half a line).
+4. **A series keeps its numbers** only where six points in ten carry one — or where its only two
+   numbers stand at its first and last points, a line that prints its ends alone (decision #106) —
+   and **a point clearly higher on the page never carries a smaller number** (by half a line).
 5. **Categories** are the first row of labels below the series' own lowest point, of the forty rows
    below it — holding one label under eight points in ten, no label twice and at most half of them
    numbers but years. Round 1 looked twelve rows below each series' own lowest point, under which a
@@ -277,7 +278,9 @@ author structure, and keeps a table only where it overlaps none already found.
    looked below the lowest point of every series set at the same places, and three charts stacked
    down a column at the same places read the bottom one's axis (decision #89). A label reaching over
    a point beside its own is set across several — an axis's labels set close run together — and
-   names none of them, nor is its point counted against the row (decision #89).
+   names none of them, nor is its point counted against the row (decision #89). A line read at its
+   ends takes the first row with a label under each end (decision #106): a news chart's small
+   multiples name only their first and last years.
 6. **A table** is every series reading one row of categories, a row per category in the order its
    points stand, a column per series, each named by the block of lines beside a legend swatch of its
    colour — a small mark or a short level stroke, its name read line by line up to the next swatch
