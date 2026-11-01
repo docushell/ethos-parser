@@ -247,9 +247,9 @@
       },
       "html": "<p>Hello Ethos</p>\n",
       "html_rule": "html-blocks-v12",
-      "parser_version": "0.63.0",
-      "profile_sha256": "sha256:8b9d5f0479aa2d090e659465a8ef17447f078f125a70feb13f50ce130c221cac",
-      "representation_sha256": "sha256:0359182dcfde607764f5917eaf9a56cd073adbc38f66a424be9039f34326a71c",
+      "parser_version": "0.64.0",
+      "profile_sha256": "sha256:f9b521662315c9cc89fd32936967f3bd1eda6fe90064fef0c1afecaaf6f05e1a",
+      "representation_sha256": "sha256:a39e1edd280603f8ce965719498526c7278147997835a32bc1c110f2c566c01d",
       "schema_version": "1.0.0",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3"
     }

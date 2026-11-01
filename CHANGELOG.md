@@ -3,16 +3,16 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Nine versions are tagged, 0.55.0 through 0.63.0, and five of them carry binaries.** 0.55.0,
+**Ten versions are tagged, 0.55.0 through 0.64.0, and six of them carry binaries.** 0.55.0,
 0.56.0 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub
 Release ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it
 ships:** Linux, Windows and both macOS architectures, one fingerprint across four runners —
 delivered, unfortunately, as the single `release-bundle.zip` its own notes tell a reader to unzip.
 **0.61.0 is the first to ship those four as five separate assets** — the four archives and
 `SHA256SUMS.txt`, published 2026-09-25 — so a consumer downloads one platform and the manifest
-instead of all four; §8's amendment records why 0.60.0's shape could not be repaired. **0.62.0 and
-0.63.0 have no release object yet**: each tag push builds the four archives and the manifest, and
-publishing them is the owner's separate act. **0.58.0 and 0.59.0 are tags with no release
+instead of all four; §8's amendment records why 0.60.0's shape could not be repaired, and 0.64.0
+ships the same five. **0.62.0 and 0.63.0 have no release object**: each tag push built the four
+archives and the manifest, neither was published, and 0.64.0 descends from both. **0.58.0 and 0.59.0 are tags with no release
 object**, and little is lost by that: 0.60.0 descends from both, so their work is in the binaries
 above, and a reader who needs one of those two exactly builds it from its tag under the pinned
 toolchain. Every earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
@@ -30,9 +30,23 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased] — a model reads a document over MCP
+## [0.64.0] — a model reads a document over MCP, and charts, tables and headings are read from the page
 
-**A MINOR when it ships, because the MCP server changed.** MCP gains a fifth tool, `markdown`. It
+**A MINOR, because readers, both projections, the MCP server and the profile changed.** 109 commits
+since the `v0.63.0` tag `8cc8b67`, decisions #36 to #108. On ParseBench the engine moved from 20.01
+at its first full run (2026-10-03, `05f0d17`) to **50.67**, 2nd of the ten open-source local parsers
+on its leaderboard; on opendataloader-bench it scores **0.791** — reading order 0.888, tables 0.583,
+headings 0.589. The README's new Benchmarks section shows both, ranked. What changed, by entry below:
+
+- **MCP** gains `markdown`, so a model can read a document.
+- **Tables** from the whitespace across their rows, from ruled grids in each way a producer draws
+  one, and from the numbers bar, line and pie charts print: eight named rules, fabrication 0.
+- **Text** carries bold, italic, superscripts and subscripts; headings get levels; lines join into
+  layout units, with running heads and folios marked; the paths a page paints read as figures.
+- **Reading**: a Form XObject's text and images are its page's; CJK fonts read through Adobe's CID
+  tables; right-to-left lines read right to left.
+
+**MCP: a model reads a document.** MCP gains a fifth tool, `markdown`. It
 takes a source document's `path` — what `markdown --source` takes — or a representation, and
 replies with a count of what the projection leaves out, then the text the `markdown` command
 prints. Until now a model behind MCP could not read a document: every tool put counts in `content`
