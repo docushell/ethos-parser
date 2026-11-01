@@ -254,7 +254,7 @@ bucket. A gap is never dressed up as a success.
 
 ## Where things stand
 
-Version 0.64.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
+Version 0.65.0-dev.1. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 
 **Tables** come from eight named, versioned rules: the tables a document declares in its structure
 tree, ruled grids, columns of aligned text, and the numbers a chart prints. None invents a cell:
