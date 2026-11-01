@@ -39,8 +39,9 @@ on its leaderboard; on opendataloader-bench it scores **0.791** — reading orde
 headings 0.589. The README's new Benchmarks section shows both, ranked. What changed, by entry below:
 
 - **MCP** gains `markdown`, so a model can read a document.
-- **Tables** from the whitespace across their rows, from ruled grids in each way a producer draws
-  one, and from the numbers bar, line and pie charts print: eight named rules, fabrication 0.
+- **Tables** from the whitespace across their rows, from ruled grids whether stroked or filled,
+  and from the numbers bar, line and pie charts print: eight named rules, with fabrication 0 on the
+  twelve-document labelled set.
 - **Text** carries bold, italic, superscripts and subscripts; headings get levels; lines join into
   layout units, with running heads and folios marked; the paths a page paints read as figures.
 - **Reading**: a Form XObject's text and images are its page's; CJK fonts read through Adobe's CID
