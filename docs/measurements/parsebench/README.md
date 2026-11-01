@@ -1089,6 +1089,20 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a number on a bar and one past its end, a series coloured by category, bars that overlap (decision #107, 2026-11-01)
+
+Of the chart data points the page prints and no table of ours holds, the E-Government Survey held
+0.49 overall points, the most of any one document. Its figure 2.3 draws a grey 2022 bar and, three
+points over it, a 2024 bar in each region's own colour, its values on the bars and a change over
+the grey ones. Told "Build both if trades hold": bars may overlap by a quarter of the narrower's
+width; one colour every group of two holds, beside a bar in a colour no other group holds, is two
+series, the second named by the one name its colours' swatches carry; a bar left a number on it and
+one past its end reads the one whose reading of the chart stands, and neither where both readings
+stand and differ, or neither does — the prototype, taking the number on the bar first, read
+`SSIF-Visa-Report` p7's line percentages as its bars' values. Charts 0.1683 -> 0.1726, 5 pages up
+and none down; tables, content faithfulness, formatting and visual grounding unchanged on every
+page. Overall 50.57 -> 50.66; opendataloader-bench unchanged on every document.
+
 ### After a line that prints its ends alone is read at its ends (decision #106, 2026-10-31)
 
 `Digital_News-Report_2022`'s line charts print each line's value at its first and last year only,

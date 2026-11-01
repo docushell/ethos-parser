@@ -42,10 +42,14 @@ it overlaps none already found.
    before it is not — a stack. Two touching segments of one colour are a row of shaded table cells
    or a bar drawn in pieces, never one stack.
 4. **A chart.** Two or more columns on one base, of one width (within 15%), side by side (no wider
-   apart than four widths). Not when every bar is one segment of one length: that is a table's
-   banding. Its categories are the columns — or, where the colours repeat with a period of two or
-   more and the gaps inside a period are narrower than between periods, each period. Its series are
-   the stack's colours, the period's positions, or its one colour.
+   apart than four widths, and overlapping by a quarter of the narrower's width at most — decision
+   #107). Not when every bar is one segment of one length: that is a table's banding. Its
+   categories are the columns — or, where the colours repeat with a period of two or more and the
+   gaps inside a period are narrower than between periods, each period. Its series are the stack's
+   colours, the period's positions, or its one colour — or, where its groups are read from their
+   gaps (§7) and every group holds two columns, one of a colour every group holds and one of a
+   colour no other group holds, that colour and the bars beside it: a series coloured by category
+   (decision #107).
 5. **Labels.** Upright runs (the tracks rule's test), joined along a baseline wherever less than half
    a line height separates one run's ink from the next; a space the page drew as a run of its own,
    inside a label, is the label's. A run whose origin the page clips away is none (decision #105).
@@ -53,8 +57,12 @@ it overlaps none already found.
    segment — the one just beyond its end. A segment that could read two numbers or more sets aside
    each that just one other segment reads alone, and reads the one left: thin bars set side by side
    each print their number past their own end, and the longer one's lies past the shorter's end as
-   well (decision #104). Where the chart is then refused, it is read with none set aside. A number
-   two cells could read fills neither.
+   well (decision #104). Where the chart is then refused, it is read with none set aside. A segment
+   left a number set on it and one just past its end reads the one whose reading of the chart
+   stands: the chart is read with each such segment taking the number on it, and with each taking
+   the one past its end; where one reading stands, or both read alike, it is taken, and where both
+   stand and differ, or neither does, such a segment reads neither (decision #107). A number two
+   cells could read fills neither.
 7. **A category** is the one label nearest the base under its column or group (vertical) or beside
    it (horizontal), with the lines a long label wraps onto (only where the first line fills most of
    its slot, or a line ends in a hyphen). Never a number but a year, never a label that opens with a
@@ -68,7 +76,9 @@ it overlaps none already found.
    the chart only where nothing but the chart's own labels stands between. A chart of one colour
    without one takes the one-line title just above it, where that line is the only label over the
    chart — over any part of it, not only its centre (decision #87) — and holds no number but a
-   year. A series no legend names takes the lines set beside its bar — left of the first column,
+   year. A series coloured by category is named by the one name its colours' swatches carry, and by
+   none where they carry several (decision #107). A series no legend names takes the lines set
+   beside its bar — left of the first column,
    or else right of the last — level with it, within a column's width, none a number but a year
    nor as long as a line of prose, each a line under the one before, and none another series'
    name holds (decision #92). Vertical charts only: beside a horizontal chart's bars stand its
@@ -464,3 +474,49 @@ shape. Most of the E-Government Survey's duplicate labels still read: they lie o
 is one rectangle.
 `Consultancy-in-Spain` p10 prints two numbers on each pill — its revenue over it and its growth
 inside it — and a bar two numbers stand on takes neither; p19 is read as a table of text.
+
+## 14. A number on a bar and one past its end, a series coloured by category, bars that overlap (2026-11-01, decision #107)
+
+**Why.** Offered after #106 the chart data points the page prints and no table of ours holds,
+counted by document, the owner chose "E-Government Survey charts": 0.49 overall points on 25 pages,
+the most of any one document. Its figure 2.3 draws each region's 2022 bar in one grey and its 2024
+bar, three points over the grey bar's edge, in the region's own colour: the column reader split each
+pair where they overlap, and read a group's series only from colours two groups hold, so the chart
+read nothing. Its bars print their values on them and a change over the grey ones, and a bar that
+could read two numbers took neither. Shown a prototype, the owner chose "Build both if trades hold".
+The trade check then found the prototype — which took the number on the bar first — reading one
+table wrongly: `SSIF-Visa-Report` p7 draws a line across its bars, the line's percentages set on the
+bars and the bars' own values over them, and both agree with the bars' order. So the numbers on the
+bars are taken only where the chart read with them stands and read with the numbers past the ends
+does not, and the reverse; where both readings stand, those bars read neither, as before. The
+shipped build's check found one more: `01030000000038` (opendataloader-bench) draws stacks whose
+segments the column reader does not join, and each first segment, left its own number, the next
+segment's grazing its top and the top segment's past its end, took the last — on two bars, whose
+order let it through. So a segment chooses only between two numbers, one on it and one past its
+end. Folded into `bar-labels-v3`, which no release carries, so no rule id and no `profile_sha256`
+moves.
+
+**The rule** is §2 items 4, 6 and 8. A series coloured by category asks two columns of every group,
+one in the colour every group holds; the colour at its place in the first group stands for it, and
+the other groups' columns take the series of their places, as §7's do. A segment left three
+numbers or more, or two both on it or both past its end, reads neither, as before.
+
+**Measured**, with the shipped build on every ParseBench page and opendataloader-bench's 200,
+against decision #106's: ParseBench charts **0.1683 → 0.1726**, five pages up and none down (the
+E-Government Survey's p63 0 → 1.0 and p99 0 → 1.0 — each 2024 bar prints the 2022 value on it in
+brackets, which reads as negative and goes against the order, and its own past its end —
+`Digital_News-Report_2022` p55 0.75 → 1.0, `deloitte-2025-global-automotive-consumer-study` p8
+0.6 → 0.7 and 0.4 → 0.5, two copies); tables, content faithfulness, semantic formatting and visual
+grounding unchanged on every page; overall 50.57 → 50.66. Four tables more are read that no data
+point scores, each right against its drawing (the survey's p79, p81 and p103, the Partner survey's
+p7). opendataloader-bench unchanged on every document; the gate documents' 542 tables unchanged;
+every cell its runs' text.
+
+**Still not read.** The E-Government Survey's p81 reads its values, not its series' names: its
+2022 swatch is followed, a fifth of a point up, by a second grey square painted over at once in
+white — a mark no reader sees, which the legend rule takes for the next entry — and its 2024 series
+is named left of its swatch row, each swatch naming a region. Bars whose two numbers both agree
+with the order read neither (`Digital_News-Report_2022` p17, the Partner survey's p17, the
+E-Government Survey's p79 for Asia). The survey's p94 sets its categories below an axis drawn down
+to -10 for one negative bar; p62's stacked labels, `25 (13.0%)`, are taken by a whitespace table
+first; and its small multiples name a panel, a category and a series each (p91, p92, p103, p86).

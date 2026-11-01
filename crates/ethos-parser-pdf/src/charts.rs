@@ -25,10 +25,13 @@
 //! **Bars**: rectangles the page filled, in a colour this reader knows and not white, a point or
 //! more each way — or bars it filled with their ends or corners rounded, or straight lines it
 //! stroked a point wide or more (decision #105). **Columns**: bars of one width set end to end, each a colour the one before it
-//! is not — a stack, its segments listed from the base out. **A chart**: two or more columns on one base, of one width, side by side;
-//! its categories are the columns, one each — or, where the columns' colours repeat with a period
-//! of two or more and the gaps inside a period are narrower than between them, each period. Its
-//! series are the stack's colours, the period's positions, or the one colour it has.
+//! is not — a stack, its segments listed from the base out. **A chart**: two or more columns on one base, of one width, side by side,
+//! overlapping by a quarter of the narrower's width at most (decision #107); its categories are the
+//! columns, one each — or, where the columns' colours repeat with a period of two or more and the
+//! gaps inside a period are narrower than between them, each period. Its series are the stack's
+//! colours, the period's positions, or the one colour it has — or, where every group holds a bar
+//! of a colour every group holds and one of a colour no other group holds, that colour and the bars
+//! beside it, a series coloured by category (decision #107).
 //!
 //! **Labels**: the upright runs no other rule's table holds, joined along a baseline wherever less
 //! than half a line height separates them. What the page clips away is neither a bar nor a label
@@ -39,8 +42,10 @@
 //! - **A value** is the one number whose centre lies on its bar's segment — or, for a bar of one
 //!   segment, the one just beyond its end. A segment that could read two numbers or more sets
 //!   aside each that just one other segment reads alone, and reads the one left (decision #104);
-//!   where the chart is then refused, it is read with none set aside. A number two cells could
-//!   read fills neither.
+//!   where the chart is then refused, it is read with none set aside. A segment left a number on
+//!   it and one just past its end reads the one whose reading of the chart stands, and neither
+//!   where both readings stand and differ, or neither does (decision #107). A number two cells
+//!   could read fills neither.
 //! - **A category** is the one label nearest the base under its column or group (vertical) or
 //!   beside it (horizontal), with the lines a long label wraps onto. Never a number but a year,
 //!   never a label that starts with a value but a range of two, never a line of prose, never one
@@ -48,7 +53,8 @@
 //! - **A series** is named by the one label beside a legend swatch of its colour, within five
 //!   thousandths (decision #105) — a small rectangle or a dot, never a rounded bar — near this chart
 //!   and nearer it than any other bars of that colour; a chart of one colour without one is named
-//!   by the title just above it, where that title is a line of its own.
+//!   by the title just above it, where that title is a line of its own. A series coloured by
+//!   category is named by the one name its colours' swatches carry (decision #107).
 //!
 //! # What makes it a table and not a coincidence
 //!
@@ -190,8 +196,12 @@ type Rows = Vec<(Vec<usize>, Vec<Option<usize>>)>;
 /// The rows a chart reads, the bar length and number of each value, and the labels they hold.
 type Reading = (Rows, Vec<(i64, Value)>, Vec<usize>);
 
+/// A segment's cell, the numbers it could read — each with whether it is set on the segment — and
+/// its length.
+type Segment = ((usize, usize), Vec<(usize, bool)>, i64);
+
 /// What a chart's table holds before it is built: labels by index.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Found {
     headers: Vec<Vec<usize>>,
     rows: Vec<(Vec<usize>, Vec<Option<usize>>)>,
@@ -490,7 +500,11 @@ fn charts(ink: &[Bar], axis: Axis) -> Vec<Chart> {
             let split = runs.last().and_then(|r| r.last()).is_none_or(|a| {
                 let gap = c.lo - a.hi;
                 let (ta, tc) = (a.thickness(), c.thickness());
-                gap < -SAME_EDGE || gap > 4 * ta.max(tc) || 100 * (ta - tc).abs() > 15 * ta.max(tc)
+                // Decision #107: bars side by side may overlap, by a quarter of the narrower's width
+                // at most.
+                (gap < -SAME_EDGE && 4 * -gap > ta.min(tc))
+                    || gap > 4 * ta.max(tc)
+                    || 100 * (ta - tc).abs() > 15 * ta.max(tc)
             });
             if split {
                 runs.push(vec![c]);
@@ -618,6 +632,16 @@ fn gap_groups(run: Vec<Column>, colours: &[Fill], axis: Axis) -> Option<Chart> {
         }
     }
     let mut series: Vec<(Fill, usize, usize)> = seen.into_iter().filter(|c| c.1 >= 2).collect();
+    // Decision #107: one colour every group holds, and beside it in each group of two a bar of a
+    // colour no other group holds — a series coloured by category, the colour at its place in the
+    // first group standing for it; the others take the series of their places.
+    if let [shared] = series[..] {
+        if shared.1 == groups.len() && groups.iter().all(|g| g.len() == 2) {
+            if let Some(place) = groups[0].iter().position(|&k| !colours[k].same(shared.0)) {
+                series.push((colours[groups[0][place]], 1, place));
+            }
+        }
+    }
     if series.len() < 2 {
         return None;
     }
@@ -709,6 +733,12 @@ fn bars_box(chart: &Chart, ink: &[Bar]) -> QuantRect {
 ///
 /// Decision #104: a chart is read first with the numbers other segments read alone set aside
 /// ([`seated`]); where that reading is refused, it is read with none set aside.
+///
+/// Decision #107: a segment left a number set on it and one just past its end reads the one whose
+/// reading of the chart stands. The chart is read with each such segment taking the number on it,
+/// and with each taking the one past its end: where one reading stands, or both read alike, it is
+/// taken; where both stand and differ, or neither does, each such segment reads neither — a line's
+/// numbers set on the bars it crosses agree with their order as well as the bars' own do.
 fn table(
     chart: &Chart,
     labels: &[Label],
@@ -718,12 +748,24 @@ fn table(
     shared: &[Vec<usize>],
     taken: &[usize],
 ) -> Option<Found> {
-    reading(chart, labels, ink, dots, boxes, shared, taken, true)
-        .or_else(|| reading(chart, labels, ink, dots, boxes, shared, taken, false))
+    let read = |aside: bool, prefer: Option<bool>| {
+        reading(
+            chart, labels, ink, dots, boxes, shared, taken, aside, prefer,
+        )
+    };
+    [true, false].into_iter().find_map(|aside| {
+        match (read(aside, Some(true)), read(aside, Some(false))) {
+            (Some(on), Some(past)) if on == past => Some(on),
+            (Some(on), None) => Some(on),
+            (None, Some(past)) => Some(past),
+            _ => read(aside, None),
+        }
+    })
 }
 
 /// [`table`]'s reading of a chart, `aside` whether a segment sets aside the numbers other
-/// segments read alone.
+/// segments read alone, and `prefer` which of a number set on a segment and one just past its end
+/// the segment takes ([`seated`]).
 #[allow(clippy::too_many_arguments)]
 fn reading(
     chart: &Chart,
@@ -734,6 +776,7 @@ fn reading(
     shared: &[Vec<usize>],
     taken: &[usize],
     aside: bool,
+    prefer: Option<bool>,
 ) -> Option<Found> {
     let axis = chart.axis;
     let groups = &chart.groups;
@@ -741,7 +784,7 @@ fn reading(
     let gap = gap(chart);
 
     // Values: the one number on each segment, or just beyond a single bar's end.
-    let mut segments: Vec<((usize, usize), Vec<usize>, i64)> = Vec::new();
+    let mut segments: Vec<Segment> = Vec::new();
     for (gi, g) in groups.iter().enumerate() {
         for (ci, c) in g.iter().enumerate() {
             for &s in &c.segs {
@@ -784,11 +827,10 @@ fn reading(
                             && k.x0 - c.end <= 3 * k.h
                     }
                 };
-                let picks: Vec<usize> = (0..labels.len())
-                    .filter(|&k| {
-                        number(&labels[k].text).is_some()
-                            && (on(&labels[k]) || (c.segs.len() == 1 && beyond(&labels[k])))
-                    })
+                let picks: Vec<(usize, bool)> = (0..labels.len())
+                    .filter(|&k| number(&labels[k].text).is_some())
+                    .map(|k| (k, on(&labels[k])))
+                    .filter(|&(k, on)| on || (c.segs.len() == 1 && beyond(&labels[k])))
                     .collect();
                 let length = match axis {
                     Axis::Vertical => r.y1 - r.y0,
@@ -798,7 +840,7 @@ fn reading(
             }
         }
     }
-    let mut cells = seated(segments, aside);
+    let mut cells = seated(segments, aside, prefer);
     // A number two cells could read fills neither.
     let mut readers: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
     for &(_, k, _) in &cells {
@@ -932,12 +974,43 @@ fn reading(
             y1: a.y1.max(r.y1),
         }
     });
+    // Decision #107: a series coloured by category — its bars each a colour of its own — is named
+    // by the one name its colours' swatches carry, and by none where they carry several.
+    let keyed = |c: usize| -> Option<Vec<Fill>> {
+        let slots = chart.slots.as_ref()?;
+        let palette: Vec<Fill> = groups
+            .iter()
+            .zip(&slots.of)
+            .flat_map(|(g, of)| g.iter().zip(of))
+            .filter(|&(_, &s)| s == c)
+            .map(|(col, _)| ink[col.segs[0]].fill)
+            .collect();
+        let distinct = palette
+            .iter()
+            .enumerate()
+            .all(|(i, f)| palette[..i].iter().all(|g| !g.same(*f)));
+        (palette.len() >= 2 && distinct).then_some(palette)
+    };
+    let name = |f: Fill| legend(f, chart, labels, ink, dots, (bars, near), boxes, &used);
     let mut headers: Vec<Vec<usize>> = series
         .iter()
-        .map(|&f| {
-            legend(f, chart, labels, ink, dots, (bars, near), boxes, &used)
-                .into_iter()
-                .collect()
+        .enumerate()
+        .map(|(c, &f)| match keyed(c) {
+            Some(palette) => {
+                let names: Vec<usize> = palette.into_iter().filter_map(name).collect();
+                let mut texts: Vec<String> = names
+                    .iter()
+                    .map(|&k| joined(labels, &wrapped_name(labels, k, ink)))
+                    .collect();
+                texts.sort_unstable();
+                texts.dedup();
+                if texts.len() == 1 {
+                    vec![names[0]]
+                } else {
+                    Vec::new()
+                }
+            }
+            None => name(f).into_iter().collect(),
         })
         .collect();
     // Decision #92: a series no legend names takes the lines set beside its bar, the first
@@ -982,37 +1055,51 @@ fn reading(
     })
 }
 
-/// The cells a chart's segments read, from each segment's cell, the numbers it could read — set on
-/// it, or just past a single bar's end — and its length: a segment reads its one number.
+/// The cells a chart's segments read, from each segment's cell, the numbers it could read — each
+/// with whether it is set on the segment or just past a single bar's end — and its length: a
+/// segment reads its one number.
 ///
 /// Decision #104: with `aside`, a segment that could read two numbers or more first sets aside each
 /// that just one other segment reads alone, and reads the one left. Thin bars set side by side
 /// each print their number past their own end, and where the second is the longer its number lies
 /// just past the first's end as well: the first could read both, the second only its own.
+///
+/// Decision #107: with `prefer`, a segment left two numbers — one set on it, one just past its end
+/// — reads the one set on it (`Some(true)`) or the one past its end (`Some(false)`). Three left, or
+/// two both on it or both past its end, it reads neither.
 fn seated(
-    segments: Vec<((usize, usize), Vec<usize>, i64)>,
+    segments: Vec<Segment>,
     aside: bool,
+    prefer: Option<bool>,
 ) -> Vec<((usize, usize), usize, i64)> {
     let alone: Vec<usize> = segments
         .iter()
         .filter_map(|(_, picks, _)| match picks[..] {
-            [k] => Some(k),
+            [(k, _)] => Some(k),
             _ => None,
         })
         .collect();
     segments
         .into_iter()
         .filter_map(|(cell, picks, length)| {
-            let left: Vec<usize> = if aside && picks.len() > 1 {
+            let left: Vec<(usize, bool)> = if aside && picks.len() > 1 {
                 picks
                     .into_iter()
-                    .filter(|k| alone.iter().filter(|&a| a == k).count() != 1)
+                    .filter(|(k, _)| alone.iter().filter(|&a| a == k).count() != 1)
                     .collect()
             } else {
                 picks
             };
-            match left[..] {
-                [k] => Some((cell, k, length)),
+            let preferred: Vec<usize> = match left[..] {
+                [a, b] => [a, b]
+                    .into_iter()
+                    .filter(|p| prefer == Some(p.1))
+                    .map(|p| p.0)
+                    .collect(),
+                _ => Vec::new(),
+            };
+            match (&left[..], &preferred[..]) {
+                ([(k, _)], _) | (_, [k]) => Some((cell, *k, length)),
                 _ => None,
             }
         })
@@ -2545,9 +2632,9 @@ mod tests {
             let segments = picks
                 .iter()
                 .enumerate()
-                .map(|(c, p)| ((0, c), p.to_vec(), 100))
+                .map(|(c, p)| ((0, c), p.iter().map(|&k| (k, false)).collect(), 100))
                 .collect();
-            seated(segments, aside)
+            seated(segments, aside, None)
                 .into_iter()
                 .map(|(cell, k, _)| (cell.1, k))
                 .collect()
@@ -2558,6 +2645,97 @@ mod tests {
         assert_eq!(read(&[&[7], &[7, 8, 9]], true), [(0, 7)]);
         assert_eq!(read(&[&[7], &[7], &[7, 8]], true), [(0, 7), (1, 7)]);
         assert_eq!(read(&[&[7, 8], &[7, 8]], true), []);
+    }
+
+    /// Decision #107: a segment left a number set on it and one past its end takes the one asked
+    /// for — after the numbers other segments read alone are set aside, never before — and neither
+    /// where none is asked for, where both are set alike, or where three are left.
+    #[test]
+    fn a_segment_takes_the_number_on_it_or_past_its_end_as_asked() {
+        let read = |picks: &[&[(usize, bool)]], prefer: Option<bool>| -> Vec<(usize, usize)> {
+            let segments = picks
+                .iter()
+                .enumerate()
+                .map(|(c, p)| ((0, c), p.to_vec(), 100))
+                .collect();
+            seated(segments, true, prefer)
+                .into_iter()
+                .map(|(cell, k, _)| (cell.1, k))
+                .collect()
+        };
+        let both: &[&[(usize, bool)]] = &[&[(7, true), (8, false)]];
+        assert_eq!(read(both, Some(true)), [(0, 7)]);
+        assert_eq!(read(both, Some(false)), [(0, 8)]);
+        assert_eq!(read(both, None), []);
+        assert_eq!(read(&[&[(7, true), (8, true)]], Some(true)), []);
+        assert_eq!(read(&[&[(7, false), (8, false)]], Some(false)), []);
+        assert_eq!(
+            read(&[&[(7, true), (8, true), (9, false)]], Some(false)),
+            []
+        );
+        assert_eq!(
+            read(&[&[(7, false)], &[(7, true), (8, false)]], Some(true)),
+            [(0, 7), (1, 8)]
+        );
+    }
+
+    /// Four bars, each printing `on[k]` on it near its top and `past[k]`, where any, just over it:
+    /// the rows they read — `None` where the chart reads no table.
+    fn on_and_past(on: [&'static str; 4], past: [&'static str; 4]) -> Option<Vec<String>> {
+        let heights = [25, 50, 75, 100];
+        let (mut runs, bars) = four_years(on, heights);
+        for k in 0..4 {
+            let x = 100 + 40 * k as i64;
+            runs[1 + 2 * k] = run(x + 5, 300 - heights[k] + 12, 20, on[k]);
+            if !past[k].is_empty() {
+                runs.push(run(x + 5, 300 - heights[k] - 3, 20, past[k]));
+            }
+        }
+        found(&runs, &bars).first().map(|t| grid(t)[1..].to_vec())
+    }
+
+    /// **Of a number on its bar and one past its end, the one whose reading stands** (decision
+    /// #107): bars printing their values on them and their changes over them read their values,
+    /// the changes going against the bars' order; bars printing ranks on them read the values past
+    /// their ends; where both agree with the order — a line's numbers set on the bars it crosses —
+    /// neither is read.
+    #[test]
+    fn of_a_number_on_its_bar_and_one_past_its_end_the_one_whose_reading_stands() {
+        let rows = |v: [&str; 4]| -> Option<Vec<String>> {
+            Some(
+                ["2020", "2021", "2022", "2023"]
+                    .iter()
+                    .zip(v)
+                    .map(|(y, v)| format!("{y}|{v}"))
+                    .collect(),
+            )
+        };
+        assert_eq!(
+            on_and_past(["10", "20", "30", "40"], ["+9%", "+7%", "+5%", "+3%"]),
+            rows(["10", "20", "30", "40"])
+        );
+        assert_eq!(
+            on_and_past(["3", "1", "4", "2"], ["10", "20", "30", "40"]),
+            rows(["10", "20", "30", "40"])
+        );
+        assert_eq!(
+            on_and_past(["13%", "18%", "19%", "21%"], ["10", "20", "30", "40"]),
+            None
+        );
+    }
+
+    /// Decision #107: where neither of a bar's two numbers agrees with the bars' order, the chart
+    /// reads as before — that bar reading neither, the others read.
+    #[test]
+    fn a_bar_whose_two_numbers_both_go_against_the_order_reads_neither() {
+        assert_eq!(
+            on_and_past(["50", "20", "30", "40"], ["99", "", "", ""]),
+            Some(vec![
+                "2021|20".to_string(),
+                "2022|30".to_string(),
+                "2023|40".to_string()
+            ])
+        );
     }
 
     #[test]
@@ -2746,6 +2924,117 @@ mod tests {
         assert!(found(&runs, &bars).is_empty(), "gaps of 10 and 18 points");
         let (runs, bars) = pairs(colours, 10, 100);
         assert_eq!(found(&runs, &bars).len(), 1, "gaps of 10 and 30 points");
+    }
+
+    /// North, South and East, each two bars `inside` points apart in the given colours — values
+    /// over the bars, categories under them — and a legend: a swatch of the first group's first
+    /// colour named 2022, then a swatch of each group's second colour in a row, each named by
+    /// `names` or, where `None`, the row named once after its last swatch.
+    fn keyed(
+        colours: [[Fill; 2]; 3],
+        inside: i64,
+        names: Option<[&'static str; 3]>,
+    ) -> (Vec<TrackRun<'static>>, Vec<Bar>) {
+        let values = [["11", "14"], ["15", "18"], ["19", "22"]];
+        let mut bars = Vec::new();
+        let mut runs = Vec::new();
+        for (k, cat) in ["North", "South", "East"].into_iter().enumerate() {
+            let x = 100 + 80 * k as i64;
+            for (s, &colour) in colours[k].iter().enumerate() {
+                let h = 30 + 20 * k as i64 + 10 * s as i64;
+                let x0 = x + s as i64 * (30 + inside);
+                bars.push(bar(x0, 300 - h, x0 + 30, 300, colour));
+                runs.push(run(x0 + 5, 300 - h - 3, 18, values[k][s]));
+            }
+            runs.push(run(x + 15 + inside / 2, 312, 30, cat));
+        }
+        bars.push(bar(100, 330, 106, 336, colours[0][0]));
+        runs.push(run(110, 336, 30, "2022"));
+        for (k, group) in colours.iter().enumerate() {
+            let x = 200 + 40 * k as i64;
+            bars.push(bar(x, 330, x + 6, 336, group[1]));
+            if let Some(names) = names {
+                runs.push(run(x + 10, 336, 25, names[k]));
+            }
+        }
+        if names.is_none() {
+            runs.push(run(290, 336, 30, "2024"));
+        }
+        (runs, bars)
+    }
+
+    /// **Bars coloured by category beside bars of one colour are a series** (decision #107): each
+    /// group's grey bar is a series, and its bar in a colour no other group holds is another, named
+    /// by the one name its colours' swatches carry — and by none where each swatch names its own.
+    #[test]
+    fn bars_coloured_by_category_beside_one_colour_are_a_series() {
+        let grey = rgb(850, 850, 850);
+        let own = [rgb(800, 300, 100), rgb(400, 200, 600), rgb(0, 500, 700)];
+        let colours = own.map(|c| [grey, c]);
+        let (runs, bars) = keyed(colours, 0, None);
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2022|2024", "North|11|14", "South|15|18", "East|19|22"]
+        );
+        let (runs, bars) = keyed(colours, 0, Some(["Coast", "Hills", "Plains"]));
+        assert_eq!(grid(&found(&runs, &bars)[0])[0], "|2022|");
+    }
+
+    /// Decision #107: a series coloured by category asks its shared colour of every group, and two
+    /// bars of each — a group without the grey bar, or without its own, reads nothing.
+    #[test]
+    fn a_series_coloured_by_category_asks_every_group_for_both_bars() {
+        let grey = rgb(850, 850, 850);
+        let own = [rgb(800, 300, 100), rgb(400, 200, 600), rgb(0, 500, 700)];
+        let green = rgb(100, 800, 100);
+        let (runs, bars) = keyed([[grey, own[0]], [green, own[1]], [grey, own[2]]], 0, None);
+        assert!(found(&runs, &bars).is_empty(), "South holds no grey bar");
+        let (mut runs, mut bars) = keyed(own.map(|c| [grey, c]), 0, None);
+        bars.remove(3);
+        runs.remove(4);
+        assert!(
+            found(&runs, &bars).is_empty(),
+            "South prints no bar of its own"
+        );
+    }
+
+    /// Decision #107: only a series whose bars are each a colour of its own is named by its colours'
+    /// swatches — a series of one colour with a group highlighted takes no name from the
+    /// highlight's swatch.
+    #[test]
+    fn a_series_of_one_colour_takes_no_name_from_a_highlight_s_swatch() {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let (c, d) = (rgb(100, 800, 100), rgb(800, 100, 100));
+        let (mut runs, mut bars) = pairs(
+            [[Some(a), Some(b)], [Some(c), Some(d)], [Some(a), Some(b)]],
+            0,
+            80,
+        );
+        let (swatch, name) = (bars.len() - 2, runs.len() - 2);
+        bars[swatch].fill = c;
+        runs[name] = run(110, 336, 40, "Highlight");
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(grid(&t[0])[0], "||2024");
+    }
+
+    /// **Bars overlapping by a quarter of their width stand side by side** (decision #107): each
+    /// group's second bar drawn seven points over its first, of thirty, reads; eight do not.
+    #[test]
+    fn bars_overlapping_by_a_quarter_stand_side_by_side() {
+        let (a, b) = (rgb(0, 300, 800), rgb(900, 500, 100));
+        let colours = [[Some(a), Some(b)]; 3];
+        let (runs, bars) = pairs(colours, -7, 80);
+        let t = found(&runs, &bars);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(
+            grid(&t[0]),
+            vec!["|2023|2024", "North|11|14", "South|15|18", "East|19|22"]
+        );
+        let (runs, bars) = pairs(colours, -8, 80);
+        assert!(found(&runs, &bars).is_empty());
     }
 
     /// **Bars each a colour of its own are one series** (`-v2`): a chart coloured by category,

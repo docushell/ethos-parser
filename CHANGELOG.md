@@ -187,6 +187,43 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### A number on a bar and one past its end, a series coloured by category, bars that overlap (decision #107)
+
+Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A bar that prints a number on it and one just past its end reads the one whose reading of the
+  chart stands.** The chart is read with each such bar taking the number on it, and with each
+  taking the one past its end; where one reading stands, or both read alike, it is taken, and where
+  both stand and differ, or neither does, such a bar reads neither, as before; a bar left three
+  numbers, or two both on it or both past its end, reads neither. A bar printing its
+  value on it and a change over it reads its value; a bar printing a rank on it reads the value past
+  its end; a line's numbers set on the bars it crosses agree with the bars' order as well as the
+  bars' own do, and are read as neither.
+- **One colour every group holds, beside a bar in a colour no other group holds, is two series**:
+  the second coloured by category, named by the one name its colours' swatches carry, and by none
+  where they carry several.
+- **Bars side by side may overlap**, by a quarter of the narrower's width at most.
+- **Why this piece**: told "E-Government Survey charts", the survey's figure 2.3 draws each
+  region's 2022 bar in one grey and its 2024 bar in the region's own colour, three points over the
+  grey one, its values on the bars and a change over the grey ones: the column reader split each
+  pair, the series reader asked colours two groups hold, and a bar two numbers stood on took
+  neither. The prototype took the number on a bar first, and read `SSIF-Visa-Report` p7's line
+  percentages — set on its bars, and in the bars' order — as the bars' values; the trade check
+  caught it, and the order now decides. The shipped build's check then caught a stack the column
+  reader does not join (`01030000000038`, opendataloader-bench), each first segment taking the top
+  segment's number past its end over its own and its neighbour's on it; a bar now chooses only
+  between two numbers.
+- **Measured** on ParseBench: charts 0.1683 -> 0.1726, 5 pages up and none down — the
+  E-Government Survey's p63 0 -> 1.0 and p99 0 -> 1.0 (each 2024 bar prints the 2022 value on it
+  in brackets, which reads as negative and goes against the order, and its own past its end),
+  `Digital_News-Report_2022` p55 0.75 -> 1.0, `deloitte-2025-global-automotive-consumer-study`
+  p8 0.6 -> 0.7 and 0.4 -> 0.5 (two copies); tables, content faithfulness, semantic formatting and
+  visual grounding unchanged on every page; overall 50.57 -> 50.66. Four tables more are read that
+  no data point scores, each right against its drawing (the survey's p79, p81 and p103, the
+  Partner survey's p7). opendataloader-bench unchanged on every document; the fabrication check
+  unchanged (0 of 1,307 cells); the gate documents' 542 tables unchanged.
+
 ### A line that prints its ends alone is read at its ends (decision #106)
 
 Folded into `point-labels-v1`, which no release carries yet, so no rule id and no

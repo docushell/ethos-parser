@@ -1105,6 +1105,14 @@ pub const TABLE_DETECTION_CHARTS_V2: &str = "bar-labels-v2";
 /// wide or more is a bar, the box its stroke covers; a run, or a path whose middle, the page clips
 /// away — outside a clip that is one rectangle — is neither label nor bar nor swatch; and a
 /// legend's swatch names bars of its colour give or take five thousandths in each component.
+///
+/// Decision #107, folded in likewise: bars side by side may overlap by a quarter of the narrower's
+/// width; one colour every group of two holds, beside a bar in a colour no other group holds, is
+/// two series, the second coloured by category and named by the one name its colours' swatches
+/// carry; and a segment left a number on it and one just past its end reads the one whose reading
+/// of the chart stands — the chart read with each such segment taking the number on it, and with
+/// each taking the one past its end — and neither where both readings stand and differ, or neither
+/// does.
 pub const TABLE_DETECTION_CHARTS_V3: &str = "bar-labels-v3";
 
 /// The rule that reads **the numbers a line chart prints at its points back as its table**
