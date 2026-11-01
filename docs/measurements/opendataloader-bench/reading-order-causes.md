@@ -10,8 +10,8 @@ without doing that.
 `liteparse` publishes **0.908** on this benchmark in its own README. That figure is
 **published by them and not reproduced here** — no run of theirs was made for this measurement, on
 this machine or any other. It appears once, in that sentence, and nothing below is ranked against
-it. `06-STEAL-REFUSE.md` O26 refuses *"#1, fastest, or any bake-off claim"*; every number below is
-this engine's own.
+it; every number below is this engine's own. The README's ranking (decision #108) quotes the
+benchmark's own published row for `liteparse`, 0.576.
 
 ## What ran
 
@@ -304,7 +304,7 @@ ordering rule** — which is precisely the 178-document case this document measu
 ### 3. What this is evidence of, and what it is not
 
 **It is not a measurement on this corpus.** No PageIndex run was made, here or anywhere, and no
-number of theirs appears above or below. `06-STEAL-REFUSE.md` O26 stands.
+number of theirs appears above or below.
 
 **What it is:** an existence proof that a downward sweep is serviceable in production *when it
 carries two properties this engine's refusal does not assume*. `reading_order.rs`:56-64 refuses

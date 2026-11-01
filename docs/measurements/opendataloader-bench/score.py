@@ -7,11 +7,10 @@ Uses `evaluator_reading_order`, `evaluator_table` and `evaluator_heading_level` 
 repository unmodified, so the numbers are its numbers rather than a reimplementation. Requires its
 virtualenv (`rapidfuzz`, `apted`) — run with `$ETHOS_BENCH/.venv/bin/python`.
 
-**This is an instrument, not a leaderboard entry.** `docs/06-STEAL-REFUSE.md` O26 refuses "#1,
-fastest, or any bake-off claim" and `docs/02-ROADMAP.md` lists rankings under "Not scheduled".
-Running someone else's harness against documents this repository does not own is precisely what
-`docs/table-gate-v1.md` says a reader must do to compare two parsers honestly — and publishing the
-result as a ranking is the separate thing that stays refused.
+**Its numbers are this engine's row in the README's Benchmarks section** (decision #108). Running
+someone else's harness against documents this repository does not own is what
+`docs/table-gate-v1.md` says a reader must do to compare two parsers honestly; every other row there
+is copied from the harness's own published results, never re-run here.
 """
 import json
 import os

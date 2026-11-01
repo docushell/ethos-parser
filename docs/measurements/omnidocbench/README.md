@@ -6,8 +6,7 @@ the same correction [`../block-subdivision/`](../block-subdivision/) and
 
 ## This is an instrument, not a leaderboard entry
 
-[`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md) O26 refuses *"#1, fastest, or any bake-off claim"*,
-and no score is computed here. What is computed is a **census**: which limitation codes fire on how
+No score is computed here. What is computed is a **census**: which limitation codes fire on how
 many documents, and how the Markdown projection assembles blocks. `../opendataloader-bench/` says
 why that is the more useful artifact — *"a score says how well and the census says where"* — and
 this corpus is the case for it, because the census found two defects and a score would have found
@@ -59,8 +58,9 @@ python3 docs/measurements/omnidocbench/end2end.py <work-dir>
 ```
 
 It scores **their** metrics against **their** ground truth, so unlike the census the numbers are
-comparable to what other projects publish — which is exactly why decision **O26** refuses to
-publish a row from it. §"Their metrics, across three releases" below is the record.
+comparable to what other projects publish. They stay out of the README's Benchmarks section
+(decision #108): they predate 0.64.0, and the corpus is research-use-only and not on the machine
+that measures. §"Their metrics, across three releases" below is the record.
 
 ## What it measured after 0.58.0 — 2026-09-18
 
@@ -267,8 +267,8 @@ through this engine and reading what came out.
 
 ## Their metrics, across three releases
 
-**Run privately, for diagnosis, and not quotable** — decision **O26**, and the corpus is
-research-use-only. Recorded here because the working directory that produced them was destroyed
+**Run privately, for diagnosis.** They predate 0.64.0 and are not in the README (decision #108),
+and the corpus is research-use-only. Recorded here because the working directory that produced them was destroyed
 twice in one day and re-deriving it cost an afternoon each time.
 
 `Edit_dist` is **lower-is-better**; `TEDS` **higher-is-better**. All three runs used the same

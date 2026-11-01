@@ -11,11 +11,10 @@ harness, unmodified, so the numbers are its numbers rather than a reimplementati
 this repository already runs in `../opendataloader-bench/score.py`. Needs its virtualenv
 (`rapidfuzz`, `apted`).
 
-**This is an instrument, and its result is not published.** `docs/06-STEAL-REFUSE.md` O26 refuses
-"#1, fastest, or any bake-off claim", and whether a head-to-head may be *published* is North Star
-decision D3, which the owner has not taken. Running one internally needs no decision; saying "we
-win" in public is the separate thing that stays refused. Every number here is a measurement of two
-programs on one corpus on one machine, and the README beside it says what it does not measure.
+**This is an instrument.** The README's published ranking (decision #108) copies every other
+engine's row from the benchmark's own results; this script runs `lit` under an invocation chosen
+here, so its numbers measure two programs on one corpus on one machine, not that ranking. The
+README beside it says what it does not measure.
 
 **Each engine is run as its own CLI, one document at a time, and nothing is second-guessed.**
 ethos-parser goes through `extract` then `markdown`, which is what the harness's own adapter does

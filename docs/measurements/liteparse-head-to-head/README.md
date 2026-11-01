@@ -5,10 +5,10 @@ commit) against `lit 2.14.6`, over the 200 documents of `opendataloader-bench`, 
 harness's own three evaluators. Instrument: [`headtohead.py`](headtohead.py); per-document readings:
 [`results.json`](results.json).
 
-**It is not published, and it is not a ranking.** `docs/06-STEAL-REFUSE.md` O26 refuses "#1, fastest,
-or any bake-off claim"; running one internally needs no decision, and publishing it is North Star
-D3, which the owner has not taken. This page exists so that the gap is a measured number in this
-repository rather than an impression.
+**A record of 0.59.0, not the published comparison.** Since decision #108 (2026-11-01) the README
+ranks this engine on opendataloader-bench and ParseBench, with every other row copied from the
+benchmark's own published results. This page is a run of ours against an invocation of `lit` chosen
+here, which is why it is not that table. It exists so the gap at 0.59.0 is a measured number.
 
 **liteparse is installed, never vendored.** `cargo install liteparse --no-default-features`, which
 is Apache-2.0, as are its `liteparse-pdfium` crates; nothing of it enters this tree, and the

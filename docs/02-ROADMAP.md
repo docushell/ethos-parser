@@ -71,7 +71,6 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | A second verification implementation | See [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md). Linking the same verifier is not a second integration; reimplementing its semantics is |
 | Any AGPL dependency | Decision #14 |
 | Retrieval platforms in the trust core | Rejected on structure, not licence: their table model cannot express row and column spans, so the cross-check cannot run |
-| Rankings, "#1", "fastest", or any bake-off table | Every headline number in this landscape is publisher-owned, and one is provably 34 points off depending on invocation flags |
 
 ---
 
@@ -95,7 +94,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What is v2.3? | Decision #28 in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) — distribution. No scope or milestones document for the version yet (pending, [`OPEN-WORK.md`](OPEN-WORK.md) §4); [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md) scopes the knobs; `ci.yml` and `release-artifacts.yml` carry cross-OS identity and the release binaries; §3 of the ledger tracks every item |
 | Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
 | Why is the artifact not smaller? | [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) — measured and refused, and where the bytes are |
-| How does this engine score on a corpus it does not own? | [`measurements/opendataloader-bench/`](measurements/opendataloader-bench/) — an instrument, never a ranking (O26). NID 0.8697, TEDS 0.1704, MHS 0.0000 at 0.58.0, each with its band and the caveat that makes it readable |
+| How does this engine score on a corpus it does not own? | The README's Benchmarks section (decision #108): ParseBench 50.67, 2nd of 10 open-source local parsers; opendataloader-bench 0.791, 9th of 13, at 0.64.0. The instruments are [`measurements/parsebench/`](measurements/parsebench/) and [`measurements/opendataloader-bench/`](measurements/opendataloader-bench/) |
 | Can the cut find blocks, not just columns? | [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) — measured, three probes run, **never scoped, and shipped anyway**: the cut shipped at 0.55.0 as `TextRunAttributes.block` under `gutter-columns-v3` (`blocks.rs`), without the scope document the paragraph below requires before code. §6 there is where its refusal of roles stands — an unnamed `Computed` index, never a paragraph — and its limits are declared on every PDF artifact as `block-subdivision-leading-gap-only`. Decision #21 removed the consumer it was for and #23 gave it back; the document's amendments record the ship |
 | Why are there no word boxes, and when did `char_offsets` turn on? | [`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md) — measured and refused for word boxes; `char_offsets` was recommended on the same evidence and **turned on for 0.58.0**, and six reader defects were found on the way |
 | What is still open, and what does each item wait on? | [`OPEN-WORK.md`](OPEN-WORK.md) — the ledger: v2.3's items (decision #28), owner decisions, recorded defects |

@@ -52,6 +52,58 @@ Notice what is missing from those last two: a page number. A `.docx` has no page
 you see on screen belong to whatever printed it. So `pages` comes back empty rather than filled
 with a guess.
 
+## Benchmarks
+
+Scored on two public benchmarks with each benchmark's own evaluator. ethos-parser runs locally,
+with no OCR and no AI model. Higher is better.
+
+**[ParseBench](https://github.com/run-llama/ParseBench)** — about 2,000 human-verified pages from
+enterprise documents, scored on five dimensions. Against the open-source local parsers on its
+leaderboard, ethos-parser places **2nd of 10**; AI-model services score higher.
+
+| Parser | Overall | Tables | Charts | Content | Formatting | Grounding |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| LlamaParse Agentic Plus (highest overall, cloud) | 86.61 | 93.37 | 90.19 | 88.74 | 86.54 | 74.21 |
+| PyMuPDF4LLM | 53.49 | 72.00 | 2.19 | 79.34 | 52.04 | 61.89 |
+| **ethos-parser 0.64.0** | **50.67** | 58.75 | 17.26 | 67.46 | 51.27 | 58.59 |
+| Warp Ingest | 40.18 | 57.45 | 7.04 | 70.81 | 45.81 | 19.78 |
+| LiteParse (no OCR) | 36.90 | 42.40 | 1.80 | 70.00 | 38.50 | 31.80 |
+| OpenDataLoader | 29.40 | 35.18 | 0.92 | 66.06 | 34.07 | 10.77 |
+| pdf-inspector | 26.59 | 26.64 | 5.29 | 56.06 | 35.07 | 9.91 |
+| MarkItDown | 18.63 | 15.77 | 2.02 | 64.54 | 0.91 | 9.90 |
+| PyMuPDF (HTML) | 16.62 | 0.00 | 0.00 | 55.63 | 18.26 | 9.20 |
+| PyMuPDF (Text) | 16.02 | 0.00 | 0.00 | 68.28 | 0.95 | 10.86 |
+| pypdf | 14.87 | 0.00 | 0.00 | 62.50 | 0.91 | 10.92 |
+
+**[opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench)** — 200
+real-world PDFs, scored on reading order (NID), tables (TEDS) and headings (MHS). ethos-parser
+places **9th of 13**.
+
+| Engine | Overall | Reading order | Tables | Headings | Speed (s/page) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| opendataloader [hybrid] | 0.907 | 0.934 | 0.928 | 0.821 | 0.463 |
+| nutrient | 0.885 | 0.925 | 0.708 | 0.819 | 0.008 |
+| docling | 0.882 | 0.898 | 0.887 | 0.824 | 0.762 |
+| marker | 0.861 | 0.890 | 0.808 | 0.796 | 53.932 |
+| unstructured [hi_res] | 0.841 | 0.904 | 0.588 | 0.749 | 3.008 |
+| edgeparse | 0.837 | 0.894 | 0.717 | 0.706 | 0.036 |
+| opendataloader | 0.831 | 0.902 | 0.489 | 0.739 | 0.015 |
+| mineru | 0.831 | 0.857 | 0.873 | 0.743 | 5.962 |
+| **ethos-parser 0.64.0** | **0.791** | 0.888 | 0.583 | 0.589 | 0.036 |
+| pymupdf4llm | 0.732 | 0.885 | 0.401 | 0.412 | 0.091 |
+| unstructured | 0.686 | 0.882 | 0.000 | 0.388 | 0.077 |
+| markitdown | 0.589 | 0.844 | 0.273 | 0.000 | 0.114 |
+| liteparse | 0.576 | 0.866 | 0.000 | 0.000 | 1.061 |
+
+The ethos-parser rows are measured by this project with each benchmark's own scorer: ParseBench at
+`1f5b37a` through [`docs/measurements/parsebench/`](docs/measurements/parsebench/),
+opendataloader-bench at `7af1d8f` through
+[`docs/measurements/opendataloader-bench/`](docs/measurements/opendataloader-bench/). Every other
+row is copied from the benchmark's published results: ParseBench's `leaderboard.csv` at `1f5b37a`,
+opendataloader-bench's `evaluation.json` files at `7af1d8f`. Other engines' speeds are from an
+Apple M4, ethos-parser's from an Apple M4 Pro. On charts, ethos-parser reads only the values a
+chart prints; it never estimates a value from the drawing.
+
 ## Install
 
 Every release carries a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel),
@@ -196,7 +248,6 @@ published yet.
 - Delete hidden text, headers, footers or anything else without saying so.
 - Invent a coordinate, an id, a fingerprint, or a page number.
 - Verify a citation. It validates structure and relays a verifier's answer; it never forms one.
-- Publish a benchmark table comparing itself to other parsers.
 
 Everything the engine could not do is stated — as a named limitation, a typed absence, or a counted
 bucket. A gap is never dressed up as a success.
@@ -205,25 +256,10 @@ bucket. A gap is never dressed up as a success.
 
 Version 0.64.0-dev.1. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 
-**Tables, stated as a capability rather than as an average.** The engine does four things, and the
-fourth is the one to read first:
-
-- It **reads the tables a document declares** in its structure tree.
-- It **detects ruled tables** where the producer actually drew the rules.
-- It **emits nothing** where neither holds.
-- It **fabricates nothing** — 0 cells, measured on every run, not asserted.
-
-The numbers, re-measured at 0.58.0 on twelve tagged public documents (2,068 pages, 172 tagged
-tables, 15,755 tagged cell slots). Reading the tables a document declares emits **162 of the 172**
-gold tables from their tags and takes combined cell-slot recall to **503‰**. The geometric detectors
-alone score a macro cell-slot F1 of **69‰** — but the band is 0‰–590‰ with a median of 0‰, and
-**ten of the twelve score exactly zero**,
-because those documents never drew a grid to detect. Two documents supply that entire average, which
-is why the band is printed here and the macro is not offered on its own.
-
-That shape is the honest finding: the geometric rules work where a producer drew the grid and produce
-nothing where it did not. The method, the per-document table and the caveats are in
-[`docs/table-gate-v1.md`](docs/table-gate-v1.md) — quote table numbers from there or not at all.
+**Tables** come from eight named, versioned rules: the tables a document declares in its structure
+tree, ruled grids, columns of aligned text, and the numbers a chart prints. None invents a cell:
+fabrication is **0** on the twelve-document labelled set, measured on every run
+([`docs/table-gate-v1.md`](docs/table-gate-v1.md)).
 
 For the full honest inventory, read [`docs/CAPABILITY.md`](docs/CAPABILITY.md).
 

@@ -5,16 +5,12 @@ than believed — the same correction [`../block-subdivision/`](../block-subdivi
 own measurement, and the one [`17-D1-SCOPE.md`](../../17-D1-SCOPE.md) and
 [`18-INTERNING-SCOPE.md`](../../18-INTERNING-SCOPE.md) still need.
 
-## This is an instrument, not a leaderboard entry
+## Published in the README
 
-[`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md) O26 refuses *"#1, fastest, or any bake-off claim"*,
-and [`02-ROADMAP.md`](../../02-ROADMAP.md) lists rankings under **Not scheduled**. Nothing here is a
-claim to publish.
-
-What it *is* legitimate for is the thing [`table-gate-v1.md`](../../table-gate-v1.md) §2 says a
-reader would have to do to compare two parsers honestly: **run both on one corpus with one
-evaluator**, neither of them yours. That is a measurement. Turning it into an ordering is the
-separate act that stays refused.
+Since decision #108 (2026-11-01) the README's Benchmarks section ranks this engine on this corpus.
+Its row comes from this directory's adapter and the harness's own evaluators; every other row is
+copied from the harness's published `evaluation.json` files, never re-run here. Before #108, O26 in
+[`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md) kept these numbers unpublished.
 
 **The units do not travel.** TEDS is a tree edit distance over an HTML DOM; `table-gate-v1.md`
 reports macro cell-slot F1. A TEDS number from here **cannot** be placed beside 69‰ — the same

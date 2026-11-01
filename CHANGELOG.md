@@ -187,6 +187,17 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
   twelve, sixteen and twenty-four and above a share of the unit's width; in the engine a gap of one
   line height between pieces scored above a half, seven tenths, one and a half and two.
 
+### The benchmarks are published (decision #108)
+
+The README gains a Benchmarks section. On ParseBench this engine scores **50.67** and places 2nd of
+the 10 open-source local parsers on its leaderboard; on opendataloader-bench it scores **0.791** and
+places 9th of 13, at 0.036 s a page. Its rows are measured here with each benchmark's own scorer at
+a named commit; every other row is copied from the benchmark's published results. The owner
+reversed the rule that kept these numbers private, and O26, North Star row 35, D3, the roadmap, the
+capability page, the README's "will never" list and the measurement pages now say so. The README's
+table paragraph, which still said the engine emits nothing for a table with no tags and no rules,
+now names the eight rules. No engine change: no rule id and no `profile_sha256` moves.
+
 ### A number on a bar and one past its end, a series coloured by category, bars that overlap (decision #107)
 
 Folded into `bar-labels-v3`, which no release carries yet, so no rule id and no

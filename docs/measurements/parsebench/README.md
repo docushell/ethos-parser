@@ -3,12 +3,13 @@
 **Measured 2026-10-03.** ParseBench (`run-llama/ParseBench` at `afb36bd`, dataset
 `llamaindex/ParseBench` at revision `2805a1d`, both Apache-2.0) scores a parser's Markdown on five
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
-grounding.
+grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**.
 
-**This is an instrument, not a leaderboard entry.** It was run to find defects, and it found them:
-every engine change it led to is in `CHANGELOG.md` under "ParseBench, run as a diagnostic" and
-"Form XObjects are read as page content". `docs/CAPABILITY.md` refuses a benchmark table comparing
-this engine with other parsers, and this page holds the engine's own numbers only.
+**Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
+It was also run to find defects, and it found them: every engine change it led to is in
+`CHANGELOG.md` under "ParseBench, run as a diagnostic" and "Form XObjects are read as page
+content". The README's other rows are copied from ParseBench's own `leaderboard.csv`, never re-run
+here.
 
 ## How to run it
 
@@ -1088,6 +1089,15 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 0.6737 -> 0.6738, nine pages down by at most 0.017; visual grounding 0.5679 -> 0.5677, one page up
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
+
+### Re-scored at ParseBench `1f5b37a`, the README's row (2026-11-01)
+
+ParseBench moved from `afb36bd` to `1f5b37a`: 239 commits, which changed how tables, formatting,
+visual grounding and repetition are scored, and left the dataset alone. The build that ships as
+0.64.0, unchanged since decision #107, re-scored on every page: tables 0.5875 (0.5871 under the old
+scorer), charts 0.1726, content faithfulness 0.6746, semantic formatting 0.5127, visual grounding
+0.5859 — overall **50.67**. This is the row the README's Benchmarks section shows (decision #108);
+its other rows are ParseBench's own `leaderboard.csv` at the same commit.
 
 ### After a number on a bar and one past its end, a series coloured by category, bars that overlap (decision #107, 2026-11-01)
 

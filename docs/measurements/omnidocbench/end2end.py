@@ -9,8 +9,8 @@ than reaching into it.
 The difference from `census.py` is whose numbers come out. The census is this repository's own
 instrument answering this repository's own questions. This runs **somebody else's harness against
 their own ground truth**, so the numbers are theirs and are comparable to numbers other projects
-publish — which is exactly why decision **O26** refuses to publish a row from it. Run it to find
-defects; do not quote it.
+publish. Its last run predates 0.64.0, so the README's Benchmarks section (decision #108) does not
+quote it. Run it to find defects; quote it only from a fresh run.
 
 **Why this file exists.** The first end2end run was assembled by hand over an afternoon — clone,
 interpreter, dependencies, corpus, ground truth, prediction format, config — and the working
