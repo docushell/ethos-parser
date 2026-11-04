@@ -144,6 +144,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared, and one that cannot is counted |
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
+/// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -259,7 +260,14 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// ([`heading_number_continues`], [`NUMBER_TITLE_GAP_HEIGHTS`]) — semantic formatting 0.5100 ->
 /// 0.5127 and content faithfulness 0.6738 -> 0.6739 with no page down, opendataloader-bench
 /// byte-identical.
-pub const MARKDOWN_RULE_BLOCKS_V12: &str = "markdown-blocks-v12";
+///
+/// `-v13` (decision #109, 2026-11-04): plain body lines of one layout unit are one
+/// block, keeping their line breaks ([`body_line_continues`]), and a word a line broke closes up
+/// inside it. ParseBench content faithfulness 0.6746 -> 0.6747, 5 pages up and 29 down by at most
+/// 0.0085, each on the scorer's rule against unexpected sentences with no rule on words moving;
+/// semantic formatting, tables and charts unchanged on every page; opendataloader-bench four
+/// documents up and none down.
+pub const MARKDOWN_RULE_BLOCKS_V13: &str = "markdown-blocks-v13";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -358,7 +366,8 @@ pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 /// of inferred headings (decision #38, [`crate::TextRunAttributes::layout_unit`]): a heading set on
 /// two lines, no more than half a line apart. The line break is rendered as one space, and the unit
 /// is this engine's measure, not the producer's word, so it is counted apart from both baseline
-/// joins. Body text keeps its lines; see [`unit_continues`]. Decision #65 counts a label's next
+/// joins. Decision #109 counts a plain body line's next line here too, keeping its line break
+/// inside the block ([`body_line_continues`]). Decision #65 counts a label's next
 /// line here too, where it keeps its line break but joins the label's block
 /// ([`label_line_continues`]): the block boundary is what the unit erased. So are decision #81's
 /// bold line its column wrapped and decision #85's tagged bold line read on to the one above
@@ -1125,10 +1134,11 @@ pub(crate) fn hyphen_tail<'a>(
 
 /// Whether `node` continues the heading unit the open block's last run `prev` belongs to (decision
 /// #38): both are inferred headings carrying one `layout_unit` on one page, and `node` opens a new
-/// line — a heading the reader set on two lines. **Body text keeps its lines**: joining a unit of
-/// prose into one block was measured and lost ParseBench content faithfulness on 170 pages, since
-/// a list set without markers reads as one paragraph once joined, and a bold title line read as a
-/// title only while it stood on a line of its own. Called by both projections.
+/// line — a heading the reader set on two lines. **Body text keeps its line breaks**: joining a unit
+/// of prose with a space was measured and lost ParseBench content faithfulness on 170 pages, since a
+/// list set without markers reads as one paragraph once joined, and a bold title line read as a
+/// title only while it stood on a line of its own. Decision #109 joins plain body lines keeping the
+/// break ([`body_line_continues`]). Called by both projections.
 ///
 /// Decision #47: a label — level 7 — keeps its lines, as body text does, unless its column wrapped
 /// it: `node` opens a line [`wrapped_labels`] names. Two labels set one under the other, `ARTICLE
@@ -1163,6 +1173,25 @@ pub(crate) fn unit_continues(
             || (bold_body(prev).is_some()
                 && bold_body(prev) == bold_body(node)
                 && wrapped.contains(node.id.as_str())))
+}
+
+/// Whether `node` continues, on a line of its own, the plain body text `prev` belongs to (decision
+/// #109): both runs of one layout unit on one page, neither read as a heading nor bold, `node`
+/// opening a new line. The lines stay lines, so a list set without markers still reads a line at a
+/// time, and the block holds the piece of text the unit read: a paragraph, which this projection used
+/// to write as a block per line. A bold line keeps its own block, where a title reads as one, and a
+/// mark set beside a heading, which shares its unit, is no line of the heading. Called by both
+/// projections.
+pub(crate) fn body_line_continues(prev: &crate::Node, node: &crate::Node) -> bool {
+    let unit = |n: &crate::Node| {
+        text_run_attributes(n)
+            .filter(|a| !a.inferred_heading && !a.bold)
+            .and_then(|a| a.layout_unit)
+    };
+    prev.parent == node.parent
+        && unit(prev).is_some()
+        && unit(prev) == unit(node)
+        && on_different_lines(prev, node)
 }
 
 /// Whether `node` continues, on a line of its own, the label `prev` belongs to (decision #65): both
@@ -2806,7 +2835,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v12`
+/// # The rule, in full — `markdown-blocks-v13`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -3161,7 +3190,9 @@ pub fn to_markdown(
             None
         } else if open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped)) {
             Some((" ", LAYOUT_UNIT_LINE_JOINS))
-        } else if open_prev.is_some_and(|prev| label_line_continues(prev, node)) {
+        } else if open_prev
+            .is_some_and(|prev| label_line_continues(prev, node) || body_line_continues(prev, node))
+        {
             Some(("\n", LAYOUT_UNIT_LINE_JOINS))
         } else if ht.is_none()
             && open_prev.is_some_and(|prev| {
@@ -3179,11 +3210,27 @@ pub fn to_markdown(
         };
         if let Some((separator, code)) = continues {
             e.syntax(separator);
-            e.source(&text, node.id.as_str());
             block_text.push_str(separator);
-            block_text.push_str(&text);
             *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
+            // Decision #109: a word its line broke closes up inside the block, and the block goes
+            // on from the tail.
+            if let Some((tail, joined)) =
+                ht.filter(|_| open_prev.is_some_and(|prev| body_line_continues(prev, node)))
+            {
+                e.joined_source(&joined, node.id.as_str(), tail.id.as_str());
+                block_text.push_str(&joined);
+                let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
+                b.0 += 1;
+                b.1 += 1;
+                open_prev = Some(tail);
+                open_line = None;
+                line_ink = None;
+                joined_tail = true;
+                continue;
+            }
+            e.source(&text, node.id.as_str());
+            block_text.push_str(&text);
             open_prev = Some(node);
             open_line = line_key(node);
             line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
@@ -3290,10 +3337,13 @@ pub fn to_markdown(
             b.1 += 1;
             // v2.2-S5. The block now holds text from two baselines, so the reach measured for
             // this run no longer describes where its ink ends. Nothing may join onto it by
-            // geometry.
+            // geometry. Decision #109: the next line of its unit goes on from the tail.
             open_line = None;
             line_ink = None;
             joined_tail = true;
+            if key.is_none() {
+                open_prev = Some(tail);
+            }
             continue;
         }
 
@@ -5916,10 +5966,11 @@ pub(crate) mod tests {
         );
     }
 
-    /// **Body lines keep their lines**, a unit or not (decision #38): a list set without markers,
-    /// joined, would read as one paragraph.
+    /// **Plain body lines of one unit are one block, keeping their line breaks** (decision #109,
+    /// `-v13`): a list set without markers still reads a line at a time, each break is syntax, and
+    /// the join is counted. Another unit, or no unit, opens a block.
     #[test]
-    fn body_lines_of_one_unit_keep_their_lines() {
+    fn body_lines_of_one_unit_are_one_block_keeping_their_line_breaks() {
         let repr = with_units(
             repr_of_lines(&["First line of", "the paragraph", "Next paragraph"]),
             &[Some(1), Some(1), Some(2)],
@@ -5927,13 +5978,126 @@ pub(crate) mod tests {
         let a = artifact_of(repr);
         assert_eq!(
             a.markdown,
-            "First line of\n\nthe paragraph\n\nNext paragraph\n"
+            "First line of\nthe paragraph\n\nNext paragraph\n"
         );
-        assert!(!a
+        assert!(a.coverage.balances());
+        let at = a.markdown.find('\n').unwrap();
+        assert!(
+            !a.anchor_map.is_invertible(at, at + 1),
+            "the break is syntax"
+        );
+        let joins = a
             .coverage
             .structural_erasures
             .iter()
-            .any(|e| e.code == LAYOUT_UNIT_LINE_JOINS));
+            .find(|e| e.code == LAYOUT_UNIT_LINE_JOINS)
+            .map_or(0, |e| e.count);
+        assert_eq!(joins, 1);
+
+        let unitless = artifact_of(repr_of_lines(&["First line of", "the paragraph"]));
+        assert_eq!(unitless.markdown, "First line of\n\nthe paragraph\n");
+
+        // Each page numbers its own units, so the next page's unit 1 is another unit.
+        let one_page = repr_of_lines(&["Last line of a page", "First line of the next"]);
+        let (mut nodes, mut pages) = (
+            one_page.payload().nodes.clone(),
+            one_page.payload().pages.clone(),
+        );
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        alloc.next(IdKind::Page).unwrap();
+        pages.push(PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 2,
+            ..pages[0].clone()
+        });
+        nodes[1].parent = pages[1].id.clone();
+        nodes[1].ordinal = 1;
+        if let NativeLocator::Pdf(at) = &mut nodes[1].native_locator {
+            at.page = 2;
+        }
+        let paged =
+            DocumentRepresentation::seal(payload(nodes, pages), one_page.geometry().to_vec())
+                .unwrap();
+        assert_eq!(
+            artifact_of(with_units(paged, &[Some(1), Some(1)])).markdown,
+            "Last line of a page\n\nFirst line of the next\n"
+        );
+    }
+
+    /// **A bold line keeps its own block** (decision #109): a title reads as one only there, so
+    /// neither a bold line nor the plain line after it joins across their break.
+    #[test]
+    fn a_bold_line_is_not_joined_to_the_body_lines_of_its_unit() {
+        let repr = with_units(
+            with_styles(
+                repr_of_lines(&["A title", "Its text", "goes on"]),
+                &[0],
+                &[],
+            ),
+            &[Some(1), Some(1), Some(1)],
+        );
+        assert_eq!(
+            artifact_of(repr).markdown,
+            "**A title**\n\nIts text\ngoes on\n"
+        );
+    }
+
+    /// **A heading is not joined to a plain line of its unit** (decision #109): a mark set beside a
+    /// heading shares its unit, and neither reads as the other's next line.
+    #[test]
+    fn a_heading_is_not_joined_to_a_plain_line_of_its_unit() {
+        let of = |lines: &[&str], heading: usize| {
+            let repr = with_inferred_headings(repr_of_lines(lines), &[heading]);
+            artifact_of(with_units(repr, &[Some(1), Some(1)])).markdown
+        };
+        assert_eq!(of(&["A title", "1"], 0), "# A title\n\n1\n");
+        assert_eq!(of(&["A line", "A title"], 1), "A line\n\n# A title\n");
+    }
+
+    /// **A word its line broke closes up inside the block** (decision #109), and the next line goes
+    /// on from the tail: the hyphen is counted as dropped, and the block is not cut there.
+    #[test]
+    fn a_word_a_line_broke_closes_up_inside_the_block() {
+        let repr = with_units(
+            repr_of_lines(&["The develop-", "ment of a", "long word", "Next"]),
+            &[Some(1), Some(1), Some(1), Some(2)],
+        );
+        let a = artifact_of(repr);
+        assert_eq!(a.markdown, "The development of a\nlong word\n\nNext\n");
+        assert!(a.coverage.balances());
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .any(|b| b.code == HYPHENATION_REJOIN_DROPPED && b.nodes == 1));
+
+        // The same, on a line that does not open its block.
+        let repr = with_units(
+            repr_of_lines(&["A first line", "the develop-", "ment of a", "long word"]),
+            &[Some(1), Some(1), Some(1), Some(1)],
+        );
+        assert_eq!(
+            artifact_of(repr).markdown,
+            "A first line\nthe development of a\nlong word\n"
+        );
+
+        // The tail's unit is the one the block goes on in, whichever line opened the block.
+        let repr = with_units(
+            repr_of_lines(&["The develop-", "ment of a", "long word"]),
+            &[Some(1), Some(2), Some(2)],
+        );
+        assert_eq!(
+            artifact_of(repr).markdown,
+            "The development of a\nlong word\n"
+        );
+        let repr = with_units(
+            repr_of_lines(&["A first line", "the develop-", "ment of a", "long word"]),
+            &[Some(1), Some(1), Some(2), Some(2)],
+        );
+        assert_eq!(
+            artifact_of(repr).markdown,
+            "A first line\nthe development of a\nlong word\n"
+        );
     }
 
     /// **A label keeps its lines, in one block** (decisions #47 and #65): two labels set one under
@@ -6455,10 +6619,15 @@ pub(crate) mod tests {
             ("Report", 30000, 8000, None, Some(1)),
         ]);
         assert_eq!(md, "Annual Report\n");
+        // Another line of the unit is no gap to join: decision #109 keeps the break.
+        let (md, _, joins) = project(&[
+            ("Annual", 2000, 8000, None, Some(1)),
+            ("Report", 5900, 8100, None, Some(1)),
+        ]);
+        assert_eq!((md.as_str(), joins), ("Annual\nReport\n", 0));
         for (second, why) in [
             (("Report", 5900, 8000, None, Some(2)), "another unit"),
             (("Report", 5900, 8000, None, None), "no unit"),
-            (("Report", 5900, 8100, None, Some(1)), "another line"),
             (("Report", 1000, 8000, None, Some(1)), "drawn before"),
             (("Report", 4900, 8000, None, Some(1)), "set over it"),
         ] {
@@ -7663,7 +7832,7 @@ pub(crate) mod tests {
             ),
         ]);
         assert!(one(&part, "**Notice of a public**"), "{part:?}");
-        // Body text not set bold keeps its lines, wrapped or not.
+        // Body text not set bold keeps its line breaks, wrapped or not (decision #109).
         let plain = project_bold_lines(&[
             ("Notice of a public", (7200, 7200, 19000, 8200), false, 1),
             ("hearing held", (7200, 8300, 12000, 9300), false, 1),
@@ -7674,7 +7843,7 @@ pub(crate) mod tests {
                 2,
             ),
         ]);
-        assert!(one(&plain, "Notice of a public"), "{plain:?}");
+        assert!(one(&plain, "Notice of a public\nhearing held"), "{plain:?}");
     }
 
     /// **A label its column wrapped is one line; a label its author broke keeps its lines**

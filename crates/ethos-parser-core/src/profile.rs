@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V12`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V13`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V12`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V13`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -1532,6 +1532,17 @@ pub const LAYOUT_UNIT_RULE_V4: &str = "line-units-v4";
 /// formatting unchanged on every page; opendataloader-bench unchanged.
 pub const LAYOUT_UNIT_RULE_V5: &str = "line-units-v5";
 
+/// The layout-unit rule with columns the reading order read, Chinese wraps and indents (decision
+/// #109). Where the reading order went back left between two runs of a line, a gap of any width
+/// between them parts the line, so a gutter narrower than the line's height, which leaves a page one
+/// region, no longer runs a line across its columns. A word is an ideograph or a kana, so a line of
+/// them has a first word and its break can be read. And a body line set in half its height from the
+/// line above, where the line below returns to that line's left edge, opens a unit. ParseBench visual
+/// grounding 0.5859 -> 0.5911, 32 pages up and 9 down by at most 0.0345; tables, charts and semantic
+/// formatting unchanged on every page; opendataloader-bench's tables and headings unchanged on every
+/// document.
+pub const LAYOUT_UNIT_RULE_V6: &str = "line-units-v6";
+
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
 /// edges**.
 ///
@@ -2567,7 +2578,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the layout-unit rule in force (decision #38).
     ///
-    /// See [`LAYOUT_UNIT_RULE_V5`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// See [`LAYOUT_UNIT_RULE_V6`]. Its own field for `heading_inference_rule`'s reason: it runs
     /// only where the document declares no structure, so folding it into a rule that runs on every
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
@@ -2590,7 +2601,7 @@ pub struct Profile {
     pub right_to_left_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V12`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V13`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -2601,7 +2612,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V12`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V13`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -2678,13 +2689,13 @@ impl Default for Profile {
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V2.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
-            layout_unit_rule: LAYOUT_UNIT_RULE_V5.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V6.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
             right_to_left_rule: RIGHT_TO_LEFT_RULE_V1.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V12.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V13.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V12.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V13.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V2.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
@@ -3929,7 +3940,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v5","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.65.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v13","layout_unit_rule":"line-units-v6","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v13","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.65.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v13","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v15","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5108,11 +5119,15 @@ mod tests {
              Moved once more right after the `v0.64.0` tag, `sha256:f9b52166…` -> \
              `sha256:a46d5e77…`: `parser_version` `0.64.0` -> `0.65.0-dev.1`, and nothing else \
              (`docs/RELEASING.md` §5.7, decision #33), so no build of `main` claims the version \
-             just released."
+             just released.\n\n\
+             Moved for decision #109, `sha256:a46d5e77…` -> `sha256:69ec69e2…`: \
+             `layout_unit_rule` `line-units-v5` -> `line-units-v6`, `markdown_rule` \
+             `markdown-blocks-v12` -> `markdown-blocks-v13` and `html_rule` `html-blocks-v12` -> \
+             `html-blocks-v13`, for a paragraph's lines read as one block. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a46d5e7769d1cd070fd62bdb518af8ffe89cd559a486efad4f62edb4c943cb79"
+            "sha256:69ec69e23cebe05ba60b501fbce25a20ad0a9d575a282ebca775bd1d4a76ab0a"
         );
     }
 

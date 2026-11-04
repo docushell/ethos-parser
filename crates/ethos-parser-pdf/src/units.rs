@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! **Layout units: lines joined by their own spacing** — decision #38's paragraph-like blocks,
-//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V5`.
+//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V6`.
 //!
 //! A page's lines — the runs sharing one band, one `/Artifact` state and one baseline, the heading
 //! rule's own unit — are read in reading order, and a line joins the unit above it when
@@ -71,6 +71,18 @@
 //! clause does not know, an icon, or a symbol font's glyph read as a letter opens no word, and an
 //! entry set in further than its height starts its own unit, so lists set at their paragraph's
 //! leading keep their items apart.
+//!
+//! **And a column the reading order read is a column, a Chinese line wraps after any character, and
+//! a paragraph opens at its indent** (`line-units-v6`). A gutter narrower than the line's height,
+//! which a newspaper's is, parted no pieces, so a line ran across every column it shared a baseline
+//! with, and each column's lines fell into units read as rows. The reading order knows better: where
+//! it left a line between two runs and went back left, a line of its own lies between them
+//! ([`pieces_of`]). A line of ideographs has no space to end its first word, so that word was the
+//! whole line and no break could be its author's: a word is now one ideograph or kana
+//! ([`first_word`]). And a body line set in at least half its height from the line above, where the
+//! line below returns to the line above's left edge, opens a unit: a paragraph with no space above
+//! it and a full line before it ([`cut_at_indents`]). A hanging indent's next line stays in, so its
+//! lines stay together.
 //!
 //! **Where, never what.** A unit says these lines read as one piece of text; it is not the
 //! author's paragraph, and nothing reads a role from it — decision #19's rule for `region` and
@@ -342,12 +354,65 @@ pub(crate) fn cut_at_hard_breaks(pieces: &[Piece], units: &[u32]) -> Vec<u32> {
     out
 }
 
+/// Each piece's unit once a paragraph's indent opens a unit (`line-units-v6`): `pieces` in reading
+/// order and `units` their units under [`cut_at_hard_breaks`]. A unit is cut before a piece of body
+/// text set below the middle of the piece before it, starting at least half its own height right of
+/// that piece, where the next piece of the unit starts within a quarter of that height of that
+/// piece's left edge.
+fn cut_at_indents(pieces: &[Piece], units: &[u32]) -> Vec<u32> {
+    let mut out = vec![0; pieces.len()];
+    let mut n = 0u32;
+    let mut start = 0;
+    while start < pieces.len() {
+        let unit = units[start];
+        let end = (start..pieces.len())
+            .find(|&k| units[k] != unit)
+            .unwrap_or(pieces.len());
+        for k in start..end {
+            let indent = k > start
+                && k + 1 < end
+                && !pieces[k].heading
+                && match (pieces[k - 1].rect, pieces[k].rect, pieces[k + 1].rect) {
+                    (Some(before), Some(b), Some(after)) => {
+                        let height = b.3 - b.1;
+                        2 * b.1 >= before.1 + before.3
+                            && 2 * (b.0 - before.0) >= height
+                            && 4 * (after.0 - before.0).abs() <= height
+                    }
+                    _ => false,
+                };
+            if k == start || indent {
+                n = n.saturating_add(1);
+            }
+            out[k] = n;
+        }
+        start = end;
+    }
+    out
+}
+
+/// Whether a line may wrap after `c` with no space (`line-units-v6`): an ideograph or a kana.
+fn wraps_after(c: char) -> bool {
+    matches!(
+        u32::from(c),
+        0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x3FFFF
+    )
+}
+
 /// The width of a space and the first word of `text`, read at `width` per character of its trimmed
-/// text: the estimate [`cut_at_hard_breaks`] reads, 0 for a piece with no text.
+/// text: the estimate [`cut_at_hard_breaks`] reads, 0 for a piece with no text. A word ends at
+/// whitespace, and at an ideograph or a kana, which is a word of its own (`line-units-v6`).
 fn first_word(text: &str, width: i64) -> i64 {
     let text = text.trim();
     let chars = i64::try_from(text.chars().count()).unwrap_or(0);
-    let word = i64::try_from(text.chars().take_while(|c| !c.is_whitespace()).count()).unwrap_or(0);
+    let word = if text.chars().next().is_some_and(wraps_after) {
+        1
+    } else {
+        text.chars()
+            .take_while(|&c| !c.is_whitespace() && !wraps_after(c))
+            .count()
+    };
+    let word = i64::try_from(word).unwrap_or(0);
     if chars == 0 {
         return 0;
     }
@@ -355,16 +420,27 @@ fn first_word(text: &str, width: i64) -> i64 {
 }
 
 /// A line's pieces, left to right: `runs` is each run's origin and, where it is inked and measured,
-/// its box; a new piece opens wherever the gap from one box to the next is wider than `height`,
-/// and a run with no box joins the piece it follows. Each piece is its box and its runs' indices.
-fn pieces_of(runs: &[(i64, Option<Rect>)], height: i64) -> Vec<(Option<Rect>, Vec<usize>)> {
+/// its box; a new piece opens wherever the gap from one box to the next is wider than `height`, or
+/// where any gap at all stands between two runs `returned` says the reading order went back left
+/// between (`line-units-v6`); and a run with no box joins the piece it follows. Each piece is its
+/// box and its runs' indices.
+fn pieces_of(
+    runs: &[(i64, Option<Rect>)],
+    height: i64,
+    returned: impl Fn(usize, usize) -> bool,
+) -> Vec<(Option<Rect>, Vec<usize>)> {
     let mut order: Vec<usize> = (0..runs.len()).collect();
     order.sort_unstable_by_key(|&i| (runs[i].0, i));
     let mut out: Vec<(Option<Rect>, Vec<usize>)> = Vec::new();
+    let mut last = None;
     for i in order {
         let b = runs[i].1;
+        let back = last.is_some_and(|l| returned(l, i));
+        last = Some(i);
         match (out.last_mut(), b) {
-            (Some((Some(open), _)), Some(b)) if b.0 - open.2 > height => {
+            (Some((Some(open), _)), Some(b))
+                if b.0 - open.2 > height || (back && b.0 >= open.2) =>
+            {
                 out.push((Some(b), vec![i]));
             }
             (Some((open, members)), _) => {
@@ -523,7 +599,19 @@ pub(crate) fn assign(page: &mut PageExtract) {
             .iter()
             .map(|&i| (page.runs[i].locator.origin_x, ink(i)))
             .collect();
-        for (rect, at) in pieces_of(&placed, height) {
+        // `-v6`: the reading order went back left between two of this line's runs. It read on to
+        // a run on another baseline starting no further right than where the first run starts, or
+        // came to the second from a run on another baseline ending past where the second starts.
+        let returned = |a: usize, b: usize| {
+            let (from, to) = (line[a], line[b]);
+            let at = |k: usize| &page.runs[k].locator;
+            to > from + 1
+                && ((at(from + 1).origin_y != at(from).origin_y
+                    && at(from + 1).origin_x <= at(from).origin_x)
+                    || (at(to - 1).origin_y != at(to).origin_y
+                        && ink(to - 1).zip(ink(to)).is_some_and(|(p, q)| p.2 > q.0)))
+        };
+        for (rect, at) in pieces_of(&placed, height, returned) {
             cut.push((l, rect, at.iter().map(|&k| line[k]).collect()));
         }
     }
@@ -580,7 +668,7 @@ pub(crate) fn assign(page: &mut PageExtract) {
         }
     }
     let short = cut_after_short_pieces(&pieces);
-    let assigned = cut_at_hard_breaks(&pieces, &short);
+    let assigned = cut_at_indents(&pieces, &cut_at_hard_breaks(&pieces, &short));
     // `type-size-v7` (decision #77): a heading unit past [`HEADING_MAX_WORDS`] is a lede, read as
     // text. A heading line never shares a unit with body text, so a unit is one or the other.
     let mut tally: BTreeMap<u32, (usize, bool)> = BTreeMap::new();
@@ -921,7 +1009,7 @@ mod tests {
         let space = |x: i64| (x * 100, None);
         // 10-point line height: 10 points apart is one piece, 11 is two.
         let runs = [inked(72, 100), space(100), inked(110, 150), inked(161, 200)];
-        let pieces = pieces_of(&runs, 1000);
+        let pieces = pieces_of(&runs, 1000, |_, _| false);
         let members: Vec<Vec<usize>> = pieces.iter().map(|(_, m)| m.clone()).collect();
         assert_eq!(members, [vec![0, 1, 2], vec![3]]);
         assert_eq!(pieces[0].0, Some((7200, 1000, 15000, 2000)));
@@ -1053,6 +1141,100 @@ mod tests {
 
     /// **A script is part of the line it is set in** (`line-units-v4`): smaller, its baseline
     /// within half the line's height, inside the line past its start — lowered or raised.
+    /// **A gutter narrower than the line is a gutter where the reading order went back between its
+    /// two sides** (`line-units-v6`): the same two runs, 8 points apart on a 10-point line, are one
+    /// piece until the reading order says otherwise, and boxes that touch are never cut.
+    #[test]
+    fn a_narrow_gutter_parts_a_line_where_the_reading_order_went_back() {
+        let run = |x0: i64, x1: i64| (x0, Some((x0, 0, x1, 1000)));
+        let apart = [run(0, 1000), run(1800, 2800)];
+        assert_eq!(pieces_of(&apart, 1000, |_, _| false).len(), 1);
+        let cut = pieces_of(&apart, 1000, |a, b| (a, b) == (0, 1));
+        assert_eq!(cut.len(), 2);
+        assert_eq!(cut[0].1, [0]);
+        assert_eq!(cut[1].1, [1]);
+        let touching = [run(0, 1000), run(1000, 2000)];
+        assert_eq!(pieces_of(&touching, 1000, |_, _| true).len(), 2);
+        let overlapping = [run(0, 1000), run(900, 2000)];
+        assert_eq!(pieces_of(&overlapping, 1000, |_, _| true).len(), 1);
+    }
+
+    /// **An ideograph or a kana is a word** (`line-units-v6`), so a Chinese line's first word is one
+    /// character and its break can be read, and a Latin word stops where one starts.
+    #[test]
+    fn an_ideograph_or_a_kana_is_a_word_of_its_own() {
+        assert_eq!(first_word("今年以来全面开展", 800), 2 * 800 / 8);
+        assert_eq!(first_word("かなで始まる", 600), 2 * 600 / 6);
+        assert_eq!(first_word("PDF文件", 500), 4 * 500 / 5);
+        assert_eq!(first_word("“三资”清理", 600), 2 * 600 / 6);
+        assert_eq!(first_word("one two", 700), 4 * 700 / 7);
+        for c in ['今', 'か', 'カ', '㐀', '豈', '𠀀'] {
+            assert!(wraps_after(c), "{c}");
+        }
+        for c in ['a', '1', '“', '，', '한'] {
+            assert!(!wraps_after(c), "{c}");
+        }
+    }
+
+    /// A body piece 10 points tall in unit 1, starting at `x0` points.
+    fn at(top: i64, x0: i64) -> Piece {
+        piece(top, x0, 500, 1)
+    }
+
+    /// **A paragraph opens at its indent** (`line-units-v6`): full lines with no space between them
+    /// are two paragraphs where a line is set in and the next returns.
+    #[test]
+    fn a_line_set_in_opens_a_unit_where_the_next_returns() {
+        let lines = [at(0, 72), at(12, 72), at(24, 92), at(36, 72), at(48, 72)];
+        assert_eq!(cut_at_indents(&lines, &[1; 5]), [1, 1, 2, 2, 2]);
+    }
+
+    /// The boundary is where it is stated: set in by half the line's height it opens a unit and by
+    /// less it does not, and a next line further than a quarter of a height off the left edge keeps
+    /// the unit whole.
+    #[test]
+    fn an_indent_is_half_a_line_and_the_return_a_quarter() {
+        let set_in = |x: i64| [at(0, 72), at(12, x), at(24, 72)];
+        assert_eq!(cut_at_indents(&set_in(77), &[1; 3]), [1, 2, 2]);
+        assert_eq!(cut_at_indents(&set_in(76), &[1; 3]), [1, 1, 1]);
+        let far = |x0: i64| {
+            let mut after = at(24, 72);
+            after.rect = after.rect.map(|r| (x0, r.1, r.2, r.3));
+            [at(0, 72), at(12, 92), after]
+        };
+        assert_eq!(cut_at_indents(&far(7_200 + 250), &[1; 3]), [1, 2, 2]);
+        assert_eq!(cut_at_indents(&far(7_200 + 251), &[1; 3]), [1, 1, 1]);
+    }
+
+    /// A hanging indent stays whole, a unit's last line is read by nothing after it, a heading is
+    /// not cut, two pieces of one line are not cut, and a piece with no box cuts nothing.
+    #[test]
+    fn an_indent_cuts_only_body_lines_that_return() {
+        let hanging = [at(0, 72), at(12, 92), at(24, 92), at(36, 92)];
+        assert_eq!(cut_at_indents(&hanging, &[1; 4]), [1, 1, 1, 1]);
+        assert_eq!(cut_at_indents(&[at(0, 72), at(12, 92)], &[1; 2]), [1, 1]);
+        let mut heading = at(12, 92);
+        heading.heading = true;
+        assert_eq!(
+            cut_at_indents(&[at(0, 72), heading, at(24, 72)], &[1; 3]),
+            [1, 1, 1]
+        );
+        assert_eq!(
+            cut_at_indents(&[at(0, 72), at(0, 92), at(12, 72)], &[1; 3]),
+            [1, 1, 1]
+        );
+        let mut unmeasured = at(12, 92);
+        unmeasured.rect = None;
+        assert_eq!(
+            cut_at_indents(&[at(0, 72), unmeasured, at(24, 72)], &[1; 3]),
+            [1, 1, 1]
+        );
+        assert_eq!(
+            cut_at_indents(&[at(0, 72), at(12, 92), at(24, 72)], &[1, 1, 2]),
+            [1, 1, 2]
+        );
+    }
+
     #[test]
     fn a_line_set_smaller_inside_its_line_is_that_line_s() {
         let base = script_box(100, 500, 110, 10);

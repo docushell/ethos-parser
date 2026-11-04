@@ -51,7 +51,7 @@
       "minLength": 1,
       "description": "Version id of the projection rule. `html-blocks-v4` (v2.2-S0) emits `<p>`, `<h1>`-`<h6>` from a PDF structure tree or an EPUB's own XHTML element name and from nowhere else — never from a font size, `<ul>`/`<li>` from a tagged `/L`, and `<table>` with the document's merges carried as `rowspan`/`colspan`. A cell is a `<td>`, and a header is written only where a table's own spans say one is there (decision #99): a cell spanning columns, divided by the row under it into cells that span no rows, heads a column group, and those two rows are `<th>` in a `<thead>`, the rows below in a `<tbody>`. No detector reads `/TH`, so a header anywhere else would be invented. SEPARATE from `markdown_rule` and it moves independently — a change to how a `<td>` is spelled is not a change to how a GFM row is. Source bytes are ENTITY-ENCODED: `&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`, the whole entity sits inside the `source` segment because `&lt;` contains no `<` to label, and inverting a source segment therefore means HTML-unescaping it — a total, lossless transform. The census counts the CHARACTERS the document drew, not the bytes the entity took.",
       "examples": [
-        "html-blocks-v12"
+        "html-blocks-v13"
       ]
     },
     "html": {
@@ -246,7 +246,7 @@
         "structural_erasures": []
       },
       "html": "<p>Hello Ethos</p>\n",
-      "html_rule": "html-blocks-v12",
+      "html_rule": "html-blocks-v13",
       "parser_version": "0.64.0",
       "profile_sha256": "sha256:f9b521662315c9cc89fd32936967f3bd1eda6fe90064fef0c1afecaaf6f05e1a",
       "representation_sha256": "sha256:a39e1edd280603f8ce965719498526c7278147997835a32bc1c110f2c566c01d",

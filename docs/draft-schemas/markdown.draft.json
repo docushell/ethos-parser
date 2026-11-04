@@ -51,7 +51,7 @@
       "minLength": 1,
       "description": "Version id of the projection rule. `markdown-blocks-v2` (v1.1-S3) emits block structure: a GFM table for every table on the representation, a list item for every run the structure tree places in an `/L`, and headings taken only from the tree — never from a font size, a bullet glyph or a hanging indent (checklist L29 is REFUSE) — plus one export-only cosmetic, closing up a word the page broke across a line. It supersedes `markdown-blocks-v1`, which left the hyphen and the paragraph break where they were, and `markdown-linear-v1`, which emitted a table's cell runs as consecutive paragraphs with no grid around them. A document comes out differently under each, which is what a rule id on the profile is for. The cosmetic never touches the representation: both halves stay in the record with the hyphen verbatim, the joined bytes are one `source` segment naming both runs, and the removed hyphen is counted in `coverage.dropped` under `hyphenation-rejoin-dropped-v1`.",
       "examples": [
-        "markdown-blocks-v12"
+        "markdown-blocks-v13"
       ]
     },
     "markdown": {
@@ -241,7 +241,7 @@
         "structural_erasures": []
       },
       "markdown": "Hello Ethos\n",
-      "markdown_rule": "markdown-blocks-v12",
+      "markdown_rule": "markdown-blocks-v13",
       "parser_version": "0.64.0",
       "profile_sha256": "sha256:f9b521662315c9cc89fd32936967f3bd1eda6fe90064fef0c1afecaaf6f05e1a",
       "representation_sha256": "sha256:a39e1edd280603f8ce965719498526c7278147997835a32bc1c110f2c566c01d",

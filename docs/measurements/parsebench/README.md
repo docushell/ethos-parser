@@ -1090,6 +1090,21 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a paragraph's lines are one block (decision #109, 2026-11-04)
+
+Markdown wrote every body line as a block of its own. Plain body lines of
+one unit are now one block, keeping their line breaks; a bold line and a heading keep their own. A
+join with a space lost content on 170 pages here (decision #38); a line break inside the block loses
+no word. Joining units as they stood merged columns, so units are cut first, under `line-units-v6`: at a
+gap of any width where the reading order went back left, after an ideograph or a kana as a first
+word, and at a body line set in by half its height where the next returns. Visual grounding 0.5859
+-> 0.5911, 32 pages up and 9 down by at most 0.0345 — `20201212_ECR_UKPB_089` p1 0.48 -> 0.85,
+`pdf_f270146f8ca7` p17 0.41 -> 0.68, `2601.11385v1` p3 0.58 -> 0.79; content faithfulness 0.6746 ->
+0.6747, 5 up and 29 down by at most 0.0085, each on the rule against unexpected sentences with no
+rule on words moving; tables, charts and semantic formatting unchanged on every page. Overall 50.67
+-> 50.77. opendataloader-bench four documents up on reading order and none down, tables and headings
+unchanged on every document.
+
 ### Re-scored at ParseBench `1f5b37a`, the README's row (2026-11-01)
 
 ParseBench moved from `afb36bd` to `1f5b37a`: 239 commits, which changed how tables, formatting,

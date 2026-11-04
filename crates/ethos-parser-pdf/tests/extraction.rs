@@ -4166,6 +4166,50 @@ fn helvetica_letter_page(content: &str) -> ExtractArtifact {
     ethos_parser_pdf::extract(&d, &profile).expect("extracts")
 }
 
+/// **A column the reading order read is a column, and a paragraph opens at its indent**
+/// (`line-units-v6`), end to end, on pages the reading order does not divide.
+///
+/// Two columns 7.84 points apart, under the reading order's gutter and under the line's height,
+/// share their baselines. Read as rows, each column's lines fell into units across the page; the
+/// reading order went back left between the two runs of each baseline, so each column is a unit of
+/// its own. And a full line set in, where the next returns, opens a paragraph with no space above it.
+#[test]
+fn a_narrow_gutter_parts_columns_and_an_indent_opens_a_paragraph() {
+    let units = |content: &str| -> Vec<u32> {
+        let a = helvetica_letter_page(content);
+        let inked: Vec<&TextRun> = runs(&a)
+            .into_iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .collect();
+        assert!(
+            inked.iter().all(|r| r.region.is_none()),
+            "the reading order divides none of these pages"
+        );
+        inked
+            .iter()
+            .map(|r| r.layout_unit.expect("every line has a unit"))
+            .collect()
+    };
+    // Thirty `n`s of 12-point Helvetica are 200.16 points wide.
+    let line = "n".repeat(30);
+    let mut columns = String::from(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over both of its columns) Tj ET\n",
+    );
+    for x in [72, 280] {
+        for y in [700, 686, 672] {
+            columns += &format!("BT /F1 12 Tf 1 0 0 1 {x} {y} Tm ({line}) Tj ET\n");
+        }
+    }
+    assert_eq!(units(&columns), [1, 2, 2, 2, 3, 3, 3]);
+
+    let mut paragraphs = String::new();
+    for (x, y) in [(72, 700), (72, 686), (92, 672), (72, 658), (72, 644)] {
+        paragraphs += &format!("BT /F1 12 Tf 1 0 0 1 {x} {y} Tm ({line}) Tj ET\n");
+    }
+    assert_eq!(units(&paragraphs), [1, 1, 2, 2, 2]);
+}
+
 /// **A line is read where the reading order reads it, and its words where the page set them
 /// apart** (`line-units-v5`), end to end, on four pages the reading order does not divide.
 ///

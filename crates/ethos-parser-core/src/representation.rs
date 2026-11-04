@@ -1651,7 +1651,10 @@ pub struct TextRunAttributes {
     /// decision #103 a line further below its unit than half its height still continues it where
     /// its page sets its lines that far apart — within the page's body leading, the median gap
     /// between its body lines, and a twentieth of its height more — opening with a letter or a digit
-    /// and starting where the unit starts.
+    /// and starting where the unit starts. Since `line-units-v6` a line is also parted where the
+    /// reading order went back left between two of its runs with any gap between them, a first word
+    /// ends at an ideograph or a kana, and a body line set in by half its height, where the next line
+    /// returns to the left edge of the line above, opens a unit.
     ///
     /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
     /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a

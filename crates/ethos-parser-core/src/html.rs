@@ -141,21 +141,21 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V12` documents — an ODT
+/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` documents — an ODT
 /// or ODP `<text:h>` now projects as `<h1>`..`<h6>` at the level it declared, where before it
 /// projected `<p>`. Both ids move together for the reason `-v3` gives: the change went through
 /// `heading_level`, which both projections call. A level past six projects `<p>`, because
 /// `<h300>` is not an element. **The same id also carries the erasure declaration**, folded for
-/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V12` gives: a declared heading that comes out
+/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` gives: a declared heading that comes out
 /// `<p>` is counted, at the same value its sibling counts, because both projections commit the
 /// same flattening. Not one character of the HTML changes; the census does.
 ///
-/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V12` documents. Both ids
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` documents. Both ids
 /// move together because both projections call `ink_sequenced`.
 ///
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
-/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V12`, whose decision #38 folds — emphasis,
+/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V13`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
@@ -166,7 +166,10 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// title in a size of its own, and decision #99's header — a column group's head and the row that
 /// divides it as `<th>` in a `<thead>`, the one header this projection writes — this id carries
 /// too.
-pub const HTML_RULE_BLOCKS_V12: &str = "html-blocks-v12";
+///
+/// `-v13`: decision #109's plain body lines of one layout unit as one `<p>`, keeping their line
+/// breaks. Both ids move together, for the reason `-v5` gives.
+pub const HTML_RULE_BLOCKS_V13: &str = "html-blocks-v13";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -345,7 +348,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v12`
+/// # The rule, in full — `html-blocks-v13`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
@@ -644,7 +647,10 @@ pub fn to_html(
             .is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
         {
             Some((" ", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
-        } else if open_prev.is_some_and(|prev| crate::markdown::label_line_continues(prev, node)) {
+        } else if open_prev.is_some_and(|prev| {
+            crate::markdown::label_line_continues(prev, node)
+                || crate::markdown::body_line_continues(prev, node)
+        }) {
             Some(("\n", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
         } else if ht.is_none()
             && open_prev.is_some_and(|prev| {
@@ -662,11 +668,31 @@ pub fn to_html(
         };
         if let Some((separator, code)) = continues {
             e.syntax(separator);
-            escaped_source(&mut e, &text, node.id.as_str());
             block_text.push_str(separator);
-            block_text.push_str(&text);
             *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
+            // Decision #109, as in `crate::markdown`.
+            if let Some((tail, joined)) = ht.filter(|_| {
+                open_prev.is_some_and(|prev| crate::markdown::body_line_continues(prev, node))
+            }) {
+                e.joined_source_encoded(
+                    &escape(&joined),
+                    joined.chars().count(),
+                    node.id.as_str(),
+                    tail.id.as_str(),
+                );
+                block_text.push_str(&joined);
+                let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
+                b.0 += 1;
+                b.1 += 1;
+                open_prev = Some(tail);
+                open_line = None;
+                line_ink = None;
+                joined_tail = true;
+                continue;
+            }
+            escaped_source(&mut e, &text, node.id.as_str());
+            block_text.push_str(&text);
             open_prev = Some(node);
             open_line = crate::markdown::line_key(node);
             line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
@@ -762,9 +788,12 @@ pub fn to_html(
             joined_tail = true;
             // v2.2-S5. The block now holds text from two baselines, so the reach measured for
             // this run no longer describes where its ink ends. The twin of the same reset in
-            // `crate::markdown`.
+            // `crate::markdown`, as decision #109's is of its next line going on from the tail.
             open_line = None;
             line_ink = None;
+            if key.is_none() {
+                open_prev = Some(tail);
+            }
         } else {
             escaped_source(&mut e, &text, node.id.as_str());
         }
@@ -974,23 +1003,54 @@ mod tests {
         );
     }
 
-    /// **A heading set on two lines is one `<h1>`, and body lines keep their elements** (decision
-    /// #38) — `crate::markdown`'s join from the same predicate.
+    /// **A heading set on two lines is one `<h1>`** (decision #38), **and plain body lines of one
+    /// unit are one `<p>`, keeping their line breaks** (decision #109) — `crate::markdown`'s joins
+    /// from the same predicates.
     #[test]
-    fn a_heading_unit_is_one_element_and_body_lines_keep_theirs() {
+    fn a_heading_unit_is_one_element_and_body_lines_one_paragraph() {
         let repr = with_units(
             repr_of_lines(&["First line of", "the paragraph", "Next paragraph"]),
             &[Some(1), Some(1), Some(2)],
         );
         assert_eq!(
             artifact_of(repr).html,
-            "<p>First line of</p>\n<p>the paragraph</p>\n<p>Next paragraph</p>\n"
+            "<p>First line of\nthe paragraph</p>\n<p>Next paragraph</p>\n"
         );
         let heading = with_inferred_headings(repr_of_lines(&["Annual", "Report", "Body"]), &[0, 1]);
         let heading = with_units(heading, &[Some(1), Some(1), Some(2)]);
         assert_eq!(
             artifact_of(heading).html,
             "<h1>Annual Report</h1>\n<p>Body</p>\n"
+        );
+    }
+
+    /// **A word its line broke closes up inside the `<p>`** (decision #109), as in Markdown.
+    #[test]
+    fn a_word_a_line_broke_closes_up_inside_the_paragraph() {
+        let repr = with_units(
+            repr_of_lines(&["The develop-", "ment of a", "long word"]),
+            &[Some(1), Some(1), Some(1)],
+        );
+        let a = artifact_of(repr);
+        assert_eq!(a.html, "<p>The development of a\nlong word</p>\n");
+        assert!(a.coverage.balances());
+
+        // On a line that does not open the `<p>`, and going on in the tail's unit either way.
+        let lines = ["A first line", "the develop-", "ment of a", "long word"];
+        let repr = with_units(repr_of_lines(&lines), &[Some(1), Some(1), Some(2), Some(2)]);
+        let a = artifact_of(repr);
+        assert_eq!(
+            a.html,
+            "<p>A first line\nthe development of a\nlong word</p>\n"
+        );
+        assert!(a.coverage.balances());
+        let repr = with_units(
+            repr_of_lines(&["The develop-", "ment of a", "long word"]),
+            &[Some(1), Some(2), Some(2)],
+        );
+        assert_eq!(
+            artifact_of(repr).html,
+            "<p>The development of a\nlong word</p>\n"
         );
     }
 

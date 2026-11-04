@@ -30,6 +30,38 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [Unreleased]
+
+### A paragraph's lines are one block (decision #109)
+
+Rule ids `markdown-blocks-v13`, `html-blocks-v13` and `line-units-v6`; `profile_sha256` moves.
+
+- **Plain body lines of one layout unit are one block, keeping their line breaks.** Markdown and
+  HTML wrote every body line as a block of its own, in every language. The lines now stay lines
+  inside one block, as a label's have since decision #65, so a list set without markers still reads
+  a line at a time. A bold line keeps its own block, where a title reads as one, and so does a
+  heading. Each join is counted under `layout-unit-line-joins-v1`, and each break is `syntax`.
+- **A word its line broke closes up inside the block**, and the block goes on from the tail, in the
+  tail's unit. The removed hyphen is counted under `hyphenation-rejoin-dropped-v1`, as before.
+- **A column the reading order read is a column.** A gutter narrower than the line's height parted
+  no pieces, so a line ran across every column it shared a baseline with. Where the reading order
+  went back left between two runs of a line, any gap between them now parts them.
+- **A line of ideographs or kana has a first word.** It had none, so no break in it could be read
+  as its author's. Hangul is left out, since Korean wraps at its spaces.
+- **A paragraph opens at its indent.** A body line set in by half its height, where the next line
+  returns to the left edge of the line above, opens a unit. A hanging indent's next line stays in,
+  so its lines stay together.
+- **Why units are cut first**: joining units as they stood made a newspaper worse, because a scorer
+  can merge fragments and cannot split a merged block.
+- **Measured** on ParseBench: visual grounding 0.5859 -> 0.5911, 32 pages up and 9 down by at most
+  0.0345; content faithfulness 0.6746 -> 0.6747, 5 up and 29 down by at most 0.0085, each on the
+  rule against unexpected sentences with no rule on words moving; tables, charts and semantic
+  formatting unchanged on every page; overall 50.67 -> 50.77. On opendataloader-bench four documents
+  up on reading order and none down, tables and headings unchanged on every document. The fabrication
+  check (0 of 1,307 cells) and the gate documents' 542 tables are unchanged.
+
+---
+
 ## [0.64.0] — a model reads a document over MCP, and charts, tables and headings are read from the page
 
 **A MINOR, because readers, both projections, the MCP server and the profile changed.** 109 commits

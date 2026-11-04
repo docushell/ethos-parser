@@ -255,8 +255,9 @@
     "layout_unit_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v2`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker; then each line is read as its pieces (its runs, cut wherever the gap between two is wider than the line's height), and the pieces of one unit that follow each other in reading order are cut before a piece when the piece before it ends more than ten of the piece's heights left of their widest piece's right edge. `line-units-v3` then cuts a unit of body text before a line whose first word, with its space, would have fit twice over between where the line above ends and the unit's widest piece's right edge — a break its author made, not its measure; a heading unit is not cut. `line-units-v4` (decision #63) first joins to the line before it in reading order a line set under seventeen twentieths of its height, its baseline within half that line's height, inside that line's extent past its start: a subscript, a superscript or a footnote mark on a baseline of its own. `line-units-v5` (decision #67) cuts each line into its pieces before any unit is read and reads as a line the pieces of one line that follow each other in reading order, so a baseline running across columns the reading order reads apart is a line per column; and the text the list-marker clause and the first word are read from has a space wherever two runs' boxes stand a tenth of the line's height apart or more, a word gap the page set by moving its pen. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v2`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker; then each line is read as its pieces (its runs, cut wherever the gap between two is wider than the line's height), and the pieces of one unit that follow each other in reading order are cut before a piece when the piece before it ends more than ten of the piece's heights left of their widest piece's right edge. `line-units-v3` then cuts a unit of body text before a line whose first word, with its space, would have fit twice over between where the line above ends and the unit's widest piece's right edge — a break its author made, not its measure; a heading unit is not cut. `line-units-v4` (decision #63) first joins to the line before it in reading order a line set under seventeen twentieths of its height, its baseline within half that line's height, inside that line's extent past its start: a subscript, a superscript or a footnote mark on a baseline of its own. `line-units-v5` (decision #67) cuts each line into its pieces before any unit is read and reads as a line the pieces of one line that follow each other in reading order, so a baseline running across columns the reading order reads apart is a line per column; and the text the list-marker clause and the first word are read from has a space wherever two runs' boxes stand a tenth of the line's height apart or more, a word gap the page set by moving its pen. `line-units-v6` (decision #109) also parts a line where the reading order went back left between two of its runs with any gap between them, so a gutter narrower than the line's height parts its columns; ends a first word at an ideograph or a kana, which is a word of its own; and opens a unit at a body line set in by half its height, where the next line returns to the left edge of the line above. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
       "examples": [
+        "line-units-v6",
         "line-units-v5",
         "line-units-v4",
         "line-units-v3",
@@ -292,7 +293,7 @@
       "minLength": 1,
       "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2 and again at S3). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree or an EPUB's own `<h1>`-`<h6>`, whether a word the page broke across a line is closed up in the export, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "markdown-blocks-v12"
+        "markdown-blocks-v13"
       ]
     },
     "html_rule": {
@@ -300,7 +301,7 @@
       "minLength": 1,
       "description": "Version id of the HTML projection rule in force (v1.1-S4). Decides what `ethos.html.v1` contains. SEPARATE from `markdown_rule` and it moves independently: the two projections say different things about the same table, because GFM has no `rowspan` and `<td rowspan>` does, so one id covering both would make every artifact non-comparable each time either moved. A profile predating v1.1-S4 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "html-blocks-v12"
+        "html-blocks-v13"
       ]
     },
     "locate_rule": {
@@ -516,10 +517,10 @@
       "form_annotation_rule": "form-annotations-v2",
       "furniture_rule": "margin-bands-v1",
       "heading_inference_rule": "type-size-v7",
-      "layout_unit_rule": "line-units-v5",
-      "html_rule": "html-blocks-v12",
+      "layout_unit_rule": "line-units-v6",
+      "html_rule": "html-blocks-v13",
       "locate_rule": "locate-scalar-exact-v1",
-      "markdown_rule": "markdown-blocks-v12",
+      "markdown_rule": "markdown-blocks-v13",
       "observation_rule": "page-observations-v4",
       "outline_rule": "outlines-v3",
       "page_budget": {
