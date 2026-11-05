@@ -4182,7 +4182,7 @@ between the brackets to be a hex digit and reported `malformed` — and because 
 returns the first page error, **one stray space in one font's `ToUnicode` CMap cost the entire
 page**.
 
-Two documents of 981 hit it. `scihub_s12935-018-0683-z.pdf_0` went from **no artifact at all to
+Two documents of 981 hit it. One went from **no artifact at all to
 4 970 characters** — a page carrying a table and a full abstract. Corpus effect: documents with no
 artifact **20 → 18**, non-empty Markdown **733 → 735**, and **zero** documents lost a character.
 
@@ -4207,9 +4207,8 @@ condition covers:
 | `MathematicalPiLTStd-1`, `CGMathsBase`, `MTEX` | genuinely symbolic | **wrong** |
 | `Europa-Bold`, `NewBaskervilleStd-Roman`, `EhrhardtExpMT` | ordinary prose that sets the bit | **right** |
 
-Checked directly: the `Europa-Bold` document projects *"Older components such as carbon resistors
-are really not worth keeping…"* — correct English. Refusing on the flag would have dropped correct
-text from most of the 42 to fix a minority, which is `O21` inverted. Separating them needs the
+Checked directly: the `Europa-Bold` document projects correct English. Refusing on the flag would
+have dropped correct text from most of the 42 to fix a minority, which is `O21` inverted. Separating them needs the
 embedded font program's own encoding, which this profile does not read.
 
 So the fix is the disclosure, because **the defect was the silence, not the substitution**. New
