@@ -91,6 +91,27 @@ counts what is left out; the representation keeps every copy.
 
 ---
 
+### Two small readings: indirect stream filters, and word runs with no reach (decision #111)
+
+Folded into `markdown-blocks-v13` and `html-blocks-v13`, which no release carries, so no further rule
+id and no further `profile_sha256` moves.
+
+- **A stream's `/Filter` and `/DecodeParms` may be indirect objects.** `lopdf` reads neither through a
+  reference: a page's content under an indirect `/Filter` was refused, a CMap under one stayed
+  compressed, and a `/DecodeParms` read as no parameters, so a predictor stayed on a stream's bytes
+  unnoticed. Both are now written into the stream's dictionary when a document opens. Only what a
+  filter can be is copied, names and keys of 32 bytes and arrays and dictionaries of 8 entries, since
+  a referent is copied onto every stream naming it and a large one named by many would run the
+  process out of memory. Anything else stays as written, and is refused where it is read.
+- **A run with no reach goes on along its line from a space it ends with.** A font without widths
+  gives a run no reach, so a page set in word runs (`Annual `, `Report `) was a block a word. The
+  only run of a font and size has a width and no measure, so no reach either, and goes on the same
+  way. A run ending in no space stays apart, so no space is invented inside a word cut into
+  fragments.
+- **Measured** on ParseBench: content faithfulness 0.6751 -> 0.6750, `text_ocr__ups` down 0.0014 as a
+  line that was two blocks reads whole; everything else unchanged on every page; overall unchanged at
+  50.79. opendataloader-bench, the fabrication check and the gate documents' 542 tables unchanged.
+
 ## [0.64.0] — a model reads a document over MCP, and charts, tables and headings are read from the page
 
 **A MINOR, because readers, both projections, the MCP server and the profile changed.** 109 commits

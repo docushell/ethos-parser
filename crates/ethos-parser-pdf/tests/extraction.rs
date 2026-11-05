@@ -7098,6 +7098,167 @@ fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
     }
 }
 
+/// `with_content(stream, None)` with the page's stream holding the `entries`, built by a closure
+/// that may add the objects they name.
+fn with_entries(
+    stream: &[u8],
+    entries: impl FnOnce(&mut lopdf::Document) -> Vec<(&'static str, lopdf::Object)>,
+) -> Vec<u8> {
+    let mut doc = lopdf::Document::load_mem(&with_content(stream, None)).expect("loads");
+    let entries = entries(&mut doc);
+    let id = doc.get_page_contents(doc.get_pages()[&1])[0];
+    let page_stream = doc
+        .get_object_mut(id)
+        .and_then(lopdf::Object::as_stream_mut)
+        .expect("the page's stream");
+    for (key, value) in entries {
+        page_stream.dict.set(key, value);
+    }
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+fn name(s: &str) -> lopdf::Object {
+    lopdf::Object::Name(s.as_bytes().to_vec())
+}
+
+/// Whether `bytes` read as [`MEASURED`]'s one run.
+fn reads_measured(bytes: &[u8]) -> bool {
+    extracted(bytes).is_ok_and(|a| runs(&a).iter().map(|r| r.text.as_str()).eq(["Measured"]))
+}
+
+/// **A stream's `/Filter` may be an indirect object** (decision #111), whatever it names, however
+/// many references lead to it, and in an array or as its members. `lopdf` reads none of these, and a
+/// page's content under one was refused.
+#[test]
+fn an_indirect_filter_is_read_through_its_reference() {
+    use lopdf::Object::{Array, Reference};
+    let flate = zlib(MEASURED);
+    let a85 = ascii85(&flate);
+    let reads = |stream: &[u8], filter: fn(&mut lopdf::Document) -> lopdf::Object| {
+        reads_measured(&with_entries(stream, |doc| vec![("Filter", filter(doc))]))
+    };
+    assert!(reads(&flate, |doc| Reference(
+        doc.add_object(name("FlateDecode"))
+    )));
+    assert!(reads(&flate, |doc| {
+        let held = doc.add_object(name("FlateDecode"));
+        Reference(doc.add_object(Reference(held)))
+    }));
+    assert!(reads(&flate, |doc| Array(vec![Reference(
+        doc.add_object(name("FlateDecode"))
+    )])));
+    assert!(reads(&a85, |doc| Reference(doc.add_object(Array(vec![
+        name("ASCII85Decode"),
+        name("FlateDecode"),
+    ])))));
+    assert!(reads(&a85, |doc| {
+        let a85 = Reference(doc.add_object(name("ASCII85Decode")));
+        let flate = Reference(doc.add_object(name("FlateDecode")));
+        Reference(doc.add_object(Array(vec![a85, flate])))
+    }));
+
+    // Eight filters are read through a reference, the most that is.
+    let mut eight = MEASURED.to_vec();
+    for _ in 0..8 {
+        eight = ascii85(&eight);
+    }
+    assert!(reads(&eight, |doc| Reference(
+        doc.add_object(Array(vec![name("ASCII85Decode"); 8]))
+    )));
+}
+
+/// **What a filter cannot be stays as written, and is refused**: a reference to nothing, to itself or
+/// to another kind of object, and an array holding one, or one too long to copy onto every stream
+/// naming it, as a name too long to is. A name of the longest length copied is read as a name.
+#[test]
+fn an_indirect_filter_that_is_not_one_stays_refused() {
+    use lopdf::Object::{Array, Integer, Reference};
+    let flate = zlib(MEASURED);
+    let refused = |filter: fn(&mut lopdf::Document) -> lopdf::Object| {
+        let bytes = with_entries(&flate, |doc| vec![("Filter", filter(doc))]);
+        let e = extracted(&bytes).expect_err("refused");
+        assert_eq!(e.code(), "unsupported", "{e}");
+        assert!(
+            e.to_string()
+                .contains("/Filter is not a name or an array of names"),
+            "{e}"
+        );
+    };
+    refused(|_| Reference((9999, 0)));
+    refused(|doc| {
+        let id = doc.new_object_id();
+        doc.objects.insert(id, Reference(id));
+        Reference(id)
+    });
+    refused(|doc| Reference(doc.add_object(Integer(1))));
+    refused(|doc| {
+        Reference(doc.add_object(Array(vec![name("FlateDecode"), Reference((9999, 0))])))
+    });
+    refused(|doc| Reference(doc.add_object(Array(vec![Array(vec![name("FlateDecode")])]))));
+    refused(|doc| Reference(doc.add_object(Array(vec![name("ASCII85Decode"); 9]))));
+    refused(|doc| Reference(doc.add_object(name(&"x".repeat(33)))));
+
+    let e = extracted(&with_entries(&flate, |doc| {
+        vec![("Filter", Reference(doc.add_object(name(&"x".repeat(32)))))]
+    }))
+    .expect_err("no such filter");
+    assert!(e.to_string().contains("did not decode"), "{e}");
+}
+
+/// **A stream's `/DecodeParms` may be an indirect object too** (decision #111), which `lopdf` reads
+/// as no parameters, so a predictor stays on the page's content, unnoticed. Only what a filter's
+/// parameters can be is copied.
+#[test]
+fn indirect_decode_parms_are_read_through_their_reference() {
+    use lopdf::Object::{Boolean, Dictionary, Integer, Reference, String as Text};
+    // One row under PNG's Sub: each byte less the one before it.
+    let mut row = vec![1u8];
+    let before = std::iter::once(&0u8).chain(MEASURED);
+    row.extend(MEASURED.iter().zip(before).map(|(b, a)| b.wrapping_sub(*a)));
+    let stream = zlib(&row);
+    let columns = i64::try_from(MEASURED.len()).expect("short");
+    let parms = |more: &[(&str, lopdf::Object)]| {
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Predictor", Integer(11));
+        dict.set("Columns", Integer(columns));
+        for (key, value) in more {
+            dict.set(*key, value.clone());
+        }
+        Dictionary(dict)
+    };
+    let reads = |held: lopdf::Object| {
+        reads_measured(&with_entries(&stream, |doc| {
+            let held = doc.add_object(held);
+            vec![
+                ("Filter", name("FlateDecode")),
+                ("DecodeParms", Reference(held)),
+            ]
+        }))
+    };
+    assert!(reads(parms(&[])));
+    assert!(reads(parms(&[("EarlyChange", Boolean(true))])));
+
+    let long = "k".repeat(33);
+    assert!(reads(parms(&[(&long[1..], Integer(1))])));
+    assert!(!reads(parms(&[(&long, Integer(1))])));
+    assert!(!reads(parms(&[(
+        "Other",
+        Text(b"x".to_vec(), lopdf::StringFormat::Literal)
+    )])));
+
+    let entries = |n: usize| {
+        let more: Vec<_> = ["a", "b", "c", "d", "e", "f", "g"][..n]
+            .iter()
+            .map(|key| (*key, Integer(1)))
+            .collect();
+        parms(&more)
+    };
+    assert!(reads(entries(6)));
+    assert!(!reads(entries(7)));
+}
+
 /// ASCII85 (PDF 32000-1 §7.4.3), closed by its `~>` marker.
 fn ascii85(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();

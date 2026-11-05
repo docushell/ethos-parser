@@ -213,6 +213,8 @@ impl Document {
             });
         }
 
+        resolve_stream_filters(&mut inner);
+
         let pages = walk_page_tree(&inner)?;
         let lost_stream = lost_stream(bytes, &inner);
 
@@ -745,6 +747,65 @@ fn kids_of(doc: &lopdf::Document, id: lopdf::ObjectId) -> Result<&[lopdf::Object
             what: "page tree".into(),
             detail: format!("/Pages {} {} R has no /Kids array: {e}", id.0, id.1),
         })
+}
+
+/// Writes a stream's indirect `/Filter` and `/DecodeParms` into its dictionary (decision #111).
+/// Either may be an indirect object (PDF 32000-1 §7.3.10), and `lopdf` reads neither through a
+/// reference: it decodes a `/Filter` it cannot read as no filter, and a `/DecodeParms` as no
+/// parameters, so a CMap stays compressed and a predictor is not undone, unnoticed. A page's content
+/// under such a filter was refused.
+///
+/// A referent is copied onto every stream naming it, so only what a filter can be is copied, or a
+/// large one named by many streams would run the process out of memory: a name or key of 32 bytes
+/// at most (`DamagedRowsBeforeError`, the longest standard one, has 22), and an array of them or a
+/// dictionary of integers and booleans of 8 entries at most (`CCITTFaxDecode`'s parameters, the most
+/// a standard filter has, hold 8). Anything else stays as written, and is refused where it is read.
+fn resolve_stream_filters(doc: &mut lopdf::Document) {
+    use lopdf::Object;
+    const MAX_NAME: usize = 32;
+    const MAX_ENTRIES: usize = 8;
+    let small = |o: &&Object| match o {
+        Object::Name(name) => name.len() <= MAX_NAME,
+        Object::Dictionary(dict) => {
+            dict.len() <= MAX_ENTRIES
+                && dict.iter().all(|(key, value)| {
+                    key.len() <= MAX_NAME
+                        && matches!(value, Object::Integer(_) | Object::Boolean(_))
+                })
+        }
+        _ => false,
+    };
+    let one = |o: &Object| {
+        let (_, o) = doc.dereference(o).ok()?;
+        Some(o).filter(small).cloned()
+    };
+    let direct = |value: &Object| match doc.dereference(value).ok()?.1 {
+        Object::Array(items) if items.len() <= MAX_ENTRIES => items
+            .iter()
+            .map(one)
+            .collect::<Option<_>>()
+            .map(Object::Array),
+        _ => one(value),
+    };
+    let mut resolved = Vec::new();
+    for (id, object) in &doc.objects {
+        let Object::Stream(stream) = object else {
+            continue;
+        };
+        for key in [b"Filter".as_slice(), b"DecodeParms"] {
+            let Ok(value) = stream.dict.get(key) else {
+                continue;
+            };
+            if let Some(written) = direct(value).filter(|written| written != value) {
+                resolved.push((*id, key, written));
+            }
+        }
+    }
+    for (id, key, written) in resolved {
+        if let Some(Object::Stream(stream)) = doc.objects.get_mut(&id) {
+            stream.dict.set(key, written);
+        }
+    }
 }
 
 /// The pages the document's own tree lists, in the tree's order — refusing a tree that is not one.

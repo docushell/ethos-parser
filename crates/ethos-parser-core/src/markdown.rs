@@ -267,7 +267,9 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// 0.0085, each on the scorer's rule against unexpected sentences with no rule on words moving;
 /// semantic formatting, tables and charts unchanged on every page; opendataloader-bench four
 /// documents up and none down. And so is decision #110's: a run painted over what the page already
-/// painted is written once ([`overprinted_runs`]), and the census counts it.
+/// painted is written once ([`overprinted_runs`]), and the census counts it. And so is decision
+/// #111's: a run with no reach goes on along its baseline from a space it ends with
+/// ([`unit_gap_continues`]).
 pub const MARKDOWN_RULE_BLOCKS_V13: &str = "markdown-blocks-v13";
 
 // -------------------------------------------------------------------------------------------
@@ -1385,8 +1387,11 @@ pub(crate) fn measured_box(
 /// both runs of one layout unit on one page — the units rule's reading that they are one piece of
 /// text — `node` on `prev`'s line ([`same_line`], measured by `prev`'s font), drawn after it and
 /// set over it by no more than one of its glyphs. A gap the ink joins bridge never reaches here,
-/// and a gap the units rule reads as two pieces of text is two units already. Called by both
-/// projections.
+/// and a gap the units rule reads as two pieces of text is two units already. Decision #111: a run
+/// with no reach, whose font gives it no width or which is the only run of its font and size and so
+/// has no measure, goes on along its own baseline from a space it ends with, which the page drew: a
+/// font without widths set a page's every word as a block. A run ending in no space is left apart,
+/// since it may be part of a word. Called by both projections.
 pub(crate) fn unit_gap_continues(
     prev: &crate::Node,
     node: &crate::Node,
@@ -1398,15 +1403,21 @@ pub(crate) fn unit_gap_continues(
     else {
         return false;
     };
-    let Some((reach, measure)) = ink_reach(prev, pitch) else {
-        return false;
-    };
-    prev.parent == node.parent
+    let along = prev.parent == node.parent
         && unit(prev).is_some()
         && unit(prev) == unit(node)
-        && line_key(prev).is_some_and(|line| same_line(line, node, measure))
-        && b.origin_x > a.origin_x
-        && b.origin_x - reach >= -measure.pitch
+        && b.origin_x > a.origin_x;
+    along
+        && match ink_reach(prev, pitch) {
+            Some((reach, measure)) => {
+                line_key(prev).is_some_and(|line| same_line(line, node, measure))
+                    && b.origin_x - reach >= -measure.pitch
+            }
+            None => {
+                line_key(prev) == line_key(node)
+                    && prev.reading_text().ends_with(char::is_whitespace)
+            }
+        }
 }
 
 /// The runs that open a label's next line where the label's column wrapped it (decision #47,
@@ -6957,6 +6968,54 @@ pub(crate) mod tests {
             assert_eq!(joins, 0, "{why}: {md}");
             assert_eq!(md.matches("\n\n").count(), 2, "{why}: {md}");
         }
+    }
+
+    /// **A run with no reach goes on along its line from a space it ends with** (decision #111): a
+    /// font without widths gives a run no reach, and a page of such runs was a block a word. A run
+    /// ending in no space is left apart, since it may be part of a word, and so is one on another
+    /// baseline, in another unit, in no unit, or not to the right of it. The only run of a font and
+    /// size has a width and no measure, so no reach either.
+    #[test]
+    fn a_run_with_no_reach_goes_on_from_a_space_it_ends_with() {
+        let md = |head: &'static str, x: i64, y: i64, units: [Option<u32>; 2]| {
+            let repr = repr_of_placed(&[
+                (head, None, 7200, 7200, None, None),
+                ("Report", None, x, y, None, None),
+            ]);
+            artifact_of(with_units(repr, &units)).markdown
+        };
+        let one = [Some(1), Some(1)];
+        assert_eq!(md("Annual ", 9000, 7200, one), "Annual Report\n");
+        assert_eq!(md("Annual", 9000, 7200, one), "Annual\n\nReport\n");
+        assert_eq!(md("Annual ", 9000, 7201, one), "Annual\nReport\n");
+        assert_eq!(md("Annual ", 7200, 7200, one), "Annual\n\nReport\n");
+        assert_eq!(md("Annual ", 7199, 7200, one), "Annual\n\nReport\n");
+        let two = [Some(1), Some(2)];
+        assert_eq!(md("Annual ", 9000, 7200, two), "Annual\n\nReport\n");
+        let none = [None, None];
+        assert_eq!(md("Annual ", 9000, 7200, none), "Annual\n\nReport\n");
+        let regions = repr_of_placed(&[
+            ("Annual ", None, 7200, 7200, None, Some(1)),
+            ("Report", None, 9000, 7200, None, Some(2)),
+        ]);
+        assert_eq!(
+            artifact_of(with_units(regions, &one)).markdown,
+            "Annual\n\nReport\n"
+        );
+        let lone = |head: &'static str| {
+            let repr = repr_of_placed(&[
+                (head, None, 7200, 7200, Some(1400), None),
+                ("Report", None, 9000, 7200, Some(1200), None),
+            ]);
+            let mut payload = repr.payload().clone();
+            if let NodeAttributes::TextRun(a) = &mut payload.nodes[0].attributes {
+                a.font_id = "F2".into();
+            }
+            let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+            artifact_of(with_units(repr, &one)).markdown
+        };
+        assert_eq!(lone("Annual "), "Annual Report\n");
+        assert_eq!(lone("Annual"), "Annual\n\nReport\n");
     }
 
     /// **Words a page set apart by moving its pen are one block** (decision #68): runs of one layout

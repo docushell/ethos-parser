@@ -1090,6 +1090,14 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After word runs with no reach go on along their line (decision #111, 2026-11-05)
+
+Told "Two small fixes", a stream's indirect `/Filter` and `/DecodeParms` are read through their
+references, which moves nothing here, and a run with no reach goes on along its line from a space it
+ends with. Content faithfulness 0.6751 -> 0.6750: `text_ocr__ups` down 0.0014 as a line that was two
+blocks reads whole. Everything else unchanged on every page; overall unchanged at 50.79;
+opendataloader-bench unchanged on every document.
+
 ### After a run painted over what the page already painted is written once (decision #110, 2026-11-05)
 
 Told "Stacked text", a run is left out, and counted, where the characters already painted across its

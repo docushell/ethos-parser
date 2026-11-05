@@ -168,7 +168,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// too.
 ///
 /// `-v13`: decision #109's plain body lines of one layout unit as one `<p>`, keeping their line
-/// breaks, and decision #110's run painted over a copy of itself written once. Both ids move
+/// breaks, decision #110's run painted over a copy of itself written once, and decision #111's run
+/// with no reach going on along its line from a space it ends with. Both ids move
 /// together, for the reason `-v5` gives.
 pub const HTML_RULE_BLOCKS_V13: &str = "html-blocks-v13";
 
@@ -1067,6 +1068,24 @@ mod tests {
         assert_eq!(
             artifact_of(repr).html,
             "<p>The development of a\nlong word</p>\n"
+        );
+    }
+
+    /// **A run with no reach goes on along its line from a space it ends with** (decision #111), as
+    /// in Markdown.
+    #[test]
+    fn a_run_with_no_reach_goes_on_from_a_space_it_ends_with() {
+        let repr = with_units(
+            repr_of_placed(&[
+                ("Annual ", None, 7200, 7200, None, None),
+                ("Report", None, 9000, 7200, None, None),
+            ]),
+            &[Some(1), Some(1)],
+        );
+        assert_eq!(
+            artifact_of(repr).html,
+            "<p>Annual Report</p>
+"
         );
     }
 
