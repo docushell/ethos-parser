@@ -144,7 +144,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared, and one that cannot is counted |
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
-/// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109) |
+/// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -266,7 +266,8 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// inside it. ParseBench content faithfulness 0.6746 -> 0.6747, 5 pages up and 29 down by at most
 /// 0.0085, each on the scorer's rule against unexpected sentences with no rule on words moving;
 /// semantic formatting, tables and charts unchanged on every page; opendataloader-bench four
-/// documents up and none down.
+/// documents up and none down. And so is decision #110's: a run painted over what the page already
+/// painted is written once ([`overprinted_runs`]), and the census counts it.
 pub const MARKDOWN_RULE_BLOCKS_V13: &str = "markdown-blocks-v13";
 
 // -------------------------------------------------------------------------------------------
@@ -1130,6 +1131,105 @@ pub(crate) fn hyphen_tail<'a>(
         return None;
     }
     Some((next, format!("{stem}{tail}")))
+}
+
+/// How many characters already painted [`overprinted_runs`] reads under one run, so a page printing
+/// thousands of characters over one place costs no more than this a run.
+const OVERPRINT_CHARS_READ: usize = 1024;
+
+/// The runs a page painted over what it had already painted (decision #110), which both projections
+/// write once: the characters already painted across a run's own extent, in the same font at the
+/// same size, within an eighth of a glyph of its baseline and short of its end by no more, are the
+/// run's own characters in order, wherever the run boundaries of the two paintings fall. The sequence
+/// is what is compared, never a character's place, and a run's extent ends where the next run on its
+/// baseline starts: a font's stated advance can run past the next glyph, as `celle`'s two `l`s stand
+/// 240 apart under an advance of 490. A step under a third of the advance is not the next glyph, it
+/// is a copy. A glyph is the run's own width per character, no wider than the document's measure of
+/// the font ([`FontMeasure`]), so a run stretched across a table's row reaches no further than its
+/// font. A lone character counts only beside another copy, since a letter of unrelated text set over
+/// this text can land on its twin by chance. The first painting stands, and a later one is read
+/// against it alone. A run with no width has no extent to read, and a table's runs are its cells' to
+/// place. ParseBench content faithfulness 0.6747 -> 0.6751, 10 pages up and none down; semantic
+/// formatting 0.5127 -> 0.5131, one up and one down; tables, charts and visual grounding unchanged
+/// on every page; opendataloader-bench unchanged on every document.
+pub(crate) fn overprinted_runs<'a>(
+    nodes: &'a [crate::Node],
+    owner: &std::collections::BTreeMap<&str, usize>,
+    pitch: &PitchReference,
+) -> std::collections::BTreeSet<&'a str> {
+    // By baseline, then by where a character starts.
+    let mut rows: std::collections::BTreeMap<
+        i64,
+        std::collections::BTreeSet<(i64, char, i64, &str)>,
+    > = Default::default();
+    // Each run read, with whether it is a copy and whether it draws one character.
+    let mut read: Vec<(&str, bool, bool)> = Vec::new();
+    let mut page = None;
+    for (k, node) in nodes.iter().enumerate() {
+        let (Some(a), crate::NativeLocator::Pdf(at)) =
+            (text_run_attributes(node), &node.native_locator)
+        else {
+            continue;
+        };
+        let Some(stated) = at.advance else {
+            continue;
+        };
+        let (font, size, x, y) = (a.font_id.as_str(), a.font_size, at.origin_x, at.origin_y);
+        let step = match nodes.get(k + 1).map(|n| &n.native_locator) {
+            Some(crate::NativeLocator::Pdf(next)) if next.origin_y == y => {
+                next.origin_x.saturating_sub(x)
+            }
+            _ => stated,
+        };
+        let advance = if step.saturating_mul(3) >= stated {
+            stated.min(step)
+        } else {
+            stated
+        };
+        let chars = i64::try_from(node.text.chars().count()).unwrap_or(i64::MAX);
+        let width = advance.checked_div(chars).unwrap_or(0);
+        let measure = pitch.get(&(a.font_id.clone(), size));
+        let glyph = measure.map_or(0, |m| width.min(m.pitch));
+        let drawn = || node.text.chars().filter(|c| !c.is_whitespace());
+        if glyph <= 0 || owner.contains_key(node.id.as_str()) || drawn().next().is_none() {
+            continue;
+        }
+        if page.replace(at.page) != Some(at.page) {
+            rows.clear();
+        }
+        let reach = glyph / 8;
+        let from = (x.saturating_sub(reach), '\0', i64::MIN, "");
+        let to = (
+            x.saturating_add(advance).saturating_sub(reach),
+            '\0',
+            i64::MIN,
+            "",
+        );
+        let mut under: Vec<(i64, char)> = rows
+            .range(y.saturating_sub(reach)..=y.saturating_add(reach))
+            .flat_map(|(_, row)| row.range(from..to))
+            .filter(|p| p.2 == size && p.3 == font)
+            .take(OVERPRINT_CHARS_READ)
+            .map(|p| (p.0, p.1))
+            .collect();
+        under.sort_unstable();
+        let copy = under.iter().map(|u| u.1).eq(drawn());
+        read.push((node.id.as_str(), copy, drawn().nth(1).is_none()));
+        if !copy {
+            let row = rows.entry(y).or_default();
+            for (i, c) in (0i64..).zip(node.text.chars()) {
+                if !c.is_whitespace() {
+                    row.insert((x.saturating_add(i * width), c, size, font));
+                }
+            }
+        }
+    }
+    let copy_at = |k: Option<usize>| k.and_then(|k| read.get(k)).is_some_and(|r| r.1);
+    read.iter()
+        .enumerate()
+        .filter(|&(k, r)| r.1 && (!r.2 || copy_at(k.checked_sub(1)) || copy_at(Some(k + 1))))
+        .map(|(_, r)| r.0)
+        .collect()
 }
 
 /// Whether `node` continues the heading unit the open block's last run `prev` belongs to (decision
@@ -2241,6 +2341,12 @@ pub(crate) fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
 /// the same number — a run is the head of at most one join.
 pub(crate) const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-v1";
 
+/// Runs left out because the page painted them over a copy of themselves (decision #110): a heavy
+/// look made by painting a line twice, a masthead stacked to look thick. [`overprinted_runs`] names
+/// them. **A character bucket**, for [`HYPHENATION_REJOIN_DROPPED`]'s reason: the characters are in
+/// the representation, which keeps every copy the page drew, and are not in this text.
+pub(crate) const OVERPRINTED_RUN_DROPPED: &str = "overprinted-run-dropped-v1";
+
 /// U+0000 in node text, which neither projection writes (review 2026-09-26 N40).
 ///
 /// **Neither format can carry it.** CommonMark replaces it with U+FFFD, and an HTML parser drops
@@ -2871,6 +2977,9 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    for either, and both survive every Markdown renderer as inline HTML. A mark — a run of
 ///    punctuation alone, in no style of its own — set right after a bold run is written inside
 ///    its span, unless a letter or a digit follows it directly (decision #83).
+/// 10. **A run painted over a copy of itself is written once** (decision #110,
+///     [`overprinted_runs`]), and the copy left out is counted in `OVERPRINTED_RUN_DROPPED`. The
+///     representation keeps every copy.
 ///
 /// # Where the tables go
 ///
@@ -2945,6 +3054,7 @@ pub fn to_markdown(
     let pitch = pitch_reference(&payload.nodes);
     let stretches = read_stretches(&payload.nodes, &pitch);
     let wrapped = wrapped_labels(repr);
+    let overprinted = overprinted_runs(&payload.nodes, &owner, &pitch);
     let mut open_line: Option<LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -2967,6 +3077,14 @@ pub fn to_markdown(
             pending_space = false;
             open_line = None;
             line_ink = None;
+            continue;
+        }
+
+        // Decision #110. The open block stands: what follows goes on from the copy kept.
+        if overprinted.contains(node.id.as_str()) {
+            let b = buckets.entry(OVERPRINTED_RUN_DROPPED).or_insert((0, 0));
+            b.0 += node.text.chars().count();
+            b.1 += 1;
             continue;
         }
 
@@ -3085,7 +3203,9 @@ pub fn to_markdown(
         // undeclared join: a run that is the head of a word the page broke across a line opens a
         // block, so `hyphen_tail` can close the word up. Joining it into the block above instead
         // would strand the tail and re-open `nonescr` from the other side.
-        let ht = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner);
+        let next = payload.nodes.get(i + 1);
+        let next = next.filter(|n| !overprinted.contains(n.id.as_str()));
+        let ht = hyphen_tail(node, &text, next, &owner);
         let key = group_key(node);
         let mut across: Option<SequenceJoin> = None;
         let joining = match (open_group, key, open_prev) {
@@ -6042,6 +6162,326 @@ pub(crate) mod tests {
         );
     }
 
+    /// Runs of 24-point `F1`, each `(text, x, y, advance)`.
+    fn overprint_of(runs: &[(&'static str, i64, i64, Option<i64>)]) -> DocumentRepresentation {
+        let specs: Vec<LineSpec<'static>> = runs
+            .iter()
+            .map(|&(t, x, y, advance)| (t, None, x, y, advance, None))
+            .collect();
+        repr_of_placed(&specs)
+    }
+
+    /// How many of `nodes` [`overprinted_runs`] leaves out.
+    fn copies_in(nodes: &[Node]) -> usize {
+        overprinted_runs(nodes, &Default::default(), &pitch_reference(nodes)).len()
+    }
+
+    /// How many runs of `repr` [`overprinted_runs`] leaves out.
+    fn left_out(repr: &DocumentRepresentation) -> usize {
+        copies_in(&repr.payload().nodes)
+    }
+
+    /// **A run painted over a copy of itself is written once** (decision #110): the copy is counted,
+    /// the census balances, and the block goes on from the copy kept.
+    #[test]
+    fn a_run_painted_over_a_copy_of_itself_is_written_once() {
+        let a = artifact_of(overprint_of(&[
+            ("The ", 7200, 7200, Some(1600)),
+            ("The ", 7230, 7230, Some(1600)),
+            ("The ", 7200, 7200, Some(1600)),
+            ("end", 8800, 7200, Some(1200)),
+            ("Next", 7200, 9600, Some(1600)),
+        ]));
+        assert_eq!(a.markdown, "The end\n\nNext\n");
+        assert!(a.coverage.balances());
+        let bucket = a
+            .coverage
+            .dropped
+            .iter()
+            .find(|b| b.code == OVERPRINTED_RUN_DROPPED)
+            .expect("the copies are counted");
+        assert_eq!((bucket.chars, bucket.nodes), (8, 2));
+    }
+
+    /// A copy's baseline lies within an eighth of a glyph of what it lies on, as does its start going
+    /// right; going left the run's extent ends the reach. A third painting is read against the first.
+    #[test]
+    fn a_copy_lies_on_its_extent_within_an_eighth_of_a_glyph() {
+        // 2400 over six characters: a glyph of 400, a reach of 50.
+        let second = |x: i64, y: i64| {
+            left_out(&overprint_of(&[
+                ("Report", 7200, 7200, Some(2400)),
+                ("Report", x, y, Some(2400)),
+            ]))
+        };
+        assert_eq!(second(7250, 7250), 1);
+        assert_eq!(second(7250, 7200), 1);
+        assert_eq!(second(7251, 7200), 0);
+        assert_eq!(second(6851, 7150), 1);
+        assert_eq!(second(6850, 7200), 0);
+        assert_eq!(second(7200, 7251), 0);
+        assert_eq!(second(7200, 7149), 0);
+        let three = overprint_of(&[
+            ("Report", 7200, 7200, Some(2400)),
+            ("Report", 7250, 7250, Some(2400)),
+            ("Report", 7200, 7200, Some(2400)),
+        ]);
+        assert_eq!(left_out(&three), 2);
+        assert_eq!(artifact_of(three).markdown, "Report\n");
+    }
+
+    /// **The two paintings' run boundaries may fall anywhere**, whichever is the finer, and a space
+    /// inside a run or before its first letter is read past. The page that found it paints a title
+    /// letter by letter and again with `u h` as one run, and leaving that run read `u h` as a word.
+    #[test]
+    fn a_copy_may_be_cut_into_other_runs_than_what_it_lies_on() {
+        let finer_first = overprint_of(&[
+            ("u", 7200, 7200, Some(400)),
+            (" ", 7600, 7200, Some(200)),
+            ("h", 7800, 7200, Some(400)),
+            ("u h", 7200, 7200, Some(1000)),
+        ]);
+        assert_eq!(left_out(&finer_first), 1);
+        let coarser_first = overprint_of(&[
+            ("uh", 7200, 7200, Some(800)),
+            ("u", 7200, 7200, Some(400)),
+            ("h", 7600, 7200, Some(400)),
+        ]);
+        assert_eq!(left_out(&coarser_first), 2);
+        let space_first = overprint_of(&[
+            ("c", 7800, 7200, Some(400)),
+            ("u", 8200, 7200, Some(400)),
+            (" c", 7400, 7200, Some(800)),
+            ("u", 8200, 7200, Some(400)),
+        ]);
+        assert_eq!(left_out(&space_first), 2);
+    }
+
+    /// **A run's extent ends where the next run on its baseline starts**, however far its font's
+    /// stated advance runs: `THA` advances past the `T` set after it, so a second painting's `THA`
+    /// would read `THAT` under it. The same two `l`s under a tight step are two copies, not one over
+    /// `ll`.
+    #[test]
+    fn a_run_s_extent_ends_at_the_next_run_on_its_baseline() {
+        let tha = [
+            ("THA", 38043, 7200, Some(2761)),
+            ("T", 40655, 7200, Some(821)),
+        ];
+        let twice: Vec<_> = tha.iter().chain(&tha).copied().collect();
+        assert_eq!(left_out(&overprint_of(&twice)), 2);
+        let ll = [("l", 7200, 7200, Some(490)), ("l", 7440, 7200, Some(490))];
+        let twice: Vec<_> = ll.iter().chain(&ll).copied().collect();
+        assert_eq!(left_out(&overprint_of(&twice)), 2);
+        // A step of a third of the advance is the next glyph, and one under it is not.
+        let stepped = |step: i64| {
+            let line = [
+                ("ab", 7200, 7200, Some(900)),
+                ("c", 7200 + step, 7200, Some(300)),
+            ];
+            let twice: Vec<_> = line.iter().chain(&line).copied().collect();
+            left_out(&overprint_of(&twice))
+        };
+        assert_eq!(stepped(300), 2);
+        assert_eq!(stepped(299), 0);
+    }
+
+    /// A glyph is the run's own width where the font's measure is wider: narrow runs among wide
+    /// ones reach an eighth of their own width, and no further.
+    #[test]
+    fn a_narrow_run_reaches_an_eighth_of_its_own_width() {
+        let second = |x: i64| {
+            left_out(&overprint_of(&[
+                ("mm", 7200, 2400, Some(1600)),
+                ("mm", 7200, 4800, Some(1600)),
+                ("mm", 7200, 9600, Some(1600)),
+                ("ii", 7200, 7200, Some(400)),
+                ("ii", x, 7200, Some(400)),
+            ]))
+        };
+        assert_eq!(second(7225), 1);
+        assert_eq!(second(7226), 0);
+    }
+
+    /// **A lone character counts only beside another copy**: text set over other text can land a
+    /// letter on its twin by chance, and a whole word is not chance.
+    #[test]
+    fn a_lone_letter_on_its_twin_stands_and_a_lone_copy_beside_another_does_not() {
+        let chance = overprint_of(&[
+            ("r", 7200, 7200, Some(400)),
+            ("x", 7600, 7200, Some(400)),
+            ("z", 6800, 7200, Some(400)),
+            ("r", 7200, 7200, Some(400)),
+            ("y", 7600, 7200, Some(400)),
+        ]);
+        assert_eq!(left_out(&chance), 0);
+        let word = overprint_of(&[
+            ("ro", 7200, 7200, Some(800)),
+            ("z", 6800, 7200, Some(400)),
+            ("ro", 7200, 7200, Some(800)),
+            ("y", 8000, 7200, Some(400)),
+        ]);
+        assert_eq!(left_out(&word), 1);
+    }
+
+    /// **The first painting stands**, bold or not: a measured preference for a bold copy gained no
+    /// page and cost four.
+    #[test]
+    fn the_first_painting_stands() {
+        let copies = [("Report", 7200, 7200, Some(2400)); 2];
+        let a = artifact_of(with_styles(overprint_of(&copies), &[1], &[]));
+        assert_eq!(a.markdown, "Report\n");
+        let a = artifact_of(with_styles(overprint_of(&copies), &[0], &[]));
+        assert_eq!(a.markdown, "**Report**\n");
+    }
+
+    /// **Neighbours are not copies, however tight**: a font's stated advance can run past the next
+    /// glyph, as `celle`'s two `l`s stand 240 apart under an advance of 490, and `https://`'s second
+    /// `/` follows a run whose last `/` is estimated close by. A run stretched across a table's row
+    /// reaches no further than its font, so the same row below it is not a copy. And a page of one
+    /// letter painted twice finds every twin, however many there are.
+    #[test]
+    fn neighbours_are_not_copies_and_no_twin_is_too_far_back() {
+        let ll = overprint_of(&[("l", 7200, 7200, Some(490)), ("l", 7440, 7200, Some(490))]);
+        assert_eq!(left_out(&ll), 0);
+        let xx = overprint_of(&[
+            ("l", 7200, 7200, Some(490)),
+            ("l", 7440, 7200, Some(490)),
+            ("l", 7680, 7200, Some(490)),
+        ]);
+        assert_eq!(left_out(&xx), 0, "no copy beside it, and none is a copy");
+        let slash = overprint_of(&[
+            ("tps:/", 18170, 7200, Some(2544)),
+            ("/", 20374, 7200, Some(735)),
+        ]);
+        assert_eq!(left_out(&slash), 0);
+        let rows = overprint_of(&[
+            ("1 2", 7200, 7200, Some(30000)),
+            ("1 2", 7200, 8400, Some(30000)),
+            ("one", 7200, 12000, Some(900)),
+            ("two", 7200, 14400, Some(900)),
+            ("six", 7200, 16800, Some(900)),
+        ]);
+        assert_eq!(left_out(&rows), 0);
+
+        let spots = (0..2000).map(|i| ("e", 7200 + (i % 100) * 500, 7200 + (i / 100) * 1200));
+        let spots: Vec<(&'static str, i64, i64)> = spots.collect();
+        let twice: Vec<_> = spots
+            .iter()
+            .chain(&spots)
+            .map(|&(t, x, y)| (t, x, y, Some(400)))
+            .collect();
+        assert_eq!(left_out(&overprint_of(&twice)), 2000);
+    }
+
+    /// A run is read against 1024 characters painted under it and no more.
+    #[test]
+    fn a_run_is_read_against_1024_characters() {
+        let copies = |text: &'static str| {
+            let advance = Some(100 * text.len() as i64);
+            left_out(&overprint_of(&[
+                (text, 7200, 7200, advance),
+                (text, 7200, 7200, advance),
+            ]))
+        };
+        assert_eq!(copies("x".repeat(1024).leak()), 1);
+        assert_eq!(copies("x".repeat(1025).leak()), 0);
+    }
+
+    /// **A copy is in its font, at its size, on its page**: the same word at the same place in
+    /// another font, at another size or on the next page is the page's own text.
+    #[test]
+    fn a_copy_is_in_its_font_at_its_size_on_its_page() {
+        let base = overprint_of(&[
+            ("Report", 7200, 7200, Some(2400)),
+            ("Report", 7200, 30000, Some(2400)),
+            ("Report", 7200, 7200, Some(2400)),
+            ("Report", 7200, 40000, Some(2400)),
+        ]);
+        let changed = |change: &dyn Fn(&mut TextRunAttributes)| {
+            let mut nodes = base.payload().nodes.clone();
+            for node in &mut nodes[2..] {
+                if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                    change(a);
+                }
+            }
+            copies_in(&nodes)
+        };
+        assert_eq!(changed(&|_| {}), 1);
+        assert_eq!(changed(&|a| a.font_id = "F2".into()), 0);
+        assert_eq!(changed(&|a| a.font_size = 1200), 0);
+
+        let mut nodes = base.payload().nodes.clone();
+        for node in &mut nodes[2..] {
+            if let NativeLocator::Pdf(at) = &mut node.native_locator {
+                at.page = 2;
+            }
+        }
+        assert_eq!(copies_in(&nodes), 0);
+    }
+
+    /// **What a run lies on is read by place**, across baselines within its reach, whichever baseline
+    /// holds which part.
+    #[test]
+    fn what_a_copy_lies_on_is_read_by_place_across_baselines() {
+        let across = overprint_of(&[
+            ("Re", 7200, 7230, Some(800)),
+            ("port", 8000, 7200, Some(1600)),
+            ("Report", 7200, 7200, Some(2400)),
+        ]);
+        assert_eq!(left_out(&across), 1);
+    }
+
+    /// The next run ends a run's extent only on its baseline: a line below that starts inside the
+    /// run's width leaves the run its whole extent.
+    #[test]
+    fn the_next_line_does_not_end_a_run_s_extent() {
+        let copies = overprint_of(&[
+            ("Report", 7200, 7200, Some(2400)),
+            ("Report", 7200, 7200, Some(2400)),
+            ("Next", 8400, 9600, Some(1600)),
+        ]);
+        assert_eq!(left_out(&copies), 1);
+    }
+
+    /// A blank run is no copy, so a lone letter on its twin stands beside one.
+    #[test]
+    fn a_blank_run_is_no_copy_beside_a_lone_letter() {
+        let spaced = overprint_of(&[
+            ("r", 7200, 7200, Some(400)),
+            ("x", 7600, 7200, Some(400)),
+            ("r", 7200, 7200, Some(400)),
+            (" ", 8000, 7200, Some(400)),
+        ]);
+        assert_eq!(left_out(&spaced), 0);
+    }
+
+    /// A table's runs are its cells' to place: two cells of one text set where a table's runs may
+    /// overlap keep their text.
+    #[test]
+    fn a_table_s_runs_are_not_read_as_copies() {
+        let repr = repr_with_table(
+            &["Same", "Same"],
+            1,
+            2,
+            &[cell(0, 0, &[0]), cell(0, 1, &[1])],
+        );
+        let a = artifact_of(repr);
+        assert_eq!(a.markdown.matches("Same").count(), 2, "{}", a.markdown);
+    }
+
+    /// A word's tail is not its head's copy: the copy is left out, and the hyphen stays rather than
+    /// closing up over it.
+    #[test]
+    fn a_copy_is_no_tail_of_the_word_it_copies() {
+        let a = artifact_of(overprint_of(&[
+            ("develop-", 7200, 7200, Some(3200)),
+            ("develop-", 7200, 7230, Some(3200)),
+            ("ment", 7200, 9600, Some(1600)),
+        ]));
+        assert_eq!(a.markdown, "develop-\n\nment\n");
+        assert!(a.coverage.balances());
+    }
+
     /// **A heading is not joined to a plain line of its unit** (decision #109): a mark set beside a
     /// heading shares its unit, and neither reads as the other's next line.
     #[test]
@@ -6606,13 +7046,13 @@ pub(crate) mod tests {
             ("port", 2000, 10500, None, Some(1)),
         ]);
         assert_eq!(md, "Annual\n\nReport\n");
-        // A run drawn again at the origin of a one-glyph run is set over it, not after it, though
-        // it overlaps by no more than that glyph: the ink joins refuse an overprint too.
+        // A run drawn at the origin of a one-glyph run is set over it, not after it, though it
+        // overlaps by no more than that glyph: the ink joins refuse an overprint too.
         let (md, _, joins) = project(&[
             ("I", 2000, 8000, None, Some(1)),
-            ("I", 2000, 8000, None, Some(1)),
+            ("J", 2000, 8000, None, Some(1)),
         ]);
-        assert_eq!((md.as_str(), joins), ("I\n\nI\n", 0));
+        assert_eq!((md.as_str(), joins), ("I\n\nJ\n", 0));
         // A tab within the unit joins too: `Item 1.` and `Business` are one heading's.
         let (md, _, _) = project(&[
             ("Annual", 2000, 8000, None, Some(1)),
@@ -8111,14 +8551,14 @@ pub(crate) mod tests {
         let line = |second: LineSpec<'static>| {
             project_lines(&[("Title", p(1, 9), 7200, 7200, Some(1000), None), second]).markdown
         };
-        // Drawn again over itself, on the line or just off it: two lines, as the page has them.
+        // Set over it, on the line or just off it: two lines, as the page has them.
         assert_eq!(
-            line(("Title", p(2, 9), 7210, 7200, Some(1000), None)),
-            "Title\n\nTitle\n"
+            line(("Other", p(2, 9), 7210, 7200, Some(1000), None)),
+            "Title\n\nOther\n"
         );
         assert_eq!(
-            line(("Title", p(2, 9), 7200, 7150, Some(1000), None)),
-            "Title\n\nTitle\n"
+            line(("Other", p(2, 9), 7200, 7150, Some(1000), None)),
+            "Title\n\nOther\n"
         );
         // A gap the page drew, with no space in it.
         assert_eq!(

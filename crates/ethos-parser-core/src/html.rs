@@ -168,7 +168,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// too.
 ///
 /// `-v13`: decision #109's plain body lines of one layout unit as one `<p>`, keeping their line
-/// breaks. Both ids move together, for the reason `-v5` gives.
+/// breaks, and decision #110's run painted over a copy of itself written once. Both ids move
+/// together, for the reason `-v5` gives.
 pub const HTML_RULE_BLOCKS_V13: &str = "html-blocks-v13";
 
 // -------------------------------------------------------------------------------------------
@@ -372,6 +373,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 /// 8. **U+0000 is not written**, by the same writer and under the same count as the Markdown
 ///    projection: an HTML parser drops it, and reads `&#0;` as U+FFFD. See
 ///    [`crate::markdown::NULL_CHARACTERS_NOT_PROJECTED`].
+/// 9. **A run painted over a copy of itself is written once**, by the same
+///    [`crate::markdown::overprinted_runs`] and under the same count as the Markdown projection.
 ///
 /// # Errors
 ///
@@ -445,6 +448,7 @@ pub fn to_html(
     let pitch = crate::markdown::pitch_reference(&payload.nodes);
     let stretches = crate::markdown::read_stretches(&payload.nodes, &pitch);
     let wrapped = crate::markdown::wrapped_labels(repr);
+    let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &pitch);
     let mut open_line: Option<crate::markdown::LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -466,6 +470,16 @@ pub fn to_html(
             pending_space = false;
             open_line = None;
             line_ink = None;
+            continue;
+        }
+
+        // Decision #110, as in `crate::markdown`.
+        if overprinted.contains(node.id.as_str()) {
+            let b = buckets
+                .entry(crate::markdown::OVERPRINTED_RUN_DROPPED)
+                .or_insert((0, 0));
+            b.0 += node.text.chars().count();
+            b.1 += 1;
             continue;
         }
 
@@ -557,7 +571,9 @@ pub fn to_html(
         // that reads as one block in Markdown must read as one `<p>` here.
         // v2.2-S5. Computed here so it keeps first refusal over the undeclared join, exactly as
         // in `crate::markdown`.
-        let ht = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner);
+        let next = payload.nodes.get(i + 1);
+        let next = next.filter(|n| !overprinted.contains(n.id.as_str()));
+        let ht = hyphen_tail(node, &text, next, &owner);
         let key = crate::markdown::group_key(node);
         let mut across: Option<crate::markdown::SequenceJoin> = None;
         let joining = match (open_group, key, open_prev) {
@@ -1052,6 +1068,38 @@ mod tests {
             artifact_of(repr).html,
             "<p>The development of a\nlong word</p>\n"
         );
+    }
+
+    /// **A run painted over a copy of itself is one run here too** (decision #110), counted under
+    /// Markdown's code, and a copy is no tail of the word it copies.
+    #[test]
+    fn a_run_painted_over_a_copy_of_itself_is_written_once() {
+        let placed = |runs: &[(&'static str, i64, i64)]| {
+            let specs: Vec<_> = runs
+                .iter()
+                .map(|&(t, x, y)| (t, None, x, y, Some(3200), None))
+                .collect();
+            artifact_of(repr_of_placed(&specs))
+        };
+        let a = placed(&[
+            ("Report", 7200, 7200),
+            ("Report", 7230, 7230),
+            ("Next", 7200, 9600),
+        ]);
+        assert_eq!(a.html, "<p>Report</p>\n<p>Next</p>\n");
+        assert!(a.coverage.balances());
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .any(|b| b.code == crate::markdown::OVERPRINTED_RUN_DROPPED
+                && (b.chars, b.nodes) == (6, 1)));
+        let a = placed(&[
+            ("develop-", 7200, 7200),
+            ("develop-", 7200, 7230),
+            ("ment", 7200, 9600),
+        ]);
+        assert_eq!(a.html, "<p>develop-</p>\n<p>ment</p>\n");
     }
 
     /// **A superscript and a subscript are `<sup>` and `<sub>`** (decision #40), as in Markdown.

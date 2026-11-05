@@ -60,6 +60,35 @@ Rule ids `markdown-blocks-v13`, `html-blocks-v13` and `line-units-v6`; `profile_
   up on reading order and none down, tables and headings unchanged on every document. The fabrication
   check (0 of 1,307 cells) and the gate documents' 542 tables are unchanged.
 
+### A run painted over what the page already painted is written once (decision #110)
+
+Folded into `markdown-blocks-v13` and `html-blocks-v13`, which no release carries, so no further
+rule id and no further `profile_sha256` moves. A new census bucket, `overprinted-run-dropped-v1`,
+counts what is left out; the representation keeps every copy.
+
+- **A run is left out where what is already painted across its own extent is the run.** The
+  characters already painted there, in the same font at the same size and within an eighth of a
+  glyph of its baseline, are its own characters in order, however the two paintings cut their runs,
+  and the first painting stands. A table's runs are left to its cells.
+- **A run's extent ends where the next run on its baseline starts.** A font's stated advance can run
+  past the next glyph: `l` advances 490 and the next stands 240 on, and `THA` reaches past the `T`
+  after it. A step under a third of the advance is not the next glyph but a copy.
+- **A lone character counts only beside another copy.** A letter of unrelated text set over this
+  text can land on its twin by chance. A page repainted letter by letter still reads once.
+- **Why this piece**: told "Stacked text", a headline read `Mthimkhulu hails`, `Mthimkhulu hails
+  Ovambanderu for`, `Ovambanderu for preserving culture`, `preserving culture`, and a crash report
+  read its whole narrative twice. Two earlier builds scored as well and were wrong: whole runs read
+  against the last 64 of their text left `crash` reading `A A A` with its score up, and characters
+  read against a place took the second `l` of `celle`. Reading the pages that moved showed both.
+- **Measured** on ParseBench: content faithfulness 0.6747 -> 0.6751, 10 pages up and none down;
+  semantic formatting 0.5127 -> 0.5131, `text_multicolumns__newspage` 0.68 -> 0.97 and
+  `text_multilang__bengali` 0.83 -> 0.72, whose title rules name only the first line of a two-line
+  title and passed because the stray copy left that line alone; the page now reads each title once,
+  whole. Tables, charts and visual grounding unchanged on every page; overall 50.77 -> 50.79.
+  opendataloader-bench, the fabrication check and the gate documents' 542 tables unchanged.
+- **Cost**: `markdown` and `html` take about 6% longer on the largest gate document, 1.8 million
+  one-glyph runs. `extract` is untouched.
+
 ---
 
 ## [0.64.0] — a model reads a document over MCP, and charts, tables and headings are read from the page

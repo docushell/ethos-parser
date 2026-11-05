@@ -1090,6 +1090,23 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a run painted over what the page already painted is written once (decision #110, 2026-11-05)
+
+Told "Stacked text", a run is left out, and counted, where the characters already painted across its
+own extent, in its font and size and on its baseline, are its own in order. Content faithfulness
+0.6747 -> 0.6751, 10 pages up and none down — `text_misc__crash` 0.84 -> 0.91, which painted its
+whole narrative twice, `text_sparse__conductivity` 0.88 -> 0.91; semantic formatting 0.5127 ->
+0.5131, `text_multicolumns__newspage` 0.68 -> 0.97 and `text_multilang__bengali` 0.83 -> 0.72, whose
+title rules name only the first line of a two-line title and passed because the stray copy left that
+line alone; the page now reads each title once, whole. Tables, charts and visual grounding unchanged
+on every page. Overall 50.77 -> 50.79; opendataloader-bench unchanged on every document.
+
+Measured on the way, and why reading the pages that moved is part of the measure: whole runs read
+against the last 64 of their text scored 0.6750 with `crash` reading `A A A`, its frequent letters
+having no twin in reach; characters read against a place scored 0.6751 and took the second `l` of
+`celle`, a digit of `22166` and letters of Khmer and of `https://`, because a font's stated advance
+runs past the next glyph. A preference for a bold copy gained no page and cost four.
+
 ### After a paragraph's lines are one block (decision #109, 2026-11-04)
 
 Markdown wrote every body line as a block of its own. Plain body lines of
