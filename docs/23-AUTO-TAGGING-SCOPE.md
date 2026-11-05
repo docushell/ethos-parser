@@ -173,10 +173,10 @@ The body is not rewritten; read it with these.
   drop the same tail" — is superseded: the re-extraction refuses it. The writer's own conditions
   are unchanged and it stays the stricter of the two: it also refuses a failed Adler-32 check,
   bytes after the deflate data, and every filter other than none and `FlateDecode`, each of which
-  the reader still takes from `lopdf`. **A corpus example arrived the next day**: of OmniDocBench's
-  981 born-digital `v1_0` pages, one is refused by the tokeniser on the read path, where the build
+  the reader still takes from `lopdf`. **A corpus example arrived the next day**: of a private
+  corpus's 981 born-digital pages, one is refused by the tokeniser on the read path, where the build
   before the check wrote an artifact of a page whose 125 718 content bytes were dropped after the
-  fourth ([`measurements/omnidocbench/README.md`](measurements/omnidocbench/README.md)).
+  fourth.
 - **§8, the extract artifact (corrected 2026-09-18, found reviewing the 0.59.0 release note).**
   Its last clause — *a 0.58.0 build, whose record did not deny unknown fields, ignores the key* —
   is true of the tagged-table record and never of an extract artifact. A tagged table's cells are

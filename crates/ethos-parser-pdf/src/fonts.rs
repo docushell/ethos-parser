@@ -2416,7 +2416,7 @@ mod tests {
     /// **A named base encoding is the document telling us which table to use**, so nothing is
     /// assumed and nothing is declared — even though the font is flagged symbolic.
     ///
-    /// Not hypothetical: 4 of the 42 OmniDocBench documents whose fonts set the symbolic bit
+    /// Not hypothetical: 4 of the 42 documents of a corpus whose fonts set the symbolic bit
     /// carry `/Encoding << /BaseEncoding /WinAnsiEncoding /Differences [...] >>`, and their text
     /// decodes correctly. A rule that fired on the flag alone would have libelled them.
     #[test]
@@ -2488,7 +2488,7 @@ mod tests {
     ///
     /// Both reach the same refusal, and until this slice both blamed the unvendored Adobe CJK
     /// set. That is true of `/GBK-EUC-H` and false of `/Identity-H`: §9.7.4.2 makes the identity
-    /// CMap the identity, so nothing about it is missing. 8 of the 20 OmniDocBench documents that
+    /// CMap the identity, so nothing about it is missing. 8 of the 20 corpus documents that
     /// produce no artifact are the second kind, and the old message would have sent a reader
     /// after a dataset that could not have helped them.
     #[test]

@@ -2045,7 +2045,7 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
 /// **`advance` is not an ink width, and this is the whole reason v2.2-S5 needs a second opinion.**
 /// A table cell is commonly drawn as one run whose advance is the CELL PITCH, so
 /// `origin_x + advance` lands on the *next cell* and a gap test reads ~0 across 120 pt of white
-/// space. Measured on `docstructbench_llm-raw-scihub-o.O-ceat.200600410`: `AC` is drawn at
+/// space. Measured on a chemistry paper: `AC` is drawn at
 /// `origin_x` 31 181 with an advance of 12 053 — 6 026 per glyph, where the same font's median is
 /// ~330, eighteen times over — and the next cell's `AA` begins at 43 229. A rule reading `advance`
 /// alone joins them and emits `ACAA`, a token the page draws nowhere.
@@ -2061,7 +2061,7 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
 /// refused it a single centipoint of reach beyond the estimate. `reference` is a **median**, so
 /// half of all runs exceed `glyphs × reference` by construction — and the epsilon is 12
 /// centipoints, so a fraction of one percent is enough to break a join that is really abutting.
-/// Measured on `docstructbench_llm-raw-scihub-o.O-chem.200700133.pdf_6`: `coordi` advances 2 509
+/// Measured on a chemistry page: `coordi` advances 2 509
 /// over 6 glyphs against a font median of 415, so the cap truncated its reach by 21 centipoints
 /// and turned a true 8-centipoint gap into a computed 29 — `coordi` and `nation` came out as two
 /// blocks, and the whole page projected one word per block.
@@ -2148,7 +2148,7 @@ pub(crate) fn ink_sequenced(
         //    Without it an untagged page whose word gaps are cursor moves rather than space
         //    glyphs emits ONE WORD PER BLOCK: the reader inserts the space, and the block rule
         //    then measures the same gap against a 12-centipoint quantization epsilon and calls it
-        //    a break. 253 of 735 OmniDocBench documents were more than half sub-3-character
+        //    a break. 253 of 735 documents of a corpus were more than half sub-3-character
         //    blocks, holding 53% of all their text.
         //
         //    **It joins on the reader's own prior finding, not on a new threshold.** A gap
@@ -2280,7 +2280,7 @@ pub(crate) fn read_together(
 ///
 /// **What that justification does NOT cover, stated because v2.2-S5 now leans on this number
 /// outside the population it was measured on.** The valley was measured on *declared* pairs of
-/// *one Latin document*. On undeclared pairs of the OmniDocBench corpus — roughly four fifths of
+/// *one Latin document*. On undeclared pairs of a private corpus — roughly four fifths of
 /// which set CJK — the 13-150 centipoint band is not empty: CJK draws no word space, so its gap
 /// distribution decays monotonically and has no valley to site an epsilon in. The number is kept
 /// because it is the one already in the tree and because raising it would be a per-script knob,
@@ -7395,7 +7395,7 @@ pub(crate) mod tests {
     ///
     /// Until this slice a run the document did not mark joined with nothing, and on an untagged
     /// PDF every run became its own block — a median of two characters per block over the 981
-    /// OmniDocBench documents. Absence is still never a *group*: what licenses the join is not
+    /// documents of a corpus. Absence is still never a *group*: what licenses the join is not
     /// the missing declaration but the ink, drawn next along one baseline.
     ///
     /// **Both halves are asserted here on purpose.** The second is the sole in-unit guard for the
@@ -7561,11 +7561,11 @@ pub(crate) mod tests {
     /// percent over the median was enough to truncate a run's reach past the epsilon and split a
     /// word in half.
     ///
-    /// From `docstructbench_llm-raw-scihub-o.O-chem.200700133.pdf_6`, in the corroborating font's
+    /// From a chemistry page, in the corroborating font's
     /// units: `coordi` advances 2 000 over 6 glyphs where the median is 330, so the old cap of
     /// 1 980 put its reach 20 centipoints short, turning a true 8-centipoint gap into 28 and
     /// emitting `coordi` and `nation` as two blocks. That page projected one word per block and
-    /// scored a flat 1.0 on OmniDocBench text edit distance.
+    /// scored a flat 1.0 on text edit distance.
     #[test]
     fn a_run_wider_than_the_median_glyph_still_joins() {
         let mut specs = corroborating(6);
@@ -7709,7 +7709,7 @@ pub(crate) mod tests {
     /// **A run whose advance is the column pitch is not joined onto the next cell** — the test
     /// this rule is shaped around.
     ///
-    /// `advance` is not an ink width. `docstructbench_llm-raw-scihub-o.O-ceat.200600410` draws a
+    /// `advance` is not an ink width. A chemistry paper draws a
     /// table row's `AC` at `origin_x` 31 181 with an advance of 12 053 — 6 026 per glyph against
     /// a font median of ~330 — so `origin_x + advance` lands inside the *next cell* and a
     /// one-sided gap test reads ~0 across 120 pt of white space, emitting `ACAA`. Capping the
@@ -8876,7 +8876,7 @@ pub(crate) mod tests {
     /// The page draws no space glyph; the reader recognises the `TJ` gap, writes a space into the
     /// run's own text and flags it. Before this, the block rule then measured that same gap
     /// against the 12-centipoint quantization epsilon, called it a break, and emitted one word per
-    /// block — 296 of 735 OmniDocBench documents projected that way.
+    /// block — 296 of 735 documents of a corpus projected that way.
     ///
     /// The gap here is 300 centipoints against a 330-centipoint reference: far outside the
     /// epsilon, and exactly the size of the space that is already sitting in `with `'s text.

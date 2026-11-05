@@ -22,7 +22,7 @@
 //! MiB on four. Every limit below is a named refusal where that was an out-of-memory kill.
 //!
 //! **Set from a census of 1,294 real PDFs** (3,370 pages: the gate set, gate-zero, the engine
-//! fixtures, opendataloader-bench and OmniDocBench `v1_0`), each far above what the census holds:
+//! fixtures, opendataloader-bench and a private corpus), each far above what the census holds:
 //!
 //! | ceiling | the census's largest | margin |
 //! |---|---:|---:|

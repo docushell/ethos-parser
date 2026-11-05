@@ -20,8 +20,8 @@ its own measurement rather than a guess bolted on"*. This is that measurement.
 
 ## 1. The question
 
-After 0.51.0, 1 238 of 25 123 geometry entries are still typed-absent across the 37 OmniDocBench
-documents that declare a Core-14 face with no `/Widths` and no `/FontDescriptor`. **How many of
+After 0.51.0, 1 238 of 25 123 geometry entries are still typed-absent across the 37 documents of a
+private corpus that declare a Core-14 face with no `/Widths` and no `/FontDescriptor`. **How many of
 those would a glyph-name table recover?**
 
 The table in question is PDF 32000-1 Annex D's `WinAnsiEncoding` column — code to glyph *name*,
@@ -85,8 +85,7 @@ grounds, and the price is seven nodes.
 
 - **A corpus where the number is not seven.** The 0.03% is a property of this corpus — English
   scientific PDFs in unembedded Times and Helvetica. A population using Latin-1 accented text in
-  standard-14 faces would move it, and the instrument under
-  [`measurements/omnidocbench/`](measurements/omnidocbench/README.md) re-measures it.
+  standard-14 faces would move it.
 - **A derived table rather than a transcribed one.** The objection is transcription risk, not the
   table. A generator that emits the mapping from a source that can be checked against the
   `WinAnsiEncoding` text column already vendored — every entry cross-validated, no hand-typing —

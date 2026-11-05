@@ -32,8 +32,7 @@ be set when the repository is not checked out beside `ethos-oracle`.
 | gate-zero | `../ethos-oracle/benchmarks/gate-zero/corpus` | 10 | 608 |
 | odl-bench | `~/ethos-external-benchmarks/opendataloader-bench/pdfs` | 200 | 200 |
 
-Not included: the OmniDocBench pages (images, not PDFs — see the omnidocbench measurement), and the
-office fixtures, which are not PDFs and have their own encryption declarations (`lib.rs`,
+Not included: the office fixtures, which are not PDFs and have their own encryption declarations (`lib.rs`,
 `epub.rs`).
 
 ## Running them

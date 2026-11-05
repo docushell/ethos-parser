@@ -1071,7 +1071,7 @@ bounded either, and pages read in parallel multiplied both by the host's cores:
 ### The census the ceilings are set from
 
 `f08_census`, a scratch instrument over `lopdf` alone, read 1,294 real PDFs and 3,370 pages: the gate
-set, gate-zero, the engine fixtures, opendataloader-bench and OmniDocBench `v1_0`.
+set, gate-zero, the engine fixtures, opendataloader-bench and a private corpus.
 
 | per | the census's largest | where | ceiling | margin |
 | --- | ---: | --- | ---: | ---: |

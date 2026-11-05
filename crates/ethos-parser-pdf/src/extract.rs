@@ -1718,7 +1718,7 @@ fn extract_page(
                 // a `/Form` and for a stream with no readable `/Subtype`, and until now this
                 // `continue` was the end of it: the placement was discarded and the artifact said
                 // nothing. A page whose entire content is `q /Xf1 Do Q` — the shape a
-                // page-slicing tool produces, and 4 of 104 sampled OmniDocBench documents — then
+                // page-slicing tool produces, and 4 of 104 documents sampled from a corpus — then
                 // emitted zero nodes with `pages_failed: 0`, and a consumer could not tell it
                 // from a blank page.
                 //
@@ -2984,11 +2984,11 @@ fn run_findings(
 /// A `FlateDecode` filter is checked wherever it sits in the chain; a `LZWDecode` or
 /// `ASCII85Decode` stream that is corrupt part way is not caught here.
 ///
-/// **Measured on a corpus, 2026-09-18.** Over OmniDocBench's 981 born-digital `v1_0` pages this
-/// refuses one document, `jiaocaineedrop_chap10.pdf_8.pdf`, whose page content `lopdf` stops
+/// **Measured on a corpus, 2026-09-18.** Over a private corpus's 981 born-digital pages this
+/// refuses one document, whose page content `lopdf` stops
 /// reading at byte 4 of 125 718: the build before this check exits 0 on it and writes an artifact
-/// whose two nodes carry no text, a complete-looking read of a page nobody read
-/// (`docs/measurements/omnidocbench/README.md`). It is the first corpus example of the defect;
+/// whose two nodes carry no text, a complete-looking read of a page nobody read.
+/// It is the first corpus example of the defect;
 /// the other corpora this repository can reach hold none.
 ///
 /// # Errors

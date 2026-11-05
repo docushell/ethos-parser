@@ -48,10 +48,9 @@ cannot be quoted.
 
 ## 2. What was measured
 
-A throwaway spike over the 36 documents of the OmniDocBench `v1_0` corpus that declare
+A throwaway spike over the 36 documents of a private corpus that declare
 `font-widths-absent`, modelling `ink_box`'s actual order — a vertical envelope **first**, then a
-width greater than zero — against Adobe's Core-14 AFMs. See
-[`measurements/omnidocbench/`](measurements/omnidocbench/README.md) for the corpus and its terms.
+width greater than zero — against Adobe's Core-14 AFMs.
 
 ## 3. What it found
 

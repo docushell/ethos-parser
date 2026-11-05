@@ -4610,7 +4610,7 @@ mod tests {
              rule ids — `markdown-blocks-v4` -> `-v5`, `html-blocks-v4` -> `-v5` — because the \
              clauses live in `markdown.rs` and `html.rs` calls them. Until now a run the document \
              declared nothing about joined with nothing, so an untagged PDF projected one block \
-             per run: a median of TWO characters per block across 981 OmniDocBench documents, \
+             per run: a median of TWO characters per block across 981 documents of a private corpus, \
              with 163 of 733 documents at 95% or more sub-3-character blocks holding 52% of all \
              the text. Those runs now join when they are the next ink along one baseline — same \
              page, same region, same stream, same `origin_y`, no gap the page drew. What differs \
@@ -4646,7 +4646,7 @@ mod tests {
              is inferred: a union of measured rectangles is measured, and an element's text is \
              its members' own characters concatenated, because a space the page drew is a run \
              with its own text. Runs per citable element: 13.55 across the gate corpus \
-             (`nist-sp-800-207` 19.72), and 1.24 across OmniDocBench — the same statistic meaning \
+             (`nist-sp-800-207` 19.72), and 1.24 across a private corpus — the same statistic meaning \
              opposite things on a tagged and an untagged corpus, because where nothing is \
              declared only the baseline join fires.\n\n\
              Moved a SEVENTY-EIGHTH time at 0.50.0 (v2.2-S8), and this one changes NO ARTIFACT \
@@ -4656,7 +4656,7 @@ mod tests {
              of an identity CMap. §9.7.4.2 makes that mapping the identity, so the code IS the \
              CID and nothing about the CMap is missing; what is absent is CID to Unicode, which \
              here has no source because the font supplies no `/ToUnicode`. 8 of the 20 \
-             OmniDocBench documents that produce no artifact are that kind, and the old sentence \
+             documents of a private corpus that produce no artifact are that kind, and the old sentence \
              would have sent a reader after a dataset that could not have helped them. MINOR \
              rather than PATCH because §4's rule is about bytes for the same input and stderr is \
              bytes; a reviewer who reads `output` as the artifact alone would call it a PATCH, \

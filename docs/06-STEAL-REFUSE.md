@@ -150,8 +150,8 @@ in one gate fixture alone. Two independent instruments agree on 70 forms in 47 d
 routes. **Bytes and not operations**, because one `Tj` can draw a paragraph, and that distinction is
 what settled it.
 
-**The narrow case is real and is the one the counter was written for.** Read by exact code name, the
-981-document OmniDocBench census holds **256 declaring it, of which 14 emit an entirely empty artifact
+**The narrow case is real and is the one the counter was written for.** Read by exact code name, a
+981-document census of a private corpus holds **256 declaring it, of which 14 emit an entirely empty artifact
 and are not scans** — born-digital pages whose whole content sits behind a form, the shape
 `extract.rs:1043` describes. For those the loss is total. **How much text is behind them is
 unmeasured**: that corpus cannot be re-fetched.

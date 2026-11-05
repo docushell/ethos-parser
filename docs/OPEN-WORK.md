@@ -223,10 +223,8 @@ boxes, which doc 22 refused.
   as a conditional slice because adding it measures 91.7% recall at up to 15.76%, on a stand-in
   signal. Which roadmap version carries it is pending (§4).
 
-- ~~**Re-run OmniDocBench** as an instrument after 0.58.0~~ — **done 2026-09-18**: the corpus was
-  re-fetched (981 files, 538 521 457 bytes, `v1_0`) and the census re-run in 13 s on the build at
-  `a18b2b0`; figures, the two codes that moved and the one new hard failure are in
-  [`measurements/omnidocbench/README.md`](measurements/omnidocbench/README.md). opendataloader-bench
+- ~~**Re-run a private corpus** as an instrument after 0.58.0~~ — **done 2026-09-18**: the census was
+  re-run in 13 s on the build at `a18b2b0`. opendataloader-bench
   was re-run on 2026-09-16 (NID 0.8697, TEDS 0.1704, MHS 0.0000).
 - ~~**Right-to-left text: should an artifact declare that no bidi reordering was applied?**~~ — **done 2026-09-23.** `right-to-left-not-reordered`, document-scoped, counting the runs whose text holds a scalar from a right-to-left block. **Conditional, unlike the two unconditional codes**: the reader already has the text, so whether it applies is a fact about *this* document and a document drawing none declares nothing — which is what makes it worth reading when it appears. The test is a **block** test (`U+0590`–`U+08FF`, `U+FB1D`–`U+FDFF`, `U+FE70`–`U+FEFF`, and since review 2026-09-26 the astral right-to-left ranges `U+10800`–`U+10FFF` and `U+1E800`–`U+1EFFF`), not Unicode's `Bidi_Class`, which this engine does not carry, and the wording claims blocks rather than classes so it is true of what it measures; it over-includes a few non-RTL scalars in those blocks, which is the safe direction. **Byte evidence: exactly 1 of 70 fixture artifacts moved** — `rtl-hebrew-visual-order` — with nodes, pages, geometry and the rest of the assurance block identical and `profile_sha256` unchanged at `sha256:850e4fa3…`. Counted at document level over the runs already built, so no counter is threaded through the page struct. **Since decision #54 (2026-10-08)** a right-to-left line is read right to left beside its drawn text (`right-to-left-lines-v1`), and the declaration counts only the runs that rule leaves unread.
 - **A committed fixture for the `<mc:AlternateContent>` path.** Neither `docx.rs` nor `pptx.rs`

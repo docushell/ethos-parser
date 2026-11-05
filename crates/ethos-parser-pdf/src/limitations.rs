@@ -97,7 +97,7 @@ pub const UNMAPPED_CODES_READ_FROM_FONT: &str = "unmapped-codes-read-from-font";
 /// `scalar_code_mismatch: false`, because one code did produce one scalar. It was simply the
 /// wrong one.
 ///
-/// **Why the codes are still emitted rather than refused.** Measured over 981 OmniDocBench
+/// **Why the codes are still emitted rather than refused.** Measured over a corpus of 981
 /// documents, 42 carry such a font, and the flag does not separate the two populations: the same
 /// condition holds for `MathematicalPiLTStd-1`, where the decode is wrong, and for `Europa-Bold`
 /// and `NewBaskervilleStd-Roman`, where the font is ordinary prose that merely sets the symbolic

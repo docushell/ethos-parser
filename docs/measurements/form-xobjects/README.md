@@ -17,7 +17,7 @@ proposal had folded into one incidence figure:
 | | |
 | --- | --- |
 | **The broad case — refuted.** A document that reads fine and happens to draw a form | On the two corpora this repository can re-measure, every undescended form together holds **1 464 bytes across 208 documents** — about a third of a page. Not a recall item |
-| **The narrow case — real, and it is the one `extract.rs`:1043 names.** A page whose whole content is one form | **14 OmniDocBench documents (1.4%) emit an entirely empty artifact** and are **not** scans. For those the loss is total. How much text is behind them is **unmeasurable here**: that corpus cannot be re-fetched |
+| **The narrow case — real, and it is the one `extract.rs`:1043 names.** A page whose whole content is one form | **14 documents of a private corpus (1.4%) emit an entirely empty artifact** and are **not** scans. For those the loss is total. How much text is behind them is **unmeasurable here**: that corpus cannot be re-fetched |
 
 **The slice stays unbuilt, on narrower grounds than "it is not worth it".** The recall argument the
 review made is refuted. The blank-artifact case survives, is already *declared* rather than silent
@@ -52,7 +52,7 @@ default-features = false }`, the engine's own declaration, so it reads a form st
 descent would. To re-run it, drop it into a scratch crate with that one dependency.
 
 Binary: `target/release/ethos-parser`, **ethos-parser 0.60.0**. Corpora: the 8 gate fixtures and the
-200 `opendataloader-bench` documents, plus the committed OmniDocBench census (§4).
+200 `opendataloader-bench` documents, plus a census of a private corpus (§4).
 
 ```bash
 python3 docs/measurements/form-xobjects/declared_census.py target/release/ethos-parser \
@@ -89,7 +89,7 @@ corpus**, against `nist-sp-800-53Ar5` alone emitting 1 803 517 text nodes.
 
 **No document in either corpus loses its page to a form.** Zero of the 47 emit zero text nodes.
 
-## 4. OmniDocBench — the narrow case is real, and it is the half that survives
+## 4. A private corpus — the narrow case is real, and it is the half that survives
 
 > **Corrected 2026-09-22, same day, before this document had been acted on.** The first version of
 > this section said the census *"predates the document-scoped counter"* and could only offer a
@@ -102,11 +102,10 @@ corpus**, against `nist-sp-800-53Ar5` alone emitting 1 803 517 text nodes.
 > weaker.
 
 `extract.rs`:1043 motivates the counter with *"a page whose entire content is `q /Xf1 Do Q` — the
-shape a page-slicing tool produces, and 4 of 104 sampled OmniDocBench documents"*. That shape is the
+shape a page-slicing tool produces, and 4 of 104 documents sampled from a corpus"*. That shape is the
 real prize: the form holds the whole page, not a caption.
 
-The OmniDocBench v1_0 census — 981 documents, re-run 2026-09-18 on `a18b2b0`, recorded in
-[`measurements/omnidocbench/`](../omnidocbench/README.md) — answers it directly:
+A census of that corpus — 981 documents, re-run 2026-09-18 on `a18b2b0` — answers it directly:
 
 | | |
 | --- | ---: |
@@ -122,8 +121,7 @@ rather than merely shape-matched**, and at 1.53% it corroborates the order of ma
 `4 of 104` figure rather than contradicting it. A further **47 of the 256 emit under 100 bytes**.
 
 **What cannot be measured here:** how much text is behind those 14 forms. The corpus is not on this
-machine and cannot be re-fetched — OmniDocBench has shipped page images rather than PDFs since
-2025-09-25, under a research-use-only licence. So the *incidence* of total loss is measured; its
+machine and cannot be re-fetched. So the *incidence* of total loss is measured; its
 *volume* is not.
 
 The census file itself is `full_census.json` at the repository root and is **git-excluded**, so it is

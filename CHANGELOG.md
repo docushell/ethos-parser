@@ -2175,7 +2175,7 @@ quoted from the commit that made it, measured against that commit's parent.
   0 of 178,239.
 - **In `classify`, what `extract` refuses.** A page whose content `extract` refuses was classified
   `no-text`, exit 1, and an operator Table A.1 does not list was counted, exit 0. Each now exits 2
-  with `extract`'s own message, naming the page. Over 2,088 PDFs, 8 moved: an OmniDocBench document
+  with `extract`'s own message, naming the page. Over 2,088 PDFs, 8 moved: a corpus document
   whose `/Filter` is not a name, and seven of the review's hostile files.
 - **A DOCX, XLSX or PPTX package naming one entry twice.** They read the first, where Python's
   `zipfile` and `textutil` read the last; the ODF and EPUB readers already refused it, and all seven
@@ -2298,7 +2298,7 @@ the vertical cut does not divide down its leading-gap slabs.
 **On real documents most of it moves nothing.** The reader's refusals are of malformed and crafted
 inputs: on the corpus, `extract`, `classify` and `tag` keep every exit code, and `overlay` refuses
 only the three signed IRS forms whose signature it used to invalidate. Against 0.61.0 over
-OmniDocBench v1_0's 981 documents, **4 are newly refused** — each draws with a composite font whose
+a private corpus's 981 documents, **4 are newly refused** — each draws with a composite font whose
 `/Encoding` is an embedded CMap and which has no `/ToUnicode`, so this profile has no source for its
 text — and **1 that 0.61.0 refused now reads**, a document listing a `/GBK-EUC-H` font none of its
 text uses. What moves on the 426-input corpus: `gutter-columns-v4`'s order on 67 documents, three
@@ -2345,7 +2345,7 @@ without its stream — a `/Length` that misses the data — is counted as an unr
 was declared a form not descended on a page that draws no form.
 
 **A font this profile cannot decode refuses where text is drawn with it**, not where a page lists
-it — the one OmniDocBench document above.
+it — the one corpus document above.
 
 ### Characters the file states, read
 
@@ -2927,7 +2927,7 @@ does — beside the digests and version strings every release moves.
   stream cut or corrupt part way inflated to what came before the damage and was returned as a
   success. Over 311 documents 0 of 622 `extract` and `classify` answers moved, and the cost on
   `nist-sp-800-53Ar5` is 32.46 s → 32.57 s. **The first corpus example arrived the next day:** of
-  OmniDocBench's 981 born-digital pages, one is now refused where the build before wrote an artifact
+  a private corpus's 981 born-digital pages, one is now refused where the build before wrote an artifact
   of a page whose 125,718-byte content stream was dropped after its fourth byte.
 - **A run dropped at an undecodable code still moves the pen.** The loop returned at the code,
   leaving the text matrix where it stood, so every later run of the text object was reported a
@@ -3722,7 +3722,7 @@ about the payload's size less, and MCP `extract` on a 4.6 MB PDF from 8.7 GiB to
   unexecuted. The instrument's first run was an overclaim — 344 comparisons, 194 of them `markdown`
   and `html` refusing a PDF they were handed — and was corrected before this figure.
 
-- **`docs/measurements/omnidocbench/`** — "684 of the 981 pages carry a text layer, the other 237
+- **A private corpus's measurement** — "684 of the 981 pages carry a text layer, the other 237
   score 1.0" did not reconcile: 684 + 237 is 921, the pages the harness scores, not the corpus. Three
   populations were sharing one denominator — 981 in the corpus, 921 scored, 756 carrying text
   objects — and each is now named where it is used.
@@ -3829,7 +3829,7 @@ with
 a
 ```
 
-**Measured over the 981 OmniDocBench documents**, before and after, per document:
+**Measured over 981 documents of a private corpus**, before and after, per document:
 
 | | 0.53.0 | 0.54.0 |
 | --- | ---: | ---: |
@@ -3872,7 +3872,7 @@ call.
 
 ## [0.53.0] — a median used as a hard bound split words in half
 
-**Found by running OmniDocBench end2end for the first time.** An English chemistry page scored a
+**Found by scoring a private corpus for the first time.** An English chemistry page scored a
 flat **1.0** on text edit distance, and the output explained why: `coordination` came out as
 `coordi` and `nation`, `There` as `T` and `here`, `Figure` as `F` and `igure`. Not a decoding
 failure — a join failure, mid-word.
@@ -3883,7 +3883,7 @@ central estimate, so **half of all runs exceed it by construction** — and the 
 centipoints, so a fraction of one percent over the median is enough to manufacture a gap that is
 not there.
 
-Measured on `docstructbench_llm-raw-scihub-o.O-chem.200700133.pdf_6`:
+Measured on that page:
 
 | | |
 | --- | ---: |
@@ -3902,7 +3902,7 @@ median. No constant is introduced and the multiplier stays 1, which is what
 The `AC` cell-pitch run that the cap exists to refuse — advance 12 053 over 2 glyphs against a
 median of 330, **eighteen times over** — is nowhere near the widened bound and is still refused.
 
-**Corpus effect**, over the 981 OmniDocBench documents:
+**Corpus effect**, over 981 documents of a private corpus:
 
 | | 0.52.0 | 0.53.0 |
 | --- | ---: | ---: |
@@ -4000,7 +4000,7 @@ Adobe's 14 AFM files are vendored **pristine** in `vendor/afm/`, with `MustRead.
 and embedded verbatim by `include_str!`. Decision **#22** of `docs/00-NORTH-STAR.md` is where the
 licence was accepted; `docs/20-STANDARD-14-METRICS-SCOPE.md` is the measurement behind it.
 
-**Measured before and after on the same 37 OmniDocBench documents**, with the same instrument —
+**Measured before and after on the same 37 documents of a private corpus**, with the same instrument —
 every document declaring a Core-14 face with no `/Widths` and no `/FontDescriptor`:
 
 | | 0.50.0 | 0.51.0 |
@@ -4086,7 +4086,7 @@ supplies no `/ToUnicode`. Adobe publishes such a mapping per registry and orderi
 carries none; and where the descendant's `/CIDSystemInfo` ordering is `Adobe-Identity-0` the CIDs
 are the subset font's own, so no published table decodes them either.
 
-**8 of the 20 OmniDocBench documents that produce no artifact are that kind.** The old sentence
+**8 of the 20 documents of a private corpus that produce no artifact are that kind.** The old sentence
 would have sent a reader after a dataset that could not have helped them — and nearly did: the gap
 analysis that prompted this listed "vendor the Adobe CMaps" as fixing 20 documents when it fixes 4.
 
@@ -4124,7 +4124,7 @@ element 1 is `"Form  W-9"` with a box spanning both its runs.
 | --- | ---: |
 | `fixtures/gate` (tagged US federal publishing) | **13.55** |
 | `nist-sp-800-207` | **19.72** |
-| OmniDocBench `v1_0` (untagged) | **1.24** |
+| A private corpus (untagged) | **1.24** |
 
 **The same statistic means opposite things on the two corpora, and that is the honest reading.**
 Where the producer declares marked-content groups the element is a real block; where nothing is
@@ -4169,7 +4169,7 @@ No rule id moves — there is no grounding rule id, which is itself worth notici
 
 ## [0.48.0] — a legal hex string was fatal, and a symbolic font was decoded through the wrong table in silence
 
-Two correctness fixes found by reading the OmniDocBench census rather than the code. Neither
+Two correctness fixes found by reading a private corpus's census rather than the code. Neither
 changes a rule's **definition**, so no projection rule id moves; `parser_version` moves
 `profile_sha256` as it always does.
 
@@ -4239,7 +4239,7 @@ never a group** — written after an earlier draft read `mcid: None` as a group 
 space, 59 times per document.
 
 The rule was right and its scope was wrong. On a corpus where nothing is tagged, *every* run took
-that path. Measured over all 981 born-digital PDFs of OmniDocBench's `v1_0` `ori_pdfs`:
+that path. Measured over all 981 born-digital PDFs of a private corpus:
 
 | | before | after |
 | --- | ---: | ---: |
@@ -4259,7 +4259,7 @@ declaration but the ink.
 **`advance` is not an ink width, and that is the whole of the safety argument.** A table cell is
 commonly drawn as one run whose advance is the *cell pitch*, so `origin_x + advance` lands inside
 the next cell and a gap test reads ~0 across 120 pt of white space.
-`docstructbench_llm-raw-scihub-o.O-ceat.200600410` draws `AC` at `origin_x` 31 181 with an advance
+A chemistry paper draws `AC` at `origin_x` 31 181 with an advance
 of 12 053 — 6 026 per glyph, against that font's median of ~330 — and the next cell's `AA` begins
 at 43 229. Read naively they join and emit `ACAA`, a token the page draws nowhere.
 

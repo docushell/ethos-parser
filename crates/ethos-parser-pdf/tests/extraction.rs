@@ -8351,7 +8351,7 @@ fn actual_text_alt_and_e_are_declared_unread() {
 
 /// **A font this profile cannot decode refuses where it is drawn with, not where a page lists
 /// it** (tracker I8). A page listing a `/GBK-EUC-H` font and drawing nothing with it was refused
-/// whole; one OmniDocBench document was, over a font none of its text uses.
+/// whole; one corpus document was, over a font none of its text uses.
 #[test]
 fn a_font_this_profile_cannot_decode_refuses_only_where_it_is_drawn_with() {
     let stream = |data: &[u8]| {
