@@ -169,9 +169,11 @@ printf 'python: %s (%s)\n' "$PY_BIN" "$("$PY_BIN" -V 2>&1)"
 # Keyed by interpreter version, so switching pythons rebuilds rather than reusing a venv built
 # against the old one.
 VENV="$ROOT/target/sdk-venv-$("$PY_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+# `--clear`, because "not executable" also means a venv CI's cache restored after the runner's Python
+# moved: its links dangle, and `venv` without `--clear` keeps them and fails on them.
 if [ ! -x "$VENV/bin/python" ]; then
   printf 'creating %s\n' "$VENV"
-  "$PY_BIN" -m venv "$VENV"
+  "$PY_BIN" -m venv --clear "$VENV"
 fi
 # `--quiet` twice over: this is a gate, and its output should be the suites' output.
 "$VENV/bin/python" -m pip install --quiet --upgrade pip >/dev/null
