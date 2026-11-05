@@ -3,7 +3,7 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Ten versions are tagged, 0.55.0 through 0.64.0, and six of them carry binaries.** 0.55.0,
+**Eleven versions are tagged, 0.55.0 through 0.65.0, and seven of them carry binaries.** 0.55.0,
 0.56.0 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub
 Release ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it
 ships:** Linux, Windows and both macOS architectures, one fingerprint across four runners —
@@ -11,7 +11,7 @@ delivered, unfortunately, as the single `release-bundle.zip` its own notes tell 
 **0.61.0 is the first to ship those four as five separate assets** — the four archives and
 `SHA256SUMS.txt`, published 2026-09-25 — so a consumer downloads one platform and the manifest
 instead of all four; §8's amendment records why 0.60.0's shape could not be repaired, and 0.64.0
-ships the same five. **0.62.0 and 0.63.0 have no release object**: each tag push built the four
+and 0.65.0 ship the same five. **0.62.0 and 0.63.0 have no release object**: each tag push built the four
 archives and the manifest, neither was published, and 0.64.0 descends from both. **0.58.0 and 0.59.0 are tags with no release
 object**, and little is lost by that: 0.60.0 descends from both, so their work is in the binaries
 above, and a reader who needs one of those two exactly builds it from its tag under the pinned
@@ -30,13 +30,43 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased]
+## [0.65.0] — a paragraph reads as one block, and text painted twice is written once
+
+**A MINOR, because readers and both projections changed.** Eight commits since the `v0.64.0` tag
+`81bc69b`, decisions #109 to #111. ParseBench overall moves 50.67 -> **50.79**, still 2nd when placed among
+the nine open-source local parsers on its leaderboard: visual grounding 0.5859 -> 0.5911, content faithfulness
+0.6746 -> 0.6750, semantic formatting 0.5127 -> 0.5131, tables and charts unchanged on every page.
+opendataloader-bench stays **0.791**, unchanged to four decimals, with four documents a little up on
+reading order and none down. What changed, by entry below:
+
+- **Paragraphs** read as one block in Markdown and HTML, keeping their line breaks, where no
+  marked-content group joins their lines; every body line was a block of its own. Layout units are cut first, so columns and first-line indents still
+  part them.
+- **A run painted over a copy of itself** is written once and counted. The representation keeps every
+  copy.
+- **Two small readings:** a stream's indirect `/Filter` and `/DecodeParms` are read through their
+  references, and a run with no reach goes on along its line from a space it ends with.
+
+**What a 0.64.0 consumer sees.** Markdown and HTML bytes change under `markdown-blocks-v13` and
+`html-blocks-v13`: Markdown differs on 58 of opendataloader-bench's 200 documents. `layout_unit`
+values in a representation move under `line-units-v6`. `profile_sha256` moves, as it does every
+version; no schema version moves. Both projections' `coverage.dropped` can carry one new code,
+`overprinted-run-dropped-v1`, so a consumer validating those codes against a closed list must add it. A document whose page content sits
+under an indirect `/Filter` now reads where it was refused.
+
+**The trades, measured on ParseBench.** Paragraphs: 29 content pages fall by at most 0.0085, each on
+the rule against unexpected sentences with no rule on words moving, and 9 grounding pages fall by at
+most 0.0345. Overprinted runs: `text_multilang__bengali` formatting falls 0.83 -> 0.72 because its
+title rules name only the first line of a two-line title, though the page now reads each title once,
+whole; and `markdown` and `html` take about 6% longer on the largest gate document, 1.8 million
+runs, almost all of one glyph. Word runs: `text_ocr__ups` falls 0.0014 as a line that was two blocks reads whole.
 
 ### A paragraph's lines are one block (decision #109)
 
 Rule ids `markdown-blocks-v13`, `html-blocks-v13` and `line-units-v6`; `profile_sha256` moves.
 
-- **Plain body lines of one layout unit are one block, keeping their line breaks.** Markdown and
+- **Plain body lines of one layout unit are one block, keeping their line breaks,** where no
+  marked-content group joins them. Markdown and
   HTML wrote every body line as a block of its own, in every language. The lines now stay lines
   inside one block, as a label's have since decision #65, so a list set without markers still reads
   a line at a time. A bold line keeps its own block, where a title reads as one, and so does a
@@ -87,9 +117,7 @@ counts what is left out; the representation keeps every copy.
   whole. Tables, charts and visual grounding unchanged on every page; overall 50.77 -> 50.79.
   opendataloader-bench, the fabrication check and the gate documents' 542 tables unchanged.
 - **Cost**: `markdown` and `html` take about 6% longer on the largest gate document, 1.8 million
-  one-glyph runs. `extract` is untouched.
-
----
+  runs, almost all of one glyph. `extract` is untouched.
 
 ### Two small readings: indirect stream filters, and word runs with no reach (decision #111)
 
@@ -111,6 +139,8 @@ id and no further `profile_sha256` moves.
 - **Measured** on ParseBench: content faithfulness 0.6751 -> 0.6750, `text_ocr__ups` down 0.0014 as a
   line that was two blocks reads whole; everything else unchanged on every page; overall unchanged at
   50.79. opendataloader-bench, the fabrication check and the gate documents' 542 tables unchanged.
+
+---
 
 ## [0.64.0] — a model reads a document over MCP, and charts, tables and headings are read from the page
 

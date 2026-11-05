@@ -65,7 +65,7 @@ leaderboard, ethos-parser places **2nd of 10**; AI-model services score higher.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | LlamaParse Agentic Plus (highest overall, cloud) | 86.61 | 93.37 | 90.19 | 88.74 | 86.54 | 74.21 |
 | PyMuPDF4LLM | 53.49 | 72.00 | 2.19 | 79.34 | 52.04 | 61.89 |
-| **ethos-parser 0.64.0** | **50.67** | 58.75 | 17.26 | 67.46 | 51.27 | 58.59 |
+| **ethos-parser 0.65.0** | **50.79** | 58.75 | 17.26 | 67.50 | 51.31 | 59.11 |
 | Warp Ingest | 40.18 | 57.45 | 7.04 | 70.81 | 45.81 | 19.78 |
 | LiteParse (no OCR) | 36.90 | 42.40 | 1.80 | 70.00 | 38.50 | 31.80 |
 | OpenDataLoader | 29.40 | 35.18 | 0.92 | 66.06 | 34.07 | 10.77 |
@@ -76,8 +76,10 @@ leaderboard, ethos-parser places **2nd of 10**; AI-model services score higher.
 | pypdf | 14.87 | 0.00 | 0.00 | 62.50 | 0.91 | 10.92 |
 
 **[opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench)** — 200
-real-world PDFs, scored on reading order (NID), tables (TEDS) and headings (MHS). ethos-parser
-places **9th of 13**.
+real-world PDFs, scored on reading order (NID), tables (TEDS) and headings (MHS). Against the 12
+engines in the benchmark's own README table, ethos-parser places **9th of 13**. Two hybrid variants
+whose results the benchmark's repository carries, but whose README does not list, also score above
+it: 0.877 and 0.845.
 
 | Engine | Overall | Reading order | Tables | Headings | Speed (s/page) |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -89,7 +91,7 @@ places **9th of 13**.
 | edgeparse | 0.837 | 0.894 | 0.717 | 0.706 | 0.036 |
 | opendataloader | 0.831 | 0.902 | 0.489 | 0.739 | 0.015 |
 | mineru | 0.831 | 0.857 | 0.873 | 0.743 | 5.962 |
-| **ethos-parser 0.64.0** | **0.791** | 0.888 | 0.583 | 0.589 | 0.036 |
+| **ethos-parser 0.65.0** | **0.791** | 0.888 | 0.583 | 0.589 | 0.036 |
 | pymupdf4llm | 0.732 | 0.885 | 0.401 | 0.412 | 0.091 |
 | unstructured | 0.686 | 0.882 | 0.000 | 0.388 | 0.077 |
 | markitdown | 0.589 | 0.844 | 0.273 | 0.000 | 0.114 |
@@ -108,7 +110,9 @@ chart prints; it never estimates a value from the drawing.
 
 Every release carries a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel),
 plus a `SHA256SUMS.txt`. A release is assembled only when all four binaries print byte-identical
-artifacts over the gate documents. On macOS or Linux, set `T` to your platform and run:
+artifacts over the gate documents. The Linux binary needs glibc 2.39 or newer (Ubuntu 24.04 and
+later), and the Windows binary needs the Microsoft Visual C++ runtime. On macOS or Linux, set `T` to
+your platform and run:
 
 ```bash
 T=aarch64-apple-darwin   # or x86_64-apple-darwin, x86_64-unknown-linux-gnu
@@ -254,7 +258,7 @@ bucket. A gap is never dressed up as a success.
 
 ## Where things stand
 
-Version 0.65.0-dev.1. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
+Version 0.65.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 
 **Tables** come from eight named, versioned rules: the tables a document declares in its structure
 tree, ruled grids, columns of aligned text, and the numbers a chart prints. None invents a cell:
