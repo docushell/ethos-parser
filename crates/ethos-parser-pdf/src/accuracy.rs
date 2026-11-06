@@ -1259,7 +1259,7 @@ mod tests {
                 // runs only where a document declares no structure, and these declare theirs.
                 // Decision #100's band join changes a ruled table's cells, never its shape.
                 for t in p.tables.iter().filter(|t| {
-                    t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V15
+                    t.rule != ethos_parser_core::TABLE_DETECTION_TRACKS_V16
                         && t.rule != ethos_parser_core::TABLE_DETECTION_CHARTS_V2
                 }) {
                     *real

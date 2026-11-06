@@ -87,6 +87,22 @@
 //! more of it each a year and nothing else, over columns of numbers that hold none, are a
 //! header's — `2024 | 2023` under `Fiscal` — where a year set beside words is still a value.
 //!
+//! **A header cell set over several columns heads them all** (`-v16`, decision #112,
+//! [`group_row`]): over a header the band made, or a first row that reads as a header's line, a cell
+//! of the band's lines, or of the lines just above the header, centred over the header ink below it
+//! on two tracks or more is a group head — `Non-Tobacco` over `Female | Male`, `Inception to Date`
+//! over three columns of figures' names — and the table gains a first row of group heads, each a
+//! cell spanning the tracks it heads and every other track an empty cell, the header row under it.
+//! The band had stacked such a cell on its nearest track, `Female Non-Tobacco` beside `Male`, or a
+//! line above stopped the band and stood outside the table. A head takes the run of tracks whose ink
+//! lies nearer its middle than any other cell's of its line, the widest such run centred on it; a
+//! cell centred on one column's ink or set flush with it is that column's line, a cell alone on its
+//! line and centred on the whole table is its title, and the stub's column is never a group's. A
+//! line above the header gives a head of every cell or none, and the climb stops at the first that
+//! gives none; a head over the very columns of a head below is that head's line above, and one over
+//! part of them is none, so the group row is one level. A group row the table cannot be built with
+//! is none.
+//!
 //! **Two numbers set closer than an em are two cells** (`-v8`, [`split_number_pair`]): a line the
 //! table would end at, a cell of which holds two numbers — cut at the widest gap between its runs,
 //! each half on a track of its own, left before right — joins as the row it is with them split. A
@@ -274,11 +290,19 @@ struct Line {
 }
 
 /// One row: the line that opened it, and its cells — wider than that line where a wrap joined.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Row {
     y: i64,
     em: i64,
     cells: Vec<Cell>,
+}
+
+/// A cell of a header's group row (`-v16`): the first and last track it heads, and its runs.
+#[derive(Debug)]
+struct Group {
+    first: usize,
+    last: usize,
+    cell: Cell,
 }
 
 /// Every table `whitespace-tracks-v10` finds on one page, in reading-down order.
@@ -355,19 +379,33 @@ pub(crate) fn detect(
                     }
                 }
                 // `-v15` (decision #96): a header whose lines each read as a row is one row.
-                let lines = header_block(&rows, runs);
-                let stacked: Vec<Row> = rows.drain(1..lines).collect();
+                let block = header_block(&rows, runs);
+                let stacked: Vec<Row> = rows.drain(1..block).collect();
                 for row in &stacked {
                     stack(&mut rows[0], row);
                 }
-                let mut table = build(page, &rows, runs, alloc)?;
+                // `-v16` (decision #112): a header cell set over several columns heads them all,
+                // over a header the band made or a first row that reads as one.
+                let saved = rows[0].clone();
+                let groups = if headed || heads(&rows[0], &rows[1..], runs) {
+                    let band = if headed { top..first } else { first..first };
+                    group_row(&lines, floor, band, &mut rows[0], &tracks, runs)
+                } else {
+                    Vec::new()
+                };
+                let mut table = build(page, &rows, &groups, runs, alloc)?;
+                // A group row the table cannot be built with is none: the header stands as it was.
+                if table.is_none() && !groups.is_empty() {
+                    rows[0] = saved;
+                    table = build(page, &rows, &[], runs, alloc)?;
+                }
                 // A header the table cannot be built with is none (`-v7`): the rows stand alone.
                 if table.is_none() && headed {
                     rows.splice(0..1, stacked);
                     if let Some(row) = joined.take() {
                         rows.insert(0, row);
                     }
-                    table = build(page, &rows, runs, alloc)?;
+                    table = build(page, &rows, &[], runs, alloc)?;
                 }
                 if let Some(table) = table {
                     tables.push(table);
@@ -706,6 +744,227 @@ fn header_row(band: &[Line], tracks: &[(i64, i64)]) -> Row {
         em: band[0].em,
         cells,
     }
+}
+
+/// The group row over a table's header row `header` (`-v16`, decision #112), left to right: the
+/// group heads of its `band`'s lines, bottom to top, each taken out of the header cell its band
+/// stacked it in, and of the lines just above the header's top line — the band's, or the first
+/// row's where it has none — each within a row and a half's pitch of the line below it, the first
+/// over a first row within two and a half (`-v15`). A line above gives every cell of it a head or
+/// none, and the climb ends at the first that gives none. A head over the very tracks a head below
+/// it heads is that head's line above; [`line_groups`] says the rest. No line below `floor` is read.
+fn group_row(
+    lines: &[Line],
+    floor: usize,
+    band: std::ops::Range<usize>,
+    header: &mut Row,
+    tracks: &[(i64, i64)],
+    runs: &[TrackRun<'_>],
+) -> Vec<Group> {
+    let mut groups: Vec<Group> = Vec::new();
+    let take = |line: &Line, header: &Row, groups: &mut Vec<Group>, whole: bool| -> bool {
+        let Some(found) = line_groups(line, header, groups, tracks, runs, whole) else {
+            return false;
+        };
+        for (first, last, cell) in found {
+            match groups
+                .iter_mut()
+                .find(|g| (g.first, g.last) == (first, last))
+            {
+                Some(group) => {
+                    group.cell.x0 = group.cell.x0.min(cell.x0);
+                    group.cell.x1 = group.cell.x1.max(cell.x1);
+                    group.cell.runs.extend(&cell.runs);
+                }
+                None => groups.push(Group { first, last, cell }),
+            }
+        }
+        true
+    };
+    for k in band.clone().rev() {
+        take(&lines[k], header, &mut groups, false);
+    }
+    let mut top = band.start;
+    while top > floor {
+        let (line, below) = (&lines[top - 1], &lines[top]);
+        // Pitches of 1.2 ems, in integers, as in `header_band`.
+        let em = line.em.max(below.em);
+        let reach = if band.is_empty() && top == band.start {
+            15
+        } else {
+            9
+        };
+        if line.cells.is_empty()
+            || 5 * (below.y - line.y) > reach * em
+            || !take(line, header, &mut groups, true)
+        {
+            break;
+        }
+        top -= 1;
+    }
+    // The heads' runs leave the header cells the band stacked them in.
+    let taken: std::collections::BTreeSet<usize> = groups
+        .iter()
+        .flat_map(|g| g.cell.runs.iter().copied())
+        .collect();
+    for (k, cell) in header.cells.iter_mut().enumerate() {
+        if !cell.runs.iter().any(|i| taken.contains(i)) {
+            continue;
+        }
+        cell.runs.retain(|i| !taken.contains(i));
+        (cell.x0, cell.x1) = cell
+            .runs
+            .iter()
+            .filter(|&&i| !runs[i].text.trim().is_empty())
+            .map(|&i| (runs[i].x, runs[i].rect.map_or(runs[i].x, |b| b.x1)))
+            .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+            .unwrap_or((tracks[k].0, tracks[k].0));
+    }
+    groups.sort_by_key(|g| g.first);
+    groups
+}
+
+/// The group heads one header `line` holds over the ink of `header` below it (`-v16`), each with
+/// the first and last track it heads: the cells [`group_of`] reads as heading two tracks or more,
+/// where no cell of the line runs as long as a line of prose; but never one heading part of what one
+/// of `groups` heads. With `whole`, a line above the header, every cell must head two tracks or more
+/// and none part of another's, or the line gives none: `None`.
+fn line_groups(
+    line: &Line,
+    header: &Row,
+    groups: &[Group],
+    tracks: &[(i64, i64)],
+    runs: &[TrackRun<'_>],
+    whole: bool,
+) -> Option<Vec<(usize, usize, Cell)>> {
+    let taken: std::collections::BTreeSet<usize> = groups
+        .iter()
+        .flat_map(|g| g.cell.runs.iter().copied())
+        .collect();
+    let under: Vec<Option<(i64, i64)>> = header
+        .cells
+        .iter()
+        .map(|c| {
+            c.runs
+                .iter()
+                .copied()
+                .filter(|i| {
+                    !taken.contains(i)
+                        && !runs[*i].text.trim().is_empty()
+                        && runs[*i].y > line.y + LINE_TOLERANCE
+                })
+                .map(|i| (runs[i].x, runs[i].rect.map_or(runs[i].x, |b| b.x1)))
+                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+        })
+        .collect();
+    // The stub's heading names its own column and parts no other cell's.
+    let rivals: Vec<bool> = line
+        .cells
+        .iter()
+        .map(|c| track_of(c, tracks) != Some(0) || !clear_of_neighbours(c, 0, tracks))
+        .collect();
+    let spans: Vec<Option<(usize, usize)>> = (0..line.cells.len())
+        .map(|n| group_of(line, n, &rivals, &under, tracks))
+        .collect();
+    let short = line
+        .cells
+        .iter()
+        .all(|c| cell_text(c, runs).trim().chars().count() < PROSE_LINE_CHARS);
+    if whole && (!short || spans.iter().any(Option::is_none)) {
+        return None;
+    }
+    let mut found = Vec::new();
+    for (cell, span) in line.cells.iter().zip(&spans) {
+        let Some((first, last)) = *span else {
+            continue;
+        };
+        let part = groups
+            .iter()
+            .any(|g| g.first <= last && first <= g.last && (g.first, g.last) != (first, last));
+        if part && whole {
+            return None;
+        }
+        if short && !part {
+            found.push((first, last, cell.clone()));
+        }
+    }
+    Some(found)
+}
+
+/// The first and last track the `n`th cell of `line` heads as a group head (`-v16`), where it is
+/// one: of the tracks past the first whose header ink below (`under`) has its middle nearer this
+/// cell's middle than any other cell's of the line — the stub's heading aside (`rivals`) — the
+/// widest run of two or more, from one such track to another with only tracks of no ink between,
+/// whose ink together holds the cell within [`TRACK_TOLERANCE`] of either end and has its middle
+/// within the cell, to a sixteenth of the run's width or a track's tolerance; of two as wide, the
+/// one whose middle is nearer the cell's. **None** for a cell on a track clear of its neighbours
+/// that is centred over that track's ink below, set flush with it left or right, or set over a
+/// track with none — that column's own line — nor for a cell alone on its line and centred on the
+/// whole table, within a track's tolerance: its title. The stub's column, the first track, is
+/// never a group's.
+fn group_of(
+    line: &Line,
+    n: usize,
+    rivals: &[bool],
+    under: &[Option<(i64, i64)>],
+    tracks: &[(i64, i64)],
+) -> Option<(usize, usize)> {
+    let cell = &line.cells[n];
+    let centre2 = cell.x0 + cell.x1;
+    // A column's own line: on a track clear of its neighbours, centred over that track's ink below
+    // or flush with it, or over a track with none.
+    if let Some(k) = track_of(cell, tracks).filter(|&k| clear_of_neighbours(cell, k, tracks)) {
+        if under[k].is_none_or(|(u0, u1)| {
+            (2 * u0 <= centre2 && centre2 <= 2 * u1)
+                || (cell.x0 - u0).abs() <= TRACK_TOLERANCE
+                || (cell.x1 - u1).abs() <= TRACK_TOLERANCE
+        }) {
+            return None;
+        }
+    }
+    // The table's title: alone on its line, centred on the whole table, the stub's column with it.
+    let (w0, w1) = under.iter().flatten().fold(
+        (tracks[0].0, tracks[tracks.len() - 1].1),
+        |(w0, w1), &(u0, u1)| (w0.min(u0), w1.max(u1)),
+    );
+    if line.cells.len() == 1 && (w0 + w1 - centre2).abs() <= 2 * TRACK_TOLERANCE {
+        return None;
+    }
+    let ours = |k: usize| {
+        under[k].is_some_and(|(x0, x1)| {
+            let d = (x0 + x1 - centre2).abs();
+            line.cells
+                .iter()
+                .zip(rivals)
+                .enumerate()
+                .all(|(m, (c, &rival))| m == n || !rival || (x0 + x1 - c.x0 - c.x1).abs() > d)
+        })
+    };
+    let mut best: Option<(usize, i64, usize, usize)> = None;
+    for a in (1..under.len()).filter(|&a| ours(a)) {
+        let mut ink: Option<(i64, i64)> = None;
+        for (b, track) in under.iter().enumerate().skip(a) {
+            let Some((x0, x1)) = *track else {
+                continue;
+            };
+            if !ours(b) {
+                break;
+            }
+            let (u0, u1) = ink.map_or((x0, x1), |(u0, u1)| (u0.min(x0), u1.max(x1)));
+            ink = Some((u0, u1));
+            let holds = u0 - TRACK_TOLERANCE <= cell.x0 && cell.x1 <= u1 + TRACK_TOLERANCE;
+            // The tolerance, not the cell's extent alone: a run reaching one track too far keeps
+            // its middle inside a wide cell.
+            let off = (u0 + u1 - centre2).abs();
+            let centred = 2 * cell.x0 <= u0 + u1
+                && u0 + u1 <= 2 * cell.x1
+                && 8 * off <= (u1 - u0).max(16 * TRACK_TOLERANCE);
+            if holds && centred && best.is_none_or(|(w, o, _, _)| (b - a, -off) > (w, -o)) {
+                best = Some((b - a, off, a, b));
+            }
+        }
+    }
+    best.and_then(|(w, _, a, b)| (w > 0).then_some((a, b)))
 }
 
 /// The tables [`detect`] finds inside each of a page's columns — `columns` as
@@ -1606,17 +1865,23 @@ fn is_contents(texts: &[String]) -> bool {
         })
 }
 
-/// The table the rows make, or `None` where a run of it has no measured box to place it by.
+/// The table the rows make, under a group row of `groups` where there are any (`-v16`), or `None`
+/// where a run of it has no measured box to place it by.
 fn build(
     page: u32,
     rows: &[Row],
+    groups: &[Group],
     runs: &[TrackRun<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<Option<DetectedTable>, EngineError> {
     let columns = rows[0].cells.len();
-    // Each column's and each row's extent: the union of its inked runs' boxes.
+    // `-v16`: the group row, first, where there is one.
+    let lead = usize::from(!groups.is_empty());
+    let count = rows.len() + lead;
+    // Each column's and each row's extent: the union of its inked runs' boxes. A group head's
+    // runs set its row's extent and no column's.
     let mut xs: Vec<Option<(i64, i64)>> = vec![None; columns];
-    let mut ys: Vec<Option<(i64, i64)>> = vec![None; rows.len()];
+    let mut ys: Vec<Option<(i64, i64)>> = vec![None; count];
     for (r, row) in rows.iter().enumerate() {
         for (c, cell) in row.cells.iter().enumerate() {
             for &i in cell
@@ -1628,8 +1893,21 @@ fn build(
                     return Ok(None);
                 };
                 widen(&mut xs[c], b.x0, b.x1);
-                widen(&mut ys[r], b.y0, b.y1);
+                widen(&mut ys[r + lead], b.y0, b.y1);
             }
+        }
+    }
+    for group in groups {
+        for &i in group
+            .cell
+            .runs
+            .iter()
+            .filter(|&&i| !runs[i].text.trim().is_empty())
+        {
+            let Some(b) = runs[i].rect else {
+                return Ok(None);
+            };
+            widen(&mut ys[0], b.y0, b.y1);
         }
     }
     let (Some(mut xs), Some(mut ys)) = (
@@ -1655,48 +1933,61 @@ fn build(
         x0: xs[0].0,
         y0: ys[0].0,
         x1: xs[columns - 1].1,
-        y1: ys[rows.len() - 1].1,
+        y1: ys[count - 1].1,
     };
     if table_rect.as_qrect_checked().is_err() {
         return Ok(None);
     }
     let id = alloc.next(IdKind::Table)?;
-    let mut cells = Vec::with_capacity(rows.len() * columns);
+    let mut cells = Vec::with_capacity(count * columns);
+    let mut push = |r: usize, c: usize, span: usize, of: &[usize]| {
+        let mut run_indices = of.to_vec();
+        run_indices.sort_unstable();
+        let text: String = run_indices.iter().map(|&i| runs[i].text).collect();
+        cells.push(DetectedCell {
+            position: ethos_parser_core::TableCellPosition {
+                row: r as u32,
+                column: c as u32,
+                rowspan: 1,
+                colspan: span as u32,
+                table_id: id.clone(),
+            },
+            rect: QuantRect {
+                x0: xs[c].0,
+                y0: ys[r].0,
+                x1: xs[c + span - 1].1,
+                y1: ys[r].1,
+            },
+            run_indices,
+            text,
+        });
+    };
+    // `-v16`: a group head spans the tracks it heads; every other track is an empty cell.
+    let mut c = 0;
+    while lead == 1 && c < columns {
+        let (span, of) = groups
+            .iter()
+            .find(|g| g.first == c)
+            .map_or((1, &[][..]), |g| (g.last - g.first + 1, &g.cell.runs[..]));
+        push(0, c, span, of);
+        c += span;
+    }
     for (r, row) in rows.iter().enumerate() {
         for (c, cell) in row.cells.iter().enumerate() {
-            let mut run_indices = cell.runs.clone();
-            run_indices.sort_unstable();
-            let text: String = run_indices.iter().map(|&i| runs[i].text).collect();
-            cells.push(DetectedCell {
-                position: ethos_parser_core::TableCellPosition {
-                    row: r as u32,
-                    column: c as u32,
-                    rowspan: 1,
-                    colspan: 1,
-                    table_id: id.clone(),
-                },
-                rect: QuantRect {
-                    x0: xs[c].0,
-                    y0: ys[r].0,
-                    x1: xs[c].1,
-                    y1: ys[r].1,
-                },
-                run_indices,
-                text,
-            });
+            push(r + lead, c, 1, &cell.runs);
         }
     }
-    let check = cross_check(table_rect, rows.len() as u32, columns as u32, &cells);
+    let check = cross_check(table_rect, count as u32, columns as u32, &cells);
     Ok(Some(DetectedTable {
         id,
         page,
         rect: table_rect,
-        rows: rows.len() as u32,
+        rows: count as u32,
         columns: columns as u32,
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V15.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V16.to_string(),
     }))
 }
 
@@ -2316,6 +2607,308 @@ mod tests {
         assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
     }
 
+    /// Four rows of a region's figures in four columns, the first at 200 points, under `head` —
+    /// the lines of a header set above them, in content order before the rows.
+    fn channels(head: Vec<TrackRun<'static>>) -> Vec<DetectedTable> {
+        let mut runs = head;
+        for (j, row) in [
+            ["North", "7.5", "11.0", "8.1", "9.4"],
+            ["South", "18.2", "9.1", "6.5", "7.7"],
+            ["East", "4.0", "65.5", "5.2", "3.3"],
+            ["West", "12.0", "70.2", "4.8", "2.9"],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 200 + 16 * j as i64;
+            runs.push(run(100, y, 40, row[0]));
+            for (k, text) in row[1..].iter().enumerate() {
+                runs.push(run([200, 250, 330, 380][k], y, 25, text));
+            }
+        }
+        tables(&runs)
+    }
+
+    /// The header row of [`channels`], a row's pitch above its figures.
+    fn names(y: i64) -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, y, 40, "Region"),
+            run(200, y, 25, "Units"),
+            run(250, y, 25, "Price"),
+            run(330, y, 25, "Units"),
+            run(380, y, 25, "Price"),
+        ]
+    }
+
+    /// Each cell of a table's group row, its text and the columns it spans.
+    fn groups(table: &DetectedTable) -> Vec<(String, u32)> {
+        table
+            .cells
+            .iter()
+            .filter(|c| c.position.row == 0)
+            .map(|c| (c.text.clone(), c.position.colspan))
+            .collect()
+    }
+
+    /// **A header cell set over several columns heads them all** (`-v16`, decision #112): `Retail`
+    /// centred over the first pair of figures' names and `Online` over the second, a line two ems
+    /// above the header row the table opened at — as far off it as a band's first line may stand
+    /// off a table — are a group row over it, each a cell spanning the two columns it heads, the
+    /// stub's column an empty cell, where they had been left out of the table, its header only
+    /// `Units` and `Price`.
+    #[test]
+    fn a_header_cell_set_over_several_columns_heads_them_all() {
+        let mut head = vec![run(222, 164, 31, "Retail"), run(352, 164, 31, "Online")];
+        head.extend(names(184));
+        let found = channels(head);
+        assert_eq!((found[0].rows, found[0].columns), (6, 5));
+        assert_eq!(
+            groups(&found[0]),
+            [
+                (String::new(), 1),
+                ("Retail".to_string(), 2),
+                ("Online".to_string(), 2)
+            ]
+        );
+        assert_eq!(
+            texts(&found[0])[1],
+            ["Region", "Units", "Price", "Units", "Price"]
+        );
+        assert_eq!(texts(&found[0])[2], ["North", "7.5", "11.0", "8.1", "9.4"]);
+        // The spans cover every slot once.
+        if let ethos_parser_core::CheckStatus::Mismatch { structural, .. } = &found[0].check.outcome
+        {
+            assert!(structural.is_empty(), "{structural:?}");
+        }
+    }
+
+    /// **And a group head the band stacked on one column is taken off it**: `Retail` and
+    /// `Online` over `Units` and `Price`, the band's two lines above the first row of figures, made
+    /// the header `Retail Units` / `Price` / `Online Units` / `Price`; now the group row heads the
+    /// pairs and the header row names each column once. Two lines heading the same columns are one
+    /// group head, its lines top to bottom.
+    #[test]
+    fn a_group_head_in_the_band_heads_its_columns_and_leaves_theirs() {
+        let mut head = vec![run(222, 172, 31, "Retail "), run(352, 172, 31, "Online ")];
+        head.extend(names(184).into_iter().skip(1));
+        let found = channels(head);
+        assert_eq!((found[0].rows, found[0].columns), (6, 5));
+        assert_eq!(
+            groups(&found[0]),
+            [
+                (String::new(), 1),
+                ("Retail ".to_string(), 2),
+                ("Online ".to_string(), 2)
+            ]
+        );
+        assert_eq!(
+            texts(&found[0])[1],
+            ["", "Units", "Price", "Units", "Price"]
+        );
+        // A group head set on two lines, the upper over the very columns of the lower.
+        let mut head = vec![
+            run(222, 160, 31, "Store "),
+            run(352, 160, 31, "Web "),
+            run(222, 172, 31, "Retail"),
+            run(352, 172, 31, "Online"),
+        ];
+        head.extend(names(184));
+        let found = channels(head);
+        assert_eq!(
+            groups(&found[0]),
+            [
+                (String::new(), 1),
+                ("Store Retail".to_string(), 2),
+                ("Web Online".to_string(), 2)
+            ]
+        );
+    }
+
+    /// **Narrow heads each take the columns nearest them**: `P` to `S`, each centred between the
+    /// two columns it heads, are four group heads of two columns each — a column nearer another
+    /// head's middle than its own is none of its.
+    #[test]
+    fn narrow_group_heads_each_take_the_columns_nearest_them() {
+        let mut runs = Vec::new();
+        for (k, letter) in ["P", "Q", "R", "S"].into_iter().enumerate() {
+            runs.push(run(235 + 100 * k as i64, 172, 5, letter));
+        }
+        for k in 0..8 {
+            runs.push(run(200 + 50 * k, 184, 25, ["Cash", "Card"][k as usize % 2]));
+        }
+        for (j, label) in ["North", "South", "East", "West"].into_iter().enumerate() {
+            let y = 200 + 16 * j as i64;
+            runs.push(run(100, y, 40, label));
+            for k in 0..8 {
+                runs.push(run(
+                    200 + 50 * k,
+                    y,
+                    25,
+                    ["7.5", "11.0"][(j + k as usize) % 2],
+                ));
+            }
+        }
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (6, 9));
+        assert_eq!(
+            groups(&found[0]),
+            [
+                (String::new(), 1),
+                ("P".to_string(), 2),
+                ("Q".to_string(), 2),
+                ("R".to_string(), 2),
+                ("S".to_string(), 2)
+            ]
+        );
+    }
+
+    /// Six columns of fares by zone, `Zone` and `head` on one line of the band over the columns'
+    /// names `Mon` to `Sat`, which leave the stub's column to `Zone`.
+    fn fares(head: TrackRun<'static>) -> Vec<DetectedTable> {
+        let mut runs = vec![run(100, 172, 20, "Zone"), head];
+        for (k, name) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            .into_iter()
+            .enumerate()
+        {
+            runs.push(run(200 + 50 * k as i64, 184, 20, name));
+        }
+        for (j, zone) in ["Z1", "Z2", "Z3", "Z4"].into_iter().enumerate() {
+            let y = 200 + 16 * j as i64;
+            runs.push(run(100, y, 40, zone));
+            for k in 0..6 {
+                runs.push(run(
+                    200 + 50 * k,
+                    y,
+                    20,
+                    ["4.25", "5.75"][(j + k as usize) % 2],
+                ));
+            }
+        }
+        tables(&runs)
+    }
+
+    /// **A group head takes the widest run of columns centred on it**: `Opening hours`, centred
+    /// over all six columns of fares, heads all six — not the four or two at their middle, whose
+    /// middles are its own as well — though `Zone`, the stub's heading on its line, sits nearer the
+    /// first; and `Late opening`, centred over the last five, heads those five, the run of
+    /// six keeping its middle inside the wide cell but a sixteenth of its width off the cell's.
+    #[test]
+    fn a_group_head_takes_the_widest_run_of_columns_centred_on_it() {
+        let found = fares(run(300, 172, 70, "Opening hours"));
+        assert_eq!((found[0].rows, found[0].columns), (6, 7));
+        assert_eq!(
+            groups(&found[0]),
+            [(String::new(), 1), ("Opening hours".to_string(), 6)]
+        );
+        assert_eq!(
+            texts(&found[0])[1],
+            ["Zone", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        );
+        let found = fares(run(315, 172, 90, "Late opening"));
+        assert_eq!(
+            groups(&found[0]),
+            [
+                (String::new(), 1),
+                (String::new(), 1),
+                ("Late opening".to_string(), 5)
+            ]
+        );
+    }
+
+    /// **A cell over one column, over the stub, or over the whole table heads no group**: a cell
+    /// centred over one column's name is that column's line, though the run of three columns
+    /// around it is centred on it too; a cell reaching over the stub is no group's, the stub's
+    /// column being never one; a cell as long as a line of prose is none, and neither is the rest
+    /// of its line; a title alone on its line, centred over the whole table, is its title; a head
+    /// over part of what a head below it heads is none, and the climb ends there; and a cell over
+    /// two columns with no header under it heads nothing.
+    #[test]
+    fn a_cell_over_one_column_the_stub_or_the_table_heads_no_group() {
+        let found = fares(run(247, 172, 26, "Peak "));
+        assert_eq!(found[0].rows, 5, "over one column");
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Zone", "Mon", "Peak Tue", "Wed", "Thu", "Fri", "Sat"]
+        );
+        for (line, why) in [
+            (
+                vec![run(120, 172, 100, "Region and units")],
+                "over the stub",
+            ),
+            (
+                vec![
+                    run(222, 164, 31, "Retail outlets and wholesalers"),
+                    run(352, 164, 31, "Online"),
+                ],
+                "a line of prose",
+            ),
+        ] {
+            let mut head = line;
+            head.extend(names(184));
+            let found = channels(head);
+            assert_eq!(found[0].rows, 5, "{why}");
+            assert_eq!(
+                texts(&found[0])[0],
+                ["Region", "Units", "Price", "Units", "Price"],
+                "{why}"
+            );
+        }
+        // A title alone on its line, centred over a table whose stub is narrow, is centred too over
+        // the run of its columns of figures that leaves the last out; it heads none of them.
+        let mut runs = vec![run(185, 172, 150, "Quarterly summary")];
+        runs.push(run(100, 184, 20, "Week"));
+        for k in 0..6 {
+            runs.push(run(
+                150 + 50 * k,
+                184,
+                20,
+                ["Ash", "Elm", "Oak", "Fir", "Yew", "All"][k as usize],
+            ));
+        }
+        for j in 0..4 {
+            let y = 200 + 16 * j;
+            runs.push(run(100, y, 20, ["W1", "W2", "W3", "W4"][j as usize]));
+            for k in 0..6 {
+                runs.push(run(
+                    150 + 50 * k,
+                    y,
+                    20,
+                    ["1.5", "-2.0"][(j + k) as usize % 2],
+                ));
+            }
+        }
+        let found = tables(&runs);
+        assert_eq!(found[0].rows, 5, "a title");
+        assert_eq!(texts(&found[0])[0][0], "Week", "a title");
+        // `All channels` over all four columns of figures, above `Retail` and `Online`.
+        let mut head = vec![
+            run(260, 160, 60, "All channels"),
+            run(222, 172, 31, "Retail"),
+            run(352, 172, 31, "Online"),
+        ];
+        head.extend(names(184));
+        let found = channels(head);
+        assert_eq!(
+            groups(&found[0]),
+            [
+                (String::new(), 1),
+                ("Retail".to_string(), 2),
+                ("Online".to_string(), 2)
+            ],
+            "a head over part of another's"
+        );
+        assert_eq!(
+            found[0].rect.y0, 16_400,
+            "the table starts at the group row, its line left out"
+        );
+        // `Retail` and `Online` straight over the figures, no header row between.
+        let found = channels(vec![
+            run(222, 184, 31, "Retail"),
+            run(352, 184, 31, "Online"),
+        ]);
+        assert_eq!(texts(&found[0])[0], ["North", "7.5", "11.0", "8.1", "9.4"]);
+    }
+
     /// Four rows of amounts whose `South` row sets its two amounts 5 points apart — closer than an
     /// em, so one cell reaching from the second column into the third — or two words the same way.
     fn amounts(left: &'static str, right: &'static str) -> Vec<TrackRun<'static>> {
@@ -2790,7 +3383,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V15);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V16);
     }
 
     /// **Written down each column, a grid with a column of numbers is still a table** — a rate

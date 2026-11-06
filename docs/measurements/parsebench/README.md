@@ -1090,6 +1090,20 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a header cell set over several columns heads them all (decision #112, 2026-11-06)
+
+Told "ParseBench table header rows", a cell of a header's lines, or of the lines just above it,
+centred over the header's names on two columns or more, heads them: the table gains a first row of
+cells, each spanning the columns it heads. Measured on top of #113: tables 0.5965 -> 0.6086, 28
+pages up and 1 down. `SERFF_CA_random_pages 1` p2104 0.54 -> 0.99, `SERFF_TX_random_pages 1` p43
+0.55 -> 1.00 and p865 0.55 -> 0.99 and `JNPR.2018` p212 0.59 -> 0.99 are each a group row over a
+body unchanged cell for cell; `JNPR.2017.page_127`, the striped table #113 reads whole, 0.68 ->
+0.82; `VRSK.2018` p141 0.480 -> 0.478, a table whose header lines and first figures the band had
+already mixed. Charts, content faithfulness, semantic formatting and visual grounding unchanged on
+every page; overall 50.97 -> 51.21. Alone on 0.65.0's code: tables 0.5875 -> 0.5993, overall 50.79
+-> 51.02. opendataloader-bench 0.7999, unchanged: its two tables that gain a group row rise in NID
+and fall a little in TEDS, as Markdown cannot carry the span.
+
 ### After a ruled grid drawn only in part is refused, and rules a fill outlines are read (decision #113, 2026-11-06)
 
 Told "Fill bands and mitred rules", a ruled grid inside which text no cell holds is set, in two of

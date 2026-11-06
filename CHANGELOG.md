@@ -32,6 +32,48 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A header cell set over several columns heads them all (decision #112)
+
+Rule id `whitespace-tracks-v16`; `profile_sha256` moves.
+
+- **A column group's head is a cell spanning the columns it heads.** Over a header the band made,
+  or a first row that reads as a header's line, a cell of the header's lines, or of the lines just
+  above it, centred over the header's names on two columns or more now heads them. The table gains a
+  first row of such heads, each spanning its columns, every other column an empty cell. The band had
+  stacked such a cell on its nearest column, so `Non-Tobacco` over `Female | Male` read as one column
+  `Female Non-Tobacco` beside `Male`; or a line of them stopped the band and stood outside the table.
+- **A head takes the widest run of columns centred on it**, of the columns whose names lie nearer its
+  middle than any other cell's of its line; the stub's heading on that line takes none of them. A
+  cell centred on one column's name, or flush with it, is that column's line; a cell alone on its
+  line and centred on the whole table is its title; the stub's column is never a group's.
+- **One level.** A head over part of what a head below it heads is none, and a line above the header
+  gives a head of every cell or none. A head set on two lines over the same columns is one head, so
+  `2.7% Simple Inflation` over `Benefit Period` is one cell, as the ground truth's two flatten.
+- **What a 0.65.0 consumer sees.** On ParseBench's documents 48 tables gain a group row, 40 of them
+  on table pages; on opendataloader-bench two do, the tables of `01030000000046` and `-047`, and on
+  the gate documents none; elsewhere their artifacts are unchanged by this rule but for its id and
+  `profile_sha256`. Such a table has one more row, its first, and
+  cells whose `colspan` is two or more, which this rule never wrote before. The HTML projection writes
+  that row and the header row under it as the table's header (decision #99); Markdown, which cannot
+  carry a span, writes each head in its first column and counts the rest under
+  `gfm-span-slots-unrepresentable-v1`.
+- **Measured** on top of decision #113, on ParseBench: tables 0.5965 -> 0.6086, 28 pages up and 1
+  down (`VRSK.2018` p141 0.480 -> 0.478, a table whose header lines and first figures the band had
+  already mixed); charts, content faithfulness, semantic formatting and visual grounding unchanged on
+  every page; overall 50.97 -> 51.21. The largest rises: `SERFF_CA_random_pages 1` p2104 0.54 ->
+  0.99, `SERFF_TX_random_pages 1` p43 0.55 -> 1.00 and p865 0.55 -> 0.99, `JNPR.2018` p212 0.59 ->
+  0.99, each a group row over a body unchanged cell for cell; and `JNPR.2017.page_127`, the striped
+  table #113 reads whole, 0.68 -> 0.82. Alone on 0.65.0's code: tables 0.5875 -> 0.5993, 27 pages
+  up and the same one down, overall 50.79 -> 51.02. On opendataloader-bench the two tables #113 made
+  readable, on `01030000000046` and `-047`, gain the group row their ground truth has, two heads over
+  two columns each, though each head reads only its last line (`result on 7 March`, `29 April`):
+  NID 0.8440 -> 0.8473 and 0.7796 -> 0.7858, TEDS 0.8962 -> 0.8961 and 0.7374 -> 0.7304, because
+  Markdown, which the benchmark scores, cannot carry the span. Overall 0.7999, unchanged; the
+  fabrication check (0 of 1,537 cells) and the gate documents' 542 tables are unchanged.
+- **Not built**: a second group row, for a head over several heads (`Premium from CLM Division` over
+  two groups of four columns); a header left above the table, which the band still stops short of for
+  scattered reasons; column names set closer than an em, read as one cell.
+
 ### A table drawn only in part is no ruled grid, and rules a fill outlines are read (decision #113)
 
 Rule id `ruled-rects-v14`; `profile_sha256` moves.
@@ -67,6 +109,8 @@ Rule id `ruled-rects-v14`; `profile_sha256` moves.
 - **Trade**: one visual-grounding page falls, `938c3dc8…` p19 0.33 -> 0.32. Its table's painted
   rows had read with their header and lost the unpainted row between them; the whitespace rule now
   reads the last two rows, and the header and that row are text.
+
+---
 
 ## [0.65.0] — a paragraph reads as one block, and text painted twice is written once
 

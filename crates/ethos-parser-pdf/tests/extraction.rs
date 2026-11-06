@@ -2745,6 +2745,86 @@ fn the_alignment_rule_finds_the_grid_the_ruled_rule_could_not() {
     );
 }
 
+/// **A header cell set over several columns heads them all** (decision #112), through the whole
+/// extraction and into the HTML: `Retail` centred over the first pair of figures' names and
+/// `Online` over the second, a line above the header row of a table read from the whitespace
+/// across its rows, are a group row of two cells spanning two columns each, and the HTML writes
+/// it and the header row under it as the table's header.
+#[test]
+fn a_header_cell_set_over_two_columns_spans_them_and_heads_the_html() {
+    // Helvetica at 6 pt: 3 pt a glyph.
+    let text = |x: f64, y: f64, s: &str| format!("BT /F1 6 Tf {x} {y} Td ({s}) Tj ET ");
+    let mut stream = text(73.5, 268.0, "Retail") + &text(143.5, 268.0, "Online");
+    for (x, s) in [
+        (10.0, "Region"),
+        (60.0, "Units"),
+        (90.0, "Price"),
+        (130.0, "Units"),
+    ] {
+        stream += &text(x, 260.0, s);
+    }
+    stream += &text(160.0, 260.0, "Price");
+    // Each figure set flush right on its column, so no two of a column start together.
+    let rows = [
+        ["North", "7.5", "11.0", "8.1", "9.4"],
+        ["South", "18.2", "9.1", "16.5", "17.7"],
+        ["East", "4.0", "65.5", "5.2", "3.3"],
+        ["West", "12.0", "70.2", "14.8", "12.9"],
+    ];
+    for (j, row) in rows.iter().enumerate() {
+        let y = 250.0 - 10.0 * j as f64;
+        stream += &text(10.0, y, row[0]);
+        for (k, s) in row[1..].iter().enumerate() {
+            let right = [75.0, 105.0, 145.0, 175.0][k];
+            stream += &text(right - 3.0 * s.len() as f64, y, s);
+        }
+    }
+    let a = helvetica_page(0, stream.as_bytes());
+    let tables: Vec<_> = a.pages[0]
+        .tables
+        .iter()
+        .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_TRACKS_V16)
+        .collect();
+    assert_eq!(tables.len(), 1, "{:?}", a.pages[0].tables);
+    let t = tables[0];
+    assert_eq!((t.rows, t.columns), (6, 5));
+    let head: Vec<(u32, u32, &str)> = t
+        .cells
+        .iter()
+        .filter(|c| c.position.row == 0)
+        .map(|c| (c.position.column, c.position.colspan, c.text.as_str()))
+        .collect();
+    assert_eq!(head, [(0, 1, ""), (1, 2, "Retail"), (3, 2, "Online")]);
+    if let ethos_parser_core::CheckStatus::Mismatch { structural, .. } = &t.check.outcome {
+        assert!(
+            structural.is_empty(),
+            "every slot covered once: {structural:?}"
+        );
+    }
+    let profile = Profile::default();
+    let rep = ethos_parser_pdf::to_representation(&a, &profile).expect("projects");
+    let html = ethos_parser_core::to_html(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.html_rule,
+    )
+    .expect("projects")
+    .html;
+    let thead = html
+        .split("<thead>")
+        .nth(1)
+        .and_then(|s| s.split("</thead>").next())
+        .expect("a header");
+    assert!(
+        thead.contains("<th colspan=\"2\">Retail</th>")
+            && thead.contains("<th colspan=\"2\">Online</th>")
+            && thead.contains("<th>Region</th>")
+            && thead.contains("<th>Units</th>"),
+        "{html}"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // 12. Which rule fired (v1-S2)
 // -------------------------------------------------------------------------------------------

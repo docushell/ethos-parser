@@ -1304,3 +1304,62 @@ label column is set outside the rules, cells drawn as white fills on a ruled gro
 from inset shading that the fourth clause rejects (`SERFF_CA_random_pages 1` p96, p1551) — each
 needs a reading of its own; counting every outer line of a grid read through its merged cells as
 drawn reads one more of their pages.
+
+## 34. A header cell set over several columns (2026-11-06, decision #112)
+
+**What `-v15` missed.** The census of every ParseBench ground-truth table on the 0.65.0 code put 183
+tables in one class: the body read right, the records matching on no column or few, because the
+header was left above the table, read in its body, or built wrong. A scratch build naming why the
+band stopped found no one cause for the tables whose header lay above ours. One shape ran across
+the tables whose header was misbuilt or read in the body, most of them multi-level: a column
+group's head — `Non-Tobacco` over `Female | Male`, `Inception to Date` over three columns of
+figures' names, `D` to `G` each between a pair of `Female | Male` — which the band stacked on its
+nearest track (`-v7`), so that one column's name read `Female Non-Tobacco` and the next `Male`, or
+which stopped the band as a line off every track and stood outside the table. The ground truth
+writes it as a header cell spanning the columns it heads, and the scorer keys each column by the
+group's head and its own name together.
+
+**The change.** Over a header the band made, or a first row that reads as a header's line
+(`-v13`'s test), each cell of the band's lines, bottom to top, and of the lines just above the
+header — each within a row and a half's pitch of the line below it, the first over a first row
+within two and a half — is read against the header's ink below it:
+
+- **It heads the widest run of two tracks or more centred on it**, of the tracks whose ink lies
+  nearer its middle than any other cell's of its line, the stub's heading aside: the run's ink holds
+  the cell within a track's tolerance, and its middle lies within the cell, to a sixteenth of the
+  run's width. Narrow heads between pairs each take their pair; `Benefit Period` over seven columns
+  takes all seven, though the three at their middle share its middle.
+- **It is a column's own line** where it sits on a track clear of its neighbours and is centred over
+  that track's ink, flush with it left or right, or over a track with none — `Exhibit` over `No.`,
+  `MIN.` over `PREM. L/C CODE` — though the run of three columns around it is centred on it too.
+- **It is the table's title** where it stands alone on its line, centred on the whole table, the
+  stub's column with it, within a track's tolerance; and the stub's column is never a group's.
+- **A line above the header gives a head of every cell or none**, and the climb stops at the first
+  that gives none; a head over the very columns of a head below it is that head's line above, and
+  one over part of them is none, so the group row is one level.
+
+The heads form the table's first row, each a cell spanning the tracks it heads and every other
+track an empty cell; a head the band had stacked leaves the header cell it was in. A group row the
+table cannot be built with is none. The HTML projection writes the two rows as the table's header
+(decision #99); GFM cannot carry a span, so Markdown writes the head in its first column.
+
+**Measured**, with the shipped build on every ParseBench group, on top of decision #113: ParseBench
+tables **0.5965 → 0.6086**, 28 pages up and 1 down (`SERFF_CA_random_pages 1` p2104 0.54 → 0.99,
+`SERFF_TX_random_pages 1` p43 0.55 → 1.00 and p865 0.55 → 0.99, `JNPR.2018` p212 0.59 → 0.99, each a
+group row over a body unchanged cell for cell; `JNPR.2017.page_127` 0.68 → 0.82, the striped table
+#113 reads whole; `VRSK.2018` p141 0.480 → 0.478, a table whose header lines and first figures the
+band had already mixed); content, formatting, charts and visual grounding unchanged on every page;
+overall 50.97 → 51.21. Alone on 0.65.0's code: tables 0.5875 → 0.5993, overall 50.79 → 51.02; of the
+census's header class, 0.23 of its 2.05 points came back, on 25 of its 136 pages. 48 ParseBench
+tables gain a group row, 40 on table pages. opendataloader-bench 0.7999, unchanged: the two tables
+#113 made readable, `01030000000046` and `-047`, gain the group row their ground truth has, each head
+reading only its last line, NID up and TEDS a little down on both (0.8962 → 0.8961, 0.7374 → 0.7304),
+as Markdown cannot carry the span. No table on a document without one, every cell its runs' text; the
+gate documents' 542 tables unchanged. **Measured and not used**, on 0.65.0's code: the heads without
+the one-column and title clauses (tables 0.5955, 26 pages up and 14 down, each fall a column's name set
+on two lines read as a group, `MIN.` over `PREM. L/C CODE`); the nearest-centred run rather than the
+widest, which gave a head over seven columns only their middle three; the stub's heading as a rival,
+which took a head's first column from it; an order test over each line's cells, which changed no
+table. **Found and not built**: a second group row, for a head over heads, which needs the HTML
+projection to write more than two header rows; a header left above the table, which the band still
+stops short of for scattered reasons; column names set closer than an em, read as one cell.
