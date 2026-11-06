@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V13` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V14` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -87,6 +87,11 @@
 //!    row is no header: the lines just above the rule, a label over two columns or more and each
 //!    word inside one, set apart from the text above them. Its cells span the columns from the
 //!    header's ink to the rule and hold its runs — text the page drew, read where it stands.
+//! 9. **A grid inside which text no cell holds is set, in two of its columns or more, is refused**
+//!    (`ruled-rects-v14`, decision #113, [`RuledRefusal::RowsUndrawn`]): rows of a table the page
+//!    drew only in part, as a table striped in alternate rows fills every other row. And a rule a
+//!    fill outlines as a polygon, with bevelled ends or as a frame drawn in one path, is read as the
+//!    rectangles it outlines (`crate::content::Interpreter::rects`).
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -106,7 +111,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V13` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V14` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -221,7 +226,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V13`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V14`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V2`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -601,6 +606,17 @@ pub enum RuledRefusal {
         /// The blocks of rows whitespace separates.
         blocks: usize,
     },
+    /// `ruled-rects-v14` (decision #113): text no cell holds is set inside the grid, in two of its
+    /// columns or more — rows of a table the page drew only in part, as a table striped in
+    /// alternate rows fills every other row and leaves the rows between unpainted.
+    ///
+    /// The page's lattice is refused so that each group of rectangles is read on its own, and the
+    /// text is left to the rules after this one; this is the page's refusal only where no group's
+    /// grid stands.
+    RowsUndrawn {
+        /// The grid's columns holding such text.
+        columns: usize,
+    },
 }
 
 impl RuledRefusal {
@@ -617,6 +633,7 @@ impl RuledRefusal {
             Self::LatticeTooLarge { .. } => "past the cell ceiling",
             Self::CrossCheckRejected { .. } => "a grid that contradicts itself",
             Self::Stacked { .. } => "tables stacked on their own columns",
+            Self::RowsUndrawn { .. } => "text set inside a grid in rows it did not draw",
         }
     }
 
@@ -665,6 +682,14 @@ impl RuledRefusal {
                  cells span columns only the other table drew, so the page's rectangles were read \
                  group by group instead, and no group's grid stood as a table",
             ),
+            Self::RowsUndrawn { .. } => String::from(
+                "The rectangles drew a grid inside which text no cell holds is set in two of its \
+                 columns or more: rows of a table the page drew only in part, as a table striped \
+                 in alternate rows fills every other row and leaves the rows between unpainted. \
+                 Read from the rows it drew, the grid would drop the others and pass a fragment \
+                 off as the whole table, so it was refused, the page's rectangles were read group \
+                 by group, and the text was left to the rules after this one",
+            ),
         }
     }
 
@@ -689,6 +714,9 @@ impl RuledRefusal {
                 geometric,
             } => format!("{structural} structural and {geometric} geometric fault(s)"),
             Self::Stacked { blocks } => format!("{blocks} blocks of rows"),
+            Self::RowsUndrawn { columns } => {
+                format!("{columns} of its columns hold text no cell holds")
+            }
         }
     }
 }
@@ -804,7 +832,7 @@ pub fn detect_ruled_with(
 }
 
 /// The thickest rule [`one_line`] reads as one line, in centipoints: three points.
-const THICK_RULE: i64 = 300;
+pub(crate) const THICK_RULE: i64 = 300;
 
 /// `ruled-rects-v13` (decision #75): a rectangle thin on one axis — past [`LATTICE_TOLERANCE`], up
 /// to [`THICK_RULE`] — and longer than that on the other is a rule, read as the one line along its
@@ -1359,6 +1387,38 @@ fn ruled_grid(
     {
         return Ok((Vec::new(), None));
     }
+    // `ruled-rects-v14` (decision #113): **text no cell holds, set inside the grid in two of its
+    // columns or more, is rows of a table the page drew only in part** — a table striped in
+    // alternate rows fills every other row, and its rows between were read as the whitespace between
+    // drawn cells. Refused, so the page is read group by group and the text by the rules after this.
+    let held: std::collections::BTreeSet<usize> = detected
+        .iter()
+        .flat_map(|c| c.run_indices.iter().copied())
+        .collect();
+    let unheld: std::collections::BTreeSet<u32> = runs
+        .iter()
+        .enumerate()
+        .filter(|&(i, o)| {
+            !held.contains(&i)
+                && !o.text.trim().is_empty()
+                && o.y >= table_rect.y0
+                && o.y < table_rect.y1
+        })
+        .filter_map(|(_, o)| {
+            (0..lattice.columns()).find(|&c| {
+                let f = lattice.face(0, c);
+                o.x >= f.x0 && o.x < f.x1
+            })
+        })
+        .collect();
+    if unheld.len() >= 2 {
+        return Ok((
+            Vec::new(),
+            Some(RuledRefusal::RowsUndrawn {
+                columns: unheld.len(),
+            }),
+        ));
+    }
     let check = cross_check(table_rect, lattice.rows(), lattice.columns(), &detected);
 
     // **v2-S20: the structural half of the check is acted on.** Until this slice the cross-check
@@ -1420,7 +1480,7 @@ fn ruled_grid(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V13.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V14.to_string(),
         }],
         None,
     ))
@@ -2505,7 +2565,7 @@ mod tests {
         assert_eq!(tables.len(), 1);
         let t = &tables[0];
         assert_eq!((t.rows, t.columns), (2, 3));
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
         assert!(t.cells.iter().all(|c| c.position.table_id == t.id));
@@ -2661,6 +2721,53 @@ mod tests {
         let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
         assert_eq!(refused, Some(RuledRefusal::Stacked { blocks: 2 }));
+    }
+
+    /// `ruled-rects-v14` (decision #113): a table striped in alternate rows, its painted rows drawn
+    /// cell by cell and its rows between left unpainted, is no grid of its painted rows — text no
+    /// cell holds is set inside the grid in two of its columns or more. A caption in one column,
+    /// spaces, or text above the grid make no such row, and the grid stands. A group's grid is
+    /// asked the same: a frame round the bands, and a table on other columns below, which leaves
+    /// the page to be read group by group.
+    #[test]
+    fn a_grid_of_painted_rows_with_rows_between_is_refused() {
+        let striped = |extra: &[RunOrigin<'static>]| {
+            let (rects, mut runs) = blocks(&[
+                (100, &[100, 200, 300], 1),
+                (180, &[100, 200, 300], 1),
+                (260, &[100, 200, 300], 1),
+            ]);
+            runs.extend_from_slice(extra);
+            detect_ruled(1, &rects, &runs, &mut alloc()).unwrap()
+        };
+        let between = [run_at(105, 160, "u1"), run_at(205, 160, "u2")];
+        let (tables, refused) = striped(&between);
+        assert!(tables.is_empty(), "{tables:?}");
+        assert_eq!(refused, Some(RuledRefusal::RowsUndrawn { columns: 2 }));
+        for stands in [
+            &[run_at(105, 160, "Table 2")][..],
+            &[run_at(105, 160, " "), run_at(205, 160, " ")],
+            &[run_at(105, 90, "u1"), run_at(205, 90, "u2")],
+            &[],
+        ] {
+            let (tables, refused) = striped(stands);
+            let shapes: Vec<(u32, u32)> = tables.iter().map(|t| (t.rows, t.columns)).collect();
+            assert_eq!(shapes, [(3, 2)], "{refused:?}");
+        }
+        let (mut rects, mut runs) = blocks(&[
+            (100, &[100, 200, 300], 1),
+            (180, &[100, 200, 300], 1),
+            (260, &[100, 200, 300], 1),
+            (400, &[100, 150, 300], 2),
+        ]);
+        rects.push(r(99, 99, 301, 301));
+        runs.extend(between);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let shapes: Vec<(i64, u32, u32)> = tables
+            .iter()
+            .map(|t| (t.rect.y0 / pt(1), t.rows, t.columns))
+            .collect();
+        assert_eq!(shapes, [(400, 2, 2)]);
     }
 
     /// `ruled-rects-v13`: a box painted behind the whole page covers every face of a grid drawn in
@@ -3008,7 +3115,7 @@ mod tests {
             (heading.position.colspan, heading.text.as_str()),
             (3, "Focus area")
         );
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
     }
 
     #[test]
@@ -3228,7 +3335,7 @@ mod tests {
         assert_eq!((t.rows, t.columns, t.cells.len()), (2, 3, 6));
         let texts: Vec<&str> = t.cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
     }
 
     #[test]

@@ -1137,7 +1137,7 @@ fn extract_page(
             table_fills.push((crate::tables::quantize_rect(ax, ay, bx, by)?, f.fill));
         }
         for t in &mut detected.tables {
-            if t.rule == ethos_parser_core::TABLE_DETECTION_V13 {
+            if t.rule == ethos_parser_core::TABLE_DETECTION_V14 {
                 crate::tables::join_band_cells(t, &table_fills, &table_rects, &uprights, &origins);
             }
         }
@@ -1150,7 +1150,7 @@ fn extract_page(
             let header_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
             for t in tables
                 .iter_mut()
-                .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V13)
+                .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V14)
             {
                 crate::tables::header_above(t, &header_runs);
             }

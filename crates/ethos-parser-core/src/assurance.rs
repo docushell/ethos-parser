@@ -711,7 +711,7 @@ impl Capabilities {
                 codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
                 "All three table rules report the grid the document DREW, and none of them \
                  supplies an edge nobody drew. A table ruled across its rows and between its \
-                 columns but never down its sides is read by `ruled-rects-v13` with its first and \
+                 columns but never down its sides is read by `ruled-rects-v14` with its first and \
                  last columns bounded there only by where its rules stop: an outer line counts as \
                  drawn across a row whose rules above and below both run out to it, and nowhere \
                  else. `stroke-ruled-v2` reads rows as the regions \

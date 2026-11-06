@@ -384,7 +384,9 @@ pub struct Interpreter<'a> {
     /// Axis-aligned rectangles this page painted, in user space (v1-S1).
     ///
     /// Only **painted** subpaths land here. A path built and then discarded with `n`, or used
-    /// solely as a clip, drew no ink and is not a ruling line.
+    /// solely as a clip, drew no ink and is not a ruling line. Since `ruled-rects-v14` (decision
+    /// #113) also the rules a fill painted as polygons, each as the rectangle it outlines
+    /// ([`outlined_rules`]), and in no other field.
     pub rects: Vec<PathRect>,
     /// The rectangles a fill painted, each with its fill colour (decision #42). A rectangle only
     /// stroked is not here: an outline is not a bar. A form's filled rectangles are kept, where
@@ -460,6 +462,9 @@ pub struct Interpreter<'a> {
     /// Rounded bars from the current path, pending a fill: for [`Interpreter::filled_rounded`]
     /// alone (decision #88).
     pending_rounded: Vec<PathRect>,
+    /// Rules the current path outlines as polygons, pending a fill: for [`Interpreter::rects`]
+    /// alone (decision #113).
+    pending_rules: Vec<PathRect>,
     /// Slices from the current path, pending a fill: for [`Interpreter::wedges`] alone (decision
     /// #90).
     pending_wedges: Vec<Slice>,
@@ -566,6 +571,7 @@ impl<'a> Interpreter<'a> {
             pending: Vec::new(),
             pending_filled: Vec::new(),
             pending_rounded: Vec::new(),
+            pending_rules: Vec::new(),
             pending_wedges: Vec::new(),
             pending_segments: Vec::new(),
             pending_polylines: Vec::new(),
@@ -659,6 +665,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_rules.clear();
                 self.pending_wedges.clear();
                 self.pending_polylines.clear();
                 self.polylines.clear();
@@ -765,7 +772,14 @@ impl<'a> Interpreter<'a> {
             self.pending_rounded.extend(rounded_bar(&sub));
         }
         self.pending_wedges.extend(wedge(&sub));
-        if sub.disqualified || !self.ctm_is_axis_aligned() {
+        if !self.ctm_is_axis_aligned() {
+            return;
+        }
+        if sub.disqualified {
+            // Decision #113: slants and no curve may outline a rule, which a fill then paints.
+            if sub.controls.is_empty() {
+                self.pending_rules.extend(outlined_rules(&sub.points));
+            }
             return;
         }
         let pts = &sub.points;
@@ -1180,6 +1194,11 @@ impl<'a> Interpreter<'a> {
                 self.pending_rounded.clear();
                 self.pending_wedges.clear();
                 self.rects.append(&mut self.pending);
+                // Decision #113: a rule outlined as a polygon is drawn by its fill.
+                if fills {
+                    self.rects.append(&mut self.pending_rules);
+                }
+                self.pending_rules.clear();
                 self.segments.append(&mut self.pending_segments);
             }
             // `n` ends a path **without painting it**. Nothing was drawn, so nothing is a ruling
@@ -1191,6 +1210,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_rules.clear();
                 self.pending_wedges.clear();
                 self.pending_segments.clear();
                 self.pending_polylines.clear();
@@ -1220,6 +1240,7 @@ impl<'a> Interpreter<'a> {
                 self.pending.clear();
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
+                self.pending_rules.clear();
                 self.pending_wedges.clear();
                 self.pending_segments.clear();
                 self.pending_polylines.clear();
@@ -1716,6 +1737,11 @@ pub(crate) const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT
 /// [`crate::charts::MIN_BAR`], the least side of a filled bar, which counts centipoints.
 const STROKE_BAR_MIN: f64 = crate::charts::MIN_BAR as f64 / 100.0;
 
+/// The thickest rule [`outlined_rules`] reads, in points (decision #113):
+/// [`crate::tables::THICK_RULE`], the thickest the ruled rule reads as one line, which counts
+/// centipoints.
+const OUTLINED_RULE_MAX: f64 = crate::tables::THICK_RULE as f64 / 100.0;
+
 /// How far outside the clip rectangle, in points, a run's origin or a path's middle lies to be
 /// clipped away (decision #105): a run set on the clip's edge is drawn.
 const CLIP_SLACK: f64 = 1.0;
@@ -1781,6 +1807,102 @@ fn rectangle(pts: &[(f64, f64)]) -> Option<PathRect> {
     let xs: Vec<f64> = distinct(pts.iter().map(|p| p.0));
     let ys: Vec<f64> = distinct(pts.iter().map(|p| p.1));
     (xs.len() == 2 && ys.len() == 2).then(|| PathRect::from_corners((xs[0], ys[0]), (xs[1], ys[1])))
+}
+
+/// The rules a polygon outlines (`ruled-rects-v14`, decision #113), as the rectangles a rule drawn
+/// with `re` paints: some producers fill a rule's outline rather than stroke the rule.
+///
+/// - **A rule with bevelled or mitred ends**: four corners, two on each of two lines along one axis
+///   at most [`OUTLINED_RULE_MAX`] apart — its faces, drawn one way and back — the shorter face
+///   within the longer and each of its ends at most that far in, and the longer face longer than
+///   that. Its box: where a rule meets another at a corner its end is cut on the slant, and its
+///   longer face reaches the corner.
+/// - **A frame**: ten points, a rectangle and then another inside it, each closed on its first
+///   corner, at most [`OUTLINED_RULE_MAX`] in on every side. Its four sides.
+///
+/// Anything else outlines no rule: a slant is no rule's.
+fn outlined_rules(pts: &[(f64, f64)]) -> Vec<PathRect> {
+    let mut p = once_each(pts);
+    if p.len() == 5 && approx_eq(p[0].0, p[4].0) && approx_eq(p[0].1, p[4].1) {
+        p.pop();
+    }
+    if let [a, b, c, d] = p[..] {
+        let swap = |(x, y): (f64, f64)| (y, x);
+        let rule = [(a, b, c, d), (b, c, d, a)]
+            .into_iter()
+            .find_map(|(a, b, c, d)| {
+                bevelled(a, b, c, d).or_else(|| {
+                    bevelled(swap(a), swap(b), swap(c), swap(d)).map(|r| PathRect {
+                        x0: r.y0,
+                        y0: r.x0,
+                        x1: r.y1,
+                        y1: r.x1,
+                    })
+                })
+            });
+        return rule.into_iter().collect();
+    }
+    if p.len() == 10 {
+        if let (Some(a), Some(b)) = (rectangle(&p[..5]), rectangle(&p[5..])) {
+            let (outer, inner) = if a.contains(&b) { (a, b) } else { (b, a) };
+            let gaps = [
+                inner.x0 - outer.x0,
+                inner.y0 - outer.y0,
+                outer.x1 - inner.x1,
+                outer.y1 - inner.y1,
+            ];
+            if gaps
+                .iter()
+                .all(|g| (COORD_EPSILON..=OUTLINED_RULE_MAX).contains(g))
+            {
+                return vec![
+                    PathRect {
+                        y1: inner.y0,
+                        ..outer
+                    },
+                    PathRect {
+                        y0: inner.y1,
+                        ..outer
+                    },
+                    PathRect {
+                        x1: inner.x0,
+                        ..outer
+                    },
+                    PathRect {
+                        x0: inner.x1,
+                        ..outer
+                    },
+                ];
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// [`outlined_rules`]' rule with bevelled ends whose faces `a b` and `c d` run along x: its box.
+fn bevelled(a: (f64, f64), b: (f64, f64), c: (f64, f64), d: (f64, f64)) -> Option<PathRect> {
+    let face = |p: (f64, f64), q: (f64, f64)| (p.0.min(q.0), p.0.max(q.0));
+    let (f, g) = (face(a, b), face(c, d));
+    let (long, short) = if f.1 - f.0 >= g.1 - g.0 {
+        (f, g)
+    } else {
+        (g, f)
+    };
+    let within = |v: f64, lo: f64, hi: f64| lo - COORD_EPSILON <= v && v <= hi + COORD_EPSILON;
+    let thick = (a.1 - c.1).abs();
+    (approx_eq(a.1, b.1)
+        && approx_eq(c.1, d.1)
+        && (COORD_EPSILON..=OUTLINED_RULE_MAX).contains(&thick)
+        && (b.0 - a.0) * (d.0 - c.0) < 0.0
+        && long.1 - long.0 > OUTLINED_RULE_MAX
+        && within(short.0, long.0, long.0 + OUTLINED_RULE_MAX)
+        && within(short.1, long.1 - OUTLINED_RULE_MAX, long.1))
+    .then(|| PathRect {
+        x0: long.0,
+        y0: a.1.min(c.1),
+        x1: long.1,
+        y1: a.1.max(c.1),
+    })
 }
 
 /// The points with each point named again at once dropped: `m a l a l b` is `a`, `b`.
@@ -2476,6 +2598,74 @@ mod tests {
         let mut i = Interpreter::new(&fonts);
         i.run(&ops("40 80 m 140 120 l 40 120 l h S")).unwrap();
         assert!(i.rects.is_empty(), "got {:?}", i.rects);
+    }
+
+    /// **A rule a fill outlines as a polygon is the rectangle it outlines** (`ruled-rects-v14`,
+    /// decision #113): a rule with bevelled ends along either axis is its box, its ends cut in by
+    /// as much as three points or not at all; a frame drawn as one path of ten points is its four
+    /// sides; and each reaches `rects` alone. Stroked, ended with `n` or made a clip, curved, more
+    /// than three points thick, three points long or less, an end cut further in than that, a
+    /// parallelogram, a polygon whose faces run one way, and a frame more than three points deep
+    /// are none, and leave nothing for the next fill to paint.
+    #[test]
+    fn a_rule_a_fill_outlines_is_the_rectangle_it_outlines() {
+        let fonts = no_fonts();
+        let rects = |content: &str| {
+            let mut i = Interpreter::new(&fonts);
+            // A triangle filled after: it outlines no rule, and paints none left pending.
+            i.run(&ops(&format!(
+                "{content} 200 200 m 210 200 l 205 210 l h f"
+            )))
+            .unwrap();
+            assert!(
+                i.filled.is_empty() && i.filled_alone.is_empty(),
+                "{content}"
+            );
+            i.rects
+                .iter()
+                .map(|r| [r.x0, r.y0, r.x1, r.y1].map(|v| (v * 100.0).round() as i64))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rects("50 700 m 450 700 l 449.25 699.25 l 50.75 699.25 l h f"),
+            [[5000, 69925, 45000, 70000]]
+        );
+        assert_eq!(
+            rects("70 700 m 70 400 l 69.25 400.75 l 69.25 699.25 l h f"),
+            [[6925, 40000, 7000, 70000]],
+            "along y"
+        );
+        assert_eq!(
+            rects("10 0 m 100 0 l 100 1 l 13 1 l 10 0 l f"),
+            [[1000, 0, 10000, 100]],
+            "one end square, the other cut in three points, the path closed by its corner"
+        );
+        assert_eq!(
+            rects(
+                "10 20 m 10 80 l 110 80 l 110 20 l 10 20 l \
+                 11 21 l 109 21 l 109 79 l 11 79 l 11 21 l h f"
+            ),
+            [
+                [1000, 2000, 11000, 2100],
+                [1000, 7900, 11000, 8000],
+                [1000, 2000, 1100, 8000],
+                [10900, 2000, 11000, 8000]
+            ]
+        );
+        for none in [
+            "0 0 m 100 0 l 99 1 l 1 1 l h S",
+            "0 0 m 100 0 l 99 1 l 1 1 l h n",
+            "0 0 m 100 0 l 99 1 l 1 1 l h W f",
+            "0 0 m 100 0 l 99 1 l 1 1 l 0.5 0.5 0 0.2 0 0 c h f",
+            "0 0 m 100 0 l 99 4 l 1 4 l h f",
+            "0 0 m 3 0 l 2.5 0.5 l 0.5 0.5 l h f",
+            "0 0 m 100 0 l 90 1 l 10 1 l h f",
+            "0 0 m 100 0 l 101 1 l 1 1 l h f",
+            "0 0 m 100 0 l 1 1 l 99 1 l h f",
+            "10 20 m 10 80 l 110 80 l 110 20 l 10 20 l 14 24 l 106 24 l 106 76 l 14 76 l 14 24 l h f",
+        ] {
+            assert_eq!(rects(none), Vec::<[i64; 4]>::new(), "{none}");
+        }
     }
 
     #[test]

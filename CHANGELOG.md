@@ -30,6 +30,44 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [Unreleased]
+
+### A table drawn only in part is no ruled grid, and rules a fill outlines are read (decision #113)
+
+Rule id `ruled-rects-v14`; `profile_sha256` moves.
+
+- **A ruled grid inside which text no cell holds is set, in two of its columns or more, is
+  refused.** A table striped in alternate rows fills every other row cell by cell, and the ruled
+  rule read the rows between as the whitespace between drawn cells: the grid was the painted rows,
+  and the rest of the table was prose. Two tables set one under another on the same columns, a
+  header between them, were one grid the same way. Such a grid is now refused, the page is read
+  group by group, and the text is left to the rules after this one: on the five
+  opendataloader-bench documents it refuses, the whitespace rule or the stroke-ruled rule then
+  reads the table with the rows between. `ruled-table-candidate-refused` names the refusal: `text
+  set inside a grid in rows it did not draw`.
+- **A rule a fill outlines as a polygon is the rectangle it outlines.** Some producers draw a
+  table's rules as filled outlines: each rule a polygon of four corners with bevelled ends, and the
+  frame one path of ten points, a rectangle and another inside it. The rectangle capture read
+  neither, so such a table had no ruled grid. A rule with bevelled ends, at most three points
+  thick, is now its box, and a frame at most three points deep its four sides. Only the ruled rule
+  reads them, so charts and figures read what they read before.
+- **Why this piece**: the census of opendataloader-bench's 42 table documents ranked the two third
+  and sixth by the table score they lost, 2.47 and 1.43 points, and both low in risk: the first a
+  narrowing, the second a shape 3 of its 200 documents draw, every one of them a table. The owner
+  chose them together.
+- **Measured** on ParseBench: tables 0.5875 -> 0.5965, 7 pages up and none down — tables set one
+  under another on the same columns, read as one grid, now read apart with their headers, and a
+  striped table's unpainted rows read with it; visual grounding 0.5911 -> 0.5912, one page up and
+  one down; charts, content faithfulness and semantic formatting unchanged on every page; overall
+  50.79 -> 50.97. opendataloader-bench 0.7910 -> 0.7999: TEDS 0.5827 -> 0.6633, NID 0.8875 ->
+  0.8914, MHS 0.5894 -> 0.5902, eight documents up and none down. The fabrication check holds: 0
+  of 1,527 cells hold text that is not their runs', and no whitespace-rule table stands on a
+  document without one. The gate documents' 542 tables are unchanged. Each part alone: the refusal
+  0.7971 and ParseBench 50.97; the outlined rules 0.7938, ParseBench unchanged on every page.
+- **Trade**: one visual-grounding page falls, `938c3dc8…` p19 0.33 -> 0.32. Its table's painted
+  rows had read with their header and lost the unpainted row between them; the whitespace rule now
+  reads the last two rows, and the header and that row are text.
+
 ## [0.65.0] — a paragraph reads as one block, and text painted twice is written once
 
 **A MINOR, because readers and both projections changed.** Eight commits since the `v0.64.0` tag

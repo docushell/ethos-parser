@@ -1090,6 +1090,21 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a ruled grid drawn only in part is refused, and rules a fill outlines are read (decision #113, 2026-11-06)
+
+Told "Fill bands and mitred rules", a ruled grid inside which text no cell holds is set, in two of
+its columns or more, is refused, and the rules after it read the text; and a rule a fill outlines
+as a polygon, with bevelled ends or as a frame in one path, is read as the rectangle it outlines.
+Tables 0.5875 -> 0.5965, 7 pages up and none down: `Coca Cola 10-k` p51 0.11 -> 1.00, p39 0.14 ->
+1.00, p50 0.21 -> 0.87 and p107 0.10 -> 0.74, two tables on one set of columns with a header
+between that read as one grid, now apart with their headers; `BRWS-134565917` p1171 0.00 -> 0.78,
+five such tables; `JNPR.2017.page_127` 0.30 -> 0.68, a striped table whose unpainted rows were
+prose; `blackrock-funds-i-icav-annual-report-2022` p13 0.14 -> 0.45. Visual grounding 0.5911 ->
+0.5912, one page up and `938c3dc8…` p19 down 0.33 -> 0.32, where the whitespace rule reads the last
+two rows of a table whose header the ruled grid had read. Charts, content faithfulness and semantic
+formatting unchanged on every page; overall 50.79 -> 50.97. The outlined rules alone move no page
+here; opendataloader-bench 0.7910 -> 0.7999, eight documents up and none down.
+
 ### After word runs with no reach go on along their line (decision #111, 2026-11-05)
 
 Told "Two small fixes", a stream's indirect `/Filter` and `/DecodeParms` are read through their

@@ -2099,6 +2099,145 @@ fn a_band_of_abutting_fills_of_one_colour_is_one_cell() {
     );
 }
 
+/// One page 450 by 300 points drawing `content`, with Helvetica as `/F1`.
+fn helvetica_wide_page(content: &str) -> ExtractArtifact {
+    let page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 450 300] \
+                /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>";
+    let stream = format!(
+        "<< /Length {} >>\nstream\n{content}\nendstream",
+        content.len()
+    );
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        page.as_bytes().to_vec(),
+        stream.into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ];
+    extract_bytes(&pdf_from_objects(&objects)).expect("extracts")
+}
+
+/// Each row of the text in the cells of a page's `i`th table, joined with `|`.
+fn grid_of(page: &ethos_parser_pdf::PageExtract, i: usize) -> Vec<String> {
+    let t = &page.tables[i];
+    (0..t.rows)
+        .map(|r| {
+            (0..t.columns)
+                .map(|c| {
+                    t.cells
+                        .iter()
+                        .find(|x| x.position.row == r && x.position.column == c)
+                        .map_or("", |x| x.text.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect()
+}
+
+/// **A table striped in alternate rows is read whole, never as its painted rows**
+/// (`ruled-rects-v14`, decision #113): five rows, the second and the fourth filled cell by cell.
+/// The ruled rule's grid of the painted rows holds no text of the rows between, so it is refused,
+/// and says why; the rule reading the text's alignment reads all five rows.
+#[test]
+fn a_table_striped_in_alternate_rows_is_read_whole() {
+    let rows = [
+        ["Item", "Count", "Share"],
+        ["Alder", "12", "4.1"],
+        ["Birch", "30", "9.8"],
+        ["Cedar", "7", "2.2"],
+        ["Elm", "19", "6.0"],
+    ];
+    let mut content = String::new();
+    for r in [1, 3] {
+        let y = 244 - 20 * r;
+        content += &format!("0.85 g 30 {y} 120 20 re 150 {y} 120 20 re 270 {y} 120 20 re f\n");
+    }
+    content += "0 g\n";
+    for (r, row) in rows.iter().enumerate() {
+        for (x, s) in [40, 160, 280].into_iter().zip(row) {
+            let y = 250 - 20 * r;
+            content += &format!("BT /F1 10 Tf 1 0 0 1 {x} {y} Tm ({s}) Tj ET\n");
+        }
+    }
+    let a = helvetica_wide_page(&content);
+    let tables = &a.pages[0].tables;
+    assert!(
+        tables
+            .iter()
+            .all(|t| t.rule != ethos_parser_core::TABLE_DETECTION_V14),
+        "{tables:?}"
+    );
+    assert_eq!(tables.len(), 1, "{tables:?}");
+    assert_eq!(
+        grid_of(&a.pages[0], 0),
+        [
+            "Item|Count|Share",
+            "Alder|12|4.1",
+            "Birch|30|9.8",
+            "Cedar|7|2.2",
+            "Elm|19|6.0"
+        ]
+    );
+    let refused = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::RULED_TABLE_CANDIDATE_REFUSED)
+        .expect("the ruled rule says why");
+    assert!(
+        refused
+            .detail
+            .contains("text set inside a grid in rows it did not draw: "),
+        "{}",
+        refused.detail
+    );
+}
+
+/// **A table ruled in rules a fill outlines is a ruled table** (`ruled-rects-v14`, decision
+/// #113): its frame one path of ten points, an outer rectangle and an inner one three quarters of
+/// a point in, and each rule inside it a filled outline bevelled at both ends, as some producers
+/// draw a table's borders. The ruled rule reads its three rows and two columns where the frame
+/// stands.
+#[test]
+fn a_table_ruled_in_outlined_rules_is_a_ruled_table() {
+    let mut content = String::from(
+        "0 g 30 140 m 30 260 l 330 260 l 330 140 l 30 140 l \
+         30.75 140.75 l 329.25 140.75 l 329.25 259.25 l 30.75 259.25 l 30.75 140.75 l h f\n",
+    );
+    for y in [220.0, 180.0] {
+        content += &format!(
+            "30 {y} m 330 {y} l 329.25 {} l 30.75 {} l h f\n",
+            y - 0.75,
+            y - 0.75
+        );
+    }
+    content += "150 260 m 150 140 l 149.25 140.75 l 149.25 259.25 l h f\n";
+    for (r, row) in [["Region", "Total"], ["North", "41"], ["South", "57"]]
+        .iter()
+        .enumerate()
+    {
+        for (x, s) in [40, 160].into_iter().zip(row) {
+            let y = 235 - 40 * r;
+            content += &format!("BT /F1 10 Tf 1 0 0 1 {x} {y} Tm ({s}) Tj ET\n");
+        }
+    }
+    let a = helvetica_wide_page(&content);
+    let tables = &a.pages[0].tables;
+    assert_eq!(tables.len(), 1, "{tables:?}");
+    let t = &tables[0];
+    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
+    assert_eq!(
+        (t.rect.x0, t.rect.y0),
+        (3000, 4000),
+        "where the frame stands"
+    );
+    assert_eq!(
+        grid_of(&a.pages[0], 0),
+        ["Region|Total", "North|41", "South|57"]
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // What a page may cost (review 2026-09-25 F08)
 // -------------------------------------------------------------------------------------------
@@ -2493,7 +2632,7 @@ fn the_locator_cross_check_agrees_on_the_golden_and_the_hostile_grid_is_refused(
         t.check
     );
     assert_eq!(t.check.check_id, ethos_parser_core::LOCATOR_CHECK_V1);
-    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
 
     // The hostile fixture draws overlapping rectangles. No table — and the artifact says why,
     // rather than saying nothing, which is the distinction `ruled-table-candidate-refused` exists
@@ -2623,7 +2762,7 @@ fn a_page_with_both_kinds_of_grid_records_both_rules() {
 
     let ruled = tables
         .iter()
-        .find(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V13)
+        .find(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V14)
         .expect("the painted grid must be found by the ruled rule");
     let unruled = tables
         .iter()
@@ -2684,7 +2823,7 @@ fn where_both_rules_could_fire_the_ruled_one_wins() {
     );
     assert_eq!(
         tables[0].rule,
-        ethos_parser_core::TABLE_DETECTION_V13,
+        ethos_parser_core::TABLE_DETECTION_V14,
         "the author drew this grid, so the author's derivation is the one kept"
     );
     assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
@@ -3328,7 +3467,7 @@ fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
     let t = tables[0];
 
     assert_eq!((t.rows, t.columns), (2, 2));
-    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
 
     let check = t
         .tagged_check
@@ -3796,7 +3935,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     let ruled = extract_ok(engine_fx("ruled-table-grid"));
     let rt: Vec<_> = ruled.pages.iter().flat_map(|p| p.tables.iter()).collect();
     assert_eq!(rt.len(), 1);
-    assert_eq!(rt[0].rule, ethos_parser_core::TABLE_DETECTION_V13);
+    assert_eq!(rt[0].rule, ethos_parser_core::TABLE_DETECTION_V14);
 
     // S3's four locator states, still four.
     let tagged = extract_ok(engine_fx("tagged-structure-roles"));
@@ -8562,7 +8701,7 @@ fn a_run_is_placed_in_a_ruled_cell_where_its_first_glyph_stands() {
         let tables = &a.pages[0].tables;
         assert_eq!(tables.len(), 1, "{tables:?}");
         let t = &tables[0];
-        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V13);
+        assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V14);
         assert_eq!((t.rows, t.columns), (2, 2));
         let mut cells: Vec<_> = t.cells.iter().collect();
         cells.sort_by_key(|c| (c.position.row, c.position.column));
