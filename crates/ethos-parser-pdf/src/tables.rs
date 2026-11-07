@@ -32,7 +32,11 @@
 //!    lets a grid drawn as thin *stroked line* rectangles and a grid drawn as filled *cell*
 //!    rectangles produce the same lattice. Since `ruled-rects-v13` (decision #75) a rule drawn
 //!    thicker than that, up to three points, is first read as the one line along its middle
-//!    ([`one_line`]): its two edges no longer bound a sliver of a column nothing else draws.
+//!    ([`one_line`]): its two edges no longer bound a sliver of a column nothing else draws. Since
+//!    `ruled-rects-v14` (decision #114), in a group's lattice (rule 6), edges each within the
+//!    tolerance of the next and spread no wider than three points are one line at their middle
+//!    ([`cluster`]) — a rule drawn in pieces that stop at the edges of a thick rule crossing it —
+//!    and a grid so joined is accepted by its lines alone, never by rule 3's faces.
 //! 2. **Faces are candidate cells.** `n` x-lines and `m` y-lines make `(n-1) × (m-1)` faces.
 //!    **Fewer than two faces is not a grid** — a lone rectangle is an underline or a border, and
 //!    calling it a 1×1 table would find one on most pages in existence.
@@ -73,7 +77,9 @@
 //!    not: tables stacked on their own columns (`ruled-rects-v13`, decision #73,
 //!    [`Lattice::stacked`]). A group's grid read through its merged cells takes no line it draws
 //!    across none of its bands, where it keeps its outline without it, and a label beside the rows
-//!    it spans is one cell (`ruled-rects-v13`, decision #76, [`Lattice::merged_cells`]).
+//!    it spans is one cell (`ruled-rects-v13`, decision #76, [`Lattice::merged_cells`]); each of
+//!    its bands is asked only of the ink within it, so a joint just past a band's end is no gap in
+//!    it (`ruled-rects-v14`, decision #114).
 //! 7. **A grid's open side is where its rules end** (`ruled-rects-v13`). A table ruled across its
 //!    rows and between its columns but never down its sides draws no outer column line; an outer
 //!    line counts as drawn across a row where the rules above and below that row both run out to
@@ -1669,14 +1675,12 @@ impl Lattice {
             return Err(None);
         }
         let kept = |axis: Axis| move |v: &i64| !dropped.contains(&(axis, *v));
-        let xs: Vec<i64> = cluster(rects.iter().flat_map(|r| [r.x0, r.x1]))
-            .into_iter()
-            .filter(kept(Axis::Vertical))
-            .collect();
-        let ys: Vec<i64> = cluster(rects.iter().flat_map(|r| [r.y0, r.y1]))
-            .into_iter()
-            .filter(kept(Axis::Horizontal))
-            .collect();
+        // Only a group's lattice joins a rule's pieces: the page's, read whole, is no group's
+        // grid and skips the tests one must pass ([`standing`]).
+        let (xs, joined_x) = cluster(rects.iter().flat_map(|r| [r.x0, r.x1]), merges.is_some());
+        let (ys, joined_y) = cluster(rects.iter().flat_map(|r| [r.y0, r.y1]), merges.is_some());
+        let xs: Vec<i64> = xs.into_iter().filter(kept(Axis::Vertical)).collect();
+        let ys: Vec<i64> = ys.into_iter().filter(kept(Axis::Horizontal)).collect();
         // Two lines in each axis bound one face — but **one face is not a table**. A lone
         // rectangle is an underline, a highlight, a text-box border; calling it a 1x1 table would
         // find one on most pages in existence, and `docs/history/09-V1-MILESTONES.md` S1 names "a
@@ -1791,8 +1795,10 @@ impl Lattice {
         // plus three scattered 40x10 bars. Band selection leaves at most the three rows and three
         // columns the bars touch, faces refuses because the panel is the enclosing border and the
         // bars draw three of nine, and tracing refuses because three scattered bars carry no line.
+        // A lattice that joins a rule's pieces is read by its lines alone: joined, they no
+        // longer bound the slivers that kept a page's panels from covering every face.
         let occupied_kept = lattice.occupied_faces(rects, faces);
-        if !lattice.every_kept_face_covered(&occupied_kept) {
+        if joined_x || joined_y || !lattice.every_kept_face_covered(&occupied_kept) {
             if let Some((axis, index, lines)) = lattice.first_untraced_line(rects) {
                 let mut line = None;
                 let Some(cells) = merges.and_then(|(runs, white, _)| {
@@ -2134,17 +2140,15 @@ impl Lattice {
             for (i, line) in lines.iter().enumerate() {
                 let spans = ink_on(&drawn_ink, axis, *line);
                 // Each band asked alone: ink on the line beyond it, or a gap where a merged cell
-                // crosses it in another band, decides nothing about this one.
+                // crosses it in another band, decides nothing about this one — so the ink is cut
+                // to the band, and a joint just past its end is no gap in it.
                 let drawn: Vec<bool> = across
                     .iter()
                     .map(|&(lo, hi)| {
                         let mut within: Vec<(i64, i64)> = spans
                             .iter()
-                            .copied()
-                            .filter(|&(a, b)| {
-                                a.max(b) + LATTICE_TOLERANCE >= lo
-                                    && a.min(b) <= hi + LATTICE_TOLERANCE
-                            })
+                            .map(|&(a, b)| (a.min(b).max(lo), a.max(b).min(hi)))
+                            .filter(|&(a, b)| a <= b)
                             .collect();
                         traces(&mut within, (lo, hi))
                     })
@@ -2434,17 +2438,38 @@ pub(crate) fn join_band_cells(
 }
 
 /// Sorted distinct values, folding anything within [`LATTICE_TOLERANCE`] together.
-fn cluster(values: impl Iterator<Item = i64>) -> Vec<i64> {
+///
+/// Where `joined` (a group's lattice), a run of values each within the tolerance of the next,
+/// spread wider than it and no wider than [`THICK_RULE`], is one line at the middle of the run: a
+/// rule drawn in pieces that stop at the edges of a thick rule crossing them. Folded from its first
+/// value, the run stood as two lines a rule's width apart, bounding a sliver nothing draws. Also
+/// whether any run was so joined.
+fn cluster(values: impl Iterator<Item = i64>, joined: bool) -> (Vec<i64>, bool) {
     let mut all: Vec<i64> = values.collect();
     all.sort_unstable();
     let mut out: Vec<i64> = Vec::new();
-    for v in all {
-        match out.last() {
-            Some(&last) if v - last <= LATTICE_TOLERANCE => {}
-            _ => out.push(v),
+    let mut any = false;
+    let mut start = 0;
+    for end in 1..=all.len() {
+        if end < all.len() && all[end] - all[end - 1] <= LATTICE_TOLERANCE {
+            continue;
         }
+        let run = &all[start..end];
+        let spread = run[run.len() - 1] - run[0];
+        if joined && spread > LATTICE_TOLERANCE && spread <= THICK_RULE {
+            out.push(run[0] + spread / 2);
+            any = true;
+        } else {
+            for &v in run {
+                match out.last() {
+                    Some(&last) if v - last <= LATTICE_TOLERANCE => {}
+                    _ => out.push(v),
+                }
+            }
+        }
+        start = end;
     }
-    out
+    (out, any)
 }
 
 fn index_of(lines: &[i64], v: i64) -> Option<usize> {
@@ -2963,6 +2988,106 @@ mod tests {
         assert_eq!(tables.len(), 1, "{refused:?}");
         let texts: Vec<&str> = tables[0].cells.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["A1", "A2", "A3", "B1", "B2", "B3"]);
+    }
+
+    /// `ruled-rects-v14` (decision #114): where `joined`, a run of edges each within the tolerance
+    /// of the next, spread wider than it and no wider than a thick rule, is one line at its middle;
+    /// a run within the tolerance, or wider than a thick rule, folds from its first edge as the
+    /// page's lattice folds every run.
+    #[test]
+    fn a_groups_lattice_joins_a_rules_edges_at_their_middle() {
+        let c = |v: &[i64], joined: bool| cluster(v.iter().copied(), joined);
+        assert_eq!(
+            c(&[19905, 20000, 20095], false),
+            (vec![19905, 20095], false)
+        );
+        assert_eq!(c(&[19905, 20000, 20095], true), (vec![20000], true));
+        assert_eq!(c(&[0, 150], true), (vec![0], false));
+        assert_eq!(c(&[0, 150, 300], true), (vec![150], true));
+        assert_eq!(c(&[0, 150, 300, 450], true), (vec![0, 300], false));
+        assert_eq!(c(&[0, 100, 200, 5000], true), (vec![100, 5000], true));
+    }
+
+    /// `ruled-rects-v14` (decision #114): **only a group's lattice joins a rule's edges.** The
+    /// page's grids are asked none of a group's tests ([`standing`]), and joined there they stood
+    /// where the page's groups read its tables better. A grid drawn cell by cell beside a thick
+    /// rule keeps the rule's two edges as two lines on the page's lattice, and stands on its faces
+    /// there; a group's lattice joins them.
+    #[test]
+    fn only_a_groups_lattice_joins_a_rules_edges() {
+        let rects: Vec<QuantRect> = [
+            r(100, 100, 200, 140),
+            r(202, 100, 300, 140),
+            r(100, 140, 200, 180),
+            r(202, 140, 300, 180),
+            r(200, 100, 202, 180),
+        ]
+        .iter()
+        .map(one_line)
+        .collect();
+        let page = Lattice::build(&rects, None).unwrap();
+        assert_eq!(page.xs, [pt(100), pt(200), pt(202), pt(300)]);
+        let group = Lattice::build(&rects, Some((&[][..], &[][..], false))).unwrap();
+        assert_eq!(group.xs, [pt(100), pt(201), pt(300)]);
+    }
+
+    /// `ruled-rects-v14` (decision #114): **a rule drawn in pieces that stop at the edges of a
+    /// thick rule crossing it is one line**, in a group's grid. Folded from its first edge, the
+    /// thick rule's two edges stood as two lines a rule's width apart, bounding a column nothing
+    /// is set in, and the grid was dropped for it; joined, the pieces' ends fall a point short of
+    /// the line on either side, and each is asked only of its own band. The page's lattice,
+    /// which no group's tests follow, refuses the grid as before.
+    #[test]
+    fn a_rule_drawn_in_pieces_at_a_thick_rule_crossing_it_is_one_line() {
+        let (_, runs) = grid(100, 100, 3, 2, label);
+        let q = |x0: i64, y0: i64, x1: i64, y1: i64| QuantRect { x0, y0, x1, y1 };
+        let (left, right) = (pt(200) - 95, pt(200) + 95);
+        let mut rects = vec![
+            r(100, 100, 101, 220),
+            r(300, 100, 301, 220),
+            q(left, pt(100), right, pt(220)),
+            r(100, 100, 301, 101),
+            r(100, 220, 301, 221),
+        ];
+        for y in [140, 180] {
+            rects.push(q(pt(100), pt(y), left, pt(y) + 100));
+            rects.push(q(right, pt(y), pt(301), pt(y) + 100));
+        }
+        let mut page = rects.clone();
+        page.iter_mut().for_each(|r| *r = one_line(r));
+        assert!(matches!(
+            Lattice::build(&page, None),
+            Err(Some(RuledRefusal::GridNotDrawn { .. }))
+        ));
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let shapes: Vec<(u32, u32)> = tables.iter().map(|t| (t.rows, t.columns)).collect();
+        assert_eq!(shapes, [(3, 2)], "{refused:?}");
+        let texts: Vec<&str> = tables[0].cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["A1", "A2", "B1", "B2", "C1", "C2"]);
+    }
+
+    /// `ruled-rects-v14` (decision #114): **a lattice that joins a rule's edges is read by its
+    /// lines alone**, never by every face being covered. Joined, the slivers between a page's
+    /// panels no longer leave a face uncovered: here a tall panel beside two, parted by rules two
+    /// points thick, its text level with the two beside it — rows the page did not rule, which its
+    /// lines say and its faces do not.
+    #[test]
+    fn a_lattice_joined_at_a_rules_edges_is_read_by_its_lines_not_its_faces() {
+        let rects = vec![
+            r(100, 100, 200, 300),
+            r(200, 100, 202, 300),
+            r(202, 100, 300, 200),
+            r(202, 200, 300, 202),
+            r(202, 202, 300, 300),
+        ];
+        let runs = vec![
+            run_at(105, 150, "Harbour"),
+            run_at(105, 250, "at dusk"),
+            run_at(205, 150, "North"),
+            run_at(205, 250, "South"),
+        ];
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
     }
 
     /// A grid every cell of which spans its columns — rows read as one box each, across rules that
@@ -3659,8 +3784,8 @@ mod tests {
                     // Rebuild the lattice geometry alone to ask both specs the question build
                     // answered. A refusal means BOTH paths declined; either alone accepting is a
                     // grid that should have been emitted.
-                    let xs = cluster(rects.iter().flat_map(|rect| [rect.x0, rect.x1]));
-                    let ys = cluster(rects.iter().flat_map(|rect| [rect.y0, rect.y1]));
+                    let xs = cluster(rects.iter().flat_map(|rect| [rect.x0, rect.x1]), false).0;
+                    let ys = cluster(rects.iter().flat_map(|rect| [rect.y0, rect.y1]), false).0;
                     // ALL bands, which is the state `build` starts from before selection —
                     // the specs below are the pre-selection claim and must be asked it.
                     let lattice = Lattice {

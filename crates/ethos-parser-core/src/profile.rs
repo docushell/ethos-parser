@@ -721,6 +721,12 @@ pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 ///   apart, the shorter face within the longer — is its box, and a frame drawn as one path of ten
 ///   points, a rectangle and another inside it at most three points in, is its four sides. Only
 ///   this rule reads them.
+/// - **A rule drawn in pieces that stop at the edges of a thick rule crossing it is one line**
+///   (decision #114), in a group's grid: a run of edges each within the tolerance of the next,
+///   spread wider than it and no wider than three points, is one line at its middle, where the
+///   thick rule's two edges stood as two lines bounding a column nothing is set in. A grid so
+///   joined is accepted by its lines alone, and each band of a grid read through its merged cells
+///   is asked only of the ink within it.
 ///
 /// # Measured
 ///
@@ -729,7 +735,10 @@ pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 /// 0.5911 -> 0.5912, one page up and one down; charts, content and formatting unchanged on every
 /// page. opendataloader-bench 0.7910 -> 0.7999, TEDS 0.5827 -> 0.6633, eight documents up and none
 /// down; the outlined rules alone move no ParseBench page. The fabrication check holds, and the gate
-/// documents with their trees stripped keep their 542 tables.
+/// documents with their trees stripped keep their 542 tables. With decision #114's, after #112's,
+/// tables 0.6086 -> 0.6141, eight pages up and none down, nothing else on ParseBench moving,
+/// opendataloader-bench unchanged; the gate documents with their trees stripped gain 15 tables
+/// their tagged originals declare, and read one notice box whole.
 pub const TABLE_DETECTION_V14: &str = "ruled-rects-v14";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

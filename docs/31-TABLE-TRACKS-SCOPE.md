@@ -1363,3 +1363,51 @@ which took a head's first column from it; an order test over each line's cells, 
 table. **Found and not built**: a second group row, for a head over heads, which needs the HTML
 projection to write more than two header rows; a header left above the table, which the band still
 stops short of for scattered reasons; column names set closer than an em, read as one cell.
+
+## 35. A rule drawn in pieces at a thick rule crossing it (2026-11-06, decision #114)
+
+**What `ruled-rects-v14` missed.** The census of the drawn tables ParseBench refuses or misreads,
+82 tables at 1.64 overall points on 0.65.0's code, found its largest class misnamed: "a line not
+traced end to end" (35 tables, 0.72 points) is the page's lattice refusing, and each table is lost
+later, read group by group (§13), for one of a dozen reasons. One is a misreading rather than a
+refusal the rule owes: a table whose rules are drawn in pieces that stop at the edges of a rule
+about two points thick crossing them, as `SERFF_CA_random_pages 1` p96 (§33's sliver) and
+`BRWS-134565917` p1420 draw theirs. A lattice line is folded from its first edge, so the thick
+rule's two edges, the pieces' ends on them, stood as two lines a rule's width apart; the column
+between them held nothing, and the grid was dropped for it (`-v8`'s fourth clause), or, read
+through its merged cells, refused for the pieces' joint just past a band's end, counted against the
+band beside it.
+
+**The change**, folded into `-v14`, which no release carries:
+
+- **In a group's lattice, a run of edges each within the tolerance of the next, spread wider than
+  it and no wider than three points, is one line at its middle.** A run within the tolerance keeps
+  its line at its first edge, so no other grid's text moves; the page's lattice, read whole and
+  asked none of a group's tests, joins nothing.
+- **A grid so joined is accepted by its lines alone**, never by every face being covered: joined,
+  the slivers between a page's panels no longer keep the panels from covering every face.
+- **Each band of a grid read through its merged cells is asked only of the ink within it**, so a
+  joint just past a band's end is no gap in it.
+
+**Measured**, with the shipped build on every ParseBench group, against `06abfed`: ParseBench tables
+**0.6086 → 0.6141**, 8 pages up and none down (`SERFF_CA_random_pages 1` p96 and p995 0 → 1.00,
+`SERFF_TX_random_pages 1` p847 0.50 → 0.95, read as its ruled grid, header and all, where the
+whitespace rule had read it, `BRWS-134565917` p1420 0.72 →
+0.97 with two more of its tables found, and four pages whose tables lose a sliver row of empty
+cells); content, formatting, charts and visual grounding unchanged on every page; overall 51.21 →
+51.32. Of the census's 0.72 points, 0.05 came back. opendataloader-bench's 200 Markdown files
+byte-identical; no table on a document without one, every cell its runs' text. On the gate
+documents read with their trees stripped, 540 of 542 tables unchanged: `nist-sp-800-218`'s
+practices table is read on each of the 15 pages it runs over, 72 rows as its tagged original
+declares, and `nist-sp-800-161r1`'s withdrawal notice as the one 19 × 2 table its tagged original
+declares, where two of its blocks were read apart; read with their trees, every one is
+byte-identical. **Measured and not used**: joining at the page's lattice too, which skips a group's
+tests (−0.055 points: `SERFF_CA_random_pages 1` p2538 1.00 → 0.05, `SERFF_TX_random_pages 1` p1299
+1.00 → 0.28); a joined grid accepted by its faces as well, which read `National Grid` ARA24 p12's six
+photo panels as an 18 × 7 table; every run's line moved to its middle, which moved a run on
+`BRWS-134565917` p838; an outer line left undrawn across bands that hold no text (+0.03 points, one
+page up, its table an empty bottom row longer). **Found and not built**: the rest of the census's
+class — outer sides left open by white rows, a borderless label column or the page's edge; a label
+column unruled between rows its values rule; white fills set outside a black grid; a page frame
+touching its tables; body rows a box leaves unruled — each needs a reading of its own, and most of
+them the owner's say.

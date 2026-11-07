@@ -32,6 +32,40 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A rule drawn in pieces at a thick rule crossing it is one line (decision #114)
+
+Folded into `ruled-rects-v14`, which no release carries yet, so no rule id and no `profile_sha256`
+moves.
+
+- **A rule drawn in pieces that stop at the edges of a thick rule crossing it is one line, in a
+  group's grid.** Some tables draw a column rule about two points thick and stop each row's rule at
+  its edges. A lattice line is folded from its first edge, so the thick rule's two edges stood as
+  two lines a rule's width apart: the column between them held nothing, and the grid was dropped
+  for it, or refused for the pieces' joint just past a band's end. Edges each within a point and a
+  half of the next, spread wider than that and no wider than three points, are now one line at
+  their middle where the grid is a group's. A run within a point and a half keeps its line where
+  it was, and the page's lattice, read whole without the tests a group's grid must pass, joins
+  nothing.
+- **A grid so joined stands on its lines alone**, never on every face being covered: joined, the
+  slivers between a page's panels no longer keep the panels from covering every face. And each
+  band of a grid read through its merged cells is asked only of the ink within it.
+- **Why this piece**: told "Drawn-grid refusals", the census of the drawn tables ParseBench refuses
+  or misreads — 82 tables, 1.64 overall points on 0.65.0's code — found its largest class, "a line
+  not traced end to end", misnamed: that is the page's lattice refusing, and the table is lost
+  later, read group by group, for a dozen reasons. This one is a misreading, mended with nothing
+  supplied. Of four fixes measured, the owner chose this one.
+- **Measured** on ParseBench: tables 0.6086 -> 0.6141, 8 pages up and none down —
+  `SERFF_CA_random_pages 1` p96 and p995 0 -> 1.00, `SERFF_TX_random_pages 1` p847 0.50 -> 0.95,
+  `BRWS-134565917` p1420 0.72 -> 0.97, and four pages whose tables lose a sliver row of empty
+  cells; charts, content faithfulness, semantic formatting and visual grounding unchanged on every
+  page; overall 51.21 -> 51.32. opendataloader-bench's 200 Markdown files are byte-identical,
+  0.7999. The fabrication check holds: 0 of 1,537 cells hold text that is not their runs', and no
+  whitespace-rule table stands on a document without one. The gate documents read with their trees
+  stripped gain 15 tables, `nist-sp-800-218`'s practices table on each of the 15 pages it runs
+  over, 72 rows in all as its tagged original declares, and read `nist-sp-800-161r1`'s withdrawal
+  notice as the one 19 x 2 table its tagged original declares, where two of its blocks were two
+  tables; read with their trees, every one is byte-identical.
+
 ### A header cell set over several columns heads them all (decision #112)
 
 Rule id `whitespace-tracks-v16`; `profile_sha256` moves.

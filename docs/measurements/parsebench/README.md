@@ -1090,6 +1090,19 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a rule drawn in pieces at a thick rule crossing it is one line (decision #114, 2026-11-06)
+
+Told "Drawn-grid refusals", in a group's lattice a run of edges each within a point and a half of
+the next, spread no wider than three points, is one line at its middle: a rule drawn in pieces that
+stop at the edges of a thick rule crossing them, whose two edges stood as two lines bounding a
+column nothing is set in. A grid so joined stands on its lines alone, and each band of a grid read
+through its merged cells is asked only of the ink within it. Tables 0.6086 -> 0.6141, 8 pages up
+and none down: `SERFF_CA_random_pages 1` p96 and p995 0 -> 1.00, `SERFF_TX_random_pages 1` p847
+0.50 -> 0.95, `BRWS-134565917` p1420 0.72 -> 0.97, and four pages whose tables lose a sliver row of
+empty cells. Charts, content faithfulness, semantic formatting and visual grounding unchanged on
+every page; overall 51.21 -> 51.32. opendataloader-bench's 200 Markdown files byte-identical,
+0.7999.
+
 ### After a header cell set over several columns heads them all (decision #112, 2026-11-06)
 
 Told "ParseBench table header rows", a cell of a header's lines, or of the lines just above it,
