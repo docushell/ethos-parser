@@ -1091,6 +1091,13 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// pitch or more below rows of data end the table and head the rows under them. ParseBench tables
 /// 0.6141 → 0.6188, eight pages up and one down, visual grounding 0.5912 → 0.5915, overall 51.32 →
 /// 51.42; opendataloader-bench's Markdown and the gate documents' 556 tables unchanged.
+///
+/// **And a currency sign set alone after a figure opens the next amount's cell** (decision #116,
+/// folded in). In a line that sets its signs before its figures, a sign set alone within an em
+/// after a figure, a percentage or a closing parenthesis is the next column's, not the figure's: a
+/// statement set in close columns read `(692) $` as one cell, and the row no longer fit its
+/// columns. ParseBench tables 0.6188 → 0.6224, nineteen pages up and one down, overall 51.42 →
+/// 51.49; opendataloader-bench's Markdown and the gate documents' 556 tables unchanged.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

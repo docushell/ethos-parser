@@ -137,7 +137,12 @@
 //! leaders from a label up to the first figure, within an em of it, and the label took the figure:
 //! the row came a cell short, and the table did not take it. **And a sign set alone joins the figure
 //! after it** in a cell of several numbers, as [`join_currency_signs`] joins it to the cell after it:
-//! a statement sets its `$` flush left in columns too narrow to set it more than an em off.
+//! a statement sets its `$` flush left in columns too narrow to set it more than an em off. **And a
+//! sign set alone after a figure opens the next cell** (`-v16`, decision #116, [`line`]): in a line
+//! that sets its signs before its figures — its first sign or figure a sign — a sign set alone
+//! within an em after a figure, a percentage or a closing parenthesis is the next amount's. A
+//! statement set in close columns sets the next column's `$` within an em of the last figure, and
+//! the figure took it: `(692) $` was one cell, and `1,105` came without its sign.
 //!
 //! **A row of data above a table is its row** (`-v11`, [`rows_above`]): once a table stands, each
 //! line above its first row, within a row and a half's pitch of the line below it, that fits its
@@ -1141,9 +1146,10 @@ fn join_superscripts(runs: &[TrackRun<'_>], grouped: Vec<Vec<usize>>) -> Vec<Vec
 }
 
 /// One line's cells: its inked runs left to right, a new cell wherever the gap from one run's box to
-/// the next run's origin is wider than the line's em, and after a run ending in dot leaders unless
-/// the next is leaders and nothing else (`-v11`). A whitespace run belongs to the cell whose extent
-/// holds its origin, and opens none.
+/// the next run's origin is wider than the line's em, after a run ending in dot leaders unless the
+/// next is leaders and nothing else (`-v11`), and, in a line that sets its signs before its
+/// figures, at a sign set alone after a figure (`-v16`). A whitespace run belongs to the cell whose
+/// extent holds its origin, and opens none.
 fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
     let y = runs[members[0]].y;
     let mut inked: Vec<usize> = members
@@ -1173,14 +1179,30 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
             cells: Vec::new(),
         };
     };
+    // `-v16` (decision #116): a line that sets a currency sign before its first figure sets each
+    // sign before its figure, so a sign set alone within an em after a figure is the next column's,
+    // and opens its cell.
+    let alone_sign = |text: &str| {
+        let mut chars = text.trim().chars();
+        matches!((chars.next(), chars.next()), (Some(c), None) if CURRENCY_SIGNS.contains(c))
+    };
+    let prefixed = inked
+        .iter()
+        .map(|&i| runs[i].text.trim())
+        .find(|t| alone_sign(t) || is_number(t))
+        .is_some_and(|t| t.starts_with(|c: char| CURRENCY_SIGNS.contains(c)));
     let mut cells: Vec<Cell> = Vec::new();
     let mut after_leader = false;
+    let mut after_figure = false;
     for &i in &inked {
         let run = &runs[i];
         // Upright, so measured: `lines` let no other inked run through.
         let end = run.rect.map_or(run.x, |b| b.x1);
+        let opens = prefixed && after_figure && alone_sign(run.text);
         match cells.last_mut() {
-            Some(cell) if run.x - cell.x1 <= em && (!after_leader || leaders_only(run.text)) => {
+            Some(cell)
+                if run.x - cell.x1 <= em && (!after_leader || leaders_only(run.text)) && !opens =>
+            {
                 cell.x1 = cell.x1.max(end);
                 cell.runs.push(i);
             }
@@ -1191,6 +1213,10 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
             }),
         }
         after_leader = ends_with_leaders(run.text);
+        after_figure = run
+            .text
+            .trim_end()
+            .ends_with(|c: char| c.is_ascii_digit() || c == '%' || c == ')');
     }
     let mut cells = join_currency_signs(runs, cells);
     for &i in members.iter().filter(|&&i| runs[i].text.trim().is_empty()) {
@@ -4213,6 +4239,116 @@ mod tests {
         assert_eq!((found[0].rows, found[0].columns), (3, 3));
         assert_eq!(texts(&found[0])[1], ["Normal costs", "$5,061", "$4,896"]);
         assert_eq!(texts(&found[0])[2], ["Amortization", "3,122", "3,245"]);
+    }
+
+    /// **A sign set alone after a figure is the next amount's** (`-v16`, decision #116): a line
+    /// that sets its first sign before its figure sets each sign so, and a `$` within an em after
+    /// `(692)` or `3,210`, in columns set close, opens the next column's cell — the figure took it,
+    /// and the next amount came without its sign.
+    #[test]
+    fn a_sign_set_alone_after_a_figure_opens_the_next_amount() {
+        let runs = vec![
+            run(100, 100, 50, "(in millions)"),
+            run(255, 100, 25, "2025"),
+            run(305, 100, 25, "2024"),
+            run(100, 116, 40, "Net loss"),
+            run(200, 116, 5, "$"),
+            run(250, 116, 30, "(692)"),
+            run(285, 116, 5, "$"),
+            run(305, 116, 25, "1,105"),
+            run(100, 132, 40, "Revenue"),
+            run(200, 132, 5, "$"),
+            run(255, 132, 25, "3,210"),
+            run(285, 132, 5, "$"),
+            run(305, 132, 25, "2,950"),
+            run(100, 148, 40, "Costs"),
+            run(255, 148, 25, "1,840"),
+            run(305, 148, 25, "1,704"),
+        ];
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[1], ["Net loss", "$(692)", "$1,105"]);
+        assert_eq!(texts(&found[0])[2], ["Revenue", "$3,210", "$2,950"]);
+    }
+
+    /// **And after a percentage; and only where the signs come first** (`-v16`, decision #116): a
+    /// `$` set after `10 %` opens the next amount's cell too; a line that sets its signs after its
+    /// figures — `692 €` — keeps each with its figure, and a `$` after a word, `US $`, is one sign
+    /// with it.
+    #[test]
+    fn a_sign_opens_a_cell_only_after_a_figure_in_a_line_that_sets_signs_first() {
+        let shares = vec![
+            run(100, 100, 40, "Segment"),
+            run(220, 100, 25, "2025"),
+            run(262, 100, 15, "Share"),
+            run(305, 100, 25, "2024"),
+            run(100, 116, 40, "Sales"),
+            run(190, 116, 5, "$"),
+            run(220, 116, 25, "31,370"),
+            run(262, 116, 10, "10"),
+            run(273, 116, 5, "%"),
+            run(283, 116, 5, "$"),
+            run(305, 116, 25, "29,000"),
+            run(100, 132, 40, "Costs"),
+            run(190, 132, 5, "$"),
+            run(220, 132, 25, "21,000"),
+            run(267, 132, 5, "9"),
+            run(273, 132, 5, "%"),
+            run(283, 132, 5, "$"),
+            run(305, 132, 25, "19,800"),
+            run(100, 148, 40, "Margin"),
+            run(220, 148, 25, "10,370"),
+            run(262, 148, 10, "33"),
+            run(273, 148, 5, "%"),
+            run(310, 148, 20, "9,200"),
+        ];
+        let found = tables(&shares);
+        assert_eq!((found[0].rows, found[0].columns), (4, 4));
+        assert_eq!(texts(&found[0])[1], ["Sales", "$31,370", "10%", "$29,000"]);
+
+        let after = |y: i64, label: &'static str, a: &'static str, b: &'static str| {
+            [
+                run(100, y, 40, label),
+                run(250, y, 20, a),
+                run(272, y, 5, "€"),
+                run(305, y, 20, b),
+                run(327, y, 5, "€"),
+            ]
+        };
+        let mut euros = vec![
+            run(100, 100, 40, "Posten"),
+            run(250, 100, 25, "2025"),
+            run(305, 100, 25, "2024"),
+        ];
+        euros.extend(after(116, "Umsatz", "692", "1.105"));
+        euros.extend(after(132, "Kosten", "410", "388"));
+        euros.extend(after(148, "Saldo", "282", "717"));
+        let found = tables(&euros);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[1], ["Umsatz", "692€", "1.105€"]);
+
+        let dollars = |y: i64, label: &'static str, a: &'static str, b: &'static str| {
+            [
+                run(100, y, 40, label),
+                run(245, y, 10, "US"),
+                run(257, y, 5, "$"),
+                run(265, y, 20, a),
+                run(310, y, 10, "US"),
+                run(322, y, 5, "$"),
+                run(330, y, 20, b),
+            ]
+        };
+        let mut us = vec![
+            run(100, 100, 40, "Item"),
+            run(255, 100, 25, "2025"),
+            run(325, 100, 25, "2024"),
+        ];
+        us.extend(dollars(116, "Sales", "4,210", "3,980"));
+        us.extend(dollars(132, "Costs", "2,870", "2,640"));
+        us.extend(dollars(148, "Net", "1,340", "1,340"));
+        let found = tables(&us);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[1], ["Sales", "US$4,210", "US$3,980"]);
     }
 
     /// **A footnote mark raised on a row is part of that row** — set smaller and above its

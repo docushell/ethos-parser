@@ -1090,6 +1090,17 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a sign set after a figure opens the next amount's cell (decision #116, 2026-11-08)
+
+On top of #115: in a line that sets its signs before its figures, a sign set alone within an em
+after a figure, a percentage or a closing parenthesis opens the next column's cell instead of
+joining that figure's. Tables 0.6188 -> 0.6224, 19 pages up and 1 down: `Goldman Sachs 10-k` p74
+0.58 -> 0.87, `USPS 10-k` p36 0.62 -> 0.90, `Apple 10-k` p50 0.78 -> 0.96, p25 0.85 -> 0.98, p26
+0.87 -> 1.00, `Coca Cola 10-k` p107 0.74 -> 0.88; down, `Goldman Sachs 10-k` p94 0.307 -> 0.301,
+whose labels' digits, set as glyphs of their own, read as the first figure of three rows. Charts,
+content faithfulness, semantic formatting and visual grounding unchanged on every page; overall
+51.42 -> 51.49. opendataloader-bench's 200 Markdown files byte-identical, 0.7999.
+
 ### After two tables drawn side by side are two tables (decision #115, 2026-11-07)
 
 Told "tables cut apart or run together", a whitespace-rule table that stood is cut where the page

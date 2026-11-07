@@ -1459,3 +1459,32 @@ two tables side by side with only whitespace between them (10 tables, 0.09 point
 what may part a table the page does not divide; tables stacked under a section label or nothing (0.05); and
 two boxes side by side read by the ruled rule as one grid of giant cells (0.05), whose fix puts a
 perfect table on `walmart` p27 at risk.
+
+## 37. A currency sign set alone after a figure (2026-11-08, decision #116)
+
+**What `whitespace-tracks-v16` missed.** A line's cells part at gaps wider than an em, and a sign
+set alone joins the cell after it (`join_currency_signs`, `-v11`). A statement set in close columns
+sets the next column's `$` within an em of the last figure, so the figure's cell took it: `(692) $`
+one cell, `1,105` the next without its sign. Where the stuck sign carried a cell across the next
+column's track, the row no longer fit and the table ended there: `Goldman Sachs 10-k` p74 read as
+four tables, `USPS 10-k` p36 as two; where it did not, the row stood with its signs on the wrong
+amounts. The census of tables cut apart (§36's companion, 52 tables, 0.87 overall points on
+`f27bfe8`) found these among them.
+
+**The change**, folded into `-v16`, which no release carries: in a line that sets its signs before
+its figures — the first of its runs that is a sign set alone or a number opens with a sign — a sign
+set alone within an em after a run ending in a digit, `%` or `)` opens a cell of its own, which
+`join_currency_signs` then joins to the amount after it. A line that sets its signs after its
+figures (`692 €`) is read as before, and so is a sign after a word (`US $`).
+
+**Measured**, with the shipped build on every ParseBench group, after #115: ParseBench tables
+**0.6188 → 0.6224**, 19 pages up and 1 down (`Goldman Sachs 10-k` p74 0.58 → 0.87, its four tables
+one again; `USPS 10-k` p36 0.62 → 0.90; `Apple 10-k` p50 0.78 → 0.96, p25 0.85 → 0.98, p26 0.87 →
+1.00; `Coca Cola 10-k` p107 0.74 → 0.88; down, `Goldman Sachs 10-k` p94 0.307 → 0.301); content,
+formatting, charts and visual grounding unchanged on every page; overall 51.42 → 51.49.
+opendataloader-bench's 200 Markdown files byte-identical; no table on a document without one, every
+cell its runs' text; the gate documents' 556 tables unchanged. **Found and not built**: p94's labels
+set each glyph as a run of its own, so the `1` of `CET1 capital` and `Tier 1 capital` is the first
+number its line holds, and those rows keep their cells while `Total capital`, whose label holds no
+digit, is read anew, no longer fits their columns and opens a table of its own. Reading a line's
+first figure from its cells rather than its runs would read all four.

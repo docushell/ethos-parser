@@ -32,6 +32,36 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A currency sign set alone after a figure opens the next amount's cell (decision #116)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A sign set alone after a figure is the next amount's.** The whitespace rule splits a line into
+  cells at gaps wider than an em and joins a sign set alone to the cell after it. A statement set in
+  close columns sets the next column's `$` within an em of the last figure, and the figure took it:
+  `(692) $` read as one cell and `1,105` came without its sign, and a row so read no longer fit its
+  columns, so the table ended there. In a line that sets its signs before its figures — its first
+  sign or figure a sign — a sign set alone within an em after a figure, a percentage or a closing
+  parenthesis now opens the next cell and joins the amount after it. A line that sets its signs
+  after its figures, `692 €`, reads as before, and a sign after a word, `US $`, stays with it.
+- **Why this**: told "tables cut apart or run together", the census of tables ParseBench's ground
+  truth holds as one and we read as several (52 tables, 0.87 overall points on `f27bfe8`) found
+  among them rows whose next column's sign had joined the figure before it. Of the fixes measured,
+  the owner chose this one and the side-by-side cut (decision #115).
+- **Measured** on ParseBench, after #115: tables 0.6188 -> 0.6224, 19 pages up and 1 down —
+  `Goldman Sachs 10-k` p74 0.58 -> 0.87, its four tables read as one, `USPS 10-k` p36 0.62 ->
+  0.90, `Apple 10-k` p50 0.78 -> 0.96, p25 0.85 -> 0.98 and p26 0.87 -> 1.00, `Coca Cola 10-k`
+  p107 0.74 -> 0.88; down, `Goldman Sachs 10-k` p94 0.307 -> 0.301, whose labels set each glyph as a
+  run of its own, so the `1` of `CET1` read as its line's first figure and three rows kept their
+  cells, while `Total capital`, read anew, no longer fit their columns and opened a table of its
+  own. Charts, content faithfulness, semantic formatting and visual grounding unchanged on every
+  page; overall 51.42 -> 51.49. opendataloader-bench's 200 Markdown files byte-identical, 0.7999.
+  The fabrication check holds: 0 of 1,537 cells hold text that is not their runs'. The gate
+  documents' 556 tables, read with their trees stripped, are unchanged.
+- **Not built**: reading a line's first figure from its cells rather than its runs, which would read
+  the rows whose labels hold a digit set as a glyph of its own (`Goldman Sachs 10-k` p94's three).
+
 ### Two tables drawn side by side are two tables, and a line of years heads the table under it (decision #115)
 
 Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
