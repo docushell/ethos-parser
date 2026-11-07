@@ -150,6 +150,12 @@
 //! track ends no band for that cell's length — `(in millions of dollars, except ratios)`, a
 //! statement's title.
 //!
+//! **A line of years below rows of data heads the next table** (`-v16`, decision #115,
+//! [`heads_next_table`]): two cells or more, each a year, set a row and a half's pitch or more below
+//! rows of which one past the first holds a digit, end the table, and the rows under them are read
+//! as a table headed by them. A statement stacks one table per period, each headed by its years, and
+//! the second's heads joined the first as a sparse row, its rows with them.
+//!
 //! # What makes it a table and not prose
 //!
 //! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
@@ -180,7 +186,15 @@
 //!    own** (`-v14`, [`two_tables`]): the page from the last table's end down, cut at the gutter
 //!    between them. A schedule set in two panels, or a two-column page's tables level with each
 //!    other, is two flows each written row by row, and neither is text; a contents list set in two
-//!    panels draws its page numbers with dot leaders, and those are no column of values.
+//!    panels draws its page numbers with dot leaders, and those are no column of values. **And two
+//!    tables drawn side by side are each read on their own, though they stood as one** (`-v16`,
+//!    decision #115, [`drawn_panels`]): where the page's horizontal ink — its stroked rules, and the
+//!    top and bottom of each rectangle it paints in a colour of its own — ends in the gap between
+//!    two tracks and starts in it again, each side's closing that side's last row and standing an
+//!    em or more above it, and none crosses the gap, the table is cut there and each side read down
+//!    to its last line, with no row order of its own asked of it inside the rows the two stood as.
+//!    A filing boxes two schedules side by side, written row by row across both, and they stood as
+//!    one table of both their columns.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -190,7 +204,8 @@
 
 use ethos_parser_core::{EngineError, IdAllocator, IdKind};
 
-use crate::tables::{cross_check, DetectedCell, DetectedTable, QuantRect};
+use crate::stroke_ruled::Rule;
+use crate::tables::{cross_check, DetectedCell, DetectedTable, QuantRect, LATTICE_TOLERANCE};
 
 /// Baselines this close, in centipoints, are one line: the leading-gap cut's own tolerance.
 pub const LINE_TOLERANCE: i64 = crate::blocks::LINE_TOLERANCE;
@@ -305,7 +320,8 @@ struct Group {
     cell: Cell,
 }
 
-/// Every table `whitespace-tracks-v10` finds on one page, in reading-down order.
+/// Every table `whitespace-tracks-v10` finds on one page, in reading-down order. `rules` is the
+/// page's horizontal ink (`-v16`): its stroked rules, and each painted rectangle's top and bottom.
 ///
 /// # Errors
 ///
@@ -313,6 +329,21 @@ struct Group {
 pub(crate) fn detect(
     page: u32,
     runs: &[TrackRun<'_>],
+    rules: &[Rule],
+    alloc: &mut IdAllocator,
+) -> Result<Vec<DetectedTable>, EngineError> {
+    detect_within(page, runs, rules, None, alloc)
+}
+
+/// [`detect`], where `ordered` names the baseline of the first row of a table that stood (`-v16`,
+/// decision #115): one side of two tables drawn side by side, which stood as one, needs no row order
+/// of its own from that row down — the table they stood as had it, or the grid's waiver, over every
+/// line the side is read to.
+fn detect_within(
+    page: u32,
+    runs: &[TrackRun<'_>],
+    rules: &[Rule],
+    ordered: Option<i64>,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
     let lines = lines(runs);
@@ -323,8 +354,9 @@ pub(crate) fn detect(
     while i < lines.len() {
         if let Some((mut rows, mut end, reach)) = grow(&lines, i, runs) {
             let stands = |rows: &[Row], end: usize| {
+                let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
                 (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
-                    && accepted(rows, runs)
+                    && accepted(rows, runs, within)
             };
             let mut stand = stands(&rows, end);
             // `-v9`: a table its reach past the pitch cannot keep stands without it.
@@ -335,28 +367,36 @@ pub(crate) fn detect(
             }
             // `-v14`: two flows side by side, each holding a column of numbers, are each read on
             // their own — the page from the last table's end down, cut at the gutter between them,
-            // since one side's table may run on below where the other's ended this one.
-            if !stand {
-                if let Some(k) = two_tables(&rows, runs) {
-                    let tracks = tracks_of(&rows);
-                    let cut = (tracks[k - 1].1 + tracks[k].0).div_euclid(2);
-                    let top = lines[floor].y;
-                    for left in [true, false] {
-                        let side: Vec<TrackRun<'_>> = runs
-                            .iter()
-                            .map(|r| TrackRun {
-                                claimed: r.claimed
-                                    || r.y < top - LINE_TOLERANCE
-                                    || (r.x < cut) != left,
-                                ..*r
-                            })
-                            .collect();
-                        tables.extend(detect(page, &side, alloc)?);
-                    }
-                    i = end;
-                    floor = end;
-                    continue;
+            // since one side's table may run on below where the other's ended this one. `-v16`
+            // (decision #115): and two tables set side by side, each drawn its own rules, that
+            // stood as one, are read so too — down to this one's last line, as far as the rules
+            // say, each side's rows inside those it stood with a table's rows already.
+            let apart = if stand {
+                drawn_panels(&rows, lines[end - 1].y, rules)
+                    .map(|k| (k, lines[end - 1].y, Some(rows[0].y)))
+            } else {
+                two_tables(&rows, runs).map(|k| (k, i64::MAX, ordered))
+            };
+            if let Some((k, bottom, side_ordered)) = apart {
+                let tracks = tracks_of(&rows);
+                let cut = (tracks[k - 1].1 + tracks[k].0).div_euclid(2);
+                let top = lines[floor].y;
+                for left in [true, false] {
+                    let side: Vec<TrackRun<'_>> = runs
+                        .iter()
+                        .map(|r| TrackRun {
+                            claimed: r.claimed
+                                || r.y < top - LINE_TOLERANCE
+                                || r.y > bottom.saturating_add(LINE_TOLERANCE)
+                                || (r.x < cut) != left,
+                            ..*r
+                        })
+                        .collect();
+                    tables.extend(detect_within(page, &side, rules, side_ordered, alloc)?);
                 }
+                i = end;
+                floor = end;
+                continue;
             }
             if stand {
                 let first = rows_above(&lines, floor, i, &mut rows, runs);
@@ -984,6 +1024,7 @@ pub(crate) fn detect_in_columns(
     page: u32,
     runs: &[TrackRun<'_>],
     columns: &[Vec<usize>],
+    rules: &[Rule],
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
     if !columns.iter().any(|column| prose(runs, column)) {
@@ -1000,7 +1041,7 @@ pub(crate) fn detect_in_columns(
                 ..*run
             })
             .collect();
-        tables.extend(detect(page, &own, alloc)?);
+        tables.extend(detect(page, &own, rules, alloc)?);
     }
     Ok(tables)
 }
@@ -1300,6 +1341,11 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<Grown> {
             }
             reach.get_or_insert((rows.len(), j));
         }
+        // `-v16` (decision #115): a line of years below rows of data, set off from them by a row
+        // and a half's pitch or more, heads a table of its own.
+        if 5 * gap >= 9 * em && heads_next_table(line, &rows, runs) {
+            break;
+        }
         // `-v8`: a line the table would end at joins with its cells of two numbers split, where
         // that makes it a row.
         let split;
@@ -1418,6 +1464,19 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<Grown> {
         j += 1;
     }
     Some((rows, j, reach))
+}
+
+/// Whether `line` heads the next table (`-v16`, decision #115): two cells or more, each a year, under
+/// rows of which one past the first holds a digit. A statement stacks its years' tables one under
+/// another, each headed by its years, and the second's heads joined the first as a sparse row.
+fn heads_next_table(line: &Line, rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    let digits = |c: &Cell| cell_text(c, runs).chars().any(|ch| ch.is_ascii_digit());
+    line.cells.len() >= 2
+        && rows[1..].iter().any(|r| r.cells.iter().any(digits))
+        && line
+            .cells
+            .iter()
+            .all(|c| is_year(cell_text(c, runs).trim()))
 }
 
 /// What [`grow`] returns: the rows, the line after the last, and where the first reach past the
@@ -1613,8 +1672,9 @@ fn split_number_pair(
         .then_some((left, right))
 }
 
-/// Whether the rows are a table: enough of them, a steady pitch, and written row by row.
-fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+/// Whether the rows are a table: enough of them, a steady pitch, and written row by row — or
+/// `ordered` (`-v16`), one side of rows that stood as a table already.
+fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool) -> bool {
     let columns = rows[0].cells.len();
     if rows.len() < MIN_ROWS
         || (columns == 2 && rows.len() < MIN_ROWS_OF_TWO_COLUMNS)
@@ -1676,7 +1736,7 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
     }
     // Every run of a row emitted before any run of the next: the rows, read in content order,
     // never go back up.
-    if written_row_by_row(rows, 0..columns) {
+    if ordered || written_row_by_row(rows, 0..columns) {
         return true;
     }
     // A grid of three rows and three columns or more with a column of numbers and no column of
@@ -1722,6 +1782,76 @@ fn two_tables(rows: &[Row], runs: &[TrackRun<'_>]) -> Option<usize> {
             && written_row_by_row(rows, k..columns)
             && (0..k).any(values)
             && (k..columns).any(values)
+    })
+}
+
+/// The column a second table opens at (`-v16`, decision #115), where two tables stand side by side
+/// and the page draws each its own rules: from four ems above the first row down to `last`, the
+/// table's last line, horizontal ink ends in the gap between two tracks on the left and starts in it
+/// on the right, each over the two tracks beside the gap, closing its side's last row and standing an
+/// em or more above it too — a box's top and bottom, or a header bar and a closing rule — and none
+/// crosses the gap from an em above the first row down. A rule drawn cell by cell is one rule; a
+/// column group's heading drawn in a box of its own over rows it does not close is no table of its
+/// own, and a bar over both tables' titles joins neither.
+fn drawn_panels(rows: &[Row], last: i64, rules: &[Rule]) -> Option<usize> {
+    let tracks = tracks_of(rows);
+    let n = tracks.len();
+    let em = rows[0].em;
+    let (top, bottom) = (rows[0].y - 4 * em, last + em);
+    let mut ink: Vec<(i64, i64, i64)> = rules
+        .iter()
+        .filter(|r| r.y >= top && r.y <= bottom)
+        .map(|r| (r.y, r.x0, r.x1))
+        .collect();
+    ink.sort_unstable();
+    let mut spans: Vec<(i64, i64, i64)> = Vec::with_capacity(ink.len());
+    for (y, x0, x1) in ink {
+        match spans.last_mut() {
+            Some(last)
+                if (y - last.0).abs() <= LATTICE_TOLERANCE
+                    && x0 >= last.1 - LATTICE_TOLERANCE
+                    && x0 <= last.2 + LATTICE_TOLERANCE =>
+            {
+                last.2 = last.2.max(x1);
+            }
+            _ => spans.push((y, x0, x1)),
+        }
+    }
+    // Whether ink at `ys` closes the last row holding a cell in `cols`, and stands an em or more
+    // above it too.
+    let brackets = |ys: Vec<i64>, cols: std::ops::Range<usize>| {
+        rows.iter()
+            .filter(|r| r.cells[cols.clone()].iter().any(|c| !c.runs.is_empty()))
+            .map(|r| r.y)
+            .next_back()
+            .is_some_and(|last| ys.iter().any(|&y| y >= last) && ys.iter().any(|&y| y <= last - em))
+    };
+    (MIN_COLUMNS..=n.saturating_sub(MIN_COLUMNS)).find(|&k| {
+        let (gap0, gap1) = (tracks[k - 1].1, tracks[k].0);
+        let left: Vec<i64> = spans
+            .iter()
+            .filter(|&&(_, x0, x1)| {
+                x0 <= tracks[k - 2].0 + TRACK_TOLERANCE
+                    && x1 >= gap0 - TRACK_TOLERANCE
+                    && x1 <= gap1
+            })
+            .map(|s| s.0)
+            .collect();
+        let right: Vec<i64> = spans
+            .iter()
+            .filter(|&&(_, x0, x1)| {
+                x0 >= gap0
+                    && x0 <= gap1 + TRACK_TOLERANCE
+                    && x1 >= tracks[k + 1].1 - TRACK_TOLERANCE
+            })
+            .map(|s| s.0)
+            .collect();
+        gap0 < gap1
+            && !spans
+                .iter()
+                .any(|&(y, x0, x1)| y >= rows[0].y - em && x0 < gap0 && x1 > gap1)
+            && brackets(left, 0..k)
+            && brackets(right, k..n)
     })
 }
 
@@ -2027,7 +2157,7 @@ mod tests {
     }
 
     fn tables(runs: &[TrackRun<'_>]) -> Vec<DetectedTable> {
-        detect(1, runs, &mut alloc()).expect("detects")
+        detect(1, runs, &[], &mut alloc()).expect("detects")
     }
 
     fn texts(table: &DetectedTable) -> Vec<Vec<String>> {
@@ -3494,7 +3624,8 @@ mod tests {
             tables(&runs).is_empty(),
             "the premise: read across, no table"
         );
-        let found = detect_in_columns(1, &runs, &[left, right], &mut alloc()).expect("detects");
+        let found =
+            detect_in_columns(1, &runs, &[left, right], &[], &mut alloc()).expect("detects");
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
@@ -3515,7 +3646,8 @@ mod tests {
             .copied()
             .filter(|&i| runs[i].x != 30000)
             .collect();
-        let found = detect_in_columns(1, &runs, &[labels, values], &mut alloc()).expect("detects");
+        let found =
+            detect_in_columns(1, &runs, &[labels, values], &[], &mut alloc()).expect("detects");
         assert!(found.is_empty());
     }
 
@@ -3797,6 +3929,266 @@ mod tests {
         assert_eq!((found[0].rows, found[1].rows), (6, 5));
         assert_eq!(texts(&found[0])[0], ["Plan", "Monthly"]);
         assert_eq!(texts(&found[1])[0], ["PlanAge", "MonthlyRate"]);
+    }
+
+    /// Two schedules side by side, `Age` and `Rate` over four rows each, written row by row across
+    /// both — or, `by_column`, down each column in turn.
+    fn schedules(by_column: bool) -> Vec<TrackRun<'static>> {
+        let ages = [
+            ["Age", "65", "66", "67", "68"],
+            ["Age", "75", "76", "77", "78"],
+        ];
+        let rates = ["Rate", "$195.70", "$201.40", "$208.15", "$214.90"];
+        let cell = |side: usize, column: usize, k: usize| {
+            let (x, y) = (
+                100 + 200 * side as i64 + 70 * column as i64,
+                100 + 16 * k as i64,
+            );
+            if column == 0 {
+                run(x, y, 40, ages[side][k])
+            } else {
+                run(x, y, 35, rates[k])
+            }
+        };
+        let mut runs = Vec::new();
+        if by_column {
+            for side in 0..2 {
+                for column in 0..2 {
+                    runs.extend((0..5).map(|k| cell(side, column, k)));
+                }
+            }
+        } else {
+            for k in 0..5 {
+                for side in 0..2 {
+                    runs.extend((0..2).map(|column| cell(side, column, k)));
+                }
+            }
+        }
+        runs
+    }
+
+    /// A rule `y` points down the page, from `x0` to `x1` points.
+    fn rule(y: i64, x0: i64, x1: i64) -> Rule {
+        Rule {
+            y: y * 100,
+            x0: x0 * 100,
+            x1: x1 * 100,
+        }
+    }
+
+    /// A box round each of [`schedules`]: its top over `Age`, its bottom under the last row — the
+    /// left's ending in the gutter, the right's starting in it.
+    fn boxes() -> Vec<Rule> {
+        vec![
+            rule(88, 95, 215),
+            rule(168, 95, 215),
+            rule(88, 290, 415),
+            rule(168, 290, 415),
+        ]
+    }
+
+    fn drawn(runs: &[TrackRun<'_>], rules: &[Rule]) -> Vec<DetectedTable> {
+        detect(1, runs, rules, &mut alloc()).expect("detects")
+    }
+
+    /// **Two tables drawn side by side are two tables, though they stood as one** (`-v16`, decision
+    /// #115): two schedules written row by row across both stand as one table of four columns; each
+    /// drawn in a box of its own, or under a rule of its own with a rule under its last row, each is
+    /// read on its own.
+    #[test]
+    fn two_tables_drawn_side_by_side_are_two_tables() {
+        let runs = schedules(false);
+        let one = drawn(&runs, &[]);
+        assert_eq!(one.len(), 1, "the premise: undrawn, one table");
+        assert_eq!((one[0].rows, one[0].columns), (5, 4));
+        let two = drawn(&runs, &boxes());
+        assert_eq!(two.len(), 2);
+        assert_eq!((two[0].rows, two[0].columns), (5, 2));
+        assert_eq!(texts(&two[0])[1], ["65", "$195.70"]);
+        assert_eq!(texts(&two[1])[1], ["75", "$195.70"]);
+        let bars = [
+            rule(104, 95, 215),
+            rule(168, 95, 215),
+            rule(104, 290, 415),
+            rule(168, 290, 415),
+        ];
+        assert_eq!(
+            drawn(&runs, &bars).len(),
+            2,
+            "a header rule and a closing rule"
+        );
+        let pieces: Vec<Rule> = boxes()
+            .iter()
+            .flat_map(|r| {
+                let middle = (r.x0 + r.x1) / 2;
+                [Rule { x1: middle, ..*r }, Rule { x0: middle, ..*r }]
+            })
+            .collect();
+        assert_eq!(drawn(&runs, &pieces).len(), 2, "rules drawn cell by cell");
+    }
+
+    /// **Ink across the gutter keeps them one** (`-v16`): a rule under both headers at once is one
+    /// table's, whatever boxes stand beside it; a bar over both titles, more than an em above the
+    /// first row, joins neither.
+    #[test]
+    fn ink_across_the_gutter_keeps_two_boxes_one_table() {
+        let runs = schedules(false);
+        let mut across = boxes();
+        across.push(rule(104, 95, 415));
+        assert_eq!(drawn(&runs, &across).len(), 1, "a rule under both headers");
+        let mut titled = boxes();
+        titled.push(rule(80, 95, 415));
+        assert_eq!(drawn(&runs, &titled).len(), 2, "a bar over both titles");
+        // Nor is it either side's top: a side whose box has none under it is closed alone.
+        for top in [0, 2] {
+            let mut ink = titled.clone();
+            ink.remove(top);
+            assert_eq!(drawn(&runs, &ink).len(), 1, "a bar over both, no top");
+        }
+    }
+
+    /// **A side's ink must close its rows and stand above them** (`-v16`): a box round each header
+    /// alone is a column group's heading drawn in a box of its own, a rule under each last row alone
+    /// draws no side's top, and one side boxed beside a header box is no two tables either.
+    #[test]
+    fn a_side_s_ink_must_close_its_rows_and_stand_above_them() {
+        let runs = schedules(false);
+        let heads = [
+            rule(88, 95, 215),
+            rule(104, 95, 215),
+            rule(88, 290, 415),
+            rule(104, 290, 415),
+        ];
+        assert_eq!(drawn(&runs, &heads).len(), 1, "boxes round the headers");
+        let under = [rule(168, 95, 215), rule(168, 290, 415)];
+        assert_eq!(drawn(&runs, &under).len(), 1, "rules under the last rows");
+        for half in [
+            [boxes()[0], boxes()[1], heads[2], heads[3]],
+            [heads[0], heads[1], boxes()[2], boxes()[3]],
+        ] {
+            assert_eq!(drawn(&runs, &half).len(), 1, "one side boxed");
+        }
+        // And a side's ink spans both its columns, from the first to the gutter or from the gutter
+        // to the last: a box round one column is that column's.
+        for (side, x0, x1, why) in [
+            (0, 95, 145, "the left's labels"),
+            (0, 165, 215, "the left's rates"),
+            (2, 290, 345, "the right's labels"),
+            (2, 365, 415, "the right's rates"),
+        ] {
+            let mut ink = boxes();
+            ink.splice(side..side + 2, [rule(88, x0, x1), rule(168, x0, x1)]);
+            assert_eq!(drawn(&runs, &ink).len(), 1, "a box round {why} alone");
+        }
+    }
+
+    /// **A side needs no order of its own inside the rows the two stood as** (`-v16`): two boxed
+    /// schedules written down each column in turn stand as one grid of numbers, by the grid's
+    /// waiver; each side, of two columns, has none, and is read as its table all the same.
+    #[test]
+    fn a_side_needs_no_row_order_inside_the_rows_it_stood_with() {
+        let runs = schedules(true);
+        assert_eq!(drawn(&runs, &[]).len(), 1, "the premise: one grid");
+        let two = drawn(&runs, &boxes());
+        assert_eq!(two.len(), 2);
+        assert_eq!((two[0].rows, two[1].rows), (5, 5));
+    }
+
+    /// **Outside them, a side is asked its order as ever** (`-v16`): a line over the left schedule,
+    /// written after both, opens no table with its rows; and a row under it, below where the two
+    /// ended, is no row of its table. A row the right box holds under the rest, which the two read
+    /// as a wrap of their last row, is inside them: the right schedule's last row.
+    #[test]
+    fn a_side_is_read_inside_the_lines_the_two_stood_on() {
+        let mut runs = schedules(true);
+        runs.extend([run(100, 64, 40, "Plan"), run(170, 64, 35, "Basic")]);
+        let two = drawn(&runs, &boxes());
+        assert_eq!(two.len(), 2);
+        assert_eq!(texts(&two[0])[0], ["Age", "Rate"]);
+
+        let mut runs = schedules(false);
+        runs.extend([
+            run(100, 180, 40, "69"),
+            run(170, 180, 35, "$221.65"),
+            run(330, 180, 50, "see note"),
+        ]);
+        let two = drawn(&runs, &boxes());
+        assert_eq!(two.len(), 2);
+        assert_eq!((two[0].rows, two[1].rows), (5, 5));
+
+        let mut runs = schedules(true);
+        runs.extend([run(300, 180, 40, "79"), run(370, 180, 35, "$221.65")]);
+        let mut ink = boxes();
+        ink[3] = rule(184, 290, 415);
+        let two = drawn(&runs, &ink);
+        assert_eq!(two.len(), 2, "the right schedule's row under the rest");
+        assert_eq!((two[0].rows, two[1].rows), (5, 6));
+        assert_eq!(texts(&two[1])[5], ["79", "$221.65"]);
+    }
+
+    /// Two tables stacked: three rows of a label and two figures under `2024 | 2023`, then
+    /// `second`'s cells `gap` points below the last row, over three rows more.
+    fn stacked(
+        gap: i64,
+        figures: [&'static str; 2],
+        second: &[&'static str],
+    ) -> Vec<TrackRun<'static>> {
+        let mut runs = vec![run(250, 100, 25, "2024"), run(330, 100, 25, "2023")];
+        for (k, label) in ["Sales", "Costs", "Margin"].into_iter().enumerate() {
+            let y = 116 + 16 * k as i64;
+            runs.extend([
+                run(100, y, 40, label),
+                run(250, y, 25, figures[0]),
+                run(330, y, 25, figures[1]),
+            ]);
+        }
+        let top = 148 + gap;
+        runs.extend(
+            second
+                .iter()
+                .zip([250, 330])
+                .map(|(&text, x)| run(x, top, 25, text)),
+        );
+        for (k, label) in ["Sales", "Costs", "Margin"].into_iter().enumerate() {
+            let y = top + 16 + 16 * k as i64;
+            runs.extend([
+                run(100, y, 40, label),
+                run(250, y, 25, "8.1"),
+                run(330, y, 25, "7.7"),
+            ]);
+        }
+        runs
+    }
+
+    /// **A line of years below rows of data heads the next table** (`-v16`, decision #115): set a
+    /// row and a half's pitch or more below them, `2022 | 2021` ends the table and heads the rows
+    /// under it — and not at the rows' own pitch, nor a line of a year and a word, nor one year
+    /// alone, nor under rows that hold no figure, the years over them being no figures of a row.
+    #[test]
+    fn a_line_of_years_below_rows_of_data_heads_the_next_table() {
+        let figures = ["7.5", "6.9"];
+        let two = tables(&stacked(24, figures, &["2022", "2021"]));
+        assert_eq!(two.len(), 2);
+        assert_eq!((two[0].rows, two[1].rows), (4, 4));
+        assert_eq!(texts(&two[1])[0], ["", "2022", "2021"]);
+        for (gap, figures, second, why) in [
+            (16, figures, &["2022", "2021"][..], "at the rows' pitch"),
+            (24, figures, &["2022", "Total"][..], "a year and a word"),
+            (24, figures, &["2022"][..], "one year"),
+            (
+                24,
+                ["high", "low"],
+                &["2022", "2021"][..],
+                "rows of no figure",
+            ),
+        ] {
+            assert_eq!(tables(&stacked(gap, figures, second)).len(), 1, "{why}");
+        }
+        // A label over the labels makes the years' line the table's first row: its years are the
+        // header's, no row's figures.
+        let mut headed = stacked(24, ["high", "low"], &["2022", "2021"]);
+        headed.insert(0, run(100, 100, 40, "Region"));
+        assert_eq!(tables(&headed).len(), 1, "years in the first row");
     }
 
     /// **A currency sign set alone is its amount's sign**: a `$` flush left in the column and the

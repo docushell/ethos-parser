@@ -1411,3 +1411,51 @@ class — outer sides left open by white rows, a borderless label column or the 
 column unruled between rows its values rule; white fills set outside a black grid; a page frame
 touching its tables; body rows a box leaves unruled — each needs a reading of its own, and most of
 them the owner's say.
+
+## 36. Two tables drawn side by side, and a line of years under rows (2026-11-07, decision #115)
+
+**What `whitespace-tracks-v16` missed.** The census of the two largest classes left in ParseBench's
+tables, on `f27bfe8`, put 85 ground-truth tables, 0.62 overall points, in "run together with a
+neighbour". 19 are no merge: their cells sit in none of our tables, and the classifier matched the
+words they share. Of the rest, 54 stand side by side and 12 stacked, and the scorer forgives none
+of them: it splits a predicted table itself only on its 23 flagged pages, where the page holds more
+ground-truth tables than predicted and our header repeats with a period that divides the columns.
+The cause is this rule's: it builds each line across the whole page, `grow` takes the first line's
+cells as tracks and reads no ink, and `two_tables` (`-v14`) cuts only a candidate that did not
+stand. A filing that boxes two schedules side by side and writes each row across both
+(`FBLB-134215544` p113, p14 and p15, `SERFF_TX_random_pages 1` p1057) stood as one table of both
+their columns; a statement that stacks a table per period under its years (`Apple 10-k` p51) ran
+the second into the first, its heads a sparse row.
+
+**The change**, folded into `-v16`, which no release carries:
+
+- **A table that stood is cut where the page draws each side its own ink**: the page's horizontal
+  ink — stroked rules, and the top and bottom of each rectangle painted in a colour of its own —
+  ending in the gap between two tracks and starting in it again, each side's spanning its two
+  tracks beside the gap and out from it, closing that side's last row and standing an em or more
+  above it, and none crossing the gap from an em above the first row down. Each side is read on its
+  own, from the last table's end down to the two's last line, and inside the rows the two stood as
+  it is asked no row order of its own: the table they stood as had it, or the grid's waiver.
+- **A line of two years or more set off below rows of data ends the table**: a row and a half's
+  pitch or more below rows of which one past the first holds a digit. The rows under it read as a
+  table, the line its header (`-v15`'s years, decision #96).
+
+**Measured**, with the shipped build on every ParseBench group, against `f27bfe8`: ParseBench tables
+**0.6141 → 0.6188**, 8 pages up and 1 down (`FBLB-134215544` p113 0.26 → 0.76, six of its tables
+read apart and two more found; `Apple 10-k` p51 0.22 → 0.65, its two years' tables;
+`FBLB-134215544` p14 0.21 → 0.62 and p15 0.27 → 0.70; `SERFF_TX_random_pages 1` p1057 0.33 → 0.58,
+two tables of 49 rows each; down, `SERFF_TX_random_pages 1` p173 0.47 → 0.45, whose "Projected"
+table the page draws as two boxes and the ground truth reads as one); visual grounding 0.5912 →
+0.5915; content, formatting and charts unchanged on every page; overall 51.32 → 51.42. Of the
+class's 0.62 points, 0.15 came back. opendataloader-bench's 200 Markdown files byte-identical; no
+table on a document without one, every cell its runs' text;
+the gate documents' 556 tables unchanged. **Measured and not used**: the cut without its closing-row
+test, which cut tables whose column groups' heads are boxed (`SERFF_CA_random_pages 1` p1492, p2443,
+p1131); a side read on below the two's last line, which lost `FBLB-134215544` p15's tables; the
+side's ink read from four ems above the first row for the crossing as well, which let section bars
+keep `FBLB-134215544`'s tables together; a header said again ending the table, which moved 33 pages
+and dropped whole tables (`SERFF_CA_random_pages 1` p917, p1869, p2402). **Found and not built**:
+two tables side by side with only whitespace between them (10 tables, 0.09 points) — a call on
+what may part a table the page does not divide; tables stacked under a section label or nothing (0.05); and
+two boxes side by side read by the ruled rule as one grid of giant cells (0.05), whose fix puts a
+perfect table on `walmart` p27 at risk.

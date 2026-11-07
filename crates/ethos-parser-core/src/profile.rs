@@ -1080,6 +1080,17 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// cell spanning the tracks it heads, every other track an empty cell; a cell centred on one
 /// column's ink, or flush with it, is that column's line, a cell alone on its line and centred on
 /// the whole table is its title, and the stub's column is never a group's.
+///
+/// **And two tables drawn side by side are two tables, and a line of years heads the table under
+/// it** (decision #115, folded in, no release carrying `-v16`). A table that stood is cut where the
+/// page's horizontal ink — its stroked rules, and the top and bottom of each rectangle painted in a
+/// colour of its own — ends in the gap between two tracks and starts in it again, each side's
+/// spanning its tracks, closing its last row and standing an em or more above it, and none crossing
+/// the gap from an em above the first row; each side is read on its own, asked no row order of its
+/// own inside the rows the two stood as. And two cells or more, each a year, set a row and a half's
+/// pitch or more below rows of data end the table and head the rows under them. ParseBench tables
+/// 0.6141 → 0.6188, eight pages up and one down, visual grounding 0.5912 → 0.5915, overall 51.32 →
+/// 51.42; opendataloader-bench's Markdown and the gate documents' 556 tables unchanged.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

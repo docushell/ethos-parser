@@ -2825,6 +2825,59 @@ fn a_header_cell_set_over_two_columns_spans_them_and_heads_the_html() {
     );
 }
 
+/// **Two tables drawn side by side are two tables** (decision #115), through the whole extraction:
+/// two schedules written row by row across both are one table read from the whitespace across
+/// their rows, and each drawn in a box of its own — stroked as a rectangle, or as a rule over it and
+/// a rule under it — they are each read on their own.
+#[test]
+fn two_schedules_drawn_side_by_side_are_two_tables() {
+    let text = |x: f64, y: f64, s: &str| format!("BT /F1 6 Tf {x} {y} Td ({s}) Tj ET ");
+    // Each rate set flush right on its column, so no two of a column start together.
+    let mut rows = String::new();
+    for (k, (left, right, rate)) in [
+        ("Age", "Age", "Rate"),
+        ("65", "75", "95.70"),
+        ("66", "76", "201.40"),
+        ("67", "77", "1,208.15"),
+        ("68", "78", "14.90"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (y, width) = (260.0 - 10.0 * k as f64, 3.0 * rate.len() as f64);
+        rows += &(text(20.0, y, left) + &text(100.0 - width, y, rate));
+        rows += &(text(230.0, y, right) + &text(310.0 - width, y, rate));
+    }
+    let tracks = |ink: &str| -> Vec<(u32, u32)> {
+        helvetica_wide_page(&format!("{rows}{ink}")).pages[0]
+            .tables
+            .iter()
+            .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_TRACKS_V16)
+            .map(|t| (t.rows, t.columns))
+            .collect()
+    };
+    assert_eq!(tracks(""), [(5, 4)], "the premise: undrawn, one table");
+    assert_eq!(
+        tracks("0 G 15 215 95 53 re S 220 215 95 53 re S"),
+        [(5, 2), (5, 2)],
+        "a box round each"
+    );
+    // A rectangle painted white is the page, not ink: under both boxes, it divides nothing.
+    let page = format!("1 g 10 212 315 50 re f 0 g {rows}0 G 15 215 95 53 re S 220 215 95 53 re S");
+    let white: Vec<(u32, u32)> = helvetica_wide_page(&page).pages[0]
+        .tables
+        .iter()
+        .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_TRACKS_V16)
+        .map(|t| (t.rows, t.columns))
+        .collect();
+    assert_eq!(white, [(5, 2), (5, 2)], "a white page under both boxes");
+    assert_eq!(
+        tracks("0 G 15 268 m 110 268 l S 15 215 m 110 215 l S 220 268 m 315 268 l S 220 215 m 315 215 l S"),
+        [(5, 2), (5, 2)],
+        "a rule over each and a rule under it"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // 12. Which rule fired (v1-S2)
 // -------------------------------------------------------------------------------------------

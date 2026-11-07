@@ -1166,7 +1166,19 @@ fn extract_page(
             && no_author_structure(structure.as_ref())
         {
             let track_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
-            for table in crate::tracks::detect(page_number, &track_runs, &mut alloc)? {
+            // The page's drawn horizontal ink: its stroked rules, and the top and bottom of each
+            // rectangle it paints in a colour of its own.
+            let mut ink = stroke_rules.clone();
+            for r in table_rects.iter().filter(|r| !table_white.contains(r)) {
+                for y in [r.y0, r.y1] {
+                    ink.push(crate::stroke_ruled::Rule {
+                        y,
+                        x0: r.x0,
+                        x1: r.x1,
+                    });
+                }
+            }
+            for table in crate::tracks::detect(page_number, &track_runs, &ink, &mut alloc)? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
                 }
@@ -1204,9 +1216,13 @@ fn extract_page(
                         ..*run
                     })
                     .collect();
-                for table in
-                    crate::tracks::detect_in_columns(page_number, &unheld, &columns, &mut alloc)?
-                {
+                for table in crate::tracks::detect_in_columns(
+                    page_number,
+                    &unheld,
+                    &columns,
+                    &ink,
+                    &mut alloc,
+                )? {
                     if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                         tables.push(table);
                     }

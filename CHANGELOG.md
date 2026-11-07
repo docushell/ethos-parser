@@ -32,6 +32,49 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Two tables drawn side by side are two tables, and a line of years heads the table under it (decision #115)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **Two tables drawn side by side are each read on their own, though they stood as one.** A filing
+  that boxes two schedules side by side, and writes each row across both, read to the whitespace
+  rule as one table of both their columns. Where the page's horizontal ink — its stroked rules, and
+  the top and bottom of each rectangle it paints in a colour of its own — ends in the gap between
+  two columns and starts in it again, each side's spanning that side's columns, closing its last
+  row and standing an em or more above it, and none crosses the gap from an em above the first row
+  down, the table is now cut at the gap and each side read on its own, down to the last line the
+  two stood on. Inside the rows the two stood as, a side is asked no row order of its own: the
+  table they stood as had it, or the grid's waiver. A rule drawn cell by cell is one rule; a column
+  group's heading boxed over rows it does not close cuts nothing, and a bar over both tables'
+  titles is neither's.
+- **A line of years set off below rows of data heads the table under it.** A statement stacks one
+  table per period, each headed by its years, and the second's heads, a row and a half's pitch or
+  more below the first's last row, joined it as a sparse row, its rows with them. Two cells or
+  more, each a year, so set under rows holding a figure, now end the table, and the rows under
+  them are read as a table headed by them.
+- **Why these**: told "tables cut apart or run together", the census of the two largest classes
+  left in ParseBench's tables — one table cut into several of ours (52 tables, 0.87 overall points
+  on today's code) and two tables run together into one (85 tables, 0.62) — found the second's
+  cause in this rule: it builds its lines across the whole page and never reads drawn ink, and its
+  one cut between tables side by side ran only where the table did not stand. 19 of the 85 were no
+  merge at all. The scorer splits a run-together pair itself only on a page it flags, where our
+  header repeats with a period that divides the columns, and none of these is one. Of the fixes
+  measured, the owner chose this one and the currency sign's (decision #116).
+- **Measured** on ParseBench: tables 0.6141 -> 0.6188, 8 pages up and 1 down — `FBLB-134215544`
+  p113 0.26 -> 0.76, p15 0.27 -> 0.70 and p14 0.21 -> 0.62, `Apple 10-k` p51 0.22 -> 0.65,
+  `SERFF_TX_random_pages 1` p1057 0.33 -> 0.58; down, `SERFF_TX_random_pages 1` p173 0.47 -> 0.45,
+  one table its page draws as two boxes, read now as the two; visual grounding 0.5912 -> 0.5915;
+  charts, content faithfulness and semantic formatting unchanged on every page; overall 51.32 ->
+  51.42. opendataloader-bench's 200 Markdown files byte-identical, 0.7999. The fabrication check
+  holds: 0 of 1,537 cells hold text that is not their runs', and no whitespace-rule table stands on
+  a document without one. The gate documents' 556 tables, read with their trees stripped, are
+  unchanged.
+- **Not built**: two tables side by side with only whitespace between them (0.09 points), which
+  needs a call on what may part a table the page does not divide; tables stacked under a section
+  label alone (0.05); and two boxes side by side read by the ruled rule as one grid of giant cells
+  (0.05).
+
 ### A rule drawn in pieces at a thick rule crossing it is one line (decision #114)
 
 Folded into `ruled-rects-v14`, which no release carries yet, so no rule id and no `profile_sha256`

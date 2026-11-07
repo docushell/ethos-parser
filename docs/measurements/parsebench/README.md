@@ -1090,6 +1090,18 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After two tables drawn side by side are two tables (decision #115, 2026-11-07)
+
+Told "tables cut apart or run together", a whitespace-rule table that stood is cut where the page
+draws each side its own horizontal ink — a box round each, or a rule over each and one under its
+last row — with none across the gap, and each side is read on its own; and a line of years set
+off below rows of data heads the table under it. Tables 0.6141 -> 0.6188, 8 pages up and 1 down:
+`FBLB-134215544` p113 0.26 -> 0.76, p15 0.27 -> 0.70 and p14 0.21 -> 0.62, `Apple 10-k` p51 0.22
+-> 0.65, `SERFF_TX_random_pages 1` p1057 0.33 -> 0.58; down, `SERFF_TX_random_pages 1` p173 0.47
+-> 0.45, one table its page draws as two boxes. Visual grounding 0.5912 -> 0.5915; charts, content
+faithfulness and semantic formatting unchanged on every page; overall 51.32 -> 51.42.
+opendataloader-bench's 200 Markdown files byte-identical, 0.7999.
+
 ### After a rule drawn in pieces at a thick rule crossing it is one line (decision #114, 2026-11-06)
 
 Told "Drawn-grid refusals", in a group's lattice a run of edges each within a point and a half of
