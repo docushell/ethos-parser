@@ -1112,6 +1112,16 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// not the wrap of that row — a statement that sets its stub once over a group of rows read their
 /// amounts into one cell. Alone, ParseBench tables 0.6224 → 0.6255, eighteen pages up and five
 /// down; with `ruled-rects-v14`'s refusal taken in the same decision, overall 51.49 → 51.84.
+///
+/// **And a header set above a section's label heads the table** (decision #118, folded in): where
+/// the band names half the tracks or fewer, one-cell lines just above a first row of figures — a
+/// section's label on the first track, a units note on none — are passed over to a band naming
+/// more than half the tracks and holding no number but a year, which heads the table, the labels a
+/// row under it; this reverses `-v11`'s reading of a long cell alone under a header. And a band
+/// naming fewer, a line of it holding two cells or more, joins a first row that reads as the
+/// header's last line. Alone, ParseBench tables 0.6224 → 0.6313, twenty-five pages up and three
+/// down by under 0.004 each, overall 51.49 → 51.67; opendataloader-bench's Markdown and the gate
+/// documents' 556 tables unchanged.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

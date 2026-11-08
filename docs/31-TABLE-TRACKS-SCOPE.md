@@ -1536,3 +1536,44 @@ lines rather than three (`SERFF_CA_random_pages 1` p883), which would need a rul
 shared baselines; a `$` drawn in a ruled cell of its own, a column of its own until it joins its
 amount across the drawn edge (`Home Depot 10-k` p3); and a lattice keeping column lines no cell
 uses.
+
+## 39. A header over a section's label, and a header's upper lines naming few columns (2026-11-08, decision #118)
+
+**What `whitespace-tracks-v16` missed.** The band of lines above a table's first row is its header
+where it names more than half the table's tracks (`-v5`), and a first row that reads as a header's
+last line is that header's (`-v13`). The census of tables whose header we left above them (88
+tables, 1.05 overall points on `6be3031`) found two shapes the band stopped at. A band of a line
+or two naming fewer than half the tracks — `0 - 12 Month` over `Count`, `March 31,` over `2025`,
+the other columns named by the first row alone — headed nothing (`BRWS-134565917` p835,
+`corp-q1-2025` p13). And a statement sets a section's label, `Revenues`, or a units
+note, `(In millions)`, between its columns' names and its first row of figures: the note mapped to
+no track and the band stopped there, the label alone was taken, or a label as long as a line of
+prose ended the band at once (`METLIFE-10Q-20240205 unrestricted` p16, `NEE.2011` p47).
+
+**The change**, folded into `-v16`, which no release carries. Where a line of the band holds two
+cells or more and the first row reads as the header's last line, the band joins it however few
+tracks it names; a band of one cell to a line is a title's or a caption's and heads nothing. And
+where the band names half the tracks or fewer, the table holds a column of numbers and its first
+row reads as no header's line, the lines of one cell just above that row — a section's label on
+the first track at any length, or a units note on none and shorter than a line of prose, each
+within a row and a half's pitch of the line below it, the first within two and a half — are passed
+over (`labels_above`) to a band above them that names more than half the tracks and holds no
+number but a year. That band heads the table; the labels are one row under it, its other cells
+empty; a units note heads none and is in no cell. `-v11` read a long cell alone on its line under
+a header as a caption that ended the band, and the table stood without a header; that reading is
+reversed here, the cell a row under the header.
+
+**Measured**, alone on `6be3031` with a build whose tables match the shipped one's on every
+ParseBench and opendataloader-bench document: ParseBench tables **0.6224 → 0.6313**, 25 pages up
+and 3 down (`METLIFE-10Q-20240205 unrestricted` p16 0.45 → 0.90, `NEE.2011` p47 0.44 → 0.88,
+`SERFF_TX_random_pages 1` p1220 0.66 → 1.00, `Apple 10-k` p30 0.69 → 1.00, `Goldman Sachs 10-k`
+p94 0.30 → 0.61; down by under 0.004 each, `FBLB-134215544` p63, whose side-by-side panels' titles
+stack into one header, `blackrock-funds-i-icav-annual-report-2022` p42, a wrapped label's first
+line taken for a section's, and `synthetic_duplicate_tables` p1); the upper lines alone, 0.6270.
+Charts, content, formatting and visual grounding unchanged on every page; overall 51.49 → 51.67.
+opendataloader-bench's 200 Markdown files byte-identical; no table on a document without one, every
+cell its runs' text; the gate documents' 556 tables unchanged. **Found and not built**: header
+words set less than an em apart, one cell over two columns that the band then cannot place (13
+tables); a title over a two-column table, read as its header or not as the owner decides; and a
+band's heads set over pairs of columns, which this stacks into one column of each pair where they
+should span both.

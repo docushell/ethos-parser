@@ -64,8 +64,9 @@
 //! whose every cell sits on a track clear of its neighbours, holds fewer than
 //! [`PROSE_LINE_CHARS`] characters and repeats no value its column holds below, join as the table's
 //! first row — one cell per track, its lines top to bottom — where they name more than half the
-//! tracks. A header's cells are set centred on a row of their own, stacked unevenly, and no line
-//! of them has a cell for every column, so no line of them opens or joins the table on its own.
+//! tracks, or since `-v16` fewer over the header's last line (below). A header's cells are set
+//! centred on a row of their own, stacked unevenly, and no line of them has a cell for every
+//! column, so no line of them opens or joins the table on its own.
 //!
 //! **A header set off its columns is still theirs** (`-v7`, [`header_tracks`]): a header line of
 //! two cells or more whose cells do not each sit on a track — a column name centred over figures
@@ -82,7 +83,11 @@
 //! — and the band above takes only the upper. Where the band names more than half the tracks on
 //! its own, a first row whose cells on the columns of numbers hold no digit, run shorter than a
 //! line of prose and repeat no value of their columns — and that says not one word in every
-//! column — joins the header row, each column's lines top to bottom.
+//! column — joins the header row, each column's lines top to bottom. **And a band naming fewer is
+//! that header's upper lines** (`-v16`, decision #118): where a line of the band holds two cells or
+//! more and the first row reads so, the band joins it however few tracks it names — `0 - 12 Month`
+//! over `Count`, `March 31,` over `2025`, the other columns' names the first row's alone. A band of
+//! one cell to a line is a title's or a caption's, and heads nothing.
 //!
 //! **A header set row by row is one row** (`-v15`, decision #96, [`header_block`]): a header whose
 //! every line names every column opens the table at its first line, and each line stood as a row
@@ -161,7 +166,20 @@
 //! the band. A header line leaves the first track empty, and stays the band's. **And the stub's
 //! heading may run long**: a header line of two cells or more whose first cell heads the first
 //! track ends no band for that cell's length — `(in millions of dollars, except ratios)`, a
-//! statement's title.
+//! statement's title. Alone on its line such a cell still ends the band; since `-v16` a header
+//! above it may head the table all the same, and the cell is a row under it.
+//!
+//! **A header over a section's label heads the table** (`-v16`, decision #118, [`labels_above`]):
+//! where the band names half the tracks or fewer, the table holds a column of numbers and its first
+//! row reads as no header's line, the lines of one cell just above that first row — a section's
+//! label heading the first track, at any length, or a units note heading none, shorter than a line
+//! of prose — each within a row and a half's pitch of the line below it, the first within two and a
+//! half, stand between the rows and a band above them that names more than half the tracks and
+//! holds no number but a year. That band heads the table; the labels are one row under it, every
+//! other cell of it empty, and a units note heads none and stays out of the table. A statement sets
+//! `Revenues` and `(In millions)` between its columns' names and its first row of figures: the band
+//! ended at the note, or took the label alone, and a label as long as a line of prose ended it at
+//! once.
 //!
 //! **A line of years below rows of data heads the next table** (`-v16`, decision #115,
 //! [`heads_next_table`]): two cells or more, each a year, set a row and a half's pitch or more below
@@ -412,17 +430,48 @@ fn detect_within(
                 continue;
             }
             if stand {
-                let first = rows_above(&lines, floor, i, &mut rows, runs);
+                let mut first = rows_above(&lines, floor, i, &mut rows, runs);
                 let tracks = tracks_of(&rows);
-                let top = header_band(&lines, floor, first, &tracks, &rows, runs);
+                let mut top = header_band(&lines, floor, first, &tracks, &rows, runs);
+                let last = header_last_line(&rows, runs);
+                // `-v16` (decision #118): a header over the one-cell lines just above the first
+                // row — a section's label on the stub's track, a units note on none — heads a table
+                // of numbers whose band names half the tracks or fewer and whose first row reads as
+                // no header's line, where that header holds no number but a year. The labels are a
+                // row under it; a units note heads no track, so `header_row` puts it in no cell.
+                if !last
+                    && 2 * tracks_named(&lines[top..first], &tracks) <= tracks.len()
+                    && !numeric_columns(tracks.len(), &rows, runs).is_empty()
+                {
+                    let over = labels_above(&lines, floor, first, &tracks, runs);
+                    let above = header_band(&lines, floor, over, &tracks, &rows, runs);
+                    let band = &lines[above..over];
+                    if over < first
+                        && 2 * tracks_named(band, &tracks) > tracks.len()
+                        && band.iter().flat_map(|l| &l.cells).all(|c| {
+                            let text = cell_text(c, runs);
+                            !is_number(text.trim()) || is_year(text.trim())
+                        })
+                    {
+                        let labels = header_row(&lines[over..first], &tracks);
+                        if labels.cells.iter().any(|c| !c.runs.is_empty()) {
+                            rows.insert(0, labels);
+                        }
+                        (top, first) = (above, over);
+                    }
+                }
                 let mut headed = false;
                 let mut joined: Option<Row> = None;
                 if top < first {
                     let mut header = header_row(&lines[top..first], &tracks);
                     let named = header.cells.iter().filter(|c| !c.runs.is_empty()).count();
-                    if 2 * named > tracks.len() {
+                    // `-v16` (decision #118): a band with a line of two cells or more over a first
+                    // row that reads as the header's last line is that header's upper lines, however
+                    // few tracks it names; a band of one cell to a line is a title or a caption.
+                    let wide = lines[top..first].iter().any(|l| l.cells.len() >= 2);
+                    if 2 * named > tracks.len() || (wide && last) {
                         // `-v13`: the header's last line, read as the first row, is the header's.
-                        if header_last_line(&rows, runs) {
+                        if last {
                             let row = rows.remove(0);
                             stack(&mut header, &row);
                             joined = Some(row);
@@ -629,6 +678,49 @@ fn header_band(
         top -= 1;
     }
     top
+}
+
+/// How many of `tracks` the lines of `band` name, as [`header_row`] stacks them; none for no lines.
+fn tracks_named(band: &[Line], tracks: &[(i64, i64)]) -> usize {
+    if band.is_empty() {
+        return 0;
+    }
+    header_row(band, tracks)
+        .cells
+        .iter()
+        .filter(|c| !c.runs.is_empty())
+        .count()
+}
+
+/// The first of the lines of one cell just above a table's first row (`-v16`, decision #118):
+/// climbing from `start` to no lower than `floor`, each within a row and a half's pitch of the line
+/// below it — the first within two and a half — a section's label, heading the first track as
+/// [`header_tracks`] reads it, at any length, or a units note, heading none and shorter than a line
+/// of prose. `start` where the line above it is neither.
+fn labels_above(
+    lines: &[Line],
+    floor: usize,
+    start: usize,
+    tracks: &[(i64, i64)],
+    runs: &[TrackRun<'_>],
+) -> usize {
+    let mut k = start;
+    while k > floor {
+        let (line, below) = (&lines[k - 1], &lines[k]);
+        // Pitches of 1.2 ems, in integers, as in `header_band`.
+        let em = line.em.max(below.em);
+        let reach = if k == start { 15 } else { 9 };
+        let [cell] = &line.cells[..] else { break };
+        let mapping = header_tracks(line, tracks);
+        let label = mapping.as_deref() == Some(&[0]);
+        let note =
+            mapping.is_none() && cell_text(cell, runs).trim().chars().count() < PROSE_LINE_CHARS;
+        if 5 * (below.y - line.y) > reach * em || !(label || note) {
+            break;
+        }
+        k -= 1;
+    }
+    k
 }
 
 /// Whether a table's first row is its header's last line (`-v13`): a column whose rows below hold
@@ -2317,7 +2409,7 @@ mod tests {
     /// band naming its three columns of numbers — or only the last, a caption's worth. South's
     /// change is `None`.
     fn ledger(band: bool, first: [&'static str; 4]) -> Vec<DetectedTable> {
-        let mut runs = if band {
+        let band = if band {
             vec![
                 run(235, 172, 35, "Current "),
                 run(315, 172, 35, "Prior "),
@@ -2326,6 +2418,12 @@ mod tests {
         } else {
             vec![run(395, 172, 35, "Change ")]
         };
+        ledger_under(band, first)
+    }
+
+    /// [`ledger`]'s four columns, `first` the first row, under the lines of `band`.
+    fn ledger_under(band: Vec<TrackRun<'static>>, first: [&'static str; 4]) -> Vec<DetectedTable> {
+        let mut runs = band;
         let x = [100, 240, 320, 400];
         let width = |k: usize| if k == 0 { 40 } else { 30 };
         for (k, text) in first.into_iter().enumerate() {
@@ -2412,6 +2510,35 @@ mod tests {
             ["Region", "Status", "Phase"],
             "a table of words"
         );
+    }
+
+    /// **A band naming half the tracks or fewer is its last line's upper lines** (`-v16`, decision
+    /// #118): `Current` and `Prior`, one line of two cells over two columns of four, join the first
+    /// row that reads as the header's last line, each column's lines top to bottom. Over a first row
+    /// that reads as no header's line they head nothing; nor do lines of one cell each — a title on
+    /// the stub's track and a stamp over the last column, two tracks between them.
+    #[test]
+    fn a_band_naming_few_tracks_is_its_last_line_s_upper_lines() {
+        let upper = || vec![run(235, 172, 35, "Current "), run(315, 172, 35, "Prior ")];
+        let found = ledger_under(upper(), ["Region", "Units", "Price", "Delta"]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 4));
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Region", "Current Units", "Prior Price", "Delta"]
+        );
+        assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0", "1.5"]);
+        let first = ["Region", "Units", "2024", "Delta"];
+        assert_eq!(
+            texts(&ledger_under(upper(), first)[0])[0],
+            first,
+            "a first row that is no header's"
+        );
+        let first = ["Region", "Units", "Price", "Delta"];
+        let found = ledger_under(
+            vec![run(100, 164, 40, "Rates"), run(395, 172, 35, "Proposed")],
+            first,
+        );
+        assert_eq!(texts(&found[0])[0], first, "one cell to a line");
     }
 
     /// **A header's last line may name years** (`-v15`, decision #96): `2024` and `2023` — or
@@ -3457,7 +3584,10 @@ mod tests {
     }
 
     /// **The stub's heading may run long** (`-v11`): `(in millions of dollars, except ratios)` heads
-    /// the first column of a header line that names the others.
+    /// the first column of a header line that names the others. Alone on its line under that header
+    /// the long cell ended the band, and the table stood without one; since decision #118 (`-v16`) a
+    /// line of one cell on the stub's track is a section's label at any length, the header above it
+    /// heads the table, and the label is a row under it.
     #[test]
     fn the_stub_s_heading_may_run_long() {
         let found = under(vec![
@@ -3470,14 +3600,145 @@ mod tests {
             texts(&found[0])[0],
             ["(in millions of dollars, except ratios)", "Units", "Price"]
         );
-        // Alone on its line, a long cell is a caption or a units note, and the band ends there.
         let found = under(vec![
             run(205, 170, 30, "Units"),
             run(300, 170, 30, "Price"),
             run(100, 186, 45, "(in millions of dollars, except ratios)"),
         ]);
-        assert_eq!((found[0].rows, found[0].columns), (4, 3));
-        assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
+        assert_eq!((found[0].rows, found[0].columns), (6, 3));
+        assert_eq!(texts(&found[0])[0], ["", "Units", "Price"]);
+        assert_eq!(
+            texts(&found[0])[1],
+            ["(in millions of dollars, except ratios)", "", ""]
+        );
+        assert_eq!(texts(&found[0])[2], ["North", "7.5", "112.0"]);
+    }
+
+    /// **A header over a section's label heads the table** (`-v16`, decision #118): `2024` and
+    /// `2023` over `(in millions)`, a units note on no track, over `Revenues`, a label on the stub's
+    /// track — the band took `Revenues` alone, one column of three, and ended at the note. The years
+    /// head the table, `Revenues` is a row under them, and the note is in no cell. A label as long
+    /// as a line of prose may stand two and a half rows' pitch above the rows.
+    #[test]
+    fn a_header_over_a_section_s_label_heads_the_table() {
+        let found = under(vec![
+            run(245, 170, 25, "2024"),
+            run(345, 170, 25, "2023"),
+            run(280, 180, 40, "(in millions)"),
+            run(100, 190, 40, "Revenues"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (6, 3));
+        assert_eq!(texts(&found[0])[0], ["", "2024", "2023"]);
+        assert_eq!(texts(&found[0])[1], ["Revenues", "", ""]);
+        assert_eq!(texts(&found[0])[2], ["North", "7.5", "112.0"]);
+        assert!(
+            found[0].cells.iter().all(|c| !c.text.contains("millions")),
+            "the note heads none"
+        );
+        let found = under(vec![
+            run(245, 166, 25, "Units"),
+            run(345, 166, 25, "Price"),
+            run(100, 176, 40, "Senior secured debt by subsidiary"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (6, 3), "a long label");
+        assert_eq!(texts(&found[0])[0], ["", "Units", "Price"]);
+        assert_eq!(
+            texts(&found[0])[1],
+            ["Senior secured debt by subsidiary", "", ""]
+        );
+    }
+
+    /// **…and nothing else heads it so** (`-v16`, decision #118): a band over the note holding a
+    /// number that is no year is another table's rows; a caption as long as a line of prose on no
+    /// track is no units note; a note further than a row and a half's pitch above a label ends the
+    /// climb; a table of words has no column of numbers — a form's field line over its instruction
+    /// is no header; a band naming most columns on its own heads the table as `-v5` reads it, the
+    /// label its line; and a first row that reads as the header's last line keeps its place. Each
+    /// leaves the table as it was.
+    #[test]
+    fn a_header_over_a_label_holds_no_number_and_stands_over_figures() {
+        for (band, why) in [
+            (
+                vec![
+                    run(245, 170, 25, "100"),
+                    run(345, 170, 25, "200"),
+                    run(280, 186, 40, "(in millions)"),
+                ],
+                "a number no year",
+            ),
+            (
+                vec![
+                    run(245, 170, 25, "Units"),
+                    run(345, 170, 25, "Price"),
+                    run(280, 186, 40, "Figures restated for the merger"),
+                ],
+                "a caption",
+            ),
+            (
+                vec![
+                    run(245, 158, 25, "2024"),
+                    run(345, 158, 25, "2023"),
+                    run(280, 168, 40, "(in millions)"),
+                    run(100, 190, 40, "Revenues"),
+                ],
+                "a note too far above the label",
+            ),
+        ] {
+            let found = under(band);
+            assert_eq!((found[0].rows, found[0].columns), (4, 3), "{why}");
+            assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"], "{why}");
+        }
+        let mut form = vec![
+            run(100, 178, 40, "Library:"),
+            run(240, 178, 30, "OVLLIB"),
+            run(100, 188, 40, "Type choices, then press Enter."),
+        ];
+        for (j, row) in [
+            ["Queue", "*JOB", "Name"],
+            ["Library", "*LIBL", "Name"],
+            ["Copies", "1", "1-255"],
+            ["Fidelity", "*TEXT", "*ALL"],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 200 + 16 * j as i64;
+            form.extend([
+                run(100, y, 40, row[0]),
+                run(240, y, 30, row[1]),
+                run(340, y, 30, row[2]),
+            ]);
+        }
+        assert_eq!(
+            texts(&tables(&form)[0])[0],
+            ["Queue", "*JOB", "Name"],
+            "a form"
+        );
+        let found = under(vec![
+            run(245, 180, 25, "Units"),
+            run(345, 180, 25, "Price"),
+            run(100, 190, 40, "Revenues"),
+        ]);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Revenues", "Units", "Price"],
+            "a band naming most columns"
+        );
+        let first = ["Region", "Units", "Price", "Delta"];
+        let found = ledger_under(
+            vec![
+                run(235, 164, 35, "Current "),
+                run(315, 164, 35, "Prior "),
+                run(395, 164, 35, "Change "),
+                run(100, 174, 40, "Revenues of the regional segments"),
+            ],
+            first,
+        );
+        assert_eq!(
+            found[0].rows, 5,
+            "a first row read as the header's last line"
+        );
+        assert_eq!(texts(&found[0])[0], first);
     }
 
     /// **…nor a number in the gutter**: `5`, set between the second column and the third and on

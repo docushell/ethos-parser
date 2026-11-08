@@ -1090,6 +1090,16 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a header over a section's label heads the table (decision #118, 2026-11-08)
+
+Alone on `6be3031`: a header set above a section's label or a units note heads the table, the
+label a row under it, and a band naming few columns joins the header over its last line. Tables
+0.6224 -> 0.6313, 25 pages up and 3 down by under 0.004 each: `METLIFE-10Q-20240205 unrestricted`
+p16 0.45 -> 0.90, `NEE.2011` p47 0.44 -> 0.88, `SERFF_TX_random_pages 1` p1220 0.66 -> 1.00,
+`Apple 10-k` p30 0.69 -> 1.00, `Goldman Sachs 10-k` p94 0.30 -> 0.61. Charts, content
+faithfulness, semantic formatting and visual grounding unchanged on every page; overall 51.49 ->
+51.67. opendataloader-bench's 200 Markdown files byte-identical, 0.7999.
+
 ### After a ruled row holding unruled rows refuses the page's grid (decision #117, 2026-11-08)
 
 Alone on `6be3031`: the page's lattice is refused where a ruled row holds rows the page did not

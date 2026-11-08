@@ -32,6 +32,45 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A header set above a section's label, or naming few columns over its last line, heads the table (decision #118)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A header naming few columns is its last line's upper lines.** The whitespace rule takes the
+  band of lines above a table's first row as its header where the band names more than half the
+  table's columns, and since `-v13` reads a first row that looks like a header's last line as that
+  header's. A band naming fewer — `March 31,` over `2025`, the other columns' names on the first
+  row alone — headed nothing. Now, where a line of the band holds two cells or more and the first
+  row reads as the header's last line, the band joins it however few columns it names; a band of
+  one cell to a line is a title's or a caption's, and heads nothing.
+- **A header over a section's label heads the table.** A statement sets `Revenues` and `(In
+  millions)` between its columns' names and its first row of figures: the band stopped at the
+  note, or took the label alone, and a label as long as a line of prose ended it at once (`-v11`).
+  Now, where the band names half the columns or fewer, the table holds a column of numbers and its
+  first row reads as no header's line, the lines of one cell just above that row — a section's
+  label on the first column, at any length, or a units note on none — are passed over to a band
+  above them that names more than half the columns and holds no number but a year. That band heads
+  the table; the labels are a row under it, its other cells empty, and a units note heads none and
+  stays out of the table. **This reverses `-v11`'s reading** of a long cell alone on its line under
+  a header, which ended the band and left the table without one.
+- **Why this**: told "Fresh table census", the census of tables whose header we left above them
+  (88 tables, 1.05 overall points on `6be3031`) found these two shapes among them. Of the fixes
+  measured, the owner chose this one with #117 and #119.
+- **Measured** on ParseBench, alone on `6be3031`: tables 0.6224 -> 0.6313, 25 pages up and 3 down —
+  `METLIFE-10Q-20240205 unrestricted` p16 0.45 -> 0.90, `NEE.2011` p47 0.44 -> 0.88,
+  `SERFF_TX_random_pages 1` p1220 0.66 -> 1.00, `Apple 10-k` p30 0.69 -> 1.00, `FBLB-134215544`
+  p114 0.47 -> 0.80, `Goldman Sachs 10-k` p94 0.30 -> 0.61; down by under 0.004 each,
+  `FBLB-134215544` p63, whose side-by-side panels' titles stack into one header,
+  `blackrock-funds-i-icav-annual-report-2022` p42 and `synthetic_duplicate_tables` p1. The upper
+  lines alone move tables to 0.6270. Charts, content faithfulness, semantic formatting and visual
+  grounding unchanged on every page; overall 51.49 -> 51.67. opendataloader-bench's 200 Markdown
+  files byte-identical, 0.7999. The fabrication check holds; the gate documents' 556 tables
+  unchanged.
+- **Not built**: header words set less than an em apart, read as one cell over two columns; a
+  title over a two-column table read as its header; and a band's heads set over pairs of columns,
+  which this stacks into one column of each pair where they should span both.
+
 ### A ruled row holding rows the page did not rule refuses the page's grid, and a figure under a figure opens a row (decision #117)
 
 Folded into `ruled-rects-v14` and `whitespace-tracks-v16`, which no release carries yet, so no rule
