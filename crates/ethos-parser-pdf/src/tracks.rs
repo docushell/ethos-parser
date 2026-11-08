@@ -40,7 +40,12 @@
 //! **A superscript is part of its line.** A line set smaller than the line below it, its baseline
 //! above that line's by less than half that line's em, is a footnote mark or an ordinal's letters
 //! raised on that line, and joins it — on a baseline of its own it would be a line of one short
-//! cell between two rows, and end the table there.
+//! cell between two rows, and end the table there. **And a mark set against the text before it may
+//! stand higher** (`-v16`, decision #119, [`join_superscripts`]): by less than three fifths of the
+//! em, where each of its runs starts within a quarter em of where another run of either line ends.
+//! A filing raises the `1` on `Comp sales¹` a little over half an em, and as a line of its own it
+//! sat off every track and ended the table above its row; a chart's labels set just above another
+//! line's start where no text ends, and stay lines of their own.
 //!
 //! **A cell ends at its last inked character** (`-v5`): a run's measured box spans its trailing
 //! whitespace, and a space drawn wide after a value would otherwise carry the cell across the gap
@@ -155,7 +160,9 @@
 //! that sets its signs before its figures — its first sign or figure a sign — a sign set alone
 //! within an em after a figure, a percentage or a closing parenthesis is the next amount's. A
 //! statement set in close columns sets the next column's `$` within an em of the last figure, and
-//! the figure took it: `(692) $` was one cell, and `1,105` came without its sign.
+//! the figure took it: `(692) $` was one cell, and `1,105` came without its sign. **And so does a
+//! run that opens with a sign** (`-v16`, decision #119): `$134,803` set as one run within an em
+//! after `95,685` is the next amount, and the two were one cell.
 //!
 //! **A row of data above a table is its row** (`-v11`, [`rows_above`]): once a table stands, each
 //! line above its first row, within a row and a half's pitch of the line below it, that fits its
@@ -195,7 +202,9 @@
 //!    lines around them, under a first row that reads as a header — a chart's axis labels over its
 //!    legend are a pair with gaps, the top of three columns of prose runs on below. Two columns need
 //!    four rows, and are no table where the first column is nothing but list labels or the second
-//!    nothing but rising page numbers: a list or a table of contents set in two columns. And no
+//!    nothing but rising page numbers: a list or a table of contents set in two columns — though
+//!    small numbers beside a column of numbers key a table of values (`-v16`, decision #119), ages
+//!    `65` to `99` beside their premiums, where a list's items are words. And no
 //!    grid whose first column is nothing but bullets is a table (`-v6`): a list's items beside the
 //!    lines of whatever another flow set level with them.
 //! 2. **A steady row pitch**: the gaps between rows vary by at most half their mean.
@@ -1212,7 +1221,9 @@ fn lines(runs: &[TrackRun<'_>]) -> Vec<Line> {
 
 /// The page's lines with each superscript joined to the line it is raised on: a line every inked
 /// run of which is set smaller than the line below it, its baseline above that line's by less
-/// than half that line's em. The line below keeps its own baseline, em and first run.
+/// than half that line's em — or, since `-v16` (decision #119), by less than three fifths where it
+/// is set against the text before it: each of its runs starts within a quarter em of where another
+/// run of either line ends. The line below keeps its own baseline, em and first run.
 fn join_superscripts(runs: &[TrackRun<'_>], grouped: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
     let inked = |members: &[usize]| -> Vec<usize> {
         members
@@ -1229,10 +1240,24 @@ fn join_superscripts(runs: &[TrackRun<'_>], grouped: Vec<Vec<usize>>) -> Vec<Vec
         };
         let small = inked(line);
         let raised = runs[below[0]].y - runs[line[0]].y;
+        // `-v16` (decision #119): a mark raised more than half an em is one only where it is set
+        // against the text before it — a filing's `Comp sales¹` — and a chart's labels set just
+        // above another line's are set against none.
+        let set_against = || {
+            let others = inked(below);
+            small.iter().all(|&i| {
+                others.iter().chain(&small).any(|&j| {
+                    j != i
+                        && runs[j]
+                            .rect
+                            .is_some_and(|b| 4 * (runs[i].x - b.x1).abs() <= em)
+                })
+            })
+        };
         !small.is_empty()
             && small.iter().all(|&i| runs[i].em.is_some_and(|e| e < em))
             && raised > 0
-            && 2 * raised < em
+            && (2 * raised < em || (5 * raised < 3 * em && set_against()))
     };
     let mut out: Vec<Vec<usize>> = Vec::with_capacity(grouped.len());
     let mut lines = grouped.into_iter().peekable();
@@ -1248,8 +1273,9 @@ fn join_superscripts(runs: &[TrackRun<'_>], grouped: Vec<Vec<usize>>) -> Vec<Vec
 /// One line's cells: its inked runs left to right, a new cell wherever the gap from one run's box to
 /// the next run's origin is wider than the line's em, after a run ending in dot leaders unless the
 /// next is leaders and nothing else (`-v11`), and, in a line that sets its signs before its
-/// figures, at a sign set alone after a figure (`-v16`). A whitespace run belongs to the cell whose
-/// extent holds its origin, and opens none.
+/// figures, at a sign set alone after a figure (`-v16`, decision #116) or a run that opens with one
+/// (decision #119). A whitespace run belongs to the cell whose extent holds its origin, and opens
+/// none.
 fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
     let y = runs[members[0]].y;
     let mut inked: Vec<usize> = members
@@ -1281,7 +1307,8 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
     };
     // `-v16` (decision #116): a line that sets a currency sign before its first figure sets each
     // sign before its figure, so a sign set alone within an em after a figure is the next column's,
-    // and opens its cell.
+    // and opens its cell. `-v16` (decision #119): and so does a run that opens with a sign —
+    // `$134,803` within an em after `95,685`.
     let alone_sign = |text: &str| {
         let mut chars = text.trim().chars();
         matches!((chars.next(), chars.next()), (Some(c), None) if CURRENCY_SIGNS.contains(c))
@@ -1298,7 +1325,12 @@ fn line(runs: &[TrackRun<'_>], members: &[usize]) -> Line {
         let run = &runs[i];
         // Upright, so measured: `lines` let no other inked run through.
         let end = run.rect.map_or(run.x, |b| b.x1);
-        let opens = prefixed && after_figure && alone_sign(run.text);
+        let opens = prefixed
+            && after_figure
+            && run
+                .text
+                .trim_start()
+                .starts_with(|c: char| CURRENCY_SIGNS.contains(c));
         match cells.last_mut() {
             Some(cell)
                 if run.x - cell.x1 <= em && (!after_leader || leaders_only(run.text)) && !opens =>
@@ -1840,7 +1872,10 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool) -> bool {
     }
     if columns == 2 {
         let labels = |texts: &[String]| !texts.is_empty() && texts.iter().all(|t| is_label(t));
-        if labels(&column(0)) || is_contents(&column(1)) {
+        // `-v16` (decision #119): small numbers beside a column of numbers key a table of values —
+        // ages beside their premiums — and are no list's labels; a list's items are words.
+        let values = column(1).iter().all(|t| is_number(t.trim()));
+        if (labels(&column(0)) && !values) || is_contents(&column(1)) {
             return false;
         }
     }
@@ -4628,6 +4663,62 @@ mod tests {
         assert_eq!(texts(&found[0])[1], ["Sales", "US$4,210", "US$3,980"]);
     }
 
+    /// **A run that opens with a sign after a figure is the next amount's** (`-v16`, decision #119):
+    /// a statement sets `$134,803` as one run within an em after `95,685`, in columns set close, and
+    /// the two amounts were one cell, the table a column short. A figure drawn as two runs, `30,6`
+    /// and `74`, is still one amount: only a sign opens one.
+    #[test]
+    fn a_run_that_opens_with_a_sign_after_a_figure_opens_the_next_amount() {
+        let row = |y: i64, label: &'static str, a: &'static str, b: &'static str| {
+            [
+                run(100, y, 50, label),
+                run(200, y, 5, "$"),
+                run(209, y, 25, a),
+                run(240, y, 35, b),
+            ]
+        };
+        let mut runs: Vec<TrackRun<'static>> = row(100, "Fixed rate", "95,685", "$134,803").into();
+        runs.extend(row(116, "Variable", "183,125", "$71,693"));
+        runs.extend([
+            run(100, 132, 50, "Floating"),
+            run(200, 132, 5, "$"),
+            run(209, 132, 15, "30,6"),
+            run(224, 132, 10, "74"),
+            run(240, 132, 35, "$22,000"),
+        ]);
+        runs.extend(row(148, "Total", "309,484", "$228,496"));
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[0], ["Fixed rate", "$95,685", "$134,803"]);
+        assert_eq!(texts(&found[0])[2], ["Floating", "$30,674", "$22,000"]);
+    }
+
+    /// **A run that opens with a sign after a word stays with it** (`-v16`, decision #119): `US`
+    /// then `$4,210` within an em is one amount, as `US $` is — only a figure ends one.
+    #[test]
+    fn a_run_that_opens_with_a_sign_after_a_word_stays_with_it() {
+        let row = |y: i64, label: &'static str, a: &'static str, b: &'static str| {
+            [
+                run(100, y, 40, label),
+                run(245, y, 10, "US"),
+                run(257, y, 25, a),
+                run(310, y, 10, "US"),
+                run(322, y, 25, b),
+            ]
+        };
+        let mut runs = vec![
+            run(100, 100, 40, "Item"),
+            run(255, 100, 25, "2025"),
+            run(325, 100, 25, "2024"),
+        ];
+        runs.extend(row(116, "Sales", "$4,210", "$3,980"));
+        runs.extend(row(132, "Costs", "$2,870", "$2,640"));
+        runs.extend(row(148, "Net", "$1,340", "$1,340"));
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[1], ["Sales", "US$4,210", "US$3,980"]);
+    }
+
     /// **A footnote mark raised on a row is part of that row** — set smaller and above its
     /// baseline, it is no line of its own, which would end the table or join the row above.
     #[test]
@@ -4646,6 +4737,123 @@ mod tests {
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[0], ["Region", "2023", "2024"]);
         assert_eq!(texts(&found[0])[1], ["North1", "7.5", "112.0"]);
+    }
+
+    /// A 6.5pt mark at `x` points, `w` points wide, its baseline `raised` centipoints above `y`
+    /// points: a footnote mark's size, or a chart label's, beside [`run`]'s 10pt.
+    fn mark(x: i64, y: i64, raised: i64, w: i64, text: &'static str) -> TrackRun<'static> {
+        let (x, y, w) = (x * 100, y * 100 - raised, w * 100);
+        TrackRun {
+            x,
+            y,
+            em: Some(650),
+            rect: Some(QuantRect {
+                x0: x,
+                y0: y - 520,
+                x1: x + w,
+                y1: y + 130,
+            }),
+            text,
+            claimed: false,
+        }
+    }
+
+    /// Three columns of a filing's segment table, `raised` centipoints the height of the `1` set
+    /// against `Comp sales (ex. fuel)`.
+    fn segments(raised: i64) -> Vec<TrackRun<'static>> {
+        vec![
+            run(100, 100, 40, "Segment"),
+            run(250, 100, 30, "2024"),
+            run(330, 100, 30, "2023"),
+            run(100, 116, 40, "Net sales"),
+            run(250, 116, 30, "$21.9"),
+            run(330, 116, 30, "$21.4"),
+            run(100, 132, 90, "Comp sales (ex. fuel)"),
+            mark(190, 132, raised, 3, "1"),
+            run(255, 132, 25, "3.1%"),
+            run(330, 132, 30, "12.2%"),
+            run(100, 148, 50, "Transactions"),
+            run(255, 148, 25, "3.6%"),
+            run(335, 148, 25, "6.7%"),
+        ]
+    }
+
+    /// **A mark set against its label joins it, raised over half an em** (`-v16`, decision #119): a
+    /// filing raises the `1` on `Comp sales¹` a little over half an em. On a line of its own it sat
+    /// off every track, past the labels above it, and ended the table above its row — and the rows
+    /// either side of it were each too few to stand.
+    #[test]
+    fn a_mark_set_against_its_label_joins_it_though_raised_over_half_an_em() {
+        let found = tables(&segments(580));
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(
+            texts(&found[0])[2],
+            ["Comp sales (ex. fuel)1", "3.1%", "12.2%"]
+        );
+    }
+
+    /// **A mark raised three fifths of an em or more is no superscript** (`-v16`, decision #119):
+    /// the band set against the text ends there, and `North` keeps no mark set that high over it.
+    #[test]
+    fn a_mark_raised_three_fifths_of_an_em_is_no_superscript() {
+        let mut runs = numbers();
+        runs.insert(4, mark(140, 116, 620, 3, "1"));
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (4, 3));
+        assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+    }
+
+    /// **A chart's labels raised against no text stay lines of their own** (`-v16`, decision #119):
+    /// a value label set smaller, over half an em above a bar's name and value, starts where no run
+    /// ends — eight points past the value, and narrower than a quarter em itself. Joined, each line
+    /// came out a row and the four a table over the chart, which took the chart's own runs.
+    #[test]
+    fn a_chart_s_labels_raised_against_no_text_stay_lines_of_their_own() {
+        let bars = [
+            ("Indonesia", "39"),
+            ("Philippines", "37"),
+            ("Malaysia", "36"),
+            ("South Korea", "30"),
+        ];
+        let chart: Vec<TrackRun<'static>> = bars
+            .iter()
+            .enumerate()
+            .flat_map(|(k, &(name, value))| {
+                let y = 100 + 16 * k as i64;
+                [
+                    run(100, y, 45, name),
+                    run(170, y, 10, value),
+                    mark(188, y, 550, 2, "5"),
+                ]
+            })
+            .collect();
+        assert!(tables(&chart).is_empty());
+    }
+
+    /// **And a line set against text in part is no superscript** (`-v16`, decision #119): each of
+    /// its runs must start where text ends, and a label far along the line starts where none does.
+    #[test]
+    fn a_line_set_against_text_only_in_part_is_no_superscript() {
+        let bars = [
+            ("Indonesia", "39"),
+            ("Philippines", "37"),
+            ("Malaysia", "36"),
+            ("South Korea", "30"),
+        ];
+        let chart: Vec<TrackRun<'static>> = bars
+            .iter()
+            .enumerate()
+            .flat_map(|(k, &(name, value))| {
+                let y = 100 + 16 * k as i64;
+                [
+                    run(100, y, 45, name),
+                    run(170, y, 10, value),
+                    mark(180, y, 550, 2, "5"),
+                    mark(260, y, 550, 2, "8"),
+                ]
+            })
+            .collect();
+        assert!(tables(&chart).is_empty());
     }
 
     /// **Two rows stand only complete**: a header and one full row are a table, and the same pair
@@ -4732,6 +4940,59 @@ mod tests {
                 .collect();
             assert!(tables(&runs).is_empty(), "{label:?}");
         }
+    }
+
+    /// Two columns: list labels `1` to `4` beside `items`.
+    fn numbered(items: [&'static str; 4]) -> Vec<TrackRun<'static>> {
+        ["1", "2", "3", "4"]
+            .iter()
+            .zip(items)
+            .enumerate()
+            .flat_map(|(k, (&label, item))| {
+                let y = 100 + 16 * k as i64;
+                [run(100, y, 8, label), run(130, y, 120, item)]
+            })
+            .collect()
+    }
+
+    /// **Small numbers beside a column of numbers key a table** (`-v16`, decision #119): ages beside
+    /// their premiums are a rate table's rows, where a list's labels stand beside words.
+    #[test]
+    fn small_numbers_beside_a_column_of_numbers_key_a_table() {
+        let runs: Vec<TrackRun<'static>> = [
+            ("65", "$195.70"),
+            ("66", "$201.40"),
+            ("67", "$210.05"),
+            ("68", "$217.40"),
+        ]
+        .iter()
+        .enumerate()
+        .flat_map(|(k, &(age, premium))| {
+            let y = 100 + 16 * k as i64;
+            [run(100, y, 10, age), run(160, y, 35, premium)]
+        })
+        .collect();
+        let found = tables(&runs);
+        assert_eq!((found[0].rows, found[0].columns), (4, 2));
+        assert_eq!(texts(&found[0])[0], ["65", "$195.70"]);
+        assert_eq!(
+            tables(&numbered(["2,500", "1,000", "750", "600"])).len(),
+            1,
+            "numbers beside numbers"
+        );
+    }
+
+    /// **A numbered list of words is a list, though an item is a figure** (`-v16`, decision #119):
+    /// only a column of numbers, every item one, makes the labels a table's keys.
+    #[test]
+    fn a_numbered_list_of_words_is_a_list_though_an_item_is_a_figure() {
+        assert!(tables(&numbered([
+            "Read the notice",
+            "1,000",
+            "Sign the form",
+            "Mail it back"
+        ]))
+        .is_empty());
     }
 
     /// **A table of contents is not a table**: entries beside page numbers that never fall. The

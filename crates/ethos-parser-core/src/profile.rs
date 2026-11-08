@@ -1122,6 +1122,14 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// header's last line. Alone, ParseBench tables 0.6224 → 0.6313, twenty-five pages up and three
 /// down by under 0.004 each, overall 51.49 → 51.67; opendataloader-bench's Markdown and the gate
 /// documents' 556 tables unchanged.
+///
+/// **And a footnote mark set against its label joins its line** (decision #119, folded in): raised
+/// less than three fifths of an em, where each of its runs starts within a quarter em of another
+/// run's end; a run that opens with a sign after a figure opens the next cell, as a sign alone does
+/// since #116; and small numbers beside a column of numbers key a table rather than label a list.
+/// Alone, ParseBench tables 0.6224 → 0.6258, eight pages up and none down, overall 51.49 → 51.56;
+/// opendataloader-bench's Markdown unchanged; the gate documents, trees stripped, gain `irs-fw9`
+/// p5's table.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

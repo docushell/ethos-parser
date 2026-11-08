@@ -1090,6 +1090,16 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a footnote mark set against its label joins its line (decision #119, 2026-11-08)
+
+Alone on `6be3031`: a mark raised up to three fifths of an em joins its line where set against the
+text before it, an amount opening with its sign after a figure opens its own cell, and small
+numbers beside a column of numbers key a table. Tables 0.6224 -> 0.6258, 8 pages up and none down:
+`SERFF_TX_random_pages 1` p1124 0 -> 0.49, `BXP.2008` p112 0 -> 0.40, `SERFF_CA_random_pages 1`
+p1201 0.67 -> 0.98 and p2884 0.52 -> 0.75, `walmart-earnings-release-fy24-q4` p4 0.33 -> 0.52.
+Charts, content faithfulness, semantic formatting and visual grounding unchanged on every page;
+overall 51.49 -> 51.56. opendataloader-bench's 200 Markdown files byte-identical, 0.7999.
+
 ### After a header over a section's label heads the table (decision #118, 2026-11-08)
 
 Alone on `6be3031`: a header set above a section's label or a units note heads the table, the

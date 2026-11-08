@@ -1577,3 +1577,40 @@ words set less than an em apart, one cell over two columns that the band then ca
 tables); a title over a two-column table, read as its header or not as the owner decides; and a
 band's heads set over pairs of columns, which this stacks into one column of each pair where they
 should span both.
+
+## 40. A footnote mark set against its label, an amount that opens with its sign, and small numbers beside amounts (2026-11-08, decision #119)
+
+**What `whitespace-tracks-v16` missed.** The census of tables ParseBench's ground truth holds that
+we read as text — found by no rule (25 tables, 0.53 overall points on `6be3031`) or cut off after
+their first rows (25, 0.48) — found three causes a rule of a line could reach. A line set smaller
+than the line below it joins that line as its superscript where its baseline stands less than half
+the line's em above; `walmart-earnings-release-fy24-q4` raises the `1` of `Comp sales (ex. fuel)¹`
+0.51 to 0.53 of an em, and on a line of its own the mark sat off every track and ended the table
+above its row. A run that opens with a currency sign was no sign set alone, so #116's cut did not
+reach it: `BXP.2008` p112 sets `$134,803` within an em after `95,685`, and the two were one cell.
+And two columns whose first holds nothing but list labels are a list: `SERFF_TX_random_pages 1`
+p1124's ages `65` to `99`, each beside a premium, read as one.
+
+**The change**, folded into `-v16`, which no release carries. A line set smaller joins the line
+below it raised less than three fifths of an em where each of its runs starts within a quarter em
+of where another run of either line ends — set against the text before it; a chart's labels set
+just above another line stand against no text and stay lines of their own (an earlier draft
+without that guard joined a bar's labels to the line below and built a table across two charts).
+In a line that sets its signs before its figures, a run that opens with a sign after a figure
+opens the next cell, as a sign set alone does since #116. And two columns whose first is list
+labels are a table where the second holds nothing but numbers; a list's items are words.
+
+**Measured**, alone on `6be3031` with a build whose production code is the shipped one's:
+ParseBench tables **0.6224 → 0.6258**, 8 pages up and none down (`SERFF_TX_random_pages 1` p1124 0
+→ 0.49, `BXP.2008` p112 0 → 0.40, `SERFF_CA_random_pages 1` p1201 0.67 → 0.98 and p2884 0.52 →
+0.75, `walmart-earnings-release-fy24-q4` p4 0.33 → 0.52 and p13 0.38 → 0.44); charts, content,
+formatting and visual grounding unchanged on every page; overall 51.49 → 51.56.
+opendataloader-bench's 200 Markdown files byte-identical; no table on a document without one, every
+cell its runs' text. The gate documents' 556 tables, read with their trees stripped, unchanged, and
+one new: `irs-fw9` p5's table of account types and whose name and number to give, its owners'
+footnote marks now joined to their rows, its first row the last line of an item that begins above
+it. **Found and not built**: a
+table set in one column of a two-column page, where no gutter stands clear over the whole page
+(`TEDS Paper` p6's is 11.95 points); a run holding two columns' text (`10 11 13`), which needs runs
+split; cells of words set closer than an em, which need cutting at word gaps; and a two-column
+table of fewer than four rows, which the floors still refuse.

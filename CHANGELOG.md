@@ -32,6 +32,45 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A footnote mark set against its label joins its line, an amount that opens with its sign opens its cell, and small numbers beside amounts key a table (decision #119)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **A mark set against the text before it is a superscript, raised up to three fifths of an em.**
+  The whitespace rule joins a line set smaller than the line below it, its baseline less than half
+  that line's em above, to that line: a footnote mark or an ordinal's letters. A filing raises the
+  `1` of `Comp sales¹` a little over half an em, and on a line of its own the mark sat off every
+  track and ended the table above its row. Such a line now joins where it stands less than three
+  fifths of an em above and each of its runs starts within a quarter em of where another run of
+  either line ends; a chart's labels set just above another line, against no text, stay lines of
+  their own.
+- **An amount that opens with its sign after a figure opens its own cell**, as a sign set alone
+  does since #116: in a line that sets its signs before its figures, `$134,803` set as one run
+  within an em after `95,685` is the next column's amount, where the two were one cell and the
+  table a column short.
+- **Small numbers beside a column of numbers key a table.** Two columns whose first holds nothing
+  but list labels — `1`, `2`, … — are a list, not a table; where the second holds nothing but
+  numbers, ages beside their premiums, they are a table of values. A list's items are words.
+- **Why this**: told "Fresh table census", the census of tables ParseBench's ground truth holds
+  that we read as text — found by no rule (25 tables, 0.53 overall points on `6be3031`) or cut off
+  after their first rows (25, 0.48) — found these three among them. Of the fixes measured, the
+  owner chose this one with #117 and #118.
+- **Measured** on ParseBench, alone on `6be3031`: tables 0.6224 -> 0.6258, 8 pages up and none
+  down — `SERFF_TX_random_pages 1` p1124 0 -> 0.49, two tables of ages and premiums,
+  `BXP.2008` p112 0 -> 0.40, every amount in its cell, `SERFF_CA_random_pages 1` p1201 0.67 -> 0.98
+  and p2884 0.52 -> 0.75, `walmart-earnings-release-fy24-q4` p4 0.33 -> 0.52 and p13 0.38 -> 0.44.
+  Charts, content faithfulness, semantic formatting and visual grounding unchanged on every page;
+  overall 51.49 -> 51.56. opendataloader-bench's 200 Markdown files byte-identical, 0.7999. The
+  fabrication check holds: 0 of 1,537 cells hold text that is not their runs'. The gate documents'
+  556 tables, read with their trees stripped, are unchanged, and one is new: `irs-fw9` p5's table
+  of account types and whose name and number to give, whose owners' footnote marks now join their
+  rows — its first row the last line of an item that begins above it. As tagged, `irs-fw9` reads
+  as before: the whitespace rule runs only where a document declares no structure.
+- **Not built**: a table set in one column of a two-column page, where no gutter stands clear over
+  the whole page; a run holding two columns' text, which needs runs split; cells of words set
+  closer than an em, which need cutting at word gaps.
+
 ### A header set above a section's label, or naming few columns over its last line, heads the table (decision #118)
 
 Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
