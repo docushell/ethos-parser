@@ -32,6 +32,54 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A ruled row holding rows the page did not rule refuses the page's grid, and a figure under a figure opens a row (decision #117)
+
+Folded into `ruled-rects-v14` and `whitespace-tracks-v16`, which no release carries yet, so no rule
+id and no `profile_sha256` moves.
+
+- **A ruled row holding rows the page did not rule refuses the page's grid.** The ruled rule reads a
+  page's rectangles as one lattice first, and each group of them that touch only where that is
+  refused. A group's grid already stood not where a ruled row holds, in every one of its cells
+  holding text, three lines or more on baselines its neighbours share — rows the page left unruled,
+  which the grid reads as one. The page's own lattice was never asked: a filing that boxes only a
+  table's header and its body read the body as one cell per column, every code and factor in it run
+  together, and a frame drawn round a page of prose read as a grid of its paragraphs. Now the page's
+  lattice is refused so too — its first row spared where a row under it holds text, since a header's
+  names wrap onto shared baselines — and the page is read group by group: a grid a group draws on
+  its own stands, and the text under no grid is left to the rules after this one, which read its
+  rows. Where no group's grid stands the page records the refusal, `rows the page did not rule`; a
+  refused grid takes no table id.
+- **A figure set under a figure opens a row.** The whitespace rule reads a line with no cell in a
+  table's first column as the wrap of the row above, unless it sits a row and a half's pitch or
+  more below that row's first line. A statement that sets its stub once over a group of rows —
+  `Other current liabilities` over `Other non-current liabilities`, an amount beside each — read
+  the group's later lines into its first row: `$ 1,579 10,911` one cell. A line of two cells or
+  more that sets a number, not a year, under a number of the row above now opens a row of its own.
+- **Why this**: told "Fresh table census", the census of tables whose rows or columns we cut
+  differently from ParseBench's ground truth (77 tables, 0.73 overall points on `6be3031`) found
+  among them ruled cells holding rows the page did not rule and rows of figures read as the wrap
+  of the row above. Of the fixes measured, the owner chose this one with #118 and #119.
+- **Measured** on ParseBench, alone on `6be3031`, with the shipped build: tables 0.6224 -> 0.6326,
+  24 pages up and 5 down — `SERFF_CA_random_pages 1` p46 0.01 -> 1.00, seven panels of class codes
+  and factors read cell by cell, `SERFF_TX_random_pages 1` p650 0.03 -> 0.83,
+  `SERFF_CA_random_pages 1` p106 0.00 -> 0.66 and p168 0.20 -> 0.85, `synthetic_invoice` p2 0.01
+  -> 0.35, `blackrock-funds-i-icav-annual-report-2022` p25 0.64 -> 0.98; down, `Apple 10-k` p45
+  0.74 -> 0.66, whose rows the figure rule splits and whose label set 3.2 ems below them then breaks
+  the steady pitch, so the table reads as two, and four pages by 0.03 or less. Visual grounding
+  0.5915 -> 0.5987, 7 pages up and 2 down: frames round prose are no longer tables
+  (`Apple_Environmental_Progress_Report_2024` p97 0.08 -> 0.92, its own table now read from the
+  grid its group draws; `signify-annual-report-2021` p22 0.06 -> 0.83; two `solvay` pages 0.23 ->
+  0.93 and 0.21 -> 0.82), and on `llama` p6 and p7 (0.83 -> 0.75, 0.90 -> 0.80) the figure rule
+  splits a table's rows, which then read as text and a smaller table. The figure rule alone moves
+  tables 0.6224 -> 0.6255 and every one of those downs. Charts, content faithfulness and semantic
+  formatting unchanged on every page; overall 51.49 -> 51.84. opendataloader-bench 0.7999 -> 0.8004,
+  one document up, its `Total` row read as its own; no table on a document without one, and 0 of
+  1,544 cells hold text that is not their runs'. The gate documents' 556 tables, read with their
+  trees stripped, are unchanged.
+- **Not built**: a ruled cell holding two unruled lines rather than three, which would need a ruled
+  row split at its shared baselines; a `$` drawn in a ruled cell of its own, a column of its own
+  until it joins its amount across the drawn edge; and a lattice keeping column lines no cell uses.
+
 ### A currency sign set alone after a figure opens the next amount's cell (decision #116)
 
 Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no

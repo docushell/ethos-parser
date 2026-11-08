@@ -51,6 +51,14 @@
 //! opens lower-case — a label's second line continues the row above. Only a line with no first
 //! cell, or one closer than a row and a half's pitch with a single cell, is a wrap.
 //!
+//! **A figure under a figure opens a row** (`-v16`, decision #117): a line of two cells or more
+//! that sets a number on a track where the row above holds one is a row however close it sits,
+//! whatever cells it leaves empty. A stub that names its group once — a cause of loss over its
+//! years, a sleeve length over its clearances — left every later row of the group without a first
+//! cell, and each was read as the first row's wrapped line: `2012 2013` in one cell. A year is no
+//! figure here, since a statement sets its next block's year over it, and a number alone on its
+//! line is a margin's line number as often as a row.
+//!
 //! **A header set on several lines above the first row is one row** (`-v5`, [`header_band`]): the
 //! lines just above an accepted table, each within a row and a half's pitch of the line below it,
 //! whose every cell sits on a track clear of its neighbours, holds fewer than
@@ -1469,7 +1477,15 @@ fn grow(lines: &[Line], start: usize, runs: &[TrackRun<'_>]) -> Option<Grown> {
                 .chars()
                 .next()
                 .is_some_and(char::is_lowercase);
-        if line.cells.len() >= 2 && (5 * gap >= 9 * em || opens_row) {
+        // `-v16` (decision #117): a figure does not wrap — a line that sets a number, no year, on a
+        // track where the row above holds one opens a row at any gap, whatever cells it leaves
+        // empty: a stub names its group once. A year heads a statement's next block as often as it
+        // is a value, and a number alone on its line is a margin's line number as often as a row.
+        let figure = |c: &Cell| is_number(cell_text(c, runs).trim());
+        let under = line.cells.iter().zip(&mapping).any(|(c, &k)| {
+            figure(c) && !is_year(cell_text(c, runs).trim()) && figure(&above.cells[k])
+        });
+        if line.cells.len() >= 2 && (5 * gap >= 9 * em || opens_row || under) {
             // A sparse row: the tracks it leaves empty are empty cells.
             rows.push(Row {
                 y: line.y,
@@ -4497,6 +4513,71 @@ mod tests {
         assert_eq!(texts(&found[0])[4], ["West", "", "12.0"]);
         let empty = &found[0].cells[13];
         assert!(empty.run_indices.is_empty() && empty.text.is_empty());
+    }
+
+    /// `-v16` (decision #117): **a figure under a figure opens a row** — a line with no first cell,
+    /// half a row's pitch under North, that sets a number where North holds one is a row of its
+    /// own, its first cell empty and its word beside the number its own. Only years, a number
+    /// alone on its line, or a number under a word, and it is still North's wrapped line.
+    #[test]
+    fn a_figure_under_a_figure_opens_a_row() {
+        let with = |north: &'static str, extra: &[TrackRun<'static>]| {
+            let mut runs = numbers();
+            runs[4] = run(250, 116, 20, north);
+            for (k, r) in extra.iter().enumerate() {
+                runs.insert(6 + k, *r);
+            }
+            tables(&runs)
+        };
+        let found = with(
+            "7.5",
+            &[run(250, 124, 20, "8.0"), run(330, 124, 40, "est.")],
+        );
+        assert_eq!((found[0].rows, found[0].columns), (5, 3));
+        assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+        assert_eq!(texts(&found[0])[2], ["", "8.0", "est."]);
+        for (north, extra) in [
+            (
+                "7.5",
+                &[run(250, 124, 30, "2025"), run(340, 124, 30, "2026")][..],
+            ),
+            ("7.5", &[run(250, 124, 20, "8.0")]),
+            (
+                "nil",
+                &[run(250, 124, 20, "8.0"), run(330, 124, 40, "note")],
+            ),
+        ] {
+            let found = with(north, extra);
+            assert_eq!((found[0].rows, found[0].columns), (4, 3), "{extra:?}");
+        }
+    }
+
+    /// A statement stacks its periods' blocks, the next one's year set alone over it and its header
+    /// below that: the year is no figure under the block above, which ends where the next block's
+    /// header is set (Apple's 10-K p50, three segment tables read as one before the year was none).
+    #[test]
+    fn a_year_set_alone_over_the_next_block_opens_no_row() {
+        let mut runs = numbers();
+        runs.push(run(245, 175, 30, "2025"));
+        runs.extend([run(240, 195, 30, "Q1"), run(340, 195, 30, "Q2")]);
+        for (k, (label, a, b)) in [
+            ("North", "1.0", "2.0"),
+            ("South", "3.0", "4.0"),
+            ("East", "5.0", "6.0"),
+            ("West", "7.0", "8.0"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 211 + 16 * k as i64;
+            runs.extend([
+                run(100, y, 40, label),
+                run(250, y, 20, a),
+                run(350, y, 20, b),
+            ]);
+        }
+        let shapes: Vec<(u32, u32)> = tables(&runs).iter().map(|t| (t.rows, t.columns)).collect();
+        assert_eq!(shapes, [(4, 3), (5, 3)]);
     }
 
     /// **A line of prose under a table is not a cell**: its one wide cell may centre on any track,

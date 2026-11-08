@@ -739,6 +739,14 @@ pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 /// tables 0.6086 -> 0.6141, eight pages up and none down, nothing else on ParseBench moving,
 /// opendataloader-bench unchanged; the gate documents with their trees stripped gain 15 tables
 /// their tagged originals declare, and read one notice box whole.
+///
+/// **And a ruled row holding rows the page did not rule refuses the page's lattice** (decision
+/// #117, folded in), as a group's grid already stood not: every cell of the row holding text holds
+/// three lines or more on baselines its neighbours share, its first row asked only where no row
+/// under it holds text. The page is read group by group, and where no group's grid stands it
+/// records `rows the page did not rule`. With the figure rule `whitespace-tracks-v16` took in the
+/// same decision, ParseBench tables 0.6224 → 0.6326 and visual grounding 0.5915 → 0.5987, overall
+/// 51.49 → 51.84; opendataloader-bench 0.7999 → 0.8004; the gate documents' 556 tables unchanged.
 pub const TABLE_DETECTION_V14: &str = "ruled-rects-v14";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
@@ -1098,6 +1106,12 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// statement set in close columns read `(692) $` as one cell, and the row no longer fit its
 /// columns. ParseBench tables 0.6188 → 0.6224, nineteen pages up and one down, overall 51.42 →
 /// 51.49; opendataloader-bench's Markdown and the gate documents' 556 tables unchanged.
+///
+/// **And a figure set under a figure opens a row** (decision #117, folded in): a line of two cells
+/// or more that sets a number, not a year, under a number of the row above is a row of its own,
+/// not the wrap of that row — a statement that sets its stub once over a group of rows read their
+/// amounts into one cell. Alone, ParseBench tables 0.6224 → 0.6255, eighteen pages up and five
+/// down; with `ruled-rects-v14`'s refusal taken in the same decision, overall 51.49 → 51.84.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

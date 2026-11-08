@@ -1090,6 +1090,18 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### After a ruled row holding unruled rows refuses the page's grid (decision #117, 2026-11-08)
+
+Alone on `6be3031`: the page's lattice is refused where a ruled row holds rows the page did not
+rule, and the page read group by group; and a line of two cells or more setting a number under a
+number of the row above opens a row. Tables 0.6224 -> 0.6326, 24 pages up and 5 down:
+`SERFF_CA_random_pages 1` p46 0.01 -> 1.00, `SERFF_TX_random_pages 1` p650 0.03 -> 0.83,
+`SERFF_CA_random_pages 1` p106 0.00 -> 0.66 and p168 0.20 -> 0.85, `synthetic_invoice` p2 0.01 ->
+0.35; down, `Apple 10-k` p45 0.74 -> 0.66 and four pages by 0.03 or less. Visual grounding 0.5915
+-> 0.5987, frames round prose no longer tables, `llama` p6 and p7 down. Charts, content
+faithfulness and semantic formatting unchanged on every page; overall 51.49 -> 51.84.
+opendataloader-bench 0.7999 -> 0.8004, one document up.
+
 ### After a sign set after a figure opens the next amount's cell (decision #116, 2026-11-08)
 
 On top of #115: in a line that sets its signs before its figures, a sign set alone within an em

@@ -1488,3 +1488,51 @@ set each glyph as a run of its own, so the `1` of `CET1 capital` and `Tier 1 cap
 number its line holds, and those rows keep their cells while `Total capital`, whose label holds no
 digit, is read anew, no longer fits their columns and opens a table of its own. Reading a line's
 first figure from its cells rather than its runs would read all four.
+
+## 38. A ruled row holding rows the page did not rule, and a figure under a figure (2026-11-08, decision #117)
+
+**What `ruled-rects-v14` missed.** The ruled rule reads a page's rectangles as one lattice first,
+and each group of rectangles that touch only where that lattice is refused. A group's grid stands
+only where no ruled row of it holds rows the page did not rule — every cell of the row holding text
+holding three lines or more on baselines its neighbours share (`standing`, clause 2) — but the
+page's lattice was never asked. `SERFF_CA_random_pages 1` p46 boxes seven panels of class codes and
+their factors, a header row and one body cell per column: read whole, its body was seven cells,
+each a panel's codes and factors run together. `SERFF_TX_random_pages 1` p650 boxes a rate
+table's header and its body the same way, and frames drawn round a page of prose
+(`signify-annual-report-2021` p22) read as a grid of their paragraphs.
+
+**The change**, folded into `-v14`, which no release carries: the page's lattice is refused,
+`RuledRefusal::RowsNotRuled`, where a ruled row of it holds rows the page did not rule — its first
+row asked only where no row under it holds text, since a header's names wrap onto shared baselines
+over rows of figures, while a frame's one row of prose is asked whole. The page is then read group
+by group as for `RowsUndrawn` (decision #113): a grid a group draws on its own stands
+(`Apple_Environmental_Progress_Report_2024` p97's table, inside a frame round the page), and the
+text under no grid is left to the rules after this one, which read its rows. Where no group's grid
+stands the page records the refusal; the lattice is read on a trial allocator, so a refused grid
+takes no table id.
+
+**What `whitespace-tracks-v16` missed.** A line with no cell in a table's first column is read as
+the wrap of the row above unless it stands a row and a half's pitch or more below that row's first
+line. A statement that sets its stub once over a group of rows read the group's later lines into
+its first row: `Apple 10-k` p45's `Other current liabilities` and `Other non-current liabilities`,
+an amount beside each, one row with `$ 1,579 10,911` in one cell. **The change**: a line of two
+cells or more that sets a number, not a year, under a number of the row above opens a row of its
+own. A year under a number is a heading's (`Apple 10-k` p50's stacked tables stay apart), a line of
+one cell a margin's line number as often as a row, and a number under a word still a wrap.
+
+**Measured**, with the shipped build alone on `6be3031`: ParseBench tables **0.6224 → 0.6326**, 24
+pages up and 5 down (`SERFF_CA_random_pages 1` p46 0.01 → 1.00, `SERFF_TX_random_pages 1` p650
+0.03 → 0.83, `SERFF_CA_random_pages 1` p106 0.00 → 0.66 and p168 0.20 → 0.85, `synthetic_invoice`
+p2 0.01 → 0.35; down, `Apple 10-k` p45 0.74 → 0.66 — its rows now split, a label set 3.2 ems below
+them breaks the steady pitch and the table reads as two — and four pages by 0.03 or less); visual
+grounding 0.5915 → 0.5987, seven pages up and two down (`llama` p6 and p7, where the figure rule
+splits the rows of a table whose stub sets a model's name once over its sizes, and the rows then
+read as text and a smaller table); charts, content and formatting unchanged on every page; overall
+51.49 → 51.84. The figure rule alone moves tables 0.6224 → 0.6255 and every down;
+the refusal alone moves no page down. opendataloader-bench 0.7999 → 0.8004, one document up, a
+`Total` row read as its own; no table on a document without one, every cell its runs' text; the
+gate documents' 556 tables unchanged. **Found and not built**: a ruled cell holding two unruled
+lines rather than three (`SERFF_CA_random_pages 1` p883), which would need a ruled row split at its
+shared baselines; a `$` drawn in a ruled cell of its own, a column of its own until it joins its
+amount across the drawn edge (`Home Depot 10-k` p3); and a lattice keeping column lines no cell
+uses.

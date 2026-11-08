@@ -98,6 +98,14 @@
 //!    drew only in part, as a table striped in alternate rows fills every other row. And a rule a
 //!    fill outlines as a polygon, with bevelled ends or as a frame drawn in one path, is read as the
 //!    rectangles it outlines (`crate::content::Interpreter::rects`).
+//! 10. **The page's lattice is refused where a ruled row of it holds rows the page did not rule**
+//!     (`ruled-rects-v14`, decision #117, [`RuledRefusal::RowsNotRuled`]), as a group's grid
+//!     already was (rule 6): every cell of the row holding text holds three lines or more on
+//!     baselines its neighbours share. A filing that boxes only a table's header and its body read
+//!     as one cell per column, `9.2%3.1%7.5%6.1%`, and a frame round a page of prose as a grid of
+//!     its paragraphs. The first row is not asked where a row under it holds text, since a
+//!     header's names wrap onto shared baselines; the page is then read group by group, and the
+//!     text by the rules after this one.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -623,6 +631,18 @@ pub enum RuledRefusal {
         /// The grid's columns holding such text.
         columns: usize,
     },
+    /// `ruled-rects-v14` (decision #117): a ruled row of the page's lattice holds, in every one of
+    /// its cells holding text, three lines or more on baselines its neighbours share — rows the
+    /// page did not rule, which the grid would read as one. Its first row is not asked where a row
+    /// under it holds text: a header's names wrap onto shared baselines.
+    ///
+    /// The page's lattice is refused so that each group of rectangles is read on its own, as a
+    /// group's grid is asked the same ([`standing`], clause 2), and the text is left to the rules
+    /// after this one; this is the page's refusal only where no group's grid stands.
+    RowsNotRuled {
+        /// Faces the lattice implied.
+        faces: usize,
+    },
 }
 
 impl RuledRefusal {
@@ -640,6 +660,7 @@ impl RuledRefusal {
             Self::CrossCheckRejected { .. } => "a grid that contradicts itself",
             Self::Stacked { .. } => "tables stacked on their own columns",
             Self::RowsUndrawn { .. } => "text set inside a grid in rows it did not draw",
+            Self::RowsNotRuled { .. } => "rows the page did not rule",
         }
     }
 
@@ -696,6 +717,14 @@ impl RuledRefusal {
                  off as the whole table, so it was refused, the page's rectangles were read group \
                  by group, and the text was left to the rules after this one",
             ),
+            Self::RowsNotRuled { .. } => String::from(
+                "A row the rectangles rule holds, in every one of its cells, three or more lines \
+                 on baselines its neighbours share: rows the page did not rule, which the grid \
+                 would read as one. A first row is not asked where a row under it holds text, \
+                 since a header's names wrap onto shared baselines. The grid was refused, the \
+                 page's rectangles were read group by group, and the text was left to the rules \
+                 after this one",
+            ),
         }
     }
 
@@ -722,6 +751,9 @@ impl RuledRefusal {
             Self::Stacked { blocks } => format!("{blocks} blocks of rows"),
             Self::RowsUndrawn { columns } => {
                 format!("{columns} of its columns hold text no cell holds")
+            }
+            Self::RowsNotRuled { faces } => {
+                format!("{faces} cells, a row of which holds unruled rows")
             }
         }
     }
@@ -774,8 +806,10 @@ pub fn detect_ruled(
 
 /// Detect ruled tables on one page.
 ///
-/// The page's rectangles as one lattice first, exactly as `ruled-rects-v7` read them. Only where
-/// that is refused, each group of rectangles that touch ([`GROUP_GAP`]) is a candidate of its own,
+/// The page's rectangles as one lattice first, exactly as `ruled-rects-v7` read them, refused since
+/// decision #117 where a ruled row of it holds rows the page did not rule
+/// ([`RuledRefusal::RowsNotRuled`]). Only where that is refused, each group of rectangles that
+/// touch ([`GROUP_GAP`]) is a candidate of its own,
 /// and the grids that stand ([`standing`]) are the page's tables — numbered only once they stand,
 /// so a page where none does keeps every id it had. Where none stands, the page-wide refusal is
 /// the page's. `white` names those of `rects` a fill alone painted white: none of them draws a line
@@ -798,7 +832,38 @@ pub fn detect_ruled_with(
     // `ruled-rects-v13` (decision #75): a rule drawn up to three points thick is one line.
     let rects: Vec<QuantRect> = rects.iter().map(one_line).collect();
     let rects = &rects[..];
-    let (tables, refusal) = ruled_grid(page, rects, runs, alloc, None)?;
+    // Read on a trial allocator: a grid refused below takes no table id.
+    let mut trial = alloc.clone();
+    let (tables, refusal) = ruled_grid(page, rects, runs, &mut trial, None)?;
+    // `ruled-rects-v14` (decision #117): a ruled row of the page's lattice holding rows the page
+    // did not rule refuses it, as clause 2 of [`standing`] refuses a group's grid — below its first
+    // row where a row under that holds text, since a header's names wrapped onto shared baselines
+    // are one row; a frame's one row of text is asked whole.
+    let body = |t: &DetectedTable| {
+        let headed = t
+            .cells
+            .iter()
+            .any(|c| c.position.row > 0 && !c.text.trim().is_empty());
+        DetectedTable {
+            cells: t
+                .cells
+                .iter()
+                .filter(|c| !headed || c.position.row > 0)
+                .cloned()
+                .collect(),
+            ..t.clone()
+        }
+    };
+    let (tables, refusal) = match tables.first().filter(|t| rows_not_ruled(&body(t), runs)) {
+        Some(t) => {
+            let faces = t.rows as usize * t.columns as usize;
+            (Vec::new(), Some(RuledRefusal::RowsNotRuled { faces }))
+        }
+        None => {
+            *alloc = trial;
+            (tables, refusal)
+        }
+    };
     if !tables.is_empty() || refusal.is_none() || rects.len() > MAX_GROUPED_RECTS {
         return Ok((tables, refusal));
     }
@@ -2793,6 +2858,96 @@ mod tests {
             .map(|t| (t.rect.y0 / pt(1), t.rows, t.columns))
             .collect();
         assert_eq!(shapes, [(400, 2, 2)]);
+    }
+
+    /// Two columns ruled round a header row and one body row, the body's every cell holding three
+    /// lines on shared baselines: a filing that boxes only its header and its body.
+    fn boxed_body() -> (Vec<QuantRect>, Vec<RunOrigin<'static>>) {
+        let (rects, _) = grid(100, 100, 2, 2, label);
+        let mut runs = vec![run_at(105, 125, "Year"), run_at(205, 125, "Rate")];
+        for (y, a, b) in [
+            (150, "2021", "1.0"),
+            (160, "2022", "1.1"),
+            (170, "2023", "1.2"),
+        ] {
+            runs.extend([run_at(105, y, a), run_at(205, y, b)]);
+        }
+        (rects, runs)
+    }
+
+    /// `ruled-rects-v14` (decision #117): **a ruled row of the page's lattice holding rows the page
+    /// did not rule refuses it**, as a group's grid is refused: no table, so the runs stay for the
+    /// whitespace rule, and no table id taken — the page's next table is still its first.
+    #[test]
+    fn a_pages_lattice_whose_ruled_row_holds_unruled_rows_is_refused() {
+        let (rects, runs) = boxed_body();
+        let mut a = alloc();
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut a).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+        assert_eq!(refused, Some(RuledRefusal::RowsNotRuled { faces: 4 }));
+        assert_eq!(
+            a.next(IdKind::Table).unwrap(),
+            alloc().next(IdKind::Table).unwrap()
+        );
+    }
+
+    /// A header whose names wrap onto three shared baselines, over rows that hold text, is one row,
+    /// and the grid stands with the page's first id (`2023.02.07 Walmart Settlement Agreement`
+    /// p27); a frame whose only text is one row of two columns of prose has no header to spare,
+    /// and is refused (Apple's Environmental Progress Report p97).
+    #[test]
+    fn a_first_row_is_spared_only_as_a_header_over_rows_of_text() {
+        let wrapped = [
+            (110, "Percentage", "Incentive"),
+            (120, "of Incentive", "Payment"),
+            (130, "Reduction", "Discount"),
+        ];
+        let (rects, _) = grid(100, 100, 3, 2, label);
+        let mut runs = Vec::new();
+        for (y, a, b) in wrapped {
+            runs.extend([run_at(105, y, a), run_at(205, y, b)]);
+        }
+        runs.extend([run_at(105, 165, "Below 95%"), run_at(205, 165, "15%")]);
+        runs.extend([run_at(105, 205, "95%"), run_at(205, 205, "13%")]);
+        let mut a = alloc();
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut a).unwrap();
+        assert_eq!(tables.len(), 1, "{refused:?}");
+        assert_eq!((tables[0].rows, tables[0].columns), (3, 2));
+        assert_eq!(tables[0].id, alloc().next(IdKind::Table).unwrap());
+        assert_ne!(a.next(IdKind::Table).unwrap(), tables[0].id);
+
+        let (rects, _) = grid(100, 100, 2, 2, label);
+        let mut runs = Vec::new();
+        for (y, a, b) in wrapped {
+            runs.extend([run_at(105, y, a), run_at(205, y, b)]);
+        }
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+        assert_eq!(refused, Some(RuledRefusal::RowsNotRuled { faces: 4 }));
+    }
+
+    /// Refused, the page's lattice leaves its rectangles to be read group by group, as a refusal of
+    /// it does: two grids drawn apart from the body between them stand on their own, and the
+    /// refusal is the page's only where no group's grid stands.
+    #[test]
+    fn a_pages_lattice_refused_for_unruled_rows_is_read_group_by_group() {
+        let (rects, mut runs) = blocks(&[
+            (100, &[100, 200, 300], 2),
+            (190, &[100, 200, 300], 1),
+            (240, &[100, 200, 300], 2),
+        ]);
+        runs.retain(|o| o.y != pt(215));
+        for y in [200, 210, 220] {
+            runs.extend([run_at(105, y, "b1"), run_at(205, y, "b2")]);
+        }
+        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        assert_eq!((whole.len(), refused), (1, None));
+        let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        let shapes: Vec<(i64, u32, u32)> = tables
+            .iter()
+            .map(|t| (t.rect.y0 / pt(1), t.rows, t.columns))
+            .collect();
+        assert_eq!(shapes, [(100, 2, 2), (240, 2, 2)], "{refused:?}");
     }
 
     /// `ruled-rects-v13`: a box painted behind the whole page covers every face of a grid drawn in
