@@ -129,7 +129,8 @@ several images on the page; an inline image; a stream whose filter the recognize
 (CCITT, JBIG2, JPEG 2000); a placement that is not axis-aligned; a colour space or bit depth it does
 not read. A recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
 missing one does. A word whose box's centre falls outside the page's visible box is not written and
-is counted. Two declared limitations ride on every OCR artifact: text in a rotated or upside-down
+is counted; one whose centre is on the page and whose box runs past its edge is written without its
+box (`measured_off_page`), as a drawn run is. Two declared limitations ride on every OCR artifact: text in a rotated or upside-down
 orientation within an upright image is not turned; a recognized word has no font, so emphasis
 (bold, italic) and a font's own size are not read on recognized pages.
 
@@ -166,7 +167,7 @@ recognized runs as runs; a rule that reads a font reads none.
    **Met:** the same 208 documents under `--ocr` hold the same nodes, and differ by the profile and
    its two declared OCR limitations alone.
 4. **ParseBench with `--ocr` scores at least 55.0 overall** (52.10 without), and no page scores
-   lower than without it. **Amended: missed — 53.91, 74 pages up and none down.** The bar was set
+   lower than without it. **Amended: missed — 53.94, 75 pages up and none down.** The bar was set
    from Phase 0's 55.88, which read every textless page by rendering it; this scope reads one
    image a page decodes. What the build does not reach is composite pages and pages that need a
    renderer (about 1.2 points, Phase 0's figures) and the image files' layout boxes, which need

@@ -1421,13 +1421,14 @@ without the flag:
 
 | Dimension | Without `--ocr` | With `--ocr` | Pages up / down |
 | --- | ---: | ---: | ---: |
-| Content faithfulness | 0.6750 | 0.7511 | 56 / 0 |
+| Content faithfulness | 0.6750 | 0.7524 | 57 / 0 |
 | Semantic formatting | 0.5131 | 0.5261 | 13 / 0 |
 | Tables | 0.6453 | 0.6454 | 1 / 0 |
 | Charts | 0.1726 | 0.1726 | 0 / 0 |
 | Layout | 0.5987 | 0.6004 | 4 / 0 |
 
-Overall 52.10 -> 53.91. **The layout figure counts the image files as zero, and ParseBench's own
+Overall 52.10 -> 53.94; it read 53.91 until PR 53's review found a recognized word whose box ran
+past its page's edge refusing `text_ocr__cramer` whole, and the fix let that page be read. **The layout figure counts the image files as zero, and ParseBench's own
 aggregate does not:** `ground` refuses an image file by name (decision #16), so the adapter sends
 those pages no layout items, the evaluator reports "No layout data for page 0" and leaves them out
 of its average, which then reads 0.6415. A page that failed is a page that scored nothing, so the

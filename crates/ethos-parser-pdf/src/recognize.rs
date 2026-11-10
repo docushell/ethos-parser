@@ -660,6 +660,8 @@ mod tests {
         answers_as: Option<RecognizerIdentity>,
         refused: Option<String>,
         requests: Vec<RecognitionRequest>,
+        /// The pixel "world" ends at; 18, inside the 20-pixel image, unless a test moves it.
+        reach: i32,
     }
 
     impl Fake {
@@ -669,6 +671,7 @@ mod tests {
                 answers_as: None,
                 refused: None,
                 requests: Vec::new(),
+                reach: 18,
             }
         }
     }
@@ -698,7 +701,7 @@ mod tests {
                     vec![RecognizedLine {
                         text: "Hello world".into(),
                         quad: [[2, 2], [18, 2], [18, 8], [2, 8]],
-                        words: vec![word("Hello", 2, 9), word("world", 11, 18)],
+                        words: vec![word("Hello", 2, 9), word("world", 11, self.reach)],
                     }]
                 },
                 refused: self.refused.clone(),
@@ -970,6 +973,26 @@ mod tests {
             ("Side bar", None, 1000)
         );
         assert_eq!(words.len(), 3);
+    }
+
+    #[test]
+    fn a_word_past_its_pages_edge_keeps_its_text_and_not_its_box() {
+        // PR 53's review: a word whose centre is on the page and whose box runs past its edge
+        // reached the seal as a measured box outside the page, and the whole document was refused.
+        let profile = Profile::ocr_v0();
+        let mut fake = Fake::new();
+        fake.reach = 24; // "world", 11..24, runs past the 20-pixel image; its centre, 17.5, is on it
+        let png = b"\x89PNG\r\n\x1a\n".to_vec();
+        let artifact = crate::extract_image(&png, &profile, &mut fake).expect("extracts");
+        let world = &artifact.pages[0].runs[1];
+        assert_eq!(world.text, "world");
+        assert_eq!(
+            world.geometry,
+            ethos_parser_core::GeometryPresence::Absent(
+                ethos_parser_core::GeometryAbsence::MeasuredOffPage
+            )
+        );
+        crate::to_representation(&artifact, &profile).expect("seals");
     }
 
     #[test]

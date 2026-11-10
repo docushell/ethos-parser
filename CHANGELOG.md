@@ -64,8 +64,8 @@ nothing changes but the profile hash: the default profile gained a field, `recog
   `recognized-text-orientation-not-corrected` and `recognized-text-has-no-font`, and
   `image-resolution-not-read`. In the library: `extract_recognized`, `extract_image`,
   `image_media_type`, the `Recognize` trait and the protocol's types.
-- **Measured.** ParseBench with `--ocr`: 52.10 -> 53.91 overall, 74 pages up and none down
-  (content faithfulness 0.6750 -> 0.7511). Without the flag, the eight gate documents and
+- **Measured.** ParseBench with `--ocr`: 52.10 -> 53.94 overall, 75 pages up and none down
+  (content faithfulness 0.6750 -> 0.7524). Without the flag, the eight gate documents and
   opendataloader-bench's 200 extract byte-identical but the profile hash; with it, the same 208
   hold the same nodes. About 1.9 s and 1.35 GB peak per 200-dpi page on an Apple M4 Pro.
 - **Not read yet:** composite pages, pages that need a renderer, CCITT, JBIG2 and JPEG 2000

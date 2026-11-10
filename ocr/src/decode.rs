@@ -156,10 +156,18 @@ fn dct(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
 
 /// Undo a PNG (10-15) or TIFF (2, 8 bits) predictor.
 fn unpredict(data: &[u8], p: &FlateParms) -> Result<Vec<u8>, String> {
-    let bpp = ((p.colors * p.bits_per_component) as usize)
-        .div_ceil(8)
-        .max(1);
-    let row = ((p.colors * p.bits_per_component * p.columns) as usize).div_ceil(8);
+    // A row's bits past u32, or a row of no bytes, is the page refused by name, not a panic that
+    // stops `serve` and with it the whole document.
+    let size = || "predictor-not-read:size".to_string();
+    let bits = p
+        .colors
+        .checked_mul(p.bits_per_component)
+        .ok_or_else(size)?;
+    let bpp = (bits as usize).div_ceil(8).max(1);
+    let row = (bits.checked_mul(p.columns).ok_or_else(size)? as usize).div_ceil(8);
+    if row == 0 {
+        return Err(size());
+    }
     if p.predictor == 2 {
         if p.bits_per_component != 8 {
             return Err("predictor-not-read:2".into());
@@ -374,6 +382,27 @@ mod tests {
         };
         let data = [1, 10, 5, 5, 2, 1, 1, 1];
         assert_eq!(unpredict(&data, &p).unwrap(), [10, 15, 20, 11, 16, 21]);
+    }
+
+    #[test]
+    fn a_predictor_row_past_u32_or_of_no_bytes_is_refused_by_name() {
+        // PR 53's review: 2^29 columns of one 8-bit colour is 2^32 bits a row, which wrapped to a
+        // row of no bytes, and `chunks_mut(0)` panicked; `/Columns 0` reached the same panic.
+        let mut p = FlateParms {
+            predictor: 2,
+            colors: 1,
+            bits_per_component: 8,
+            columns: 1 << 29,
+        };
+        assert_eq!(
+            unpredict(&[0; 8], &p).unwrap_err(),
+            "predictor-not-read:size"
+        );
+        p.columns = 0;
+        assert_eq!(
+            unpredict(&[0; 8], &p).unwrap_err(),
+            "predictor-not-read:size"
+        );
     }
 
     #[test]

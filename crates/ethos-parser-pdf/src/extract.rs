@@ -1025,7 +1025,15 @@ fn extract_page(
                     origin_y: w.origin_y,
                     advance: w.advance,
                 },
-                geometry: ethos_parser_core::GeometryPresence::Measured(w.rect),
+                // As a drawn run's, above: a word whose centre is on the page and whose box runs
+                // past its edge keeps its text, not a box the seal would refuse the document for.
+                geometry: if geom.contains(w.rect) {
+                    ethos_parser_core::GeometryPresence::Measured(w.rect)
+                } else {
+                    ethos_parser_core::GeometryPresence::Absent(
+                        ethos_parser_core::GeometryAbsence::MeasuredOffPage,
+                    )
+                },
                 mcid: None,
                 structural: None,
                 derivation: DerivationClass::Recognized,
