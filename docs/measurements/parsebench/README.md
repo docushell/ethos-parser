@@ -15,14 +15,16 @@ here.
 
 ```bash
 git clone https://github.com/run-llama/ParseBench ~/ethos-external-benchmarks/ParseBench
-cd ~/ethos-external-benchmarks/ParseBench && git checkout afb36bd && uv sync
+cd ~/ethos-external-benchmarks/ParseBench && git checkout 1f5b37a && uv sync
 cp <this checkout>/docs/measurements/parsebench/ethos_bench.py .
 uv run parse-bench download
 ETHOS_PARSER_BIN=<this checkout>/target/release/ethos-parser uv run python ethos_bench.py run ethos_markdown
 ```
 
 `--group text_content` (or `table`, `chart`, `layout`, `text_formatting`) runs one dimension;
-`--test` runs fifteen pages. A full run takes about three minutes.
+`--test` runs fifteen pages. A full run takes about eight minutes, two thirds of it scoring. With
+`ETHOS_BENCH_LEDGER=<dir>`, an example whose output is byte-identical to one scored before takes the
+stored score, and a run that changes a few pages scores in under a minute (decision #121, below).
 
 ## What the adapter does
 
@@ -1434,6 +1436,45 @@ those pages no layout items, the evaluator reports "No layout data for page 0" a
 of its average, which then reads 0.6415. A page that failed is a page that scored nothing, so the
 table divides by all 500. Phase 0's 55.88 read every textless page by rendering it; the
 difference is composite pages, pages that need a renderer, and the image files' layout boxes.
+
+## Scores reused, and a held-out split measured (decision #121, 2026-11-10)
+
+Two lessons from articles on extraction pipelines, measured on the stored runs of the last six
+decisions before either was built (2,553 examples a run).
+
+**Scores are reused (`ETHOS_BENCH_LEDGER`).** Between one decision and the next, 93-97% of examples
+hand the scorer byte-identical output (42% across a Markdown rule's new version), and scoring is
+half to two thirds of a run. ParseBench's scorer is deterministic: of 13,225 examples whose output
+repeated, none scored differently. So the adapter stores each result under the SHA-256 of what the
+scorer receives (the test case and the output, ParseBench's commit and uncommitted diff, its
+arguments) less the run's clock and the four fields every engine version changes, and reuses it
+where they repeat. Checked against fresh scoring:
+
+| Run | Extract | Score and report | Scored differently from a fresh run |
+| --- | ---: | ---: | --- |
+| `0e4eade`, no ledger | 164 s | 307 s | — |
+| Same, filling an empty ledger | 168 s | 304 s | 0 of 2,553 |
+| `--ocr` after PR 53's fix, reusing it | 327 s | 38 s | `text_ocr__cramer` alone, which the fix reads |
+
+A ledger holds only what its scorer gave: moving ParseBench changes every key, so the old entries
+are never read again.
+
+**A held-out split was measured and not built.** A fixed 30% of documents, hash-picked and kept
+from every census, with its change reported beside each decision's:
+
+| Decisions | All pages | The 70% | The 30% held out | Any 30%, p5 to p95 |
+| --- | ---: | ---: | ---: | ---: |
+| #109-#111 | +0.12 | +0.14 | +0.07 | 0.05 to 0.21 |
+| #112-#114 | +0.53 | +0.55 | +0.51 | 0.30 to 0.83 |
+| #115 | +0.10 | +0.12 | +0.06 | 0.00 to 0.21 |
+| #116 | +0.07 | +0.09 | +0.03 | 0.02 to 0.13 |
+| #117-#119 | +0.60 | +0.64 | +0.53 | 0.37 to 0.86 |
+| #120, scanned pages | +1.82 | +2.03 | +1.32 | 1.21 to 2.45 |
+
+It never disagreed in sign. A typical decision, +0.07 to +0.12, lies inside what any 30% of the
+pages shows by chance, so the split could neither confirm nor refute it; and the fixed 30% read
+7-67% lower than the rest on all six though every census read its pages too, which is what it
+holds, not tuning. The count of pages up and down beside every decision stays the stronger check.
 
 ## What it found that is not fixed
 

@@ -24,6 +24,11 @@ pages are rasterized (Ghostscript, 300 dpi) and read by Tesseract (`ETHOS_BENCH_
 `eng`) into a PDF whose invisible text layer ethos then extracts; an image file ethos does not take
 goes to Tesseract directly. Results under it are "ethos + OCR pass", reported beside the
 engine-only ones. Needs `gs`, `tesseract` and `qpdf` on PATH.
+
+`ETHOS_BENCH_LEDGER=<dir>` (decision #121) reuses scores: an example whose output and test case are
+byte-identical to one scored before takes the stored result instead of being scored again. The
+scores are the same; a run that changes a few pages scores in under a minute instead of five. The
+ledger block at the end says what the key holds.
 """
 
 import json
@@ -305,6 +310,77 @@ register_pipeline(
 )
 register_layout_adapter("ethos", priority=90)(LiteParseLayoutAdapter)
 register_layout_label_mapper("ethos", priority=90)(LiteParseLabelMapper)
+
+# The score ledger (decision #121), opt in with `ETHOS_BENCH_LEDGER=<dir>`. ParseBench's scorer is a
+# function of what it reads, so a result is stored under the SHA-256 of that, and an example whose
+# inputs are byte-identical to one scored before takes the stored result instead of being scored
+# again. The key is everything the scorer receives — the inference result, the test case, the
+# scorer's own arguments, the command line but its output directory, and ParseBench's commit with
+# its uncommitted diff — less the run's clock and the four fields every engine version changes,
+# which ParseBench never reads. Only a success is stored; a stored result's stats are rebuilt from
+# this run's inference, so its latency is this run's. Both of ParseBench's paths go through it:
+# the worker its process pool runs, and the multi-task path it runs in its own process.
+_LEDGER = os.environ.get("ETHOS_BENCH_LEDGER")
+if _LEDGER:
+    import hashlib
+
+    from parse_bench.evaluation import runner as _runner
+    from parse_bench.evaluation.stats import build_operational_stats
+    from parse_bench.schemas.evaluation import EvaluationResult
+
+    def _git(*args: str) -> str:
+        root = Path(_runner.__file__).resolve().parents[3]
+        return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True).stdout
+
+    _ARGV = sys.argv[1:]
+    if "--output_dir" in _ARGV:
+        _ARGV = _ARGV[: _ARGV.index("--output_dir")] + _ARGV[_ARGV.index("--output_dir") + 2 :]
+    _SCORER = [_git("rev-parse", "HEAD").strip(), hashlib.sha256(_git("diff", "HEAD").encode()).hexdigest(), *_ARGV]
+    _RUN_CLOCK = ("started_at", "completed_at", "latency_in_ms")
+    _VERSION_FIELDS = ("parser_version", "profile_sha256", "representation_sha256", "markdown_rule")
+
+    def _ledgered(inference: dict, rest: list, score) -> dict:
+        """The stored result for these inputs, or `score()`'s, stored when it succeeded."""
+        keyed = {k: v for k, v in inference.items() if k not in _RUN_CLOCK}
+        if isinstance(keyed.get("raw_output"), dict):
+            keyed["raw_output"] = {k: v for k, v in keyed["raw_output"].items() if k not in _VERSION_FIELDS}
+        key = hashlib.sha256(json.dumps([_SCORER, keyed, rest], sort_keys=True, default=str).encode()).hexdigest()
+        path = Path(_LEDGER) / key[:2] / f"{key}.json"
+        if path.exists():
+            result = json.loads(path.read_text())
+            stats = build_operational_stats(InferenceResult.model_validate(inference))
+            result["stats"] = [s.model_dump(mode="json") for s in stats]
+            return result
+        result = EvaluationResult.model_validate(score()).model_dump(mode="json")
+        if result["success"]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            part = path.with_name(f"{key}.{os.getpid()}.part")
+            part.write_text(json.dumps(result))
+            os.replace(part, path)
+        return result
+
+    _worker = _runner._evaluate_single_worker
+
+    def _ledgered_worker(inference_result_dict: dict, test_case_dict: dict, *rest):
+        def score():
+            return _worker(inference_result_dict, test_case_dict, *rest)
+
+        return _ledgered(inference_result_dict, [test_case_dict, *rest], score)
+
+    _single = _runner.EvaluationRunner._evaluate_single
+
+    def _ledgered_single(self, inference_result, test_case, evaluator, eval_mode):
+        if eval_mode != "multi_task":
+            return _single(self, inference_result, test_case, evaluator, eval_mode)
+
+        def score():
+            return _single(self, inference_result, test_case, evaluator, eval_mode).model_dump(mode="json")
+
+        inference = inference_result.model_dump(mode="json")
+        return EvaluationResult.model_validate(_ledgered(inference, [test_case.model_dump(mode="json"), eval_mode], score))
+
+    _runner._evaluate_single_worker = _ledgered_worker
+    _runner.EvaluationRunner._evaluate_single = _ledgered_single
 
 if __name__ == "__main__":
     sys.exit(main())

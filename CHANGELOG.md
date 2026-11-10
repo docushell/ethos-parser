@@ -32,6 +32,16 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### ParseBench runs reuse the score of an unchanged output (decision #121)
+
+- **`ETHOS_BENCH_LEDGER=<dir>`** makes the ParseBench adapter store each result under the SHA-256 of
+  what ParseBench's scorer receives, and reuse it for an example whose inputs repeat. The scores are
+  the same, checked against fresh scoring (0 of 2,553 apart), and an `--ocr` run with a few pages
+  changed scores in 38 s instead of 298. A held-out split was measured too, and not built: at this
+  benchmark's size it could not tell a typical decision from chance.
+- The adapter's README pins ParseBench at `1f5b37a`, where its numbers were measured, and states a
+  full run's time as measured, about eight minutes.
+
 ### A scanned page and an image file are read, and say so: OCR, v3 (decision #120)
 
 `extract --ocr` and `markdown --source --ocr` read text no text layer carries. Without the flag
