@@ -318,7 +318,8 @@ register_layout_label_mapper("ethos", priority=90)(LiteParseLabelMapper)
 # scorer's own arguments, the command line but its output directory, and ParseBench's commit with
 # its uncommitted diff — less the run's clock and the four fields every engine version changes,
 # which ParseBench never reads. Only a success is stored; a stored result's stats are rebuilt from
-# this run's inference, so its latency is this run's. Both of ParseBench's paths go through it:
+# this run's inference, so its latency is this run's. An entry that will not read is scored again,
+# and a write that fails stores nothing and keeps the score. Both of ParseBench's paths go through it:
 # the worker its process pool runs, and the multi-task path it runs in its own process.
 _LEDGER = os.environ.get("ETHOS_BENCH_LEDGER")
 if _LEDGER:
@@ -347,16 +348,23 @@ if _LEDGER:
         key = hashlib.sha256(json.dumps([_SCORER, keyed, rest], sort_keys=True, default=str).encode()).hexdigest()
         path = Path(_LEDGER) / key[:2] / f"{key}.json"
         if path.exists():
-            result = json.loads(path.read_text())
-            stats = build_operational_stats(InferenceResult.model_validate(inference))
-            result["stats"] = [s.model_dump(mode="json") for s in stats]
-            return result
+            try:
+                result = json.loads(path.read_text())
+            except (OSError, ValueError):  # an entry that will not read is scored again
+                result = None
+            if result is not None:
+                stats = build_operational_stats(InferenceResult.model_validate(inference))
+                result["stats"] = [s.model_dump(mode="json") for s in stats]
+                return result
         result = EvaluationResult.model_validate(score()).model_dump(mode="json")
         if result["success"]:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            part = path.with_name(f"{key}.{os.getpid()}.part")
-            part.write_text(json.dumps(result))
-            os.replace(part, path)
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                part = path.with_name(f"{key}.{os.getpid()}.part")
+                part.write_text(json.dumps(result))
+                os.replace(part, path)
+            except OSError as error:  # a full or read-only ledger stores nothing; the score stands
+                print(f"ethos_bench: score ledger not written: {error}", file=sys.stderr)
         return result
 
     _worker = _runner._evaluate_single_worker
