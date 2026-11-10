@@ -121,13 +121,14 @@ pub use markdown::{
 };
 pub use outlines::OutlineRecord;
 pub use profile::{
-    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
-    VerifierPin, XrefRepair, CMAP_DATA_VERSION, DOCX_READING_ORDER_RULE_V2, DOCX_TEXT_CODE_RULE_V3,
-    EPUB_READING_ORDER_RULE_V1, EPUB_TEXT_CODE_RULE_V2, FIGURE_RULE_V1, FORM_ANNOTATION_RULE_V2,
-    FURNITURE_RULE_V1, HEADING_INFERENCE_RULE_V4, HEADING_INFERENCE_RULE_V5,
-    HEADING_INFERENCE_RULE_V6, HEADING_INFERENCE_RULE_V7, LAYOUT_UNIT_RULE_V1, LAYOUT_UNIT_RULE_V2,
-    LAYOUT_UNIT_RULE_V3, LAYOUT_UNIT_RULE_V4, LAYOUT_UNIT_RULE_V5, LAYOUT_UNIT_RULE_V6, NOT_RUN,
-    OBSERVATION_RULE_V3, OBSERVATION_RULE_V4, ODP_READING_ORDER_RULE_V1, ODP_TEXT_CODE_RULE_V2,
+    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi,
+    RecognizerIdentity, RecognizerPin, TableDetection, VerifierPin, XrefRepair, CMAP_DATA_VERSION,
+    DOCX_READING_ORDER_RULE_V2, DOCX_TEXT_CODE_RULE_V3, EPUB_READING_ORDER_RULE_V1,
+    EPUB_TEXT_CODE_RULE_V2, FIGURE_RULE_V1, FORM_ANNOTATION_RULE_V2, FURNITURE_RULE_V1,
+    HEADING_INFERENCE_RULE_V4, HEADING_INFERENCE_RULE_V5, HEADING_INFERENCE_RULE_V6,
+    HEADING_INFERENCE_RULE_V7, LAYOUT_UNIT_RULE_V1, LAYOUT_UNIT_RULE_V2, LAYOUT_UNIT_RULE_V3,
+    LAYOUT_UNIT_RULE_V4, LAYOUT_UNIT_RULE_V5, LAYOUT_UNIT_RULE_V6, NOT_RUN, OBSERVATION_RULE_V3,
+    OBSERVATION_RULE_V4, ODP_READING_ORDER_RULE_V1, ODP_TEXT_CODE_RULE_V2,
     ODS_READING_ORDER_RULE_V1, ODS_TEXT_CODE_RULE_V2, ODT_READING_ORDER_RULE_V1,
     ODT_TEXT_CODE_RULE_V2, PPTX_READING_ORDER_RULE_V1, PPTX_TEXT_CODE_RULE_V3,
     READING_ORDER_RULE_V0, READING_ORDER_RULE_V1, READING_ORDER_RULE_V2, READING_ORDER_RULE_V3,
@@ -166,9 +167,9 @@ pub use representation::{
     OfficeParagraphAttributes, OfficeRunAttributes, OfficeSlideRunAttributes, PageRecord,
     PaintedRect, PdfArtifactLocator, PdfImageLocator, PdfLocator, PdfObjectLocator,
     PdfObjectNumber, PdfTaggedLocator, PptxLocator, ProcessingRun, ProcessorIdentity, Reading,
-    RepresentationPayload, RtfLocator, RtfParagraphAttributes, RtfParagraphBreak, Script,
-    SourceIdentity, StructuralLocator, SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator,
-    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    RecognizedLocator, RepresentationPayload, RtfLocator, RtfParagraphAttributes,
+    RtfParagraphBreak, Script, SourceIdentity, StructuralLocator, SynthesizedAt, TextFinding,
+    TextRunAttributes, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

@@ -375,9 +375,10 @@ fn no_cli_path_emits_markdown_without_its_map() {
         .map(|w| w.trim_end_matches(','))
         .collect();
     assert!(
-        flags
-            .iter()
-            .all(|f| matches!(*f, "--help" | "--version" | "--diagnostics" | "--source")),
+        flags.iter().all(|f| matches!(
+            *f,
+            "--help" | "--version" | "--diagnostics" | "--source" | "--ocr"
+        )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
          flag here is a deliberate decision that needs its own evidence."
@@ -397,6 +398,17 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         source_help.contains("byte-identical"),
         "--source must document the equality that admits it, in the text a caller reads: {source_help:?}"
+    );
+    // **`--ocr` is admitted on the same evidence** (v3, `docs/35-OCR-SCOPE.md`): it decides how the
+    // record is read — `extract --ocr`'s reading, in this process — and suppresses nothing.
+    // [`the_ocr_source_path_equals_the_two_step_path`] asserts the bytes.
+    let ocr_help = options
+        .split("--ocr")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        ocr_help.contains("byte-identical"),
+        "--ocr must document the equality that admits it: {ocr_help:?}"
     );
 
     // And the artifact itself always carries both halves.
@@ -1649,6 +1661,72 @@ fn the_source_path_equals_the_two_step_path() {
             );
         }
     }
+}
+
+/// **`--ocr` is `extract --ocr` in this process, and the bytes say so** (v3,
+/// `docs/35-OCR-SCOPE.md`). The recognizer is `tests/fake-ocr.sh`, which states the identity the
+/// OCR profile pins and reads "Hello world" off any image; the source is an image file, which the
+/// engine does not decode, so its signature is all of it.
+#[cfg(unix)]
+#[test]
+fn the_ocr_source_path_equals_the_two_step_path() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let word = |t: &str, x0: i32, x1: i32| serde_json::json!({"text": t, "quad": [[x0, 20], [x1, 20], [x1, 60], [x0, 60]]});
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 200, "height": 100,
+        "lines": [{"text": "Hello world", "quad": [[20, 20], [180, 20], [180, 60], [20, 60]],
+                   "words": [word("Hello", 20, 90), word("world", 110, 180)]}],
+        "refused": null
+    });
+    let fake = repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh");
+    let with_ocr = |args: &[&str]| -> Output {
+        Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+            .args(args)
+            .env("ETHOS_PARSER_OCR", &fake)
+            .env("FAKE_OCR_IDENTITY", identity.to_string())
+            .env("FAKE_OCR_ANSWER", answer.to_string())
+            .output()
+            .expect("the engine binary runs")
+    };
+    let dir = scratch("ocr-source-equals");
+    let image = dir.join("scan.png");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n and the rest of the file").expect("write");
+    let image = image.to_str().unwrap();
+
+    let extracted = with_ocr(&["extract", "--ocr", image]);
+    assert_eq!(
+        extracted.status.code(),
+        Some(0),
+        "extract --ocr: {}",
+        String::from_utf8_lossy(&extracted.stderr)
+    );
+    let record: Value = serde_json::from_slice(&extracted.stdout).expect("a record");
+    assert_eq!(
+        record["representation"]["source"]["media_type"],
+        "image/png"
+    );
+    let repr_path = dir.join("scan.json");
+    std::fs::write(&repr_path, &extracted.stdout).expect("write the record");
+
+    let two_step = engine(&["markdown", repr_path.to_str().unwrap()]);
+    let one_step = with_ocr(&["markdown", "--source", image, "--ocr"]);
+    assert_eq!(two_step.status.code(), Some(0));
+    assert_eq!(
+        one_step.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&one_step.stderr)
+    );
+    assert_eq!(
+        one_step.stdout, two_step.stdout,
+        "markdown --source --ocr differs from extract --ocr then markdown"
+    );
+    let md: Value = serde_json::from_slice(&one_step.stdout).expect("an artifact");
+    assert!(
+        md["markdown"].as_str().unwrap().contains("Hello world"),
+        "{md}"
+    );
 }
 
 /// **Neither input, or both, is a usage error — and a source that states no format is the

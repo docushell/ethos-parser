@@ -423,6 +423,11 @@ const CORE: &[&str] = &[
     "TextRunAttributes",
     "VerifierBinary",
     "VerifierPin",
+    // v3 (decision #120, docs/35-OCR-SCOPE.md): the recognizer pin and identity on the profile,
+    // and the address a recognized run carries.
+    "RecognizedLocator",
+    "RecognizerIdentity",
+    "RecognizerPin",
     "XrefRepair",
     "assurance",
     "c14n",
@@ -521,6 +526,23 @@ const PDF: &[&str] = &[
     "exit",
     "exit_code",
     "extract",
+    // v3 (decision #120, docs/35-OCR-SCOPE.md): `--ocr`. The stage that reads scanned pages
+    // through a recognizer, the trait a recognizer implements, and the protocol's shapes, which
+    // the CLI's client speaks and a test's recognizer answers in.
+    "extract_recognized",
+    "extract_image",
+    "image_media_type",
+    "Recognize",
+    "RecognitionRequest",
+    "Recognition",
+    "RecognizedLine",
+    "RecognizedWord",
+    "RecognizedSource",
+    "ImageSpec",
+    "PdfImageSpec",
+    "Colour",
+    "Base",
+    "FlateParms",
     "limitations",
     "to_representation",
 ];

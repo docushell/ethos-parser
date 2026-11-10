@@ -1168,8 +1168,7 @@ pub(crate) fn overprinted_runs<'a>(
     let mut read: Vec<(&str, bool, bool)> = Vec::new();
     let mut page = None;
     for (k, node) in nodes.iter().enumerate() {
-        let (Some(a), crate::NativeLocator::Pdf(at)) =
-            (text_run_attributes(node), &node.native_locator)
+        let (Some(a), Some(at)) = (text_run_attributes(node), node.native_locator.run_locator())
         else {
             continue;
         };
@@ -1177,10 +1176,11 @@ pub(crate) fn overprinted_runs<'a>(
             continue;
         };
         let (font, size, x, y) = (a.font_id.as_str(), a.font_size, at.origin_x, at.origin_y);
-        let step = match nodes.get(k + 1).map(|n| &n.native_locator) {
-            Some(crate::NativeLocator::Pdf(next)) if next.origin_y == y => {
-                next.origin_x.saturating_sub(x)
-            }
+        let step = match nodes
+            .get(k + 1)
+            .and_then(|n| n.native_locator.run_locator())
+        {
+            Some(next) if next.origin_y == y => next.origin_x.saturating_sub(x),
             _ => stated,
         };
         let advance = if step.saturating_mul(3) >= stated {
@@ -1342,8 +1342,11 @@ pub(crate) fn heading_number_continues(
             .filter(|a| a.inferred_heading)
             .map(|a| a.inferred_heading_level)
     };
-    let drawn_after = match (&prev.native_locator, &node.native_locator) {
-        (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) => b.origin_x > a.origin_x,
+    let drawn_after = match (
+        prev.native_locator.run_locator(),
+        node.native_locator.run_locator(),
+    ) {
+        (Some(a), Some(b)) => b.origin_x > a.origin_x,
         _ => false,
     };
     let one_line = level(prev).is_some()
@@ -1352,10 +1355,10 @@ pub(crate) fn heading_number_continues(
         && line_key(prev) == line_key(node)
         && drawn_after;
     let bold = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.bold);
-    let origin = match &node.native_locator {
-        crate::NativeLocator::Pdf(b) => Some((b.origin_x, b.origin_y)),
-        _ => None,
-    };
+    let origin = node
+        .native_locator
+        .run_locator()
+        .map(|b| (b.origin_x, b.origin_y));
     let beside = (level(prev).is_some() || bold(prev))
         && (level(prev).is_some() || level(node).is_some() || bold(node))
         && prev_box
@@ -1398,9 +1401,10 @@ pub(crate) fn unit_gap_continues(
     pitch: &PitchReference,
 ) -> bool {
     let unit = |n: &crate::Node| text_run_attributes(n).and_then(|a| a.layout_unit);
-    let (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) =
-        (&prev.native_locator, &node.native_locator)
-    else {
+    let (Some(a), Some(b)) = (
+        prev.native_locator.run_locator(),
+        node.native_locator.run_locator(),
+    ) else {
         return false;
     };
     let along = prev.parent == node.parent
@@ -1791,9 +1795,10 @@ pub(crate) fn sequence_join(
     if open.element.is_some() && open.element == key.element {
         let measure =
             text_run_attributes(prev).and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))?;
-        let (crate::NativeLocator::Pdf(a), crate::NativeLocator::Pdf(b)) =
-            (&prev.native_locator, &node.native_locator)
-        else {
+        let (Some(a), Some(b)) = (
+            prev.native_locator.run_locator(),
+            node.native_locator.run_locator(),
+        ) else {
             return None;
         };
         if line_key(prev).is_some_and(|line| same_line(line, node, *measure)) {
@@ -1854,9 +1859,7 @@ fn same_parent(a: &crate::Node, b: &crate::Node) -> bool {
 /// could not say so. Author structure is untouched: an `Extracted` locator keys exactly as it
 /// has since v2.2-S1.
 pub(crate) fn group_key(node: &crate::Node) -> Option<GroupKey> {
-    let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
-        return None;
-    };
+    let loc = node.native_locator.run_locator()?;
     let (kind, mcid, element) = match node.structural_locator.as_ref()? {
         // No projection rule id moves for this arm: no input that existed before it projects
         // differently — every locator a reader minted before auto-tagging is `Extracted` — and
@@ -1929,9 +1932,7 @@ pub(crate) fn same_line(line: LineKey, node: &crate::Node, measure: FontMeasure)
 }
 
 pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
-    let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
-        return None;
-    };
+    let loc = node.native_locator.run_locator()?;
     Some(LineKey {
         page: loc.page,
         region: region_of(node),
@@ -1981,8 +1982,7 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
     let mut per_font_space: std::collections::HashMap<(String, i64), Vec<i64>> =
         std::collections::HashMap::new();
     for node in nodes {
-        let (Some(a), crate::NativeLocator::Pdf(loc)) =
-            (text_run_attributes(node), &node.native_locator)
+        let (Some(a), Some(loc)) = (text_run_attributes(node), node.native_locator.run_locator())
         else {
             continue;
         };
@@ -2077,9 +2077,7 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
 /// tolerance above, one glyph of permitted overlap below. The `AC` cell-pitch run above is
 /// refused by a factor of eighteen and is nowhere near the widened bound.
 pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i64, FontMeasure)> {
-    let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
-        return None;
-    };
+    let loc = node.native_locator.run_locator()?;
     let advance = loc.advance?;
     if advance < 0 {
         return None;
@@ -2134,9 +2132,10 @@ pub(crate) fn ink_sequenced(
     a_measure: FontMeasure,
     b: &crate::Node,
 ) -> bool {
-    let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
-        (&a.native_locator, &b.native_locator)
-    else {
+    let (Some(x), Some(y)) = (
+        a.native_locator.run_locator(),
+        b.native_locator.run_locator(),
+    ) else {
         return false;
     };
     // 1. Drawn after, not over. `dx == 0` is exact overprint and `dx < 0` a backward jump; both
@@ -2235,8 +2234,8 @@ pub(crate) fn read_stretches<'a>(
             })
             .map_or(nodes.len(), |n| start + n);
         let mut drawn: Vec<&crate::Node> = nodes[start..end].iter().collect();
-        drawn.sort_by_key(|n| match &n.native_locator {
-            crate::NativeLocator::Pdf(loc) => loc.origin_x,
+        drawn.sort_by_key(|n| match n.native_locator.run_locator() {
+            Some(loc) => loc.origin_x,
             _ => 0,
         });
         let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
@@ -2300,9 +2299,10 @@ pub(crate) const INK_EPSILON_CENTIPOINTS: i64 = 12;
 /// space is 243 — and every such pair opened a block mid-word: 22 116 pairs on 102 of that
 /// corpus's 506 text documents.
 pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node, pitch: &PitchReference) -> bool {
-    let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
-        (&a.native_locator, &b.native_locator)
-    else {
+    let (Some(x), Some(y)) = (
+        a.native_locator.run_locator(),
+        b.native_locator.run_locator(),
+    ) else {
         return false;
     };
     let Some(advance) = x.advance else {
@@ -2335,8 +2335,11 @@ pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node, pitch: &PitchRefe
 /// page drew; a wrong join invents one. Given `docs/01-CONTRACT.md`'s posture on fabrication, those
 /// are not comparable costs.
 pub(crate) fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
-    match (&a.native_locator, &b.native_locator) {
-        (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) => x.origin_y != y.origin_y,
+    match (
+        a.native_locator.run_locator(),
+        b.native_locator.run_locator(),
+    ) {
+        (Some(x), Some(y)) => x.origin_y != y.origin_y,
         _ => false,
     }
 }
@@ -3838,9 +3841,10 @@ pub(crate) fn cell_runs_abut(
             && !prev.reading_text().ends_with(char::is_whitespace)
             && !node.reading_text().starts_with(char::is_whitespace);
     }
-    let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
-        (&prev.native_locator, &node.native_locator)
-    else {
+    let (Some(x), Some(y)) = (
+        prev.native_locator.run_locator(),
+        node.native_locator.run_locator(),
+    ) else {
         return false;
     };
     y.origin_x > x.origin_x

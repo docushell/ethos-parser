@@ -1,0 +1,111 @@
+[
+ {
+  "id": "png-file",
+  "file": "nist-171r3-p55.png",
+  "image": {
+   "kind": "file"
+  },
+  "orientation": 0
+ },
+ {
+  "id": "png-file-turned",
+  "file": "nist-171r3-p55-turned.png",
+  "image": {
+   "kind": "file"
+  },
+  "orientation": 1
+ },
+ {
+  "id": "pdf-dct-gray",
+  "file": "nist-37r2-p157.jpg",
+  "orientation": 0,
+  "image": {
+   "kind": "pdf",
+   "width": 1700,
+   "height": 2200,
+   "bits_per_component": 8,
+   "colour": {
+    "space": "gray"
+   },
+   "filters": [
+    "DCTDecode"
+   ],
+   "decode_parms": [
+    null
+   ],
+   "decode": null,
+   "image_mask": false
+  }
+ },
+ {
+  "id": "pdf-flate-gray-png-up",
+  "file": "nist-37r2-p6.flate",
+  "orientation": 0,
+  "image": {
+   "kind": "pdf",
+   "width": 1700,
+   "height": 2200,
+   "bits_per_component": 8,
+   "colour": {
+    "space": "gray"
+   },
+   "filters": [
+    "FlateDecode"
+   ],
+   "decode_parms": [
+    {
+     "predictor": 12,
+     "colors": 1,
+     "bits_per_component": 8,
+     "columns": 1700
+    }
+   ],
+   "decode": null,
+   "image_mask": false
+  }
+ },
+ {
+  "id": "pdf-flate-1bit",
+  "file": "f1040sd-p2.flate",
+  "orientation": 0,
+  "image": {
+   "kind": "pdf",
+   "width": 1700,
+   "height": 2200,
+   "bits_per_component": 1,
+   "colour": {
+    "space": "gray"
+   },
+   "filters": [
+    "FlateDecode"
+   ],
+   "decode_parms": [
+    null
+   ],
+   "decode": null,
+   "image_mask": false
+  }
+ },
+ {
+  "id": "pdf-jpx-refused",
+  "file": "f1040sd-p2.flate",
+  "orientation": 0,
+  "image": {
+   "kind": "pdf",
+   "width": 10,
+   "height": 10,
+   "bits_per_component": 8,
+   "colour": {
+    "space": "gray"
+   },
+   "filters": [
+    "JPXDecode"
+   ],
+   "decode_parms": [
+    null
+   ],
+   "decode": null,
+   "image_mask": false
+  }
+ }
+]

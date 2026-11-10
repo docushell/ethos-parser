@@ -1412,6 +1412,28 @@ them:
 
 137 pages rise and none falls. Overall 42.55 engine-only, 45.47 with the pass.
 
+### The engine's own OCR, `--ocr` (decision #120, 2026-11-10)
+
+Under `ETHOS_BENCH_OCR=engine` the adapter runs `extract --ocr` on every document, and the engine
+reads each page that shows no text and places one image, and each PNG or JPEG file, through
+`ethos-parser-ocr` (`docs/35-OCR-SCOPE.md`). On `0e4eade` plus Phase 1, against the same tree
+without the flag:
+
+| Dimension | Without `--ocr` | With `--ocr` | Pages up / down |
+| --- | ---: | ---: | ---: |
+| Content faithfulness | 0.6750 | 0.7511 | 56 / 0 |
+| Semantic formatting | 0.5131 | 0.5261 | 13 / 0 |
+| Tables | 0.6453 | 0.6454 | 1 / 0 |
+| Charts | 0.1726 | 0.1726 | 0 / 0 |
+| Layout | 0.5987 | 0.6004 | 4 / 0 |
+
+Overall 52.10 -> 53.91. **The layout figure counts the image files as zero, and ParseBench's own
+aggregate does not:** `ground` refuses an image file by name (decision #16), so the adapter sends
+those pages no layout items, the evaluator reports "No layout data for page 0" and leaves them out
+of its average, which then reads 0.6415. A page that failed is a page that scored nothing, so the
+table divides by all 500. Phase 0's 55.88 read every textless page by rendering it; the
+difference is composite pages, pages that need a renderer, and the image files' layout boxes.
+
 ## What it found that is not fixed
 
 - **Content on readable pages** (decision #61's census, 2026-10-11). Of the content lost on text

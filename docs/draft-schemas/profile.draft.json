@@ -35,7 +35,8 @@
     "form_annotation_rule",
     "observation_rule",
     "raster_dpi",
-    "text_code_rule"
+    "text_code_rule",
+    "recognizer"
   ],
   "properties": {
     "parser_version": {
@@ -339,6 +340,61 @@
     "text_box_rule": {
       "type": "string",
       "$comment": "docs/01-CONTRACT.md §5.3 and §6. The rule that built the text-run boxes. `advance-over-font-envelope-v2` on the PDF profile: along the baseline the pen's advance, across it the font's ascent-to-descent envelope scaled to the rendered em — which is NOT glyph ink, and is what this id exists to say. `-v2` (decision #80) gives a run in a font under `/Identity-V`, which writes down the page, no box, where `-v1` laid one across it. `not-run` on the eight office profiles, which emit no coordinate at all."
+    },
+    "recognizer": {
+      "type": "object",
+      "description": "Which recognizer this run's `Recognized` runs come from (v3, docs/35-OCR-SCOPE.md). `not_pinned` is a declared state, not a missing field: no recognizer read any pixels for this run. Pinned only by the OCR profile, by the identity the recognizer reports — not by its binary's digest, which differs between platforms that give the same bytes.",
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "not_pinned",
+            "pinned"
+          ]
+        },
+        "identity": {
+          "type": "object",
+          "required": [
+            "recognizer",
+            "version",
+            "rule",
+            "det_sha256",
+            "rec_sha256",
+            "dict_sha256",
+            "runtime"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "recognizer": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "rule": {
+              "type": "string"
+            },
+            "det_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "rec_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "dict_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "runtime": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -517,8 +573,8 @@
       "form_annotation_rule": "form-annotations-v2",
       "furniture_rule": "margin-bands-v1",
       "heading_inference_rule": "type-size-v7",
-      "layout_unit_rule": "line-units-v6",
       "html_rule": "html-blocks-v13",
+      "layout_unit_rule": "line-units-v6",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v13",
       "observation_rule": "page-observations-v4",
@@ -532,6 +588,9 @@
         "mode": "not_emitted"
       },
       "reading_order_rule": "gutter-columns-v4",
+      "recognizer": {
+        "mode": "not_pinned"
+      },
       "right_to_left_rule": "right-to-left-lines-v1",
       "struct_tree_rule": "struct-tree-v3",
       "table_detection": {

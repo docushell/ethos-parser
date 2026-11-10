@@ -45,8 +45,8 @@ case "$mode" in
     # 0` — a verdict its own evidence contradicts.
     pattern='confidence|quality_score|trust_score|is_good'
     why='docs/01-CONTRACT.md §9 forbids any public confidence field, score, grade, or quality
-summary — at any version, including "diagnostic only". The v2.1 OCR lane may record a
-processor-reported uncertainty, and when it does it goes on a recognition type under its own
+summary — at any version, including "diagnostic only". The OCR lane (v3) writes none; if a
+later slice records a processor-reported uncertainty, it goes on a recognition type under its own
 profile, never on these.'
     ;;
   verification)
@@ -66,7 +66,7 @@ the failure this whole project is arranged to prevent.'
     ;;
 esac
 
-files=$(find crates -path '*/src/*' -name '*.rs' | sort)
+files=$(find crates ocr -path '*/src/*' -name '*.rs' -not -path 'ocr/vendor/*' | sort)
 if [ -z "$files" ]; then
   echo "::error::no crate sources found; the scan would pass vacuously" >&2
   exit 1

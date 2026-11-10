@@ -32,6 +32,47 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A scanned page and an image file are read, and say so: OCR, v3 (decision #120)
+
+`extract --ocr` and `markdown --source --ocr` read text no text layer carries. Without the flag
+nothing changes but the profile hash: the default profile gained a field, `recognizer`, set to
+`not_pinned`, so its `profile_sha256` moved, and every artifact's with it, as every release's does.
+
+- **A page that shows no text and places exactly one image is read by a recognizer**, and each
+  word it reads is a `text_run` of derivation `recognized`, under the OCR profile, whose
+  `profile_sha256` differs from the default's. The trigger is a reason code, never a score. A page
+  that needs OCR and is not read — several images, an inline image, a placement that is not
+  axis-aligned, a filter or colour space the recognizer does not decode — is counted under
+  `scanned-page-not-recognized` with its reason. Nothing recognized is merged with drawn text: the
+  seal refuses a page holding both, so contract §6's placement rule is mechanical.
+- **A PNG or JPEG file is a one-page document**, its page the file's own pixel grid, one pixel to
+  one point, declared under `image-resolution-not-read`; the source is the file. Without `--ocr`
+  an image file is refused by name, with the flag that reads it. `ground` refuses it by name:
+  `ethos.grounding.v1` admits PDF and the office sources only (decision #16).
+- **The recognizer is `ethos-parser-ocr`**, a separate binary in `ocr/`, on Rust 1.98.0 while the
+  engine stays on 1.88: PP-OCRv5 mobile (detection and English recognition, 12.7 MB of models,
+  Apache-2.0, built into the binary) on rten 0.26. Its output is the same bytes on every supported
+  CPU: rten's sums are made order-fixed in a vendored `rten-vecmath`, and Linux x86-64 and arm64,
+  Windows x86-64 with AVX-512 and macOS arm64 and x86-64 answer identically, at one thread and at
+  the default. An x86-64 CPU without AVX2 and FMA is refused by name. The engine finds it beside
+  its own executable or at `ETHOS_PARSER_OCR`; without it `--ocr` fails by name and never falls
+  back to an artifact read without it. No confidence is written.
+- **On the wire:** the locator variant `recognized` (the run's place on its page, the image object
+  it was read from, the word's corners in the image's pixels); the profile's `recognizer`; the
+  source media types `image/png` and `image/jpeg`; five limitation codes,
+  `scanned-page-not-recognized`, `recognized-words-outside-visible-box`,
+  `recognized-text-orientation-not-corrected` and `recognized-text-has-no-font`, and
+  `image-resolution-not-read`. In the library: `extract_recognized`, `extract_image`,
+  `image_media_type`, the `Recognize` trait and the protocol's types.
+- **Measured.** ParseBench with `--ocr`: 52.10 -> 53.91 overall, 74 pages up and none down
+  (content faithfulness 0.6750 -> 0.7511). Without the flag, the eight gate documents and
+  opendataloader-bench's 200 extract byte-identical but the profile hash; with it, the same 208
+  hold the same nodes. About 1.9 s and 1.35 GB peak per 200-dpi page on an Apple M4 Pro.
+- **Not read yet:** composite pages, pages that need a renderer, CCITT, JBIG2 and JPEG 2000
+  images, photos, text turned within an image. OCR moves ahead of assist, so it is v3 and assist
+  v4. `ci/gate.sh` gains a tenth step, `ci/ocr.sh`, and CI an `ocr-platforms` job that runs the
+  recognizer's byte-identity fixtures on five runners.
+
 ### A footnote mark set against its label joins its line, an amount that opens with its sign opens its cell, and small numbers beside amounts key a table (decision #119)
 
 Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no

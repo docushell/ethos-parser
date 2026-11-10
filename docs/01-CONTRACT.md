@@ -230,8 +230,8 @@ without laundering into born-digital certainty.
 | --- | --- | --- | --- |
 | **`Extracted`** | Read from the source's own encoding | Text, origins, font identity, `mcid` | The only class v0 produces |
 | **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, boxes from font metrics (§5.3), a structure tag this engine wrote and read back ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)) | The rule's version is part of the profile |
-| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v4, own profile. **May author only on canvases where the deterministic reader found no text layer at all** |
-| **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence |
+| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v3 (decision #120, `--ocr`), own profile. **May author only on canvases where the deterministic reader found no text layer at all** |
+| **`Proposed`** | Suggested by a model | Nothing citable, ever | v4. Never evidence |
 
 Four hard rules:
 
@@ -247,7 +247,7 @@ Four hard rules:
 4. **Different classes mean different profiles.** An OCR run has a different `profile_sha256`, so its
    output is non-comparable with a born-digital parse by contract, with no new machinery.
 
-Rules 1 and 2 are the whole of the overwrite rule. The v4 constraint in the `Recognized` row governs
+Rules 1 and 2 are the whole of the overwrite rule. The v3 constraint in the `Recognized` row governs
 *where* a node may be placed, not which classes may replace which, so it is deliberately not encoded
 as a class-pair rule.
 
@@ -415,10 +415,10 @@ processor-owned and never verifier-owned; it must never appear in a verification
 deterministic result, or blend into a combined score; and **absence is not confidence** — a processor
 reporting no uncertainty emits an absent field, never an implied `1.0`.
 
-**This engine has no uncertainty to report.** Every node is `Extracted` by a deterministic reader,
-with no recognition step, so the field is absent and §9's prohibition stands unqualified. When the
-OCR lane lands at v4 it may populate span-level uncertainty as a **diagnostic** — recorded, and never
-filtered on. The bug not to inherit: a surveyed parser drops text below 0.3 and again below 0.1,
+**This engine has no uncertainty to report.** Without `--ocr` every node is read by a deterministic
+reader with no recognition step; with it (v3, decision #120) the recognizer's confidence is not
+written at all, so the field is absent and §9's prohibition stands unqualified. A later OCR slice
+may populate span-level uncertainty as a **diagnostic** — recorded, and never filtered on. The bug not to inherit: a surveyed parser drops text below 0.3 and again below 0.1,
 silently, in two different places.
 
 ---

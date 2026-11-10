@@ -105,7 +105,8 @@ pub struct SourceIdentity {
     /// This read *"Always `application/pdf` at v0"* until v2-S13.5, which was true of v0 and had
     /// stopped describing the field: `ethos-parser-office` writes eight more into it — the OOXML three,
     /// the ODF three, `application/rtf` and `application/epub+zip`. A caller must not treat this
-    /// as a constant.
+    /// as a constant. And since v3 (decision #120) `image/png` or `image/jpeg`: an image file read
+    /// with `--ocr` as one page, its own pixel grid.
     ///
     /// **Not to be confused with `ethos_parser_grounding::Source::media_type`**, which IS pinned to
     /// `application/pdf` by the `ethos.grounding.v1` schema and is correctly documented as such.
@@ -272,6 +273,16 @@ pub enum NativeLocator {
     /// The address is the spine item's package path plus a position in that document. See
     /// [`EpubLocator`] for why the path comes from the **spine** and not from the ZIP.
     Epub(EpubLocator),
+    /// A recognized run's address: where on its page it lies, and where in an image a recognizer
+    /// read it (v3, `docs/35-OCR-SCOPE.md` §6).
+    ///
+    /// **A variant of its own rather than [`Self::Pdf`], because nothing here was drawn.** A glyph
+    /// run's origin and advance are the content stream's; a recognized word's are computed from the
+    /// box a recognizer read in an image's pixels, through the matrix the page painted the image
+    /// with. They are stated as a text layer would state them — see [`RecognizedLocator::run`] —
+    /// so every rule that reads a run's place reads this one's ([`Self::run_locator`]); and the
+    /// pixels the recognizer read are here too, so the claim can be checked against the image.
+    Recognized(RecognizedLocator),
 }
 
 impl NativeLocator {
@@ -284,7 +295,7 @@ impl NativeLocator {
     /// page in it, which is a thing the reader either read or did not.
     pub fn is_paginated(&self) -> bool {
         match self {
-            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => true,
+            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) | Self::Recognized(_) => true,
             // **Eight page-less variants, and each has its own reason.** The arm below carried
             // running ordinals — "the sharpest of the four", then "the sharpest of the six" a
             // dozen lines under it — which were true at v2-S5 and v2-S7 and had been wrong ever
@@ -342,7 +353,7 @@ impl NativeLocator {
     /// The part this address lives in, for a page-less format. `None` when paginated.
     pub fn part(&self) -> Option<&str> {
         match self {
-            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => None,
+            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) | Self::Recognized(_) => None,
             Self::Docx(d) => Some(d.part.as_str()),
             Self::Xlsx(x) => Some(x.part.as_str()),
             Self::Pptx(p) => Some(p.part.as_str()),
@@ -367,7 +378,11 @@ impl NativeLocator {
     /// be a bijection between.
     pub fn names_a_part(&self) -> bool {
         match self {
-            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) | Self::Rtf(_) => false,
+            Self::Pdf(_)
+            | Self::PdfObject(_)
+            | Self::PdfImage(_)
+            | Self::Recognized(_)
+            | Self::Rtf(_) => false,
             Self::Docx(_)
             | Self::Xlsx(_)
             | Self::Pptx(_)
@@ -378,6 +393,18 @@ impl NativeLocator {
             // bijection rather than v2-S8's one-container rule. v2-S9 is the first format to use
             // both halves of the shape v2-S8 split apart.
             | Self::Epub(_) => true,
+        }
+    }
+
+    /// A text run's place on its page — page, baseline origin, advance — whether the page drew it
+    /// ([`Self::Pdf`]) or a recognizer read it ([`Self::Recognized`]); `None` for every other
+    /// address. The one accessor the rules that join, order and measure runs read a place
+    /// through, so a recognized run takes part in them as a drawn one does.
+    pub fn run_locator(&self) -> Option<&PdfLocator> {
+        match self {
+            Self::Pdf(l) => Some(l),
+            Self::Recognized(r) => Some(&r.run),
+            _ => None,
         }
     }
 }
@@ -834,6 +861,23 @@ pub struct PdfObjectNumber {
     pub object: u32,
     /// Its generation number. Usually 0; carried because an object id is both halves.
     pub generation: u32,
+}
+
+/// Where a recognized run lies (v3, `docs/35-OCR-SCOPE.md` §6): on its page, as a text layer would
+/// state it, and in the image it was read from, as the recognizer reported it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecognizedLocator {
+    /// The run's place on its page: the foot of its line under the word's left edge as the
+    /// origin, and the word's width as the advance — the numbers a text layer written by a
+    /// recognizer states (Tesseract's, which Phase 0's measurements read). **Computed** from
+    /// [`Self::pixels`] through the matrix the page painted the image with, never drawn.
+    pub run: PdfLocator,
+    /// The image XObject the run was read from. `null` for an image file, whose page is the image.
+    pub image: Option<PdfObjectNumber>,
+    /// The word's corners in the image's own pixel grid, as the recognizer read them: the
+    /// top-left, top-right, bottom-right and bottom-left of its text, in reading orientation.
+    pub pixels: [[i32; 2]; 4],
 }
 
 /// The `/Rect` an annotation or widget declares, or why there is none.
@@ -2785,7 +2829,45 @@ impl DocumentRepresentation {
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
         self.check_attributes_agree_with_kind()?;
         self.check_readings_move_characters()?;
+        self.check_recognized_placement()?;
 
+        Ok(())
+    }
+
+    /// Contract §6's placement rule, checked rather than trusted (`docs/35-OCR-SCOPE.md` §6).
+    ///
+    /// A recognized run is a text run of derivation `Recognized` under a
+    /// [`NativeLocator::Recognized`] address, and nothing else carries either; and no page holds
+    /// both a `Recognized` node and an `Extracted` text run. A recognizer authors only where the
+    /// deterministic reader found no text layer at all, and is never merged into one — the failure
+    /// `docs/07-VERIFY-BOUNDARY.md` §8.3 names.
+    fn check_recognized_placement(&self) -> Result<(), EngineError> {
+        let mut extracted_pages = std::collections::BTreeSet::new();
+        for node in &self.representation.nodes {
+            let recognized = node.derivation == DerivationClass::Recognized;
+            let addressed = matches!(node.native_locator, NativeLocator::Recognized(_));
+            if recognized != addressed || (recognized && node.kind != NodeKind::TextRun) {
+                return Err(Self::malformed(format!(
+                    "node `{}`: a recognized run is a text run of derivation `recognized` under a \
+                     `recognized` address, and nothing else is either",
+                    node.id
+                )));
+            }
+            if node.kind == NodeKind::TextRun && node.derivation == DerivationClass::Extracted {
+                extracted_pages.insert(&node.parent);
+            }
+        }
+        for node in &self.representation.nodes {
+            if node.derivation == DerivationClass::Recognized
+                && extracted_pages.contains(&node.parent)
+            {
+                return Err(Self::malformed(format!(
+                    "node `{}` is recognized text on a page holding extracted text; a recognizer \
+                     authors only where the page has no text layer at all (contract §6)",
+                    node.id
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -3276,6 +3358,66 @@ mod tests {
             .unwrap();
         }
         DocumentRepresentation::seal(p, geometry)
+    }
+
+    /// Contract §6's placement rule is the seal's (`docs/35-OCR-SCOPE.md` §6): a recognized run
+    /// seals on a page of its own, and is refused beside extracted text, under a drawn run's
+    /// address, or as anything but a text run.
+    #[test]
+    fn recognized_text_seals_only_where_no_text_was_extracted() {
+        let recognized = |n: Node| Node {
+            derivation: DerivationClass::Recognized,
+            native_locator: NativeLocator::Recognized(RecognizedLocator {
+                run: n
+                    .native_locator
+                    .run_locator()
+                    .expect("a run's place")
+                    .clone(),
+                image: Some(PdfObjectNumber {
+                    object: 4,
+                    generation: 0,
+                }),
+                pixels: [[0, 0], [10, 0], [10, 5], [0, 5]],
+            }),
+            ..n
+        };
+        let rows = |nodes: &[&Node]| -> Vec<NodeGeometry> {
+            let r = QRect::new(7200, 4800, 8200, 7200).unwrap();
+            nodes
+                .iter()
+                .map(|n| geom(n, GeometryPresence::Measured(r)))
+                .collect()
+        };
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let (p1, p2) = (page(&mut alloc, 1), page(&mut alloc, 2));
+        let drawn = node(&mut alloc, &p1.id, 1, 1);
+        let read = recognized(node(&mut alloc, &p2.id, 1, 2));
+        let g = rows(&[&drawn, &read]);
+        seal(
+            vec![drawn.clone(), read.clone()],
+            vec![p1.clone(), p2.clone()],
+            g,
+        )
+        .expect("a recognized page beside a drawn one seals");
+
+        let beside = recognized(node(&mut alloc, &p1.id, 2, 1));
+        let g = rows(&[&drawn, &beside]);
+        let e = seal(vec![drawn.clone(), beside], vec![p1.clone()], g)
+            .expect_err("recognized text on a page holding extracted text");
+        assert!(e.to_string().contains("no text layer at all"), "{e}");
+
+        let laundered = Node {
+            derivation: DerivationClass::Extracted,
+            ..read.clone()
+        };
+        let g = rows(&[&laundered]);
+        assert!(seal(vec![laundered], vec![p2.clone()], g).is_err());
+        let unaddressed = Node {
+            native_locator: drawn.native_locator.clone(),
+            ..read
+        };
+        let g = rows(&[&unaddressed]);
+        assert!(seal(vec![unaddressed], vec![p2], g).is_err());
     }
 
     /// The spliced emit route and the full serialization are one byte stream —

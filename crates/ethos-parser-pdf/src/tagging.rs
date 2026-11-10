@@ -5280,6 +5280,7 @@ mod tests {
             )),
             derivation: ethos_parser_core::DerivationClass::Extracted,
             findings: Vec::new(),
+            recognized: None,
         }
     }
 

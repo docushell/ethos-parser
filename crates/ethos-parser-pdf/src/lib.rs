@@ -92,6 +92,7 @@ pub(crate) mod pdfdoc;
 pub(crate) mod pies;
 pub(crate) mod reading_order;
 pub(crate) mod reasons;
+pub(crate) mod recognize;
 pub(crate) mod represent;
 pub(crate) mod stroke_ruled;
 pub(crate) mod structure;
@@ -116,11 +117,21 @@ pub use classify::{
     CLASSIFICATION_SCHEMA_VERSION,
 };
 pub use document::Document;
-pub use extract::{extract, ExtractArtifact, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEMA_VERSION};
+pub use extract::{
+    extract, extract_image, extract_recognized, ExtractArtifact, EXTRACT_ARTIFACT_TYPE,
+    EXTRACT_SCHEMA_VERSION,
+};
 pub use magic::{aims_at_the_pdf_reader, check_pdf_magic};
-pub use nodes::{ImageRecord, PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
+pub use nodes::{
+    ImageRecord, PageExtract, PdfLocator, RecognizedSource, SynthesisReason, SynthesizedChar,
+    TextRun,
+};
 pub use overlay::{build_overlay, OVERLAY_ARTIFACT_TYPE};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};
+pub use recognize::{
+    image_media_type, Base, Colour, FlateParms, ImageSpec, PdfImageSpec, Recognition,
+    RecognitionRequest, Recognize, RecognizedLine, RecognizedWord,
+};
 pub use represent::{to_representation, PROCESSOR_NAME};
 pub use tagging::{write_tags, TAGS_ARTIFACT_TYPE};
 

@@ -248,12 +248,26 @@ pub fn to_representation(
                 parent: page_id.clone(),
                 ordinal: (i + 1) as u32,
                 text: run.text.clone(),
-                native_locator: NativeLocator::Pdf(PdfLocator {
-                    page: run.locator.page,
-                    origin_x: run.locator.origin_x,
-                    origin_y: run.locator.origin_y,
-                    advance: run.locator.advance,
-                }),
+                native_locator: {
+                    let place = PdfLocator {
+                        page: run.locator.page,
+                        origin_x: run.locator.origin_x,
+                        origin_y: run.locator.origin_y,
+                        advance: run.locator.advance,
+                    };
+                    // v3 (`docs/35-OCR-SCOPE.md` §6): a recognized run is addressed where the
+                    // recognizer read it as well as where it lies, and never as a drawn run.
+                    match &run.recognized {
+                        Some(source) => {
+                            NativeLocator::Recognized(ethos_parser_core::RecognizedLocator {
+                                run: place,
+                                image: source.image,
+                                pixels: source.pixels,
+                            })
+                        }
+                        None => NativeLocator::Pdf(place),
+                    }
+                },
                 // v1-S3. Resolved during extraction, against the document's own structure
                 // tree: a role path where the tree cites this run, a bare marked-content id
                 // where it does not, `pdf_artifact` where the page called this furniture, and

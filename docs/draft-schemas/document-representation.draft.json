@@ -52,9 +52,11 @@
                 "application/vnd.oasis.opendocument.spreadsheet",
                 "application/vnd.oasis.opendocument.presentation",
                 "application/rtf",
-                "application/epub+zip"
+                "application/epub+zip",
+                "image/png",
+                "image/jpeg"
               ],
-              "$comment": "`application/pdf` at v0, and one of nine since v2-S2: ethos-parser-office writes the other eight. NOT ethos.grounding.v1's source.media_type, which that schema pins to `application/pdf` — decision #16: a DOCX can bind to its source through this field and still cannot be grounded."
+              "$comment": "`application/pdf` at v0, and one of nine since v2-S2: ethos-parser-office writes the other eight. `image/png` and `image/jpeg` since v3 (decision #120): an image file read with `--ocr` as one page. NOT ethos.grounding.v1's source.media_type, which that schema pins to `application/pdf` — decision #16: a DOCX can bind to its source through this field and still cannot be grounded."
             },
             "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
           }
@@ -160,7 +162,7 @@
 
     "native_locator": {
       "title": "NativeLocator — required on every node (§5.1)",
-      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed: exactly one key, naming the variant. Lives in ethos-parser-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. ethos-parser-grounding never reads one. The three PDF variants address a page; the eight office ones address a part and positions in it, and none carries a page, a box or a coordinate (docs/history/14-V2-SCOPE.md §3).",
+      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed: exactly one key, naming the variant. Lives in ethos-parser-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. ethos-parser-grounding never reads one. The three PDF variants, and the recognized one (v3), address a page; the eight office ones address a part and positions in it, and none carries a page, a box or a coordinate (docs/history/14-V2-SCOPE.md §3).",
       "type": "object",
       "minProperties": 1,
       "maxProperties": 1,
@@ -169,6 +171,7 @@
         "pdf": { "$ref": "#/$defs/pdf_locator" },
         "pdf_object": { "$ref": "#/$defs/pdf_object_locator" },
         "pdf_image": { "$ref": "#/$defs/pdf_image_locator" },
+        "recognized": { "$ref": "#/$defs/recognized_locator" },
         "docx": {
           "type": "object",
           "additionalProperties": false,
@@ -268,6 +271,38 @@
       }
     },
 
+    "recognized_locator": {
+      "title": "A recognized run's address: its place on its page, and where in an image a recognizer read it (v3, decision #120, docs/35-OCR-SCOPE.md §6)",
+      "$comment": "A variant of its own, never `pdf`: nothing here was drawn. `run` states the place a text layer written by a recognizer states — the foot of the word's line under its left edge, the word's width as the advance — COMPUTED from `pixels` through the matrix the page painted the image with. A node carrying this address is a text_run of derivation `recognized`, and no page holds both such a node and an `extracted` text run: the seal refuses it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "image", "pixels"],
+      "properties": {
+        "run": { "$ref": "#/$defs/pdf_locator" },
+        "image": {
+          "description": "The image XObject read; null for an image file, whose page is the image.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["object", "generation"],
+              "properties": {
+                "object": { "type": "integer", "minimum": 0 },
+                "generation": { "type": "integer", "minimum": 0 }
+              }
+            }
+          ]
+        },
+        "pixels": {
+          "description": "The word's corners in the image's own pixel grid as the recognizer read them: the top-left, top-right, bottom-right and bottom-left of its text, in reading orientation.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer" } }
+        }
+      }
+    },
     "pdf_object_locator": {
       "title": "A PDF object's address: page, object id, and the rectangle it declares (v1-S4)",
       "$comment": "An annotation or a form field has no baseline, no advance and no character origin, so the glyph-run variant is the wrong shape for it. An object id is both halves.",

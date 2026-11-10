@@ -292,6 +292,27 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         let repr = ethos_parser_pdf::to_representation(&extract, profile).expect("represents");
         representations.push((name, repr));
     }
+    // v3 (decision #120): a scan and an image file, read by a recognizer that is a function, so the
+    // OCR profile and the recognized locator — with an image object and without — are walked too.
+    let ocr = Profile::ocr_v0();
+    out.push(("ocr profile".into(), "profile", as_json!(ocr)));
+    let scan = Document::open_bytes(&scanned_pdf(), &ocr).expect("the scan opens");
+    for (name, extract) in [
+        (
+            "scan.pdf",
+            ethos_parser_pdf::extract_recognized(&scan, &ocr, &mut Reads::new()),
+        ),
+        (
+            "scan.png",
+            ethos_parser_pdf::extract_image(b"\x89PNG\r\n\x1a\n", &ocr, &mut Reads::new()),
+        ),
+    ] {
+        let extract = extract.expect("the recognizer reads it");
+        out.push((name.into(), "extract", as_json!(extract)));
+        let repr = ethos_parser_pdf::to_representation(&extract, &ocr).expect("represents");
+        representations.push((name.into(), repr));
+    }
+
     let office = repo_root().join("fixtures/office");
     let mut documents: Vec<PathBuf> = std::fs::read_dir(&office)
         .expect("fixtures/office is readable")
@@ -322,6 +343,80 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         project(&name, &repr, &profile, &sha, &mut out);
     }
     out
+}
+
+/// A one-page scan: a 200 x 100 point page that paints one 20 x 10 gray image over itself and
+/// shows no text.
+fn scanned_pdf() -> Vec<u8> {
+    use lopdf::{dictionary, Object, Stream};
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let image = doc.add_object(Stream::new(
+        dictionary! {
+            "Type" => "XObject", "Subtype" => "Image", "Width" => 20, "Height" => 10,
+            "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+        },
+        vec![255u8; 200],
+    ));
+    let content = doc.add_object(Stream::new(
+        dictionary! {},
+        b"q 200 0 0 100 0 0 cm /Im0 Do Q".to_vec(),
+    ));
+    let page = doc.add_object(dictionary! {
+        "Type" => "Page",
+        "Parent" => pages,
+        "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
+        "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } },
+        "Contents" => content,
+    });
+    doc.objects.insert(
+        pages,
+        Object::Dictionary(
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        ),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+    doc.trailer.set("Root", catalog);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("saves");
+    bytes
+}
+
+/// A recognizer that is a function: "Hello world" off any image, as a 20 x 10 pixel one.
+struct Reads(ethos_parser_core::RecognizerIdentity);
+
+impl Reads {
+    fn new() -> Self {
+        Reads(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+    }
+}
+
+impl ethos_parser_pdf::Recognize for Reads {
+    fn identity(&self) -> &ethos_parser_core::RecognizerIdentity {
+        &self.0
+    }
+    fn read(
+        &mut self,
+        request: &ethos_parser_pdf::RecognitionRequest,
+    ) -> Result<ethos_parser_pdf::Recognition, EngineError> {
+        let word = |text: &str, x0: i32, x1: i32| ethos_parser_pdf::RecognizedWord {
+            text: text.into(),
+            quad: [[x0, 2], [x1, 2], [x1, 8], [x0, 8]],
+        };
+        Ok(ethos_parser_pdf::Recognition {
+            ocr_response: 1,
+            id: request.id.clone(),
+            identity: self.0.clone(),
+            width: 20,
+            height: 10,
+            lines: vec![ethos_parser_pdf::RecognizedLine {
+                text: "Hello world".into(),
+                quad: [[2, 2], [18, 2], [18, 8], [2, 8]],
+                words: vec![word("Hello", 2, 9), word("world", 11, 18)],
+            }],
+            refused: None,
+        })
+    }
 }
 
 /// The three projections of `repr`, each where the engine produces one.

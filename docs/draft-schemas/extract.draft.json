@@ -28,7 +28,12 @@
       ],
       "properties": {
         "media_type": {
-          "const": "application/pdf"
+          "enum": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "$comment": "`application/pdf`, or since v3 (decision #120) an image file read with `--ocr` as one page."
         },
         "sha256": {
           "type": "string",
@@ -294,6 +299,20 @@
         },
         "derivation": {
           "$ref": "urn:ethos-parser:draft-schema:derivation-class:0"
+        },
+        "recognized": {
+          "$comment": "Where a recognizer read this run, on a run of derivation `recognized` (v3, decision #120): the image XObject and the word's corners in its pixels — the representation's `recognized` address less the run's place, which `locator` carries. Omitted on every run the page drew.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["image", "pixels"],
+          "properties": {
+            "image": {
+              "$ref": "urn:ethos-parser:draft-schema:document-representation:0#/$defs/recognized_locator/properties/image"
+            },
+            "pixels": {
+              "$ref": "urn:ethos-parser:draft-schema:document-representation:0#/$defs/recognized_locator/properties/pixels"
+            }
+          }
         }
       }
     },

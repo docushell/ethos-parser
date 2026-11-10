@@ -191,6 +191,26 @@ pub struct TextRun {
     /// observations happened to be made in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub findings: Vec<ethos_parser_core::TextFinding>,
+    /// Where a recognizer read this run, on a run of derivation `Recognized` (v3,
+    /// `docs/35-OCR-SCOPE.md` §6): the image, and the word's corners in its pixels. Absent on every
+    /// run the page drew, which therefore serialize exactly as they did before a recognizer
+    /// existed. [`Self::locator`] then states the run's place as a text layer would — computed
+    /// from these corners, never drawn — and the representation's `recognized` address carries
+    /// both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recognized: Option<RecognizedSource>,
+}
+
+/// The image a recognized run was read from, and the word's corners in its pixels as the
+/// recognizer read them: the top-left, top-right, bottom-right and bottom-left of its text, in
+/// reading orientation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecognizedSource {
+    /// The image XObject; `None` for an image file, whose page is the image.
+    pub image: Option<ethos_parser_core::PdfObjectNumber>,
+    /// The word's corners in the image's own pixel grid.
+    pub pixels: [[i32; 2]; 4],
 }
 
 impl TextRun {
@@ -350,6 +370,7 @@ mod tests {
             geometry: GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
             mcid: None,
             findings: Vec::new(),
+            recognized: None,
             structural: None,
             derivation: DerivationClass::Extracted,
         }

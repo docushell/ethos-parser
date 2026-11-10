@@ -511,6 +511,11 @@ pub struct Interpreter<'a> {
     /// stream to digest, because its samples live in the content stream itself. Counted so the
     /// absence of a node for it is visible on the artifact.
     pub inline_images: u32,
+    /// Text-showing operators run on this page, a form's each time the page draws it — what
+    /// `classify` counts as `text_operators`, and the half of its `scanned` reason the OCR trigger
+    /// reads (`docs/35-OCR-SCOPE.md` §4). Counted before the operands are read, so a string this
+    /// reader cannot decode still counts: the page has a text layer, whatever it says.
+    pub text_operators: u32,
     /// The index of the operation [`Self::run_inner`] is dispatching, recorded before every
     /// dispatch and read by [`Self::show`] (auto-tagging S2).
     ///
@@ -583,6 +588,7 @@ impl<'a> Interpreter<'a> {
             images: Vec::new(),
             unresolved_xobjects: 0,
             inline_images: 0,
+            text_operators: 0,
             xobjects: None,
             op_index: 0,
             forms: None,
@@ -893,20 +899,24 @@ impl<'a> Interpreter<'a> {
 
             // --- text showing: all four, including the one pdf-inspector omits ---
             ShowText => {
+                self.text_operators = self.text_operators.saturating_add(1);
                 let bytes = string_operand(operands, 0)?;
                 self.show(&bytes, &[])?;
             }
             ShowTextAdjusted => {
+                self.text_operators = self.text_operators.saturating_add(1);
                 let items = array_operand(operands, 0)?;
                 self.show_adjusted(&items)?;
             }
             NextLineShowText => {
+                self.text_operators = self.text_operators.saturating_add(1);
                 self.ts.next_line();
                 self.text_drawn_since_placement = false;
                 let bytes = string_operand(operands, 0)?;
                 self.show(&bytes, &[])?;
             }
             NextLineShowTextSpacing => {
+                self.text_operators = self.text_operators.saturating_add(1);
                 // `aw ac string "` — sets word and char spacing, then behaves as `'`.
                 self.ts.word_spacing = num(operands, 0)?;
                 self.ts.char_spacing = num(operands, 1)?;

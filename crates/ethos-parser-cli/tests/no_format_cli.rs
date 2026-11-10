@@ -150,7 +150,12 @@ fn the_refusal_names_what_was_looked_for_and_claims_no_format() {
         stderr.contains("these bytes state no format this engine reads"),
         "the cause, stated: {stderr}"
     );
-    for looked_for in ["ZIP local file header", "RTF brace group", "PDF header"] {
+    for looked_for in [
+        "ZIP local file header",
+        "RTF brace group",
+        "PDF header",
+        "a PNG's or a JPEG's",
+    ] {
         assert!(
             stderr.contains(looked_for),
             "the refusal must name {looked_for} as something looked for: {stderr}"
@@ -175,6 +180,51 @@ fn the_refusal_names_what_was_looked_for_and_claims_no_format() {
         );
     }
 
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **An image file states its format** (v3, `docs/35-OCR-SCOPE.md` §4): a PNG or a JPEG is not
+/// refused as bytes that state none, and its refusal without `--ocr` names the flag that reads it.
+#[test]
+fn an_image_file_without_ocr_names_the_flag_that_reads_it() {
+    let dir = tempdir();
+    for (name, bytes, media_type) in [
+        ("scan.png", &b"\x89PNG\r\n\x1a\n and more"[..], "image/png"),
+        ("scan.jpg", &b"\xFF\xD8\xFF\xE0 and more"[..], "image/jpeg"),
+    ] {
+        let stderr = refuse(&dir, name, bytes);
+        assert!(
+            stderr.contains(media_type) && stderr.contains("--ocr"),
+            "{name}: {stderr}"
+        );
+        assert!(
+            !stderr.contains("state no format"),
+            "{name}: an image file states one: {stderr}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **`--ocr` without its recognizer fails by name**, never into an artifact read without it
+/// (`docs/07-VERIFY-BOUNDARY.md` §8.6).
+#[test]
+fn ocr_without_its_recognizer_fails_by_name() {
+    let dir = tempdir();
+    let path = dir.join("scan.png");
+    std::fs::write(&path, b"\x89PNG\r\n\x1a\n and more").expect("write the file");
+    let missing = dir.join("no-such-recognizer");
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["extract", "--ocr", path.to_str().expect("utf-8 path")])
+        .env("ETHOS_PARSER_OCR", &missing)
+        .output()
+        .expect("the engine binary runs");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(out.stdout.is_empty(), "no artifact without the recognizer");
+    assert!(
+        stderr.contains("ETHOS_PARSER_OCR") && stderr.contains("no-such-recognizer"),
+        "{stderr}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

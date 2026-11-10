@@ -17,14 +17,17 @@ ethos-parser/
 │   ├── ethos-parser-office/      # eight office formats
 │   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1, plus the validator
 │   └── ethos-parser-cli/         # eleven subcommands; tests/oracle.rs lives here
+├── ocr/                    # ethos-parser-ocr, the recognizer `--ocr` runs: its own workspace and toolchain
 ├── vendor/README.md        # what is carried, and what deliberately is not
 ├── fixtures/               # a manifest referencing four corpus roots
 └── docs/
 ```
 
 **A crate exists when a boundary needs enforcing** — not when a module gets large. That is why
-`ethos-parser-office` was added rather than a DOCX module going into `ethos-parser-pdf`, and why
-`engine-ocr` does not exist yet.
+`ethos-parser-office` was added rather than a DOCX module going into `ethos-parser-pdf`, and why the
+recognizer is no crate here at all: `ethos-parser-ocr` is its own workspace under `ocr/`, on the
+toolchain its runtime needs, behind a process boundary the engine's pin never crosses (decision
+#120, [`35-OCR-SCOPE.md`](35-OCR-SCOPE.md) §5).
 
 **The oracle test lives with the CLI, not at the workspace root.** Cargo only builds integration
 tests for packages, so a root `tests/` directory in a virtual workspace would be silently ignored —
@@ -195,8 +198,8 @@ values.
 
 | Lane | Plugs in as | Impact on what exists |
 | --- | --- | --- |
-| **OCR (v4)** | A node source authoring `Recognized` nodes only where the deterministic reader found no text layer, under its own profile | None. The derivation class exists and the profile hash already isolates |
-| **Assist (v3)** | Authors `Proposed` nodes only. Never overwrites, never citable | None |
+| **OCR (v3)** | A node source authoring `Recognized` nodes only where the deterministic reader found no text layer, under its own profile | None. The derivation class exists and the profile hash already isolates |
+| **Assist (v4)** | Authors `Proposed` nodes only. Never overwrites, never citable | None |
 | **A new format (v2)** | A new locator variant, adapter profile, fixtures and inspection behaviour | None downstream — provided `ethos-parser-grounding` never learned about pages |
 | **A second backend** | A trait seam with backend identity in the profile | Design the seam early; implement one side |
 
@@ -205,6 +208,14 @@ MCP and both SDKs were untouched. It missed one line item — **`ethos-parser-co
 every node's parent is a declared page**, which had to be split by locator family. The page
 assumption was never in grounding; it was in the contract types, where a page-less document could not
 become a representation at all.
+
+**What the OCR row cost when it was paid** (decision #120). No node kind, as it said: a recognized
+word is a `text_run`. Four line items it did not name — a locator variant, `recognized`, since the
+place a word was read is neither a drawn origin nor an object; the profile's recognizer pin, which
+the profile hash needed something to hold; the seal's placement check, which makes the `Recognized`
+row's canvas rule mechanical; and one accessor, `NativeLocator::run_locator`, through which the
+projections read a run's place whichever variant carries it. Grounding was untouched for PDFs; an
+image file is a source its schema does not admit, refused by name.
 
 **The processor-identity rule, designed now and implemented when assist exists:** every lane declares
 its processor identity in the processing run, and a run whose drafting model and representation

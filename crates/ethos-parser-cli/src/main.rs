@@ -39,6 +39,7 @@
 #![forbid(unsafe_code)]
 
 mod mcp;
+mod recognizer;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -314,6 +315,15 @@ struct ExtractArgs {
     /// request.
     #[arg(long, value_name = "N")]
     max_pages: Option<u32>,
+
+    /// Read every page that shows no text and places one image — a scan — with the recognizer,
+    /// `ethos-parser-ocr` (beside this binary, or named by `ETHOS_PARSER_OCR`). Its words are runs
+    /// of derivation `recognized`, under the OCR profile, so the artifact's `profile_sha256`
+    /// differs from one made without it (`docs/35-OCR-SCOPE.md`). Pages that show text are read as
+    /// they always are; nothing recognized is ever merged with them. A PNG or JPEG file is read as
+    /// one page, its own pixel grid.
+    #[arg(long)]
+    ocr: bool,
 }
 
 #[derive(clap::Args)]
@@ -421,6 +431,12 @@ struct MarkdownArgs {
     /// record — to ground a claim, to locate a quote, to keep — runs `extract` and keeps it.
     #[arg(long, value_name = "FILE")]
     source: Option<PathBuf>,
+
+    /// With `--source`, read the source through the recognizer, as `extract` does with the same
+    /// flag: its scanned pages, or the image file. The output is byte-identical to that extract
+    /// piped into this subcommand.
+    #[arg(long, requires = "source")]
+    ocr: bool,
 }
 
 #[derive(clap::Args)]
@@ -735,7 +751,34 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         }
         profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
     }
-    emit_representation(representation_for_bytes(&head, &profile))
+    if args.ocr {
+        emit_representation(recognized_representation(&head, profile))
+    } else {
+        emit_representation(representation_for_bytes(&head, &profile))
+    }
+}
+
+/// `--ocr`: the OCR profile (with any page budget the caller set), the recognizer found and
+/// pinned, and a PDF read through it. Office bytes are refused by name: they have no scanned
+/// pages to read.
+fn recognized_representation(
+    head: &[u8],
+    base: Profile,
+) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
+    if routes_to_office(head) {
+        return Err(EngineError::Unsupported {
+            what: "option".into(),
+            detail: "--ocr reads the scanned pages of a PDF; these bytes go to the office reader, \
+                     which has no pages to scan"
+                .into(),
+        });
+    }
+    let profile = Profile {
+        page_budget: base.page_budget,
+        ..Profile::ocr_v0()
+    };
+    let mut process = recognizer::Process::find()?;
+    representation_for(head, &profile, Some(&mut process))
 }
 
 /// Route bytes to the reader their own signatures name, and return the canonical
@@ -753,8 +796,33 @@ pub(crate) fn representation_for_bytes(
     head: &[u8],
     profile: &Profile,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
+    representation_for(head, profile, None)
+}
+
+/// [`representation_for_bytes`], reading a PDF's scanned pages through `recognizer` when one is
+/// given (`--ocr`, `docs/35-OCR-SCOPE.md`).
+fn representation_for(
+    head: &[u8],
+    profile: &Profile,
+    recognizer: Option<&mut dyn ethos_parser_pdf::Recognize>,
+) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
     if routes_to_office(head) {
         return ethos_parser_office::read(head);
+    }
+    // v3 (`docs/35-OCR-SCOPE.md` §4): a PNG or JPEG states its format at byte 0, and is a page only
+    // a recognizer reads, so it is read with `--ocr` and refused by name without it.
+    if let Some(media_type) = ethos_parser_pdf::image_media_type(head) {
+        let Some(recognizer) = recognizer else {
+            return Err(EngineError::Unsupported {
+                what: "media type".into(),
+                detail: format!(
+                    "these bytes are an image file ({media_type}), and an image file's text is \
+                     read only by the recognizer: run with --ocr"
+                ),
+            });
+        };
+        let extract = ethos_parser_pdf::extract_image(head, profile, recognizer)?;
+        return ethos_parser_pdf::to_representation(&extract, profile);
     }
 
     // **v2-S10: the branch that was missing, and the last member of the shape S8 named.**
@@ -767,8 +835,9 @@ pub(crate) fn representation_for_bytes(
     // for its whole class rather than one more member; this is the class S8 left, and it is the
     // last one there is: bytes carrying no signature, no container and no declaration.
     //
-    // **This is not a seventh predicate and nothing new is sniffed.** It is the negation of the
-    // six above plus the one question the PDF reader already answers about itself. No comma is
+    // **This is not another predicate and nothing new is sniffed.** It is the negation of the
+    // office six and the image signature above (v3), plus the one question the PDF reader already
+    // answers about itself. No comma is
     // counted, no line is measured, no extension is read, and no signature is looked for past
     // byte 0. Comma-separated text cannot be told from prose without a reader, and a detector that
     // guessed would claim every comma file — so this engine refuses to name a format it did not
@@ -790,7 +859,10 @@ pub(crate) fn representation_for_bytes(
     // consumes. The stage artifact remains the library's return type, so M3's acceptance suite
     // still asserts on the thing the parser actually produces.
     let doc = Document::open_bytes(head, profile)?;
-    let extract = ethos_parser_pdf::extract(&doc, profile)?;
+    let extract = match recognizer {
+        Some(r) => ethos_parser_pdf::extract_recognized(&doc, profile, r)?,
+        None => ethos_parser_pdf::extract(&doc, profile)?,
+    };
     ethos_parser_pdf::to_representation(&extract, profile)
 }
 
@@ -823,10 +895,10 @@ fn routes_to_office(head: &[u8]) -> bool {
 fn no_format_stated() -> EngineError {
     EngineError::Unsupported {
         what: "media type".into(),
-        detail: "these bytes state no format this engine reads. Three signatures were looked for \
+        detail: "these bytes state no format this engine reads. Five signatures were looked for \
                  at byte 0 and none is present: a ZIP local file header, the container a DOCX, \
-                 XLSX, PPTX, ODT, ODS, ODP or EPUB arrives in; an RTF brace group; and a PDF \
-                 header. Nothing else was consulted — not the file's name, and no signature at any \
+                 XLSX, PPTX, ODT, ODS, ODP or EPUB arrives in; an RTF brace group; a PDF header; \
+                 and a PNG's or a JPEG's, an image file `--ocr` reads. Nothing else was consulted — not the file's name, and no signature at any \
                  other offset. A file this engine has no reader for is refused by name rather than \
                  handed to a reader it never named, because a refusal that guesses a format is a \
                  claim nobody measured. `docs/CAPABILITY.md` lists what is read and what is not."
@@ -978,9 +1050,13 @@ fn run_locate(args: LocateArgs) -> ExitCode {
 fn representation_to_project(
     path: Option<&std::path::Path>,
     source: Option<&std::path::Path>,
+    ocr: bool,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
     if let Some(source) = source {
         let bytes = read_source(source)?;
+        if ocr {
+            return recognized_representation(&bytes, Profile::default());
+        }
         return representation_for_bytes(&bytes, &Profile::default());
     }
     // clap holds the other arm: exactly one of the two is present.
@@ -996,10 +1072,11 @@ fn representation_to_project(
 }
 
 fn run_markdown(args: MarkdownArgs) -> ExitCode {
-    let repr = match representation_to_project(args.path.as_deref(), args.source.as_deref()) {
-        Ok(r) => r,
-        Err(e) => return fail(&e),
-    };
+    let repr =
+        match representation_to_project(args.path.as_deref(), args.source.as_deref(), args.ocr) {
+            Ok(r) => r,
+            Err(e) => return fail(&e),
+        };
 
     let profile = Profile::default();
     let profile_sha256 = match profile.profile_sha256() {

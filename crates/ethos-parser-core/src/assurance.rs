@@ -250,6 +250,19 @@ pub mod codes {
     /// `q /Xf1 Do Q` emits zero nodes with `pages_failed: 0`, and nothing distinguishes it from a
     /// blank page.
     pub const FORM_XOBJECTS_NOT_DESCENDED: &str = "form-xobjects-not-descended";
+    /// A page that showed no text and placed an image was not read by the recognizer the profile
+    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail.
+    pub const SCANNED_PAGE_NOT_RECOGNIZED: &str = "scanned-page-not-recognized";
+    /// Recognized words left unwritten because the page's visible box does not show where they lie.
+    pub const RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX: &str = "recognized-words-outside-visible-box";
+    /// Under the OCR profile: text turned within an upright image is not turned before it is read.
+    pub const RECOGNIZED_TEXT_ORIENTATION_NOT_CORRECTED: &str =
+        "recognized-text-orientation-not-corrected";
+    /// Under the OCR profile: a recognized run has no font, so no emphasis and no font size.
+    pub const RECOGNIZED_TEXT_HAS_NO_FONT: &str = "recognized-text-has-no-font";
+    /// An image file read as one page that is its pixel grid, one pixel to one point (v3,
+    /// `docs/35-OCR-SCOPE.md` §4): the resolution it declares is not read.
+    pub const IMAGE_RESOLUTION_NOT_READ: &str = "image-resolution-not-read";
     /// Marked-content ids opened inside form XObjects bind nothing
     /// (`docs/30-FORM-XOBJECTS-SCOPE.md` §7).
     ///

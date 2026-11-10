@@ -14,6 +14,10 @@ labelled only from what the record states — a run's page `furniture`, a tagged
 role path, an `inferred_heading` run, a detected table, a drawn image, a figure region (decision
 #46) — and `Text` otherwise. Nothing here infers a role or a unit the engine did not.
 
+`ETHOS_BENCH_OCR=engine` (decision #120) runs `extract --ocr`: the engine's own OCR lane reads every page
+that shows no text and places one image (`docs/35-OCR-SCOPE.md`), and needs `ethos-parser-ocr` beside the
+binary or named by `ETHOS_PARSER_OCR`.
+
 `ETHOS_BENCH_OCR=1` (decision #45) adds an OCR pass outside the engine, which is never the default:
 where ethos reads no text from a PDF, or refuses it because no font states its characters, the
 pages are rasterized (Ghostscript, 300 dpi) and read by Tesseract (`ETHOS_BENCH_OCR_LANG`, default
@@ -205,6 +209,12 @@ class EthosProvider(Provider):
                     extract_path.write_text(_run(binary, "extract", _ocr(source, ocr_dir, image)))
                 else:
                     extract_path.write_text(_run(binary, "extract", source))
+            elif os.environ.get("ETHOS_BENCH_OCR") == "engine":
+                # Decision #120: the engine's own OCR lane. Every document is read with `--ocr`, and
+                # the engine decides page by page: a page that shows no text and places one image is
+                # read by `ethos-parser-ocr` (beside the binary, or `ETHOS_PARSER_OCR`); every other
+                # page reads exactly as it does without the flag.
+                extract_path.write_text(_run(binary, "extract", "--ocr", source))
             else:
                 extract_path.write_text(_run(binary, "extract", source))
             artifact = json.loads(_run(binary, "markdown", str(extract_path)))

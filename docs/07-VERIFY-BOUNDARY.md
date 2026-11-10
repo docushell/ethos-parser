@@ -171,16 +171,17 @@ supported-format claim.
 
 ## 7. Optional lanes — OCR, agents, VLM
 
-All of these are out of scope today. The boundary is written now because the type system that makes
-them safe is being built now, and because a lane added later without these rules contaminates
-everything upstream of it.
+OCR is built (v3, decision #120, [`35-OCR-SCOPE.md`](35-OCR-SCOPE.md)): `--ocr` reads a page that
+shows no text and places one image, and a PNG or JPEG file, and the rules below are what it was
+built to. Agents and VLMs are still out of scope. The boundary was written before any of them
+because a lane added without these rules contaminates everything upstream of it.
 
 | Lane | Derivation | Profile | May author | Never |
 | --- | --- | --- | --- | --- |
 | Deterministic reader | `Extracted` | base | Text, origins, font identity, marked-content ids | — |
 | Deterministic rules | `Computed` | base, rule version pinned | Reading order, line grouping, ink boxes | Overwrite `Extracted` |
-| **OCR (v4)** | `Recognized` | **its own** | Nodes **only on canvases where the deterministic reader found no text layer at all** | Overwrite `Extracted`. Merge into the native stream. Filter on confidence |
-| **Assist (v3)** | **`Proposed`** | its own | Suggestions | Be citable. Be evidence. Overwrite anything |
+| **OCR (v3)** | `Recognized` | **its own** | Nodes **only on canvases where the deterministic reader found no text layer at all** | Overwrite `Extracted`. Merge into the native stream. Filter on confidence |
+| **Assist (v4)** | **`Proposed`** | its own | Suggestions | Be citable. Be evidence. Overwrite anything |
 
 **Four rules that make this safe:**
 

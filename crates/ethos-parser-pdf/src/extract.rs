@@ -613,6 +613,14 @@ struct PageYield {
     /// that hole. Rewriting only emitted entities would close it and renumber
     /// every id after it.
     local_ids: IdAllocator,
+    /// v3 (`docs/35-OCR-SCOPE.md` §4): the page the OCR trigger took, on its first reading under a
+    /// profile that pins a recognizer.
+    candidate: Option<crate::recognize::Candidate>,
+    /// v3: why a page the trigger would read was not, by name — the trigger's own refusal or the
+    /// recognizer's. Set only under a profile that pins a recognizer, on a page that showed no text.
+    ocr_refusal: Option<String>,
+    /// v3: recognized words not written because no viewer shows where they lie.
+    recognized_outside: u32,
 }
 
 /// One page's whole extraction, exactly the body the sequential loop ran, with two
@@ -634,6 +642,7 @@ fn extract_page(
     page_id: lopdf::ObjectId,
     content: &crate::budget::ContentBudget,
     limit: usize,
+    words: Option<&[crate::recognize::PageWord]>,
 ) -> Result<Option<PageYield>, EngineError> {
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut encoding_dropped_runs: u32 = 0;
@@ -678,6 +687,9 @@ fn extract_page(
     // content order until the right-to-left rule reads it, before `reorder_page`. Never on a
     // `TextRun`.
     let mut code_chars: Vec<Vec<usize>> = Vec::new();
+    // v3: the OCR trigger's answer for this page, decided after its images are read.
+    let mut candidate: Option<crate::recognize::Candidate> = None;
+    let mut ocr_refusal: Option<String> = None;
     // The gate: the document declares no author structure (see `no_author_structure`) — or, since
     // decision #94, its tree tags no heading — and the profile names the rule; any other id,
     // `not-run-for-this-format` included, runs nothing.
@@ -971,6 +983,57 @@ fn extract_page(
                 // computed from evidence the page supplies: the text rendering mode the content
                 // stream set, and the visible box the page declares.
                 findings: run_findings(shown.render_mode, origin_x, origin_y, &visible),
+                recognized: None,
+            });
+        }
+
+        // v3 (`docs/35-OCR-SCOPE.md` §6): a scanned page read again with the words its recognizer
+        // read, as runs of derivation `Recognized` — beside no drawn run, since the trigger took
+        // only a page that showed no text, and before every rule that reads runs, so reading
+        // order, lines, blocks, headings and tables read them as they read drawn ones. Their
+        // place is the one a text layer states: the line's foot under the word, the word's
+        // width, the line's height as the size. No font, no codes, no operation drew them.
+        for w in words.into_iter().flatten() {
+            op_indices.push(usize::MAX);
+            ems.push(Some(w.font_size).filter(|em| *em > 0));
+            glyph_starts.push(w.origin_x);
+            ink_ends.push(Some(w.rect.x1()));
+            code_chars.push(vec![1; w.text.chars().count()]);
+            clipped.push(false);
+            runs.push(TextRun {
+                id: alloc.next(IdKind::Span)?,
+                text: w.text.clone(),
+                char_codes: Vec::new(),
+                scalar_code_mismatch: !w.text.is_empty(),
+                synthesized: Vec::new(),
+                font_id: String::new(),
+                font_size: w.font_size,
+                region: None,
+                block: None,
+                layout_unit: None,
+                inferred_heading: false,
+                inferred_heading_level: None,
+                bold: false,
+                italic: false,
+                weight: None,
+                script: None,
+                furniture: None,
+                reading: None,
+                locator: PdfLocator {
+                    page: page_number,
+                    origin_x: w.origin_x,
+                    origin_y: w.origin_y,
+                    advance: w.advance,
+                },
+                geometry: ethos_parser_core::GeometryPresence::Measured(w.rect),
+                mcid: None,
+                structural: None,
+                derivation: DerivationClass::Recognized,
+                findings: Vec::new(),
+                recognized: Some(crate::nodes::RecognizedSource {
+                    image: w.image,
+                    pixels: w.pixels,
+                }),
             });
         }
 
@@ -1801,6 +1864,36 @@ fn extract_page(
             });
         }
 
+        // v3 (`docs/35-OCR-SCOPE.md` §4): the trigger, a reason code and never a score. A page
+        // that showed no text and placed an image is `classify`'s `scanned`; under a profile that
+        // pins a recognizer it is read when it placed exactly one image, and refused by name when
+        // it did not. Decided on the first reading only, and only under that profile, so no other
+        // artifact pays for it.
+        if words.is_none()
+            && matches!(
+                profile.recognizer,
+                ethos_parser_core::RecognizerPin::Pinned(_)
+            )
+            && interp.text_operators == 0
+        {
+            let placed = interp.images.len() + interp.inline_images as usize;
+            if interp.images.len() == 1 && interp.inline_images == 0 && images.len() == 1 {
+                let placement = &interp.images[0];
+                candidate = Some(crate::recognize::Candidate {
+                    page_id,
+                    object: placement.object,
+                    corners: placement.corners.map(|(x, y)| geom.to_top_left(x, y)),
+                    visible: (visible.x0, visible.y0, visible.x1, visible.y1),
+                });
+            } else if interp.inline_images > 0 {
+                ocr_refusal = Some("inline-image".into());
+            } else if placed > 1 {
+                ocr_refusal = Some("several-images".into());
+            } else if placed == 1 || interp.unresolved_xobjects > 0 {
+                ocr_refusal = Some("image-not-loaded".into());
+            }
+        }
+
         for run in &runs {
             for f in &run.findings {
                 *findings_seen.entry(f.as_code()).or_insert(0) += 1;
@@ -1862,6 +1955,9 @@ fn extract_page(
         findings_seen,
         font_limitations,
         local_ids: alloc,
+        candidate,
+        ocr_refusal,
+        recognized_outside: 0,
     }))
 }
 
@@ -1943,6 +2039,150 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     extract_with_positions(doc, profile).map(|(artifact, _)| artifact)
 }
 
+/// [`extract`] under a profile that pins a recognizer (v3, `docs/35-OCR-SCOPE.md`): every page
+/// that showed no text and placed exactly one image is read by `recognizer`, and its words are
+/// runs of derivation `Recognized`.
+///
+/// # Errors
+///
+/// [`extract`]'s; [`EngineError::Unsupported`] when `profile` pins no recognizer or pins one
+/// other than `recognizer`, or when the recognizer answers as another; and what `recognizer`
+/// returns when it fails. A page it refuses is counted on the artifact, not an error.
+pub fn extract_recognized(
+    doc: &Document,
+    profile: &Profile,
+    recognizer: &mut dyn crate::recognize::Recognize,
+) -> Result<ExtractArtifact, EngineError> {
+    extract_counted(
+        doc,
+        profile,
+        &crate::budget::ContentBudget::default(),
+        Some(recognizer),
+        None,
+    )
+    .map(|(artifact, _)| artifact)
+}
+
+/// An image file's one page, read before the page existed: what [`extract_counted`] sets on it
+/// and states as its source.
+struct ImageFile {
+    media_type: &'static str,
+    sha256: Sha256Hex,
+    words: Vec<crate::recognize::PageWord>,
+    outside: u32,
+}
+
+/// An image file, PNG or JPEG, read under a profile that pins `recognizer` as a one-page document
+/// (v3, `docs/35-OCR-SCOPE.md` §4): the recognizer reads the file whole, and its words are runs of
+/// derivation `Recognized` on a page that is the image's own pixel grid, one pixel to one point.
+/// The source is the file. No image node is written and no locator names an image object: the
+/// page is the image.
+///
+/// # Errors
+///
+/// [`EngineError::Unsupported`] for bytes that are not a PNG or JPEG, under a profile that does not
+/// pin `recognizer`, and for an image the recognizer refuses to read — an image file has no other
+/// page to count the refusal against; what `recognizer` returns when it fails.
+pub fn extract_image(
+    bytes: &[u8],
+    profile: &Profile,
+    recognizer: &mut dyn crate::recognize::Recognize,
+) -> Result<ExtractArtifact, EngineError> {
+    let media_type =
+        crate::recognize::image_media_type(bytes).ok_or_else(|| EngineError::Unsupported {
+            what: "media type".into(),
+            detail: "an image file is read when it is a PNG or a JPEG, and these bytes state \
+                     neither"
+                .into(),
+        })?;
+    let pinned = pinned_recognizer(profile, Some(recognizer.identity()))?;
+    let answer = recognizer.read(&crate::recognize::RecognitionRequest {
+        ocr_request: 1,
+        id: "image".into(),
+        image: crate::recognize::ImageSpec::File,
+        orientation: 0,
+        bytes: bytes.len() as u64,
+        data: bytes.to_vec(),
+    })?;
+    if Some(&answer.identity) != pinned.as_ref() {
+        return Err(EngineError::Unsupported {
+            what: "recognizer".into(),
+            detail: format!(
+                "the image was answered by `{} {}`, not the recognizer the profile pins",
+                answer.identity.recognizer, answer.identity.version
+            ),
+        });
+    }
+    if let Some(why) = &answer.refused {
+        return Err(EngineError::Unsupported {
+            what: "image".into(),
+            detail: format!("the recognizer did not read this {media_type}: `{why}`"),
+        });
+    }
+    let doc = Document::open_bytes(
+        &crate::recognize::blank_page(answer.width, answer.height)?,
+        profile,
+    )?;
+    let page_id = doc
+        .pages()
+        .first()
+        .map(|&(_, id)| id)
+        .ok_or_else(|| EngineError::Malformed {
+            what: "image".into(),
+            detail: "the page an image file is set on has no page".into(),
+        })?;
+    let place = crate::recognize::whole_page(page_id, answer.width, answer.height);
+    let (words, outside) = crate::recognize::place(&place, &answer, None)?;
+    let file = ImageFile {
+        media_type,
+        sha256: Sha256Hex::parse(format!(
+            "sha256:{}",
+            ethos_parser_core::c14n::sha256_hex_bytes(bytes)
+        ))?,
+        words,
+        outside,
+    };
+    extract_counted(
+        &doc,
+        profile,
+        &crate::budget::ContentBudget::default(),
+        Some(recognizer),
+        Some(file),
+    )
+    .map(|(artifact, _)| artifact)
+}
+
+/// The recognizer `profile` pins, checked against the one given (v3, `docs/35-OCR-SCOPE.md` §5):
+/// an artifact whose profile names one recognizer and whose runs another read would be the
+/// laundering the pin exists to prevent.
+fn pinned_recognizer(
+    profile: &Profile,
+    given: Option<&ethos_parser_core::RecognizerIdentity>,
+) -> Result<Option<ethos_parser_core::RecognizerIdentity>, EngineError> {
+    match (&profile.recognizer, given) {
+        (ethos_parser_core::RecognizerPin::NotPinned, None) => Ok(None),
+        (ethos_parser_core::RecognizerPin::Pinned(id), Some(r)) if r == id => Ok(Some(id.clone())),
+        (ethos_parser_core::RecognizerPin::Pinned(id), _) => Err(EngineError::Unsupported {
+            what: "recognizer".into(),
+            detail: format!(
+                "the profile reads scanned pages through `{} {}` (`{}`), and {}",
+                id.recognizer,
+                id.version,
+                id.rule,
+                if given.is_some() {
+                    "another recognizer answered"
+                } else {
+                    "none was given"
+                }
+            ),
+        }),
+        (ethos_parser_core::RecognizerPin::NotPinned, Some(_)) => Err(EngineError::Unsupported {
+            what: "recognizer".into(),
+            detail: "a recognizer was given to a profile that pins none".into(),
+        }),
+    }
+}
+
 /// [`extract`], returning beside the artifact where each run came from in its page's content
 /// stream (auto-tagging S2).
 ///
@@ -1956,16 +2196,25 @@ pub(crate) fn extract_with_positions(
     doc: &Document,
     profile: &Profile,
 ) -> Result<(ExtractArtifact, RunPositions), EngineError> {
-    extract_counted(doc, profile, &crate::budget::ContentBudget::default())
+    extract_counted(
+        doc,
+        profile,
+        &crate::budget::ContentBudget::default(),
+        None,
+        None,
+    )
 }
 
 /// [`extract_with_positions`], charging `content` for the pages it reads: one budget per reading,
-/// which a test can hand in already spent.
+/// which a test can hand in already spent. `image_file` is set by [`extract_image`] alone.
 fn extract_counted(
     doc: &Document,
     profile: &Profile,
     content: &crate::budget::ContentBudget,
+    recognizer: Option<&mut dyn crate::recognize::Recognize>,
+    image_file: Option<ImageFile>,
 ) -> Result<(ExtractArtifact, RunPositions), EngineError> {
+    let pinned = pinned_recognizer(profile, recognizer.as_ref().map(|r| r.identity()))?;
     let profile_sha256 = profile
         .profile_sha256()
         .map_err(|e| EngineError::Malformed {
@@ -1992,6 +2241,10 @@ fn extract_counted(
     let mut doc_em_tally = crate::headings::EmTally::default();
     let mut positions = RunPositions::new();
     let mut limitations = lim::extract_limitations();
+    // v3: what a recognized run does not carry, on every artifact made under the OCR profile.
+    if pinned.is_some() {
+        limitations.extend(lim::recognized_text_limitations());
+    }
     // A repaired open is never silent: every artifact derived from one says so.
     if let Some(padded) = doc.xref_entries_padded() {
         limitations.push(lim::xref_entry_padded(padded));
@@ -2059,6 +2312,7 @@ fn extract_counted(
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
     let mut undescended_xobjects: u32 = 0;
+    let mut recognized_outside: u32 = 0;
     let mut form_mcids: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
@@ -2143,7 +2397,7 @@ fn extract_counted(
     // object graph, built in `Document::open_bytes` before this function runs — a cost no budget
     // consulted here can lower. See `docs/measurements/memory-ceiling/` §5 and §15.
     use rayon::prelude::*;
-    let read = |page_number, page_id, limit| {
+    let read = |page_number, page_id, limit, words: Option<&[crate::recognize::PageWord]>| {
         extract_page(
             doc,
             profile,
@@ -2154,6 +2408,7 @@ fn extract_counted(
             page_id,
             content,
             limit,
+            words,
         )
     };
     // A page denser than `HEAVY_PAGE_OPERATIONS` is left by the parallel read and read below, alone
@@ -2166,7 +2421,12 @@ fn extract_counted(
             if !budget.admits(page_number) {
                 return (page_number, page_id, None);
             }
-            let outcome = read(page_number, page_id, crate::budget::HEAVY_PAGE_OPERATIONS);
+            let outcome = read(
+                page_number,
+                page_id,
+                crate::budget::HEAVY_PAGE_OPERATIONS,
+                None,
+            );
             (page_number, page_id, Some(outcome))
         })
         .collect::<Vec<_>>()
@@ -2174,8 +2434,13 @@ fn extract_counted(
         .map(|(page_number, page_id, outcome)| {
             let outcome = outcome.map(|result| match result {
                 Ok(Some(page)) => Ok(page),
-                Ok(None) => read(page_number, page_id, crate::budget::MAX_PAGE_OPERATIONS)?
-                    .ok_or_else(|| crate::budget::page_operations_past_ceiling(page_number)),
+                Ok(None) => read(
+                    page_number,
+                    page_id,
+                    crate::budget::MAX_PAGE_OPERATIONS,
+                    None,
+                )?
+                .ok_or_else(|| crate::budget::page_operations_past_ceiling(page_number)),
                 Err(e) => Err(e),
             });
             (page_number, outcome)
@@ -2188,6 +2453,83 @@ fn extract_counted(
     // is the same kind of refusal, for the same reason.
     doc.tounicode().refusal()?;
     content.refusal()?;
+
+    // v3 (`docs/35-OCR-SCOPE.md` §5): every page the trigger took, asked of the recognizer in page
+    // order — one at a time, because it uses every core itself — and read again with its words.
+    let mut outcomes = outcomes;
+    if let (Some(recognizer), Some(pinned)) = (recognizer, &pinned) {
+        for (page_number, outcome) in &mut outcomes {
+            let Some(Ok(y)) = outcome else {
+                continue;
+            };
+            let Some(candidate) = y.candidate.take() else {
+                continue;
+            };
+            let request = match crate::recognize::request(doc.inner(), &candidate, *page_number) {
+                Ok(r) => r,
+                Err(why) => {
+                    y.ocr_refusal = Some(why);
+                    continue;
+                }
+            };
+            let answer = recognizer.read(&request)?;
+            if &answer.identity != pinned {
+                return Err(EngineError::Unsupported {
+                    what: "recognizer".into(),
+                    detail: format!(
+                        "page {page_number} was answered by `{} {}`, not the pinned `{} {}`",
+                        answer.identity.recognizer,
+                        answer.identity.version,
+                        pinned.recognizer,
+                        pinned.version
+                    ),
+                });
+            }
+            if let Some(why) = answer.refused.clone() {
+                y.ocr_refusal = Some(why);
+                continue;
+            }
+            if let crate::recognize::ImageSpec::Pdf(spec) = &request.image {
+                if (answer.width, answer.height) != (spec.width, spec.height) {
+                    y.ocr_refusal = Some("image-size-mismatch".into());
+                    continue;
+                }
+            }
+            let image = ethos_parser_core::PdfObjectNumber {
+                object: candidate.object.0,
+                generation: u32::from(candidate.object.1),
+            };
+            let (words, outside) = crate::recognize::place(&candidate, &answer, Some(image))?;
+            if !words.is_empty() {
+                let again = read(
+                    *page_number,
+                    candidate.page_id,
+                    crate::budget::MAX_PAGE_OPERATIONS,
+                    Some(&words),
+                )?
+                .ok_or_else(|| crate::budget::page_operations_past_ceiling(*page_number))?;
+                *y = again;
+            }
+            y.recognized_outside = declare(y.recognized_outside, outside);
+        }
+    }
+    // An image file's one page, which was read before it was made ([`extract_image`]).
+    if let Some(file) = &image_file {
+        if let (Some((page_number, Some(Ok(y)))), Some(&(_, page_id))) =
+            (outcomes.first_mut(), doc.pages().first())
+        {
+            if !file.words.is_empty() {
+                *y = read(
+                    *page_number,
+                    page_id,
+                    crate::budget::MAX_PAGE_OPERATIONS,
+                    Some(&file.words),
+                )?
+                .ok_or_else(|| crate::budget::page_operations_past_ceiling(*page_number))?;
+            }
+            y.recognized_outside = declare(y.recognized_outside, file.outside);
+        }
+    }
 
     for (page_number, outcome) in outcomes {
         let Some(result) = outcome else {
@@ -2335,6 +2677,10 @@ fn extract_counted(
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
+        recognized_outside = declare(recognized_outside, y.recognized_outside);
+        if let Some(why) = &y.ocr_refusal {
+            limitations.push(lim::scanned_page_not_recognized(page_number, why));
+        }
         form_mcids = declare(form_mcids, y.form_mcids);
         if y.undescended_xobjects > 0 {
             limitations.push(lim::form_xobjects_not_descended_on_page(
@@ -2595,6 +2941,14 @@ fn extract_counted(
     if undescended_xobjects > 0 {
         limitations.push(lim::form_xobjects_not_descended(undescended_xobjects));
     }
+    if recognized_outside > 0 {
+        limitations.push(lim::recognized_words_outside_visible_box(
+            recognized_outside,
+        ));
+    }
+    if image_file.is_some() {
+        limitations.push(lim::image_resolution_not_read());
+    }
     if form_mcids > 0 {
         limitations.push(lim::form_xobject_mcids_not_bound(form_mcids));
     }
@@ -2655,9 +3009,15 @@ fn extract_counted(
             parser_version: profile.parser_version.clone(),
             profile_sha256,
         },
-        source: SourceRef {
-            media_type: "application/pdf".to_string(),
-            sha256: Sha256Hex::parse(doc.source_sha256().as_str())?,
+        source: match image_file {
+            Some(file) => SourceRef {
+                media_type: file.media_type.to_string(),
+                sha256: file.sha256,
+            },
+            None => SourceRef {
+                media_type: "application/pdf".to_string(),
+                sha256: Sha256Hex::parse(doc.source_sha256().as_str())?,
+            },
         },
         reading_order_rule: profile.reading_order_rule.clone(),
         page_count,
@@ -3922,6 +4282,7 @@ mod tests {
                 structural: None,
                 derivation: DerivationClass::Extracted,
                 findings: Vec::new(),
+                recognized: None,
             })
             .collect();
 
@@ -4335,14 +4696,21 @@ mod tests {
         let profile = Profile::default();
         let doc = Document::open_bytes(&two_pages(45), &profile).expect("opens");
 
-        let e = extract_counted(&doc, &profile, &crate::budget::ContentBudget::default())
-            .expect_err("page 1 refuses its rotation");
+        let e = extract_counted(
+            &doc,
+            &profile,
+            &crate::budget::ContentBudget::default(),
+            None,
+            None,
+        )
+        .expect_err("page 1 refuses its rotation");
         assert!(e.to_string().contains("/Rotate"), "{e}");
 
         let spent = crate::budget::ContentBudget::default();
         let past = usize::try_from(crate::budget::MAX_DOCUMENT_OPERATIONS).expect("64-bit") + 1;
         assert!(spent.charge(0, past).is_err());
-        let e = extract_counted(&doc, &profile, &spent).expect_err("the budget is spent");
+        let e =
+            extract_counted(&doc, &profile, &spent, None, None).expect_err("the budget is spent");
         assert!(
             matches!(&e, EngineError::ResourceLimit { limit, .. }
                 if limit == "content operations in the document's pages"),
@@ -4353,7 +4721,8 @@ mod tests {
         let doc = Document::open_bytes(&two_pages(0), &profile).expect("opens");
         let full = crate::budget::ContentBudget::default();
         full.charge(0, past - 1).expect("exactly at the ceiling");
-        let e = extract_counted(&doc, &profile, &full).expect_err("the pages tip it over");
+        let e =
+            extract_counted(&doc, &profile, &full, None, None).expect_err("the pages tip it over");
         assert!(
             matches!(&e, EngineError::ResourceLimit { limit, .. }
                 if limit == "content operations in the document's pages"),

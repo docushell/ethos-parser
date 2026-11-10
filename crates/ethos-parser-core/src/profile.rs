@@ -2772,6 +2772,74 @@ pub struct Profile {
     pub xref_repair: XrefRepair,
     /// Which verifier this run is bound to. New at v0.1, [`VerifierPin::NotPinned`] by default.
     pub verifier: VerifierPin,
+    /// Which recognizer this run's `Recognized` runs come from (v3, `docs/35-OCR-SCOPE.md`).
+    /// [`RecognizerPin::NotPinned`] by default; [`Profile::ocr_v0`] pins one.
+    pub recognizer: RecognizerPin,
+}
+
+/// Which recognizer a profile's `Recognized` runs come from, if any (v3, `docs/35-OCR-SCOPE.md`
+/// §5).
+///
+/// [`RecognizerPin::NotPinned`] is the default and a real statement rather than a missing field:
+/// *no recognizer read any pixels for this run.* Every artifact made without `--ocr` carries it,
+/// and the OCR profile differs from the base one here and nowhere else (contract §6, rule 4).
+///
+/// **A recognizer is pinned by the identity it reports, not by its binary's digest.** Unlike
+/// [`VerifierPin`], whose binary is the one whose bytes answered, the recognizer is built per
+/// platform and gives the same bytes on every one of them (`docs/35-OCR-SCOPE.md` §10.1), so a
+/// binary digest would make the same document's artifact differ between machines that read it
+/// identically. Its identity names what decides its output — its version, its pipeline rule, the
+/// digests of the models it holds, and the runtime — and the engine refuses an answer from a
+/// recognizer reporting any other, so one profile never holds two recognizers' output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Adjacently tagged, as `VerifierPin` is.
+#[serde(
+    rename_all = "snake_case",
+    tag = "mode",
+    content = "identity",
+    deny_unknown_fields
+)]
+pub enum RecognizerPin {
+    /// No recognizer was consulted.
+    NotPinned,
+    /// This recognizer, and only it, read the pages this profile's artifacts recognize.
+    Pinned(RecognizerIdentity),
+}
+
+/// A recognizer's identity, as `ethos-parser-ocr identity` reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecognizerIdentity {
+    /// The recognizer's name: `ethos-parser-ocr`.
+    pub recognizer: String,
+    /// Its version.
+    pub version: String,
+    /// The rule id of every step around its models; moves whenever one changes what it writes.
+    pub rule: String,
+    /// SHA-256 of the detection model it holds.
+    pub det_sha256: String,
+    /// SHA-256 of the recognition model it holds.
+    pub rec_sha256: String,
+    /// SHA-256 of the recognition model's alphabet.
+    pub dict_sha256: String,
+    /// The runtime that runs the models.
+    pub runtime: String,
+}
+
+impl RecognizerIdentity {
+    /// `ethos-parser-ocr` 0.1.0: PP-OCRv5 mobile on rten 0.26 with fixed-order sums (`ocr/`). The
+    /// strings are `ocr/src/main.rs`'s, and a test holds the two together.
+    pub fn ethos_parser_ocr() -> Self {
+        Self {
+            recognizer: "ethos-parser-ocr".into(),
+            version: "0.1.0".into(),
+            rule: "ppocrv5-mobile-v1".into(),
+            det_sha256: "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae".into(),
+            rec_sha256: "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8".into(),
+            dict_sha256: "e025a66d31f327ba0c232e03f407ae8d105e1e709e7ccb3f408aa778c24e70d6".into(),
+            runtime: "rten 0.26.0; rten-vecmath 0.26.0 with fixed-order sums".into(),
+        }
+    }
 }
 
 impl Default for Profile {
@@ -2806,11 +2874,23 @@ impl Default for Profile {
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
+            recognizer: RecognizerPin::NotPinned,
         }
     }
 }
 
 impl Profile {
+    /// The profile a PDF is read under with `--ocr` (v3, `docs/35-OCR-SCOPE.md`): the base
+    /// profile with [`RecognizerIdentity::ethos_parser_ocr`] pinned, so its `profile_sha256` differs
+    /// and an artifact holding recognized text is never comparable with one that does not by
+    /// accident (contract §6, rule 4).
+    pub fn ocr_v0() -> Self {
+        Self {
+            recognizer: RecognizerPin::Pinned(RecognizerIdentity::ethos_parser_ocr()),
+            ..Self::default()
+        }
+    }
+
     /// The profile a page-less OOXML word-processing document is read under (v2-S2).
     ///
     /// **A separate profile so the two artifacts are provably non-comparable.** `14-V2-SCOPE.md`
@@ -3497,13 +3577,13 @@ mod tests {
             object.keys().map(String::as_str).collect()
         }
 
-        // Pinned, so the verifier's one struct variant is on the wire too.
+        // Pinned, so the verifier's and the recognizer's struct variants are on the wire too.
         let profile = Profile {
             verifier: VerifierPin::pinned(
                 "ethos 0.6.0",
                 Sha256Hex::from_hex(&"0".repeat(64)).expect("hex"),
             ),
-            ..Profile::default()
+            ..Profile::ocr_v0()
         };
         let bytes = profile.canonical_bytes().expect("canonical");
         let wire: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
@@ -3540,6 +3620,7 @@ mod tests {
                 raster_dpi,
                 xref_repair,
                 verifier,
+                recognizer,
             })
         );
         assert_eq!(
@@ -3590,6 +3671,50 @@ mod tests {
             keys(&wire["verifier"]["identity"]),
             declared!(&profile.verifier => VerifierPin::Pinned { version, sha256 })
         );
+        let RecognizerPin::Pinned(identity) = &profile.recognizer else {
+            panic!("the OCR profile pins its recognizer");
+        };
+        assert_eq!(
+            keys(&wire["recognizer"]["identity"]),
+            declared!(identity => RecognizerIdentity {
+                recognizer,
+                version,
+                rule,
+                det_sha256,
+                rec_sha256,
+                dict_sha256,
+                runtime,
+            })
+        );
+    }
+
+    /// The pinned recognizer is the one in `ocr/`: its name, version, rule, model digests and
+    /// runtime, read from its own source, so the identity the engine demands and the identity the
+    /// recognizer reports cannot drift apart unnoticed. They live in two workspaces on two
+    /// toolchains, so no type can hold them together; this test does.
+    #[test]
+    fn the_pinned_recognizer_is_the_one_in_ocr() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let main = std::fs::read_to_string(root.join("ocr/src/main.rs")).expect("ocr/src/main.rs");
+        let manifest =
+            std::fs::read_to_string(root.join("ocr/Cargo.toml")).expect("ocr/Cargo.toml");
+        let constant = |name: &str| -> String {
+            let line = main
+                .lines()
+                .find(|l| l.starts_with(&format!("pub const {name}: &str = \"")))
+                .unwrap_or_else(|| panic!("ocr/src/main.rs states no `{name}`"));
+            line.split('"').nth(1).expect("a quoted value").to_string()
+        };
+        let id = RecognizerIdentity::ethos_parser_ocr();
+        assert_eq!(id.rule, constant("RULE"));
+        assert_eq!(id.det_sha256, constant("DET_SHA256"));
+        assert_eq!(id.rec_sha256, constant("REC_SHA256"));
+        assert_eq!(id.dict_sha256, constant("DICT_SHA256"));
+        assert_eq!(id.runtime, constant("RUNTIME"));
+        assert!(main.contains(&format!("recognizer: \"{}\",", id.recognizer)));
+        assert!(manifest
+            .lines()
+            .any(|l| l == format!("version = \"{}\"", id.version)));
     }
 
     /// Every field on `Profile` that is mutated below changes the hash when it changes.
@@ -3705,6 +3830,7 @@ mod tests {
             unicode_data_version: _,
             xref_repair: _,
             verifier: _,
+            recognizer: _,
         } = &base;
 
         /// One named single-field mutation.
@@ -3826,6 +3952,14 @@ mod tests {
                         "ethos 9.9.9",
                         Sha256Hex::from_hex(&"ab".repeat(32)).expect("well formed"),
                     )
+                }),
+            ),
+            (
+                // v3 (decision #120). Which recognizer read the pixels is part of the run's
+                // identity: an OCR artifact must never be comparable with a plain one by accident.
+                "recognizer",
+                Box::new(|p: &mut Profile| {
+                    p.recognizer = RecognizerPin::Pinned(RecognizerIdentity::ethos_parser_ocr())
                 }),
             ),
             (
@@ -3981,12 +4115,13 @@ mod tests {
         // `figure_rule` and `capabilities.figures` the same way, and forty-five since decision
         // #54, which added `right_to_left_rule` the same way. Forty-six since decision #66, which
         // added `table_detection.lines` the same way, and forty-seven since decision #90, which
-        // added `table_detection.pies` the same way.
+        // added `table_detection.pies` the same way. Forty-eight since decision #120, which added
+        // `recognizer` the same way.
         assert_eq!(
             mutations.len(),
-            47,
-            "{} single-field mutation(s); forty-seven is the number at decision #90, which added \
-             `table_detection.pies` with its mutation",
+            48,
+            "{} single-field mutation(s); forty-eight is the number at decision #120, which added \
+             `recognizer` with its mutation",
             mutations.len()
         );
 
@@ -4041,7 +4176,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v13","layout_unit_rule":"line-units-v6","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v13","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v13","layout_unit_rule":"line-units-v6","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v13","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5239,11 +5374,15 @@ mod tests {
              fill outlines as a polygon as the rectangles it outlines. Nothing else.\n\n\
              Moved for decision #112, `sha256:c65b6986…` -> `sha256:0903edb3…`: \
              `table_detection.tracks` `whitespace-tracks-v15` -> `-v16`, which reads a header cell \
-             set over several columns as a group head spanning them. Nothing else."
+             set over several columns as a group head spanning them. Nothing else.\n\n\
+             Moved for decision #120, `sha256:0903edb3…` -> `sha256:8c2f8672…`: the new \
+             `recognizer` pin, `not_pinned` here and pinned only by the OCR profile \
+             (`docs/35-OCR-SCOPE.md`), so an artifact holding recognized text is never \
+             comparable with one that does not by accident. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:0903edb3a54b36e8fcaee98f7351321e0ac197727b072e7b6c25fb59134f59d0"
+            "sha256:8c2f86723df4d63209022e6545f24a029bc305d59d3f0bd3c049b672f4184d19"
         );
     }
 

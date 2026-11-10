@@ -150,7 +150,7 @@ ethos-parser ground repr.json > grounding.json
 | Command | What it does | Exit codes |
 | --- | --- | --- |
 | `classify` | Counts and reason codes for a PDF — is it scanned? is the layout hard? | 0 / 1 / 2 |
-| `extract` | The document as text runs with locators (`DocumentRepresentation v0`) | 0 / 2 |
+| `extract` | The document as text runs with locators (`DocumentRepresentation v0`). `--ocr` also reads scanned pages, and PNG or JPEG files, through the recognizer `ethos-parser-ocr` ([`docs/35-OCR-SCOPE.md`](docs/35-OCR-SCOPE.md)) | 0 / 2 |
 | `ground` | Turn a representation into `ethos.grounding.v1`, the citation format | 0 / 2 |
 | `markdown` | Markdown plus a map from every character back to a node. Takes a representation, or `--source <FILE>` to read a document and project it in one process — the same bytes, without the record on disk between the two stages | 0 / 2 |
 | `html` | The same thing in HTML, projected from the document rather than from the Markdown | 0 / 2 |
@@ -168,7 +168,7 @@ stdout never changes.
 ## Formats it reads
 
 PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and EPUB — all into the same record, with the same
-fingerprint and the same JSON shape.
+fingerprint and the same JSON shape. With `--ocr`, PNG and JPEG too, each read as one page.
 
 The format is decided by looking at the bytes, never the file extension. A `report.bin` that is
 really a PDF still reads; a `.docx` full of something else is a clear error. Anything the engine
@@ -176,9 +176,9 @@ has no reader for is refused by name:
 
 ```
 $ ethos-parser extract data.csv
-engine: unsupported media type: these bytes state no format this engine reads. Three signatures
+engine: unsupported media type: these bytes state no format this engine reads. Five signatures
 were looked for at byte 0 and none is present: a ZIP local file header ... an RTF brace group ...
-and a PDF header. Nothing else was consulted — not the file's name ...
+a PDF header; and a PNG's or a JPEG's ... Nothing else was consulted — not the file's name ...
 ```
 
 CSV is deliberately absent. A CSV parse would produce real text, but the engine would have to

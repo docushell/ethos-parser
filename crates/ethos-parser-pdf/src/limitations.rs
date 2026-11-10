@@ -858,6 +858,62 @@ pub fn form_xobjects_not_descended_on_page(page: u32, count: u32) -> Limitation 
     )
 }
 
+/// A scanned page the OCR profile's recognizer did not read, and why (v3, `docs/35-OCR-SCOPE.md`
+/// §7): never dropped in silence, because a page with no runs would otherwise read as blank.
+pub fn scanned_page_not_recognized(page: u32, reason: &str) -> Limitation {
+    Limitation::page(
+        page,
+        ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED,
+        format!(
+            "This page showed no text and placed an image, and was NOT read by the recognizer: \
+             `{reason}`. Its text, if it has any, is absent from this artifact. An empty run list \
+             on this page is a declared gap, not a blank page."
+        ),
+    )
+}
+
+/// Recognized words not written because no viewer shows where they lie (v3).
+pub fn recognized_words_outside_visible_box(words: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX,
+        format!(
+            "{words} word(s) the recognizer read lie outside their page's visible box, where an \
+             image runs past the crop, and were NOT written: text a viewer does not show is not \
+             the page's."
+        ),
+    )
+}
+
+/// An image file's page is its pixel grid (v3, `docs/35-OCR-SCOPE.md` §4).
+pub fn image_resolution_not_read() -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::IMAGE_RESOLUTION_NOT_READ,
+        "This document is an image file, read as one page that is its own pixel grid, one pixel \
+         to one point: every length on it is in pixels. The resolution the file may declare is \
+         not read, so the page's size is not the size the image was scanned or printed at."
+            .to_string(),
+    )
+}
+
+/// What the OCR profile's recognized runs do not carry (v3, `docs/35-OCR-SCOPE.md` §7), declared
+/// on every artifact made under it.
+pub fn recognized_text_limitations() -> Vec<Limitation> {
+    vec![
+        Limitation::profile(
+            ethos_parser_core::codes::RECOGNIZED_TEXT_ORIENTATION_NOT_CORRECTED,
+            "A scanned image is stood upright as its page shows it before it is read, but text \
+             turned WITHIN an upright image — a sideways table header, an upside-down stamp — is \
+             read as it stands, which is usually not at all.",
+        ),
+        Limitation::profile(
+            ethos_parser_core::codes::RECOGNIZED_TEXT_HAS_NO_FONT,
+            "A recognized run has no font: its `font_id` is empty and its `font_size` is its \
+             line's height, as a text layer written by a recognizer states it. So no recognized \
+             run is bold or italic, and a rule that reads a font reads none on a recognized page.",
+        ),
+    ]
+}
+
 /// The catalog declares no outline (`docs/29-OUTLINES-SCOPE.md`).
 ///
 /// On `untagged_structure_tree_absent`'s precedent, and it is the same distinction: **a statement

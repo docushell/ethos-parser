@@ -157,7 +157,7 @@ elif [ -x ../ethos-oracle/target/release/ethos ]; then
 fi
 
 step=0
-total=9
+total=10
 announce() {
   step=$((step + 1))
   printf '\n\033[1m[%d/%d] %s\033[0m\n' "$step" "$total" "$1"
@@ -189,6 +189,9 @@ cargo deny check
 
 announce 'sdk suites — node and python, the version guards that had never run'
 ci/sdk-suites.sh
+
+announce 'ocr — the recognizer, in its own workspace on its own toolchain'
+ci/ocr.sh
 
 printf '\n\033[1;32mgate: all %d checks passed.\033[0m\n' "$total"
 printf 'Not run, by design: the oracle build, the toolchain tripwire, v0-fuzz-smoke,\n'
