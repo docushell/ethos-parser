@@ -284,6 +284,15 @@ pub(crate) fn request(
         }
         _ => return Err("image-size-not-read".into()),
     };
+    // A mask decides what of the image a viewer sees, and the protocol carries the image alone:
+    // read without it, black text masked onto a black image reaches the recognizer all black, and
+    // what a stencil hides could be read as text no viewer shows (PR 53's review).
+    if dict.has(b"SMask") {
+        return Err("soft-mask-not-read".into());
+    }
+    if dict.has(b"Mask") {
+        return Err("mask-not-read".into());
+    }
     let image_mask = resolve_object(doc, dict.get(b"ImageMask").ok())
         .and_then(|o| o.as_bool().ok())
         .unwrap_or(false);
@@ -805,6 +814,47 @@ mod tests {
             .find(|l| l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED)
             .expect("counted on its page");
         assert!(l.detail.contains("several-images"), "{}", l.detail);
+    }
+
+    #[test]
+    fn an_image_a_mask_shapes_is_refused_by_name() {
+        // PR 53's review: the protocol carries the image alone, so a page whose image a soft mask
+        // or a mask shapes is refused by name, never read as something no viewer sees.
+        use lopdf::{dictionary, Object, Stream};
+        let profile = Profile::ocr_v0();
+        for (key, reason) in [("SMask", "soft-mask-not-read"), ("Mask", "mask-not-read")] {
+            let mut pdf =
+                lopdf::Document::load_mem(&scanned("200 0 0 100 0 0", 1, None)).expect("loads");
+            let mask = pdf.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image", "Width" => 20, "Height" => 10,
+                    "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+                },
+                vec![255u8; 200],
+            ));
+            let image = pdf
+                .objects
+                .iter_mut()
+                .find_map(|(id, o)| match o {
+                    Object::Stream(s) if *id != mask && s.dict.has(b"Width") => Some(s),
+                    _ => None,
+                })
+                .expect("the page's image");
+            image.dict.set(key, mask);
+            let mut bytes = Vec::new();
+            pdf.save_to(&mut bytes).expect("saves");
+            let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+            let mut fake = Fake::new();
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert!(fake.requests.is_empty(), "{key}: nothing is sent");
+            let l = artifact
+                .assurance
+                .limitations
+                .iter()
+                .find(|l| l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED)
+                .expect("counted on its page");
+            assert!(l.detail.contains(reason), "{}", l.detail);
+        }
     }
 
     #[test]

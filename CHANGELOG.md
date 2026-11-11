@@ -52,9 +52,10 @@ nothing changes but the profile hash: the default profile gained a field, `recog
   word it reads is a `text_run` of derivation `recognized`, under the OCR profile, whose
   `profile_sha256` differs from the default's. The trigger is a reason code, never a score. A page
   that needs OCR and is not read — several images, an inline image, a placement that is not
-  axis-aligned, a filter or colour space the recognizer does not decode — is counted under
-  `scanned-page-not-recognized` with its reason. Nothing recognized is merged with drawn text: the
-  seal refuses a page holding both, so contract §6's placement rule is mechanical.
+  axis-aligned, a filter or colour space the recognizer does not decode, an image a mask shapes —
+  is counted under `scanned-page-not-recognized` with its reason. Nothing recognized is merged
+  with drawn text: the seal refuses a page holding both, so contract §6's placement rule is
+  mechanical.
 - **A PNG or JPEG file is a one-page document**, its page the file's own pixel grid, one pixel to
   one point, declared under `image-resolution-not-read`; the source is the file. Without `--ocr`
   an image file is refused by name, with the flag that reads it. `ground` refuses it by name:

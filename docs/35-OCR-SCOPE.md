@@ -127,7 +127,7 @@ read in parallel: 1.9 s per page and 1.35 GB peak over the 22 fixture pages.
 A page that needs OCR and is not read is counted under a named reason, never dropped in silence:
 several images on the page; an inline image; a stream whose filter the recognizer does not decode
 (CCITT, JBIG2, JPEG 2000); a placement that is not axis-aligned; a colour space or bit depth it does
-not read. A recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
+not read; an image a soft mask or a mask shapes, since the protocol carries the image alone. A recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
 missing one does. A word whose box's centre falls outside the page's visible box is not written and
 is counted; one whose centre is on the page and whose box runs past its edge is written without its
 box (`measured_off_page`), as a drawn run is. Two declared limitations ride on every OCR artifact: text in a rotated or upside-down
