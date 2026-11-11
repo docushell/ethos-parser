@@ -199,14 +199,14 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures and
 | **v2** | A DOCX quote and an XLSX cell both bind to an address the file states, with no synthesised pages | Office formats through one shared record |
 | **v2.2** | **Reopened by row 23.** Clause one — a region is emitted wherever the cut divided a page and nowhere else — **met** at 0.42.0. Clause two — a tag this engine writes is one it can read back and ground against — was closed by row 21 and is **open again**, on an attribute object carrying the derivation. **Not built**<br><br>**Built 2026-09-17 on the branch for the next version:** [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md) (scope), [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) (slices); clause two's tests and measurements are in the slices' S3–S4 and [`measurements/auto-tagging/`](measurements/auto-tagging/); the owner's rows #25–#27 are proposed in the scope's §12 and not yet recorded<br><br>**Met, recorded 2026-09-17 by row 27**: the roadmap's two clauses are the whole gate, and clause two is met on the fixtures. Row 25 records the shape. It ships in the version after 0.58.0 | Layout and accessibility — geometric block structure, and a tag this engine writes and reads back as computed |
 | **v2.3** | A user installs a prebuilt binary on any of three platforms and gets a byte-identical artifact on all three. **Added by row 28**; not met | Distribution — prebuilt binaries and packages, with `locate` and the knobs settled beside them |
-| **v3** | Assist on and assist off produce identical grounded artifacts | Propose-only VLM assist |
-| **v4** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR under its own profile |
+| **v3** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse. **Met by row 120**: the OCR profile pins its recognizer, so its hash, and every OCR'd artifact's, differs from the default's | OCR under its own profile (v4 until row 120) |
+| **v4** | Assist on and assist off produce identical grounded artifacts | Propose-only VLM assist (v3 until row 120) |
 
 Five versions have full scope and milestone documents: v0, v1, v1.1, v1.2 and v2, and **v2.2's first
 half has a scope document** — [`16-D4-SCOPE.md`](16-D4-SCOPE.md), by decision #19. **Its second half
 has none yet.** Row 21 said it never would, because refused work is not work anybody may build; row
 23 reversed that, so the sentence changed from *never* to *not yet* and a scope document is now the
-next thing owed rather than a thing forbidden. v3 and v4 are still one line each, deliberately. The
+next thing owed rather than a thing forbidden. v4 is still one line, deliberately; v3 has its scope, [`35-OCR-SCOPE.md`](35-OCR-SCOPE.md), by row 120. The
 next thing owed was written on 2026-09-16 —
 [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md), with
 [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) beside it — so *none yet* above
