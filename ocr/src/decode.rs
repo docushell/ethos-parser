@@ -89,7 +89,24 @@ pub fn file(data: &[u8]) -> Result<Bgr, String> {
     };
     let img = image::load_from_memory_with_format(data, format)
         .map_err(|_| "image-not-decoded".to_string())?;
-    Ok(from_rgb(img.to_rgb8()))
+    if !img.color().has_alpha() {
+        return Ok(from_rgb(img.to_rgb8()));
+    }
+    // A viewer shows a transparent pixel over white, so it is read over white: dropped, the alpha
+    // would turn black text on a transparent black ground all black. Integers, so every CPU agrees.
+    let rgba = img.to_rgba8();
+    let over_white = |c: u8, a: u8| {
+        let (c, a) = (u32::from(c), u32::from(a));
+        ((c * a + 255 * (255 - a) + 127) / 255) as u8
+    };
+    Ok(from_rgb(image::RgbImage::from_fn(
+        rgba.width(),
+        rgba.height(),
+        |x, y| {
+            let [r, g, b, a] = rgba.get_pixel(x, y).0;
+            image::Rgb([over_white(r, a), over_white(g, a), over_white(b, a)])
+        },
+    )))
 }
 
 fn from_rgb(rgb: image::RgbImage) -> Bgr {
@@ -382,6 +399,18 @@ mod tests {
         };
         let data = [1, 10, 5, 5, 2, 1, 1, 1];
         assert_eq!(unpredict(&data, &p).unwrap(), [10, 15, 20, 11, 16, 21]);
+    }
+
+    #[test]
+    fn a_transparent_pixel_is_read_over_white() {
+        // PR 53's review: with the alpha dropped, black text on a transparent black ground was all
+        // black. A transparent black pixel then an opaque one: white, then black.
+        let mut png = Vec::new();
+        image::RgbaImage::from_raw(2, 1, vec![0, 0, 0, 0, 0, 0, 0, 255])
+            .unwrap()
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        assert_eq!(file(&png).unwrap().px, [255, 255, 255, 0, 0, 0]);
     }
 
     #[test]
