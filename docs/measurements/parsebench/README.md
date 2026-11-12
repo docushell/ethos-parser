@@ -42,7 +42,8 @@ tree is unmodified.
   `ground` element where a run carries none; each table; and each image. Labels come only from what
   the record states: a tagged role path, an `inferred_heading` run, a detected table, a drawn image,
   and `Text` otherwise. The benchmark's LiteParse layout adapter and label mapper are reused under
-  the key `ethos`.
+  the key `ethos`. An image file, which `ground` refuses because Ethos's `ethos.grounding.v1` admits
+  no image media type, takes its runs' boxes and layout units from `extract` instead (decision #124).
 - **A table is one item.** A `ground` element whose runs a reported table holds is not reported
   again. Until 2026-10-04 it was, so every table found was counted twice — once as the table, once
   as its cells' lines — and a page held 131.6 items on average against 33.0 in ground truth. Fixed,
@@ -1438,6 +1439,27 @@ those pages no layout items, the evaluator reports "No layout data for page 0" a
 of its average, which then reads 0.6415. A page that failed is a page that scored nothing, so the
 table divides by all 500. Phase 0's 55.88 read every textless page by rendering it; the
 difference is composite pages, pages that need a renderer, and the image files' layout boxes.
+
+### Image files grounded from `extract` (decision #124, 2026-11-12)
+
+42 of the 500 layout pages are image files. `ground` refuses each by name, since Ethos's
+`ethos.grounding.v1` lists no image media type, so the adapter sent them no text items: 32 had no
+layout at all and scored nothing, 7 scored only on a detected table, and 3 are refused by the OCR lane.
+Their boxes and layout units are in `extract`'s own output — its `geometry` list and each run's
+`layout_unit` — and the adapter now reads them there: each text run with a measured box stands in for
+the element `ground` would make of it, and units and labels follow as on any page. On `bdcebe6`
+with `--ocr`:
+
+| Dimension | Before | After | Pages up / down |
+| --- | ---: | ---: | ---: |
+| Layout | 0.6004 | 0.6282 | 31 / 0 |
+
+No other dimension holds an image file. Overall 53.94 -> 54.49, 109th -> 108th of 157. The 32 pages
+scored for the first time average 0.371, against 0.65 for the rest, and 7 of them score 0: a
+recognized word carries the recognizer's misreads, and a word without a unit is an item of its own.
+The 3 refused image files and one PDF fail on a recognized word whose box encloses nothing, read in
+the padding past a short line's end; keeping such a word's text without a box reads them, measured
+at +0.07 overall alone and +0.12 beside this change, and the owner holds that fix.
 
 ## Scores reused, and a held-out split measured (decision #121, 2026-11-10)
 

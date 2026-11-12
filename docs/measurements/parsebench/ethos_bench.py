@@ -12,7 +12,9 @@ its `layout_unit`s (each `ground` element where a run carries none), each table,
 each figure region, placed on the page's visible box where the record states one (decision #62),
 labelled only from what the record states — a run's page `furniture`, a tagged
 role path, an `inferred_heading` run, a detected table, a drawn image, a figure region (decision
-#46) — and `Text` otherwise. Nothing here infers a role or a unit the engine did not.
+#46) — and `Text` otherwise. Nothing here infers a role or a unit the engine did not. An image file,
+which `ground` refuses because Ethos's `ethos.grounding.v1` admits no image media type, is grounded
+from `extract`'s own output: its runs, with the boxes and layout units `extract` states (decision #124).
 
 `ETHOS_BENCH_OCR=engine` (decision #120) runs `extract --ocr`: the engine's own OCR lane reads every page
 that shows no text and places one image (`docs/35-OCR-SCOPE.md`), and needs `ethos-parser-ocr` beside the
@@ -176,6 +178,19 @@ def _layout(extract: dict, grounding: dict) -> dict:
 
 
 
+def _grounding_from_extract(extract: dict) -> dict:
+    """Decision #124: an image file's `ground` elements as `extract` states them. `ground` refuses the
+    file, since Ethos's grounding schema admits no image media type; each text run with a measured box,
+    in reading order, stands in for the element `ground` would have made of it."""
+    boxes = {g["node"]: g["presence"]["value"] for g in extract.get("geometry", [])
+             if (g.get("presence") or {}).get("state") == "measured"}
+    runs = sorted((n for n in extract["representation"]["nodes"] if n["kind"] == "text_run" and n["id"] in boxes),
+                  key=lambda n: n["ordinal"])
+    elements = [{"id": f"e{k}", "page": n["parent"], "bbox": boxes[n["id"]], "text": n.get("text", "").strip()}
+                for k, n in enumerate(runs)]
+    return {"elements": elements, "spans": [{"element": f"e{k}", "id": n["id"]} for k, n in enumerate(runs)]}
+
+
 def _has_text(extract_json: str) -> bool:
     rep = json.loads(extract_json).get("representation", {})
     return any(n.get("kind") == "text_run" and (n.get("text") or "").strip() for n in rep.get("nodes", []))
@@ -289,7 +304,11 @@ class EthosProvider(Provider):
                 grounding = json.loads(_run(binary, "ground", str(extract_path)))
             except ProviderPermanentError:
                 grounding = {}
-            layout = _layout(json.loads(extract_path.read_text()), grounding)
+            extract = json.loads(extract_path.read_text())
+            media_type = extract["representation"]["source"].get("media_type", "")
+            if not grounding.get("elements") and media_type.startswith("image/"):
+                grounding = _grounding_from_extract(extract)
+            layout = _layout(extract, grounding)
         completed_at = datetime.now()
         raw = {k: v for k, v in artifact.items() if k != "anchor_map"}
         raw["layout"] = layout

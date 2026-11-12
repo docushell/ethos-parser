@@ -32,6 +32,13 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### ParseBench grounds image files from `extract` (decision #124)
+
+- **The ParseBench adapter grounds an image file** from `extract`'s own output where `ground` refuses
+  it — Ethos's `ethos.grounding.v1` admits no image media type: each text run with a measured box, and
+  its layout unit, stands in for the element `ground` would make. Layout 0.6004 -> 0.6282, 31 pages up
+  and none down; overall 53.94 -> 54.49, 109th -> 108th of 157. The engine is unchanged.
+
 ### ParseBench runs with an assist lane outside the engine (decision #123)
 
 - **`ETHOS_BENCH_ASSIST=<answers.json>`** puts LightOnOCR-3-0.8B's reading of a page into the Markdown
