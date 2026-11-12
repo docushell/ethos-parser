@@ -32,6 +32,19 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### ParseBench runs with an assist lane outside the engine (decision #123)
+
+- **`ETHOS_BENCH_ASSIST=<answers.json>`** puts LightOnOCR-3-0.8B's reading of a page into the Markdown
+  the ParseBench adapter scores: its table and chart blocks after the engine's Markdown, or its whole
+  page where the engine's Markdown holds under 30% of the words it reads. Results are reported as
+  "ethos-parser + assist (LightOnOCR-3-0.8B)", beside the engine's own: overall 53.94 -> 71.07, 109th
+  -> 35th of 157 on ParseBench's leaderboard; charts 17.26 -> 65.53, tables 64.54 -> 86.36, content
+  75.24 -> 83.94, formatting 52.61 -> 59.50, grounding unchanged. The engine and its artifacts are
+  unchanged; what the model wrote is not evidence.
+- `docs/measurements/parsebench/lightonocr_answers.py` stores the model's answers: Ghostscript renders
+  each page as ParseBench's own LightOnOCR-3 pipeline does, and mlx-vlm on Apple silicon, or
+  Transformers elsewhere, reads it with greedy decoding. The adapter's README holds the recipe.
+
 ### ParseBench runs reuse the score of an unchanged output (decision #121)
 
 - **`ETHOS_BENCH_LEDGER=<dir>`** makes the ParseBench adapter store each result under the SHA-256 of

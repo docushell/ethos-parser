@@ -25,6 +25,8 @@ ETHOS_PARSER_BIN=<this checkout>/target/release/ethos-parser uv run python ethos
 `--test` runs fifteen pages. A full run takes about eight minutes, two thirds of it scoring. With
 `ETHOS_BENCH_LEDGER=<dir>`, an example whose output is byte-identical to one scored before takes the
 stored score, and a run that changes a few pages scores in under a minute (decision #121, below).
+With `ETHOS_BENCH_ASSIST=<answers.json>`, a model's reading of each page is put into the Markdown it
+scores, and the results are "ethos-parser + assist", not the engine's (decision #123, below).
 
 ## What the adapter does
 
@@ -1475,6 +1477,90 @@ It never disagreed in sign. A typical decision, +0.07 to +0.12, lies inside what
 pages shows by chance, so the split could neither confirm nor refute it; and the fixed 30% read
 7-67% lower than the rest on all six though every census read its pages too, which is what it
 holds, not tuning. The count of pages up and down beside every decision stays the stronger check.
+
+## ethos-parser + assist, outside the engine (decision #123, 2026-11-12)
+
+Under `ETHOS_BENCH_ASSIST=<answers.json>` the adapter puts a model's reading of each page into the
+Markdown ParseBench scores. The model is LightOnOCR-3-0.8B (`lightonai/LightOnOCR-3-0.8B` at
+`36d8636`, Apache-2.0), a document reader of 0.8 billion parameters that ParseBench's leaderboard
+places 18th of 157 on its own, at 74.74. **These are not engine numbers.** They are reported as
+"ethos-parser + assist (LightOnOCR-3-0.8B)", beside the engine's, and what the model wrote is not the
+engine's evidence: the engine and its artifacts are unchanged, and in the product lane that may
+follow, the model's text would be `Proposed` beside the engine's, never in its place
+([`00-NORTH-STAR.md`](../../00-NORTH-STAR.md) row 12).
+
+**The lane, page by page.** The model's answer is rendered to Markdown by ParseBench's own
+LightOnOCR-3 provider code, as its leaderboard row is.
+
+- The engine's Markdown stays, and the model's table and chart blocks follow it, each with the title
+  or caption block set right before it.
+- Where the engine's Markdown holds under 30% of the words the model reads, and the model reads at
+  least half as many words as the engine, the page is the model's instead. On ParseBench these are
+  scans under a stray text layer, scripts and hands the engine's OCR does not read, and fonts whose
+  `/ToUnicode` misleads: one maps every code to itself while its glyphs sit 29 places off, another
+  names only its punctuation. Ghostscript reads both wrong too.
+- Grounding reads the engine's boxes, so it does not move. A page the engine refuses stays refused.
+
+**How to run it.** The answers come from a Python of their own, and Ghostscript renders the pages.
+From the ParseBench checkout, on Apple silicon:
+
+```bash
+uv venv --python 3.12 ~/lighton && uv pip install --python ~/lighton mlx-vlm==0.7.12 mlx==0.32.4 transformers==5.22.2 pillow==13.0.0
+~/lighton/bin/hf download lightonai/LightOnOCR-3-0.8B --revision 36d8636925327c671bd8e479c517a004f7566bd9
+~/lighton/bin/python -m mlx_vlm convert --hf-path <the snapshot it printed> --mlx-path ~/lighton-mlx
+cp <this checkout>/docs/measurements/parsebench/lightonocr_answers.py .
+LIGHTON_MLX=~/lighton-mlx ~/lighton/bin/python lightonocr_answers.py answers.json chart table text_content text_formatting
+ETHOS_BENCH_ASSIST=answers.json ETHOS_BENCH_OCR=engine ETHOS_PARSER_BIN=<this checkout>/target/release/ethos-parser uv run --with aiohttp python ethos_bench.py run ethos_markdown
+```
+
+Elsewhere, install `transformers==5.22.2`, `torch` and `torchvision` instead and leave `LIGHTON_MLX`
+unset; the runner takes CUDA, then MPS, then the CPU. Its answers differ slightly from mlx-vlm's.
+ParseBench's LightOnOCR-3 provider imports `aiohttp`, which its project does not declare, hence
+`--with aiohttp`. The layout pages need no answers.
+
+**Measured** on the engine at `bdcebe6` with `--ocr`, against the same run without the assist flag,
+which scores as decision #120's `--ocr` run above does, on every page:
+
+| Dimension | Engine only | ethos-parser + assist | Pages up / down |
+| --- | ---: | ---: | ---: |
+| Tables | 0.6454 | 0.8636 | 298 / 10 |
+| Charts | 0.1726 | 0.6553 | 443 / 0 |
+| Content faithfulness | 0.7524 | 0.8394 | 77 / 17 |
+| Semantic formatting | 0.5261 | 0.5950 | 51 / 2 |
+| Layout | 0.6004 | 0.6004 | 0 / 0 |
+
+Overall 53.94 -> 71.07: against ParseBench's `leaderboard.csv` of 2026-11-11, 157 rows, 109th ->
+35th, where 49th reads 69.12. The model's whole page stands in for the engine's on 3 chart pages, 1
+table page, and 51 content and 46 formatting pages, mostly the same documents; everywhere else its
+blocks follow the engine's Markdown. The rises are readings: a scan the engine read nothing from is
+transcribed, a misleading font's page reads as words, a table page gains its table. The worst table
+fall (0.647) is a page holding two expected tables, which the scorer paired with the wrong copies;
+content's 17 falls are each 0.16 or less; and two formatting pages fall from 1.0 to 0, where the
+engine's few words held what the rules ask, a bold heading and three numbered titles, and the
+model's page wrote them plain. The 100-page samples projected 72.78; tables and content came in
+lower on the whole benchmark.
+
+**What it costs.** The model took 14.3 hours over the 1,578 pages on an Apple M4 Pro's GPU, median
+24.7 s a page and 56.5 s at the 90th percentile, in up to 3.15 GB of GPU memory, unquantized under
+mlx-vlm; 30 answers stop at the 12,288-token cap, which ParseBench's own pipeline sets too. The
+engine reads every page of the benchmark, OCR included, in minutes.
+
+**Repeatable on one machine.** Decoding is greedy. On one Mac with one set of versions (Python
+3.12.13, mlx 0.32.4, mlx-vlm 0.7.12, Ghostscript 10.06.0), a second run of 20 chart pages gave
+byte-identical answers, 21 pages answered by two runs agreed, the committed runner reproduced two
+stored answers byte for byte, and so did a fresh Python holding only the four pinned packages above.
+Three chart pages first rendered at 221 dpi from a 144 dpi probe were answered again at the 222 dpi
+the runner's 72 dpi probe gives, so every answer is the runner's.
+
+**Measured first, on 100 pages of each dimension.** Appending the model's chart and
+table blocks took charts 0.1756 -> 0.6555 and tables 0.6377 -> 0.8942 on their samples, content
+0.7062 -> 0.7188 (3 pages up, 3 down); the page fallback took content 0.7062 -> 0.8314 (19 up, none
+down) and formatting 0.4532 -> 0.5212. A titles merge — a line of the engine's made a heading at the
+model's level where its text matched one of the model's titles — added 0.4 to the overall for the
+most code, and cost content a little on 9 of 100 pages; the owner chose the lane without it. The
+whole model page appended to the engine's read charts 0.6385 against 0.6555 for its chart blocks
+alone. Before it, assist Phase 0 measured Qwen2.5-VL-7B's tables appended to the engine's chart
+pages: charts 0.1726 -> 0.3982, overall 58.45.
 
 ## What it found that is not fixed
 

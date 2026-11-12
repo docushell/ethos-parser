@@ -25,6 +25,13 @@ pages are rasterized (Ghostscript, 300 dpi) and read by Tesseract (`ETHOS_BENCH_
 goes to Tesseract directly. Results under it are "ethos + OCR pass", reported beside the
 engine-only ones. Needs `gs`, `tesseract` and `qpdf` on PATH.
 
+`ETHOS_BENCH_ASSIST=<answers.json>` (decision #123) adds an assist lane outside the engine, which is
+never the default: a model's reading of each page, stored by `lightonocr_answers.py`, is put into the
+Markdown as the block at the end says. Results under it are "ethos-parser + assist (LightOnOCR-3-0.8B)",
+reported beside the engine-only ones; what the model wrote is not the engine's evidence. ParseBench's
+LightOnOCR-3 provider imports `aiohttp`, which its project does not declare: run with
+`uv run --with aiohttp`.
+
 `ETHOS_BENCH_LEDGER=<dir>` (decision #121) reuses scores: an example whose output and test case are
 byte-identical to one scored before takes the stored result instead of being scored again. The
 scores are the same; a run that changes a few pages scores in under a minute instead of five. The
@@ -192,6 +199,60 @@ def _ocr(source: str, scratch: Path, image: bool) -> str:
     subprocess.run(["qpdf", "--empty", "--pages", *pdfs, "--", str(merged)], check=True, capture_output=True)
     return str(merged)
 
+
+# The assist lane (decision #123), opt in with `ETHOS_BENCH_ASSIST=<answers.json>`. The answers are
+# LightOnOCR-3-0.8B's raw `grounding` replies under `<group dir>/<file>`, rendered to Markdown by
+# ParseBench's own LightOnOCR-3 provider code, as its leaderboard row is. A page the engine read keeps
+# its Markdown and gains the model's table and chart blocks, each with the title or caption block set
+# right before it. A page whose Markdown holds under 30% of the words the model reads there, where the
+# model reads at least half as many words as the engine, is the model's page instead: a scan under a
+# stray text layer, a script or a hand the engine's OCR does not read, a font whose `/ToUnicode`
+# misleads. Grounding reads the engine's boxes, so it does not move; a page the engine refused stays
+# refused.
+_ASSIST = os.environ.get("ETHOS_BENCH_ASSIST")
+if _ASSIST:
+    import importlib
+
+    from parse_bench.inference.providers.parse.qwen import QwenProvider
+
+    try:
+        _LIGHTON = importlib.import_module("parse_bench.inference.providers.parse.lightonocr-3")
+    except ModuleNotFoundError as missing:
+        raise SystemExit(f"ETHOS_BENCH_ASSIST: {missing}; run with `uv run --with aiohttp`") from missing
+    _ANSWERS = json.loads(Path(_ASSIST).read_text())
+
+    def _words(markdown: str) -> set[str]:
+        return {w for w in re.findall(r"\w+", re.sub(r"<[^>]+>", " ", markdown).lower()) if len(w) > 1}
+
+    def _assisted(markdown: str, source: str) -> str:
+        path = Path(source)
+        answer = (_ANSWERS.get(f"{path.parent.name}/{path.name}") or {}).get("raw")
+        if not answer:
+            return markdown
+        blocks = [
+            (b["label"], _LIGHTON._repair_dollar_delimiters(b["text"]))
+            for b in _LIGHTON.LightOnOcr3Provider.parse_blocks(answer)
+        ]
+
+        def render(chosen: list) -> str:
+            text = "\n\n".join(md for md in (_LIGHTON._render_block(label, body) for label, body in chosen) if md)
+            return QwenProvider._sanitize_html_attributes(QwenProvider._convert_md_tables_to_html(text)) if text else ""
+
+        page = render(blocks)
+        theirs, ours = _words(page), _words(markdown)
+        if theirs and len(theirs & ours) / len(theirs) < 0.3 and len(theirs) >= 0.5 * len(ours):
+            return page
+        kept: list = []
+        for k, (label, body) in enumerate(blocks):
+            if _LIGHTON._base_label(label) in ("table", "chart"):
+                before = blocks[k - 1] if k else None
+                if before and _LIGHTON._base_label(before[0]) in ("title", "caption") and before not in kept:
+                    kept.append(before)
+                kept.append((label, body))
+        extra = render(kept)
+        return f"{markdown}\n\n{extra}" if extra else markdown
+
+
 @register_provider("ethos")
 class EthosProvider(Provider):
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
@@ -257,6 +318,8 @@ class EthosProvider(Provider):
             spans = re.compile(r'<t[dh] [^>]*(?:row|col)span="')
             chosen = iter([p if spans.search(p) else c for p, c in zip(projected, converted)])
             markdown = re.sub(r"<table>.*?</table>", lambda _: next(chosen), markdown, flags=re.S)
+        if _ASSIST:
+            markdown = _assisted(markdown, str(raw_result.request.source_file_path))
         layout = raw_result.raw_output.get("layout") or {"pages": [], "items": []}
         layout_pages = []
         for page in layout["pages"]:
