@@ -1130,6 +1130,15 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// Alone, ParseBench tables 0.6224 → 0.6258, eight pages up and none down, overall 51.49 → 51.56;
 /// opendataloader-bench's Markdown unchanged; the gate documents, trees stripped, gain `irs-fw9`
 /// p5's table.
+///
+/// **And columns of prose are no table, and a header set flush left heads figures set flush right**
+/// (decision #127, folded in). A grid whose every column is running text, its first no column of
+/// labels each under thirty characters, is refused in any order and its lines passed over whole: a
+/// two-column article written line by line across its columns read as a table of interleaved lines.
+/// One side of two tables drawn side by side, which stood as one, is unchanged. And a header line whose cells sit on no track, where the nearest centres put
+/// two on one track, gives each the first track ending at or past its own end, where they come out
+/// left to right and each stays clear of its track's neighbours. Measured: no ParseBench or
+/// opendataloader-bench page moves.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

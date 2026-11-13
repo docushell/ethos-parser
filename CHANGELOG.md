@@ -32,6 +32,28 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Columns of prose are no table, and a header set flush left heads figures set flush right (decision #127)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **Columns of prose written row by row are no table.** The whitespace rule took a grid the
+  content stream wrote row by row for a table, so a two-column article whose stream writes each
+  left line, then the right line level with it, read as a table of interleaved lines. A grid whose
+  every column is running text, and whose first column is not short labels, is now refused in any
+  order, and its lines are passed over whole, so no shorter run of them stands either. A table with
+  a column of anything else keeps its row order, and so does one whose first column names every row
+  in under thirty characters: a model's settings, a data dictionary. One side of two tables drawn
+  side by side, which stood as one, is unchanged. This reverses one case decision #125 kept: three
+  columns of prose on a drawn page.
+- **A header set flush left over figures set flush right heads them.** `Qty`, `Rate` and `Amount`
+  set where their columns' space opens sat on no track, and the nearest centres put `Rate` over
+  `Qty`'s figures, so the header stood outside the table and its first row of figures became the
+  header. Each name now heads the first column ending at or past its own end, where the names come
+  out left to right and each starts past the column before. A name reaching back over the figures
+  before it heads nothing.
+- ParseBench (engine and `--ocr`), opendataloader-bench and DocuShell's 49 test PDFs are unchanged on every page; the review's probes of both shapes now read right.
+
 ### A tagged paragraph's next line keeps its line break (decision #126)
 
 Rule ids `markdown-blocks-v14` and `html-blocks-v14`; `profile_sha256` moves.
