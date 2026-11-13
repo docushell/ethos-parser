@@ -1,0 +1,6331 @@
+{
+ "binary": {
+  "path": "target/proto/measure/bin/c9b364c/ethos-parser",
+  "sha256": "7e819094cf441dcf4aab3f759858b9e2819b497a41dae8eef1e1a6f0ecf012c4",
+  "version": "ethos-parser 0.66.0-dev.1"
+ },
+ "by_format": {
+  "docx": {
+   "email": {
+    "passed": 20,
+    "rate": 1.0,
+    "total": 20
+   },
+   "footer": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 20
+   },
+   "footnote": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 20
+   },
+   "header": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 20
+   },
+   "headings_level": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 150
+   },
+   "headings_line": {
+    "passed": 150,
+    "rate": 1.0,
+    "total": 150
+   },
+   "jobs": {
+    "passed": 16,
+    "rate": 0.32,
+    "total": 50
+   },
+   "lines_normalised": {
+    "passed": 98,
+    "rate": 0.4083,
+    "total": 240
+   },
+   "lines_normalised:br-in-run": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 67
+   },
+   "lines_normalised:br-run": {
+    "passed": 58,
+    "rate": 1.0,
+    "total": 58
+   },
+   "lines_normalised:job-tab-dates": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 15
+   },
+   "lines_normalised:tab-in-run": {
+    "passed": 30,
+    "rate": 1.0,
+    "total": 30
+   },
+   "lines_normalised:tab-run": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 60
+   },
+   "lines_normalised:title": {
+    "passed": 10,
+    "rate": 1.0,
+    "total": 10
+   },
+   "lines_strict": {
+    "passed": 68,
+    "rate": 0.2833,
+    "total": 240
+   },
+   "list_items_line": {
+    "passed": 190,
+    "rate": 1.0,
+    "total": 190
+   },
+   "list_items_marked": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 190
+   },
+   "name": {
+    "passed": 10,
+    "rate": 0.5,
+    "total": 20
+   },
+   "one_line": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 20
+   },
+   "phone": {
+    "passed": 20,
+    "rate": 1.0,
+    "total": 20
+   },
+   "table_cells_text": {
+    "passed": 240,
+    "rate": 1.0,
+    "total": 240
+   },
+   "table_rows": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 60
+   },
+   "table_rows_exact": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 60
+   }
+  }
+ },
+ "checks": {
+  "email": {
+   "passed": 20,
+   "rate": 1.0,
+   "total": 20
+  },
+  "footer": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 20
+  },
+  "footnote": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 20
+  },
+  "header": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 20
+  },
+  "headings_level": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 150
+  },
+  "headings_line": {
+   "passed": 150,
+   "rate": 1.0,
+   "total": 150
+  },
+  "jobs": {
+   "passed": 16,
+   "rate": 0.32,
+   "total": 50
+  },
+  "lines_normalised": {
+   "passed": 98,
+   "rate": 0.4083,
+   "total": 240
+  },
+  "lines_normalised:br-in-run": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 67
+  },
+  "lines_normalised:br-run": {
+   "passed": 58,
+   "rate": 1.0,
+   "total": 58
+  },
+  "lines_normalised:job-tab-dates": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 15
+  },
+  "lines_normalised:tab-in-run": {
+   "passed": 30,
+   "rate": 1.0,
+   "total": 30
+  },
+  "lines_normalised:tab-run": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 60
+  },
+  "lines_normalised:title": {
+   "passed": 10,
+   "rate": 1.0,
+   "total": 10
+  },
+  "lines_strict": {
+   "passed": 68,
+   "rate": 0.2833,
+   "total": 240
+  },
+  "list_items_line": {
+   "passed": 190,
+   "rate": 1.0,
+   "total": 190
+  },
+  "list_items_marked": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 190
+  },
+  "name": {
+   "passed": 10,
+   "rate": 0.5,
+   "total": 20
+  },
+  "one_line": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 20
+  },
+  "phone": {
+   "passed": 20,
+   "rate": 1.0,
+   "total": 20
+  },
+  "table_cells_text": {
+   "passed": 240,
+   "rate": 1.0,
+   "total": 240
+  },
+  "table_rows": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 60
+  },
+  "table_rows_exact": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 60
+  }
+ },
+ "documents": {
+  "resume-01.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     9
+    ],
+    "headings_line": [
+     9,
+     9
+    ],
+    "jobs": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     4,
+     8
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     8
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : asha.menon@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91 98765 43210"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 21 July 1996"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Malayalam, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : asha.menon@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91 98765 43210"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 21 July 1996"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Malayalam, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : asha.menon@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91 98765 43210"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 21 July 1996"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Malayalam, Hindi"
+    ],
+    [
+     "one_line",
+     "Data Analyst with nine years of experience in mobile app testing, known for steady quarter-on-quarter growth."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "## Data Analyst — Ambervale Logistics Pvt Ltd, Indore"
+    ],
+    [
+     "headings_level",
+     "## Business Analyst — Juniper Hollow Foods Pvt Ltd, Ahmedabad"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Power BI"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Hyderabad | 2020 | 8.1 CGPA"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Indore | 2017 | 8.2 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Hyderabad | 2020 | 8.1 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Indore | 2017 | 8.2 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Asha Menon · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Ambervale Logistics Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Asha Menon asha.menon@example.com +91 98765 43210"
+    ]
+   ],
+   "markdown_sha256": "daf194a06fc04e7771ca86fa681729e457c7fce567426d57cde67efe2ed5e95f",
+   "sha256": "bb56bd930f926b250388e33d94ed0ba8ee32efcbb51d72e06394c8d87f2df002"
+  },
+  "resume-02.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     10
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:job-tab-dates": [
+     0,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     10
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Accounts Executive — Kestrelwick Retail Ltd, Hyderabad\tNov 2021 – Present"
+    ],
+    [
+     "lines_strict",
+     "Business Analyst — Pinewhistle Motors Ltd, Hyderabad\tNov 2017 – Oct 2021"
+    ],
+    [
+     "lines_strict",
+     "HR Generalist — Juniper Hollow Foods Pvt Ltd, Pune\tFeb 2014 – Oct 2017"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 9 April 1990"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Kannada"
+    ],
+    [
+     "lines_strict",
+     "Address : 78 Hillside Road"
+    ],
+    [
+     "lines_strict",
+     "Kakkanad, Hyderabad 500081"
+    ],
+    [
+     "lines_normalised",
+     "Accounts Executive — Kestrelwick Retail Ltd, Hyderabad Nov 2021 – Present"
+    ],
+    [
+     "lines_normalised",
+     "Business Analyst — Pinewhistle Motors Ltd, Hyderabad Nov 2017 – Oct 2021"
+    ],
+    [
+     "lines_normalised",
+     "HR Generalist — Juniper Hollow Foods Pvt Ltd, Pune Feb 2014 – Oct 2017"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 9 April 1990"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Kannada"
+    ],
+    [
+     "lines_normalised",
+     "Address : 78 Hillside Road"
+    ],
+    [
+     "lines_normalised",
+     "Kakkanad, Hyderabad 500081"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Accounts Executive — Kestrelwick Retail Ltd, Hyderabad Nov 2021 – Present"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Business Analyst — Pinewhistle Motors Ltd, Hyderabad Nov 2017 – Oct 2021"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "HR Generalist — Juniper Hollow Foods Pvt Ltd, Pune Feb 2014 – Oct 2017"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 9 April 1990"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Kannada"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 78 Hillside Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Kakkanad, Hyderabad 500081"
+    ],
+    [
+     "one_line",
+     "Accounts Executive with five years of experience in B2B software sales, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Indore | 2014 | 90.1%"
+    ],
+    [
+     "table_rows",
+     "B.E., Mechanical | Silverbirch Engineering College, Kochi | 2012 | 79.8%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Indore | 2014 | 90.1%"
+    ],
+    [
+     "table_rows_exact",
+     "B.E., Mechanical | Silverbirch Engineering College, Kochi | 2012 | 79.8%"
+    ],
+    [
+     "footer",
+     "Resume of Rohan Iyer · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Kestrelwick Retail Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Rohan Iyer rohani@example.com +91 91234 50607"
+    ],
+    [
+     "name",
+     "Rohan Iyer"
+    ],
+    [
+     "jobs",
+     "Accounts Executive — Kestrelwick Retail Ltd, Hyderabad Nov 2021 – Present"
+    ],
+    [
+     "jobs",
+     "Business Analyst — Pinewhistle Motors Ltd, Hyderabad Nov 2017 – Oct 2021"
+    ],
+    [
+     "jobs",
+     "HR Generalist — Juniper Hollow Foods Pvt Ltd, Pune Feb 2014 – Oct 2017"
+    ]
+   ],
+   "markdown_sha256": "aae3adc29287cbdd6949b91dd76c7d06525ec5e805a29c5f8426eb335e3bcf57",
+   "sha256": "9f76cfdc1a7d685ce6f46938068f65ac7dc13faddfe52c09dd00685e9861bc48"
+  },
+  "resume-03.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     2
+    ],
+    "lines_normalised": [
+     6,
+     14
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     3,
+     3
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     6
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     14
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : m.kulkarni99@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91-99887-76655"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: QA Engineer"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Juniper Hollow Foods Pvt Ltd, Ahmedabad"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: April 2021 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Finance Controller"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Kestrelwick Retail Ltd, Ahmedabad"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: May 2017 to March 2021"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 21 January 1993"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Tamil, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : m.kulkarni99@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91-99887-76655"
+    ],
+    [
+     "lines_normalised",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_normalised",
+     "Duration : April 2021 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_normalised",
+     "Duration : May 2017 to March 2021"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 21 January 1993"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Tamil, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : m.kulkarni99@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91-99887-76655"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : April 2021 to Till Now"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : May 2017 to March 2021"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 21 January 1993"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Tamil, Hindi"
+    ],
+    [
+     "one_line",
+     "QA Engineer with nine years of experience in vendor onboarding, known for dashboards people actually open."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Won the regional team award two years running"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Power BI"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Mumbai | 2017 | 7.2 CGPA"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Bengaluru | 2014 | 8.7 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Mumbai | 2017 | 7.2 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Bengaluru | 2014 | 8.7 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Meera Kulkarni · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Juniper Hollow Foods Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Meera Kulkarni m.kulkarni99@example.com +91-99887-76655"
+    ],
+    [
+     "jobs",
+     "Designation : QA Engineer / Company Name : Juniper Hollow Foods Pvt Ltd, Ahmedabad / Duration : April 2021 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : Finance Controller / Company Name : Kestrelwick Retail Ltd, Ahmedabad / Duration : May 2017 to March 2021"
+    ]
+   ],
+   "markdown_sha256": "75dc5f83d764b829f512f8bee6923377889b946cedff27b31a10b0cac85f0ef5",
+   "sha256": "9577a19b3f19a4a3bf4cbf02d04fc7534b3f2ddf3ff18ccc4df6d9f06dcd7e31"
+  },
+  "resume-04.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     16
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     11
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     16
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Designation : Senior Software Engineer"
+    ],
+    [
+     "lines_strict",
+     "Company : Tamarind Circuitworks, Pune"
+    ],
+    [
+     "lines_strict",
+     "Duration : May 2020 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation : Business Analyst"
+    ],
+    [
+     "lines_strict",
+     "Company : Quillmere Consulting, Pune"
+    ],
+    [
+     "lines_strict",
+     "Duration : September 2018 to April 2020"
+    ],
+    [
+     "lines_strict",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_strict",
+     "Company : Monsoonlight Media, Chennai"
+    ],
+    [
+     "lines_strict",
+     "Duration : January 2015 to August 2018"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 7 May 1991"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Tamil, Hindi"
+    ],
+    [
+     "lines_strict",
+     "Address : 36 Temple Road"
+    ],
+    [
+     "lines_strict",
+     "Powai, Pune 411038"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Senior Software Engineer"
+    ],
+    [
+     "lines_normalised",
+     "Company : Tamarind Circuitworks, Pune"
+    ],
+    [
+     "lines_normalised",
+     "Duration : May 2020 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Business Analyst"
+    ],
+    [
+     "lines_normalised",
+     "Company : Quillmere Consulting, Pune"
+    ],
+    [
+     "lines_normalised",
+     "Duration : September 2018 to April 2020"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_normalised",
+     "Company : Monsoonlight Media, Chennai"
+    ],
+    [
+     "lines_normalised",
+     "Duration : January 2015 to August 2018"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 7 May 1991"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Tamil, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 36 Temple Road"
+    ],
+    [
+     "lines_normalised",
+     "Powai, Pune 411038"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Senior Software Engineer"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Tamarind Circuitworks, Pune"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : May 2020 to Till Now"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Business Analyst"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Quillmere Consulting, Pune"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : September 2018 to April 2020"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Monsoonlight Media, Chennai"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : January 2015 to August 2018"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 36 Temple Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Powai, Pune 411038"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 7 May 1991"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Tamil, Hindi"
+    ],
+    [
+     "one_line",
+     "Senior Software Engineer with six years of experience in warehouse operations, known for dashboards people actually open."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Won the regional team award two years running"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Bengaluru | 2015 | 73.3%"
+    ],
+    [
+     "table_rows",
+     "B.E., Mechanical | Silverbirch Engineering College, Mumbai | 2012 | 6.0 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Bengaluru | 2015 | 73.3%"
+    ],
+    [
+     "table_rows_exact",
+     "B.E., Mechanical | Silverbirch Engineering College, Mumbai | 2012 | 6.0 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Kabir Kapoor · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Tamarind Circuitworks can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Kabir Kapoor kabir.kapoor@example.com +91 90000 12345"
+    ],
+    [
+     "name",
+     "Kabir Kapoor"
+    ],
+    [
+     "jobs",
+     "Designation : Senior Software Engineer / Company : Tamarind Circuitworks, Pune / Duration : May 2020 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : Business Analyst / Company : Quillmere Consulting, Pune / Duration : September 2018 to April 2020"
+    ],
+    [
+     "jobs",
+     "Designation : Finance Controller / Company : Monsoonlight Media, Chennai / Duration : January 2015 to August 2018"
+    ]
+   ],
+   "markdown_sha256": "89dc8f9ebd6dfaa1112cb8146ae6448f477c396a9a687b576a7cfc54ba865713",
+   "sha256": "7499cb951bd1b703e3319b66e394e887dd0b3e9edc14f7e091ef19ff8ba64249"
+  },
+  "resume-05.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     9
+    ],
+    "headings_line": [
+     9,
+     9
+    ],
+    "jobs": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     4,
+     8
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     8
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : nishad@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : (+91) 98989 89898"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 15 April 1993"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised",
+     "Email : nishad@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : (+91) 98989 89898"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 15 April 1993"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : nishad@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : (+91) 98989 89898"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 15 April 1993"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "one_line",
+     "HR Generalist with seven years of experience in vendor onboarding, known for dashboards people actually open."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "## HR Generalist — Tamarind Circuitworks, Pune"
+    ],
+    [
+     "headings_level",
+     "## Customer Success Manager — Juniper Hollow Foods Pvt Ltd, Pune"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Power BI"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Ahmedabad | 2017 | 7.7 CGPA"
+    ],
+    [
+     "table_rows",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Bengaluru | 2015 | 6.9 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Ahmedabad | 2017 | 7.7 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Bengaluru | 2015 | 6.9 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Nisha Deshpande · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Tamarind Circuitworks can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Nisha Deshpande nishad@example.com (+91) 98989 89898"
+    ]
+   ],
+   "markdown_sha256": "cb9a6d70e65381159b47eb052e80d921d1283619a32191797cee62799c1a3483",
+   "sha256": "a2c89c6e9507740d05871eb311a8af873a76421db9671a361399c531bab88658"
+  },
+  "resume-06.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     10
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:job-tab-dates": [
+     0,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     10
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Operations Lead — Tamarind Circuitworks, Ahmedabad\tAug 2019 – Present"
+    ],
+    [
+     "lines_strict",
+     "HR Generalist — Quillmere Consulting, Indore\tOct 2017 – Jul 2019"
+    ],
+    [
+     "lines_strict",
+     "Senior Software Engineer — Pinewhistle Motors Ltd, Pune\tSep 2015 – Sep 2017"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 7 July 1991"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi, Marathi"
+    ],
+    [
+     "lines_strict",
+     "Address : 70 Garden Road"
+    ],
+    [
+     "lines_strict",
+     "Adyar, Chennai 600042"
+    ],
+    [
+     "lines_normalised",
+     "Operations Lead — Tamarind Circuitworks, Ahmedabad Aug 2019 – Present"
+    ],
+    [
+     "lines_normalised",
+     "HR Generalist — Quillmere Consulting, Indore Oct 2017 – Jul 2019"
+    ],
+    [
+     "lines_normalised",
+     "Senior Software Engineer — Pinewhistle Motors Ltd, Pune Sep 2015 – Sep 2017"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 7 July 1991"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 70 Garden Road"
+    ],
+    [
+     "lines_normalised",
+     "Adyar, Chennai 600042"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Operations Lead — Tamarind Circuitworks, Ahmedabad Aug 2019 – Present"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "HR Generalist — Quillmere Consulting, Indore Oct 2017 – Jul 2019"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Senior Software Engineer — Pinewhistle Motors Ltd, Pune Sep 2015 – Sep 2017"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 7 July 1991"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 70 Garden Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Adyar, Chennai 600042"
+    ],
+    [
+     "one_line",
+     "Operations Lead with seven years of experience in mobile app testing, known for dashboards people actually open."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "SQL"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Mumbai | 2015 | 89.1%"
+    ],
+    [
+     "table_rows",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Bengaluru | 2013 | 9.2 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Mumbai | 2015 | 89.1%"
+    ],
+    [
+     "table_rows_exact",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Bengaluru | 2013 | 9.2 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Arjun Sethi · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Tamarind Circuitworks can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Arjun Sethi a.sethi13@example.com +91 97531 86420"
+    ],
+    [
+     "name",
+     "Arjun Sethi"
+    ],
+    [
+     "jobs",
+     "Operations Lead — Tamarind Circuitworks, Ahmedabad Aug 2019 – Present"
+    ],
+    [
+     "jobs",
+     "HR Generalist — Quillmere Consulting, Indore Oct 2017 – Jul 2019"
+    ],
+    [
+     "jobs",
+     "Senior Software Engineer — Pinewhistle Motors Ltd, Pune Sep 2015 – Sep 2017"
+    ]
+   ],
+   "markdown_sha256": "2baf8eb08c3afcbef30409f468c66572463878f58e53c214ace5fb6a70988ad1",
+   "sha256": "f05d9e3a220c46c13d621a86263278a3a6eedfce1368d38bb23ec6e799431b39"
+  },
+  "resume-07.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     2
+    ],
+    "lines_normalised": [
+     6,
+     14
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     3,
+     3
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     6
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     14
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : priya.dutta@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91 92468 13579"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Product Manager"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Brightmarsh Analytics LLP, Ahmedabad"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: February 2021 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: HR Generalist"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Monsoonlight Media, Ahmedabad"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: June 2019 to January 2021"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 13 November 1994"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : priya.dutta@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91 92468 13579"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Product Manager"
+    ],
+    [
+     "lines_normalised",
+     "Duration : February 2021 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : HR Generalist"
+    ],
+    [
+     "lines_normalised",
+     "Duration : June 2019 to January 2021"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 13 November 1994"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : priya.dutta@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91 92468 13579"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Product Manager"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : February 2021 to Till Now"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : HR Generalist"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : June 2019 to January 2021"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 13 November 1994"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "one_line",
+     "Product Manager with four years of experience in B2B software sales, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "BBA | Northmere College, Indore | 2019 | 90.5%"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Kochi | 2016 | 74.3%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "BBA | Northmere College, Indore | 2019 | 90.5%"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Kochi | 2016 | 74.3%"
+    ],
+    [
+     "footer",
+     "Resume of Priya Dutta · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Brightmarsh Analytics LLP can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Priya Dutta priya.dutta@example.com +91 92468 13579"
+    ],
+    [
+     "jobs",
+     "Designation : Product Manager / Company Name : Brightmarsh Analytics LLP, Ahmedabad / Duration : February 2021 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : HR Generalist / Company Name : Monsoonlight Media, Ahmedabad / Duration : June 2019 to January 2021"
+    ]
+   ],
+   "markdown_sha256": "ecfb9ee9f3e16d86f9299314cfce7a67eb83d4b0de8ecf5925a98fad83e4a985",
+   "sha256": "f37c035a6b25a3f4213c4b0c0ca46754c6b70cc6b8f6306ddd1480249d986cb1"
+  },
+  "resume-08.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     3,
+     3
+    ],
+    "lines_normalised": [
+     12,
+     16
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     11,
+     11
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     11,
+     16
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Date of Birth\t: 5 February 1992"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi, Marathi"
+    ],
+    [
+     "lines_strict",
+     "Address : 13 Garden Road"
+    ],
+    [
+     "lines_strict",
+     "Powai, Kochi 682024"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 5 February 1992"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 13 Garden Road"
+    ],
+    [
+     "lines_normalised",
+     "Powai, Kochi 682024"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 5 February 1992"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 13 Garden Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Powai, Kochi 682024"
+    ],
+    [
+     "one_line",
+     "Product Manager with seven years of experience in retail demand forecasting, known for calm release weeks."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Kochi | 2016 | 68.3%"
+    ],
+    [
+     "table_rows",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Ahmedabad | 2013 | 87.9%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Kochi | 2016 | 68.3%"
+    ],
+    [
+     "table_rows_exact",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Ahmedabad | 2013 | 87.9%"
+    ],
+    [
+     "footer",
+     "Resume of Devansh Rao · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Brightmarsh Analytics LLP can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Devansh Rao devanshr@example.com 098765 01234"
+    ],
+    [
+     "name",
+     "Devansh Rao"
+    ]
+   ],
+   "markdown_sha256": "fb278830c8c5833b4c313d5d516ba5cc5dc05b61a3833ac8980f2a43f4ed91c6",
+   "sha256": "98db1aa9306feb1c7484b1b8645589c8b61811ac3fb53326aaf1c90f10b85920"
+  },
+  "resume-09.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     9
+    ],
+    "headings_line": [
+     9,
+     9
+    ],
+    "jobs": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     4,
+     8
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     8
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : k.patil92@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91 99001 12233"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 9 September 1992"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : k.patil92@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91 99001 12233"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 9 September 1992"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : k.patil92@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91 99001 12233"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 9 September 1992"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "one_line",
+     "Business Analyst with nine years of experience in B2B software sales, known for calm release weeks."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "## Business Analyst — Vellora Softworks Pvt Ltd, Ahmedabad"
+    ],
+    [
+     "headings_level",
+     "## QA Engineer — Coralnest Finserv Ltd, Ahmedabad"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "SQL"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Bengaluru | 2016 | 6.5 CGPA"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Bengaluru | 2014 | 65.2%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Bengaluru | 2016 | 6.5 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Bengaluru | 2014 | 65.2%"
+    ],
+    [
+     "footer",
+     "Resume of Kavya Patil · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Vellora Softworks Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Kavya Patil k.patil92@example.com +91 99001 12233"
+    ]
+   ],
+   "markdown_sha256": "e080df3d7d6509af66d9561250f940f5e5474735d77848b5a4825d5533ff6bf6",
+   "sha256": "2f91a51a84ef3390d64bc885fa81ab0e67f556ea93581af5b05af259f72e7256"
+  },
+  "resume-10.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     10
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:job-tab-dates": [
+     0,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     10
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Chennai\tAug 2019 – Present"
+    ],
+    [
+     "lines_strict",
+     "Product Manager — Ambervale Logistics Pvt Ltd, Mumbai\tSep 2016 – Jul 2019"
+    ],
+    [
+     "lines_strict",
+     "HR Generalist — Kestrelwick Retail Ltd, Mumbai\tNov 2012 – Aug 2016"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 25 April 1989"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi, Marathi"
+    ],
+    [
+     "lines_strict",
+     "Address : 41 Temple Road"
+    ],
+    [
+     "lines_strict",
+     "Indiranagar, Mumbai 400076"
+    ],
+    [
+     "lines_normalised",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Chennai Aug 2019 – Present"
+    ],
+    [
+     "lines_normalised",
+     "Product Manager — Ambervale Logistics Pvt Ltd, Mumbai Sep 2016 – Jul 2019"
+    ],
+    [
+     "lines_normalised",
+     "HR Generalist — Kestrelwick Retail Ltd, Mumbai Nov 2012 – Aug 2016"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 25 April 1989"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 41 Temple Road"
+    ],
+    [
+     "lines_normalised",
+     "Indiranagar, Mumbai 400076"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Chennai Aug 2019 – Present"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Product Manager — Ambervale Logistics Pvt Ltd, Mumbai Sep 2016 – Jul 2019"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "HR Generalist — Kestrelwick Retail Ltd, Mumbai Nov 2012 – Aug 2016"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 25 April 1989"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 41 Temple Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Indiranagar, Mumbai 400076"
+    ],
+    [
+     "one_line",
+     "Senior Software Engineer with nine years of experience in mobile app testing, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Hyderabad | 2012 | 82.4%"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Kochi | 2010 | 87.2%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Hyderabad | 2012 | 82.4%"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Kochi | 2010 | 87.2%"
+    ],
+    [
+     "footer",
+     "Resume of Sameer Joshi · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Juniper Hollow Foods Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Sameer Joshi sameer.joshi@example.com +91 93210 98765"
+    ],
+    [
+     "name",
+     "Sameer Joshi"
+    ],
+    [
+     "jobs",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Chennai Aug 2019 – Present"
+    ],
+    [
+     "jobs",
+     "Product Manager — Ambervale Logistics Pvt Ltd, Mumbai Sep 2016 – Jul 2019"
+    ],
+    [
+     "jobs",
+     "HR Generalist — Kestrelwick Retail Ltd, Mumbai Nov 2012 – Aug 2016"
+    ]
+   ],
+   "markdown_sha256": "d236020e04100e87d1e62e067179bba034d1771bbba20128e2658e666e25ca0f",
+   "sha256": "a104e2af91e7b628a3b548b8fdd2201ffb43b14d6ea640cf1a1424bf42c30cb5"
+  },
+  "resume-11.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     2
+    ],
+    "lines_normalised": [
+     6,
+     14
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     3,
+     3
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     6
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     14
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : ishitac@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91 98765 43210"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Business Analyst"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Juniper Hollow Foods Pvt Ltd, Kochi"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: March 2020 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: QA Engineer"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Kestrelwick Retail Ltd, Pune"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: September 2017 to February 2020"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 15 December 1991"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : ishitac@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91 98765 43210"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Business Analyst"
+    ],
+    [
+     "lines_normalised",
+     "Duration : March 2020 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_normalised",
+     "Duration : September 2017 to February 2020"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 15 December 1991"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : ishitac@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91 98765 43210"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Business Analyst"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : March 2020 to Till Now"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : September 2017 to February 2020"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 15 December 1991"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "one_line",
+     "Business Analyst with six years of experience in regional payroll, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "Advanced Excel"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Hyderabad | 2016 | 81.4%"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Bengaluru | 2013 | 9.0 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Hyderabad | 2016 | 81.4%"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Bengaluru | 2013 | 9.0 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Ishita Chawla · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Juniper Hollow Foods Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Ishita Chawla ishitac@example.com +91 98765 43210"
+    ],
+    [
+     "jobs",
+     "Designation : Business Analyst / Company Name : Juniper Hollow Foods Pvt Ltd, Kochi / Duration : March 2020 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : QA Engineer / Company Name : Kestrelwick Retail Ltd, Pune / Duration : September 2017 to February 2020"
+    ]
+   ],
+   "markdown_sha256": "3fa82fb93a3eaf2e510b3e5dcff1356c5349ad6d169631df899253fb3c2cf5d1",
+   "sha256": "db6357c32a95b498d6b4e2964718804fb67df57e79f6920b50365e5632577a49"
+  },
+  "resume-12.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     16
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     11
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     16
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_strict",
+     "Company : Juniper Hollow Foods Pvt Ltd, Pune"
+    ],
+    [
+     "lines_strict",
+     "Duration : September 2019 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_strict",
+     "Company : Brightmarsh Analytics LLP, Bengaluru"
+    ],
+    [
+     "lines_strict",
+     "Duration : May 2016 to August 2019"
+    ],
+    [
+     "lines_strict",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_strict",
+     "Company : Pinewhistle Motors Ltd, Kochi"
+    ],
+    [
+     "lines_strict",
+     "Duration : May 2013 to April 2016"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 11 September 1988"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Gujarati, Hindi"
+    ],
+    [
+     "lines_strict",
+     "Address : 50 Station Road"
+    ],
+    [
+     "lines_strict",
+     "Indiranagar, Bengaluru 560034"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_normalised",
+     "Company : Juniper Hollow Foods Pvt Ltd, Pune"
+    ],
+    [
+     "lines_normalised",
+     "Duration : September 2019 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_normalised",
+     "Company : Brightmarsh Analytics LLP, Bengaluru"
+    ],
+    [
+     "lines_normalised",
+     "Duration : May 2016 to August 2019"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_normalised",
+     "Company : Pinewhistle Motors Ltd, Kochi"
+    ],
+    [
+     "lines_normalised",
+     "Duration : May 2013 to April 2016"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 11 September 1988"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Gujarati, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 50 Station Road"
+    ],
+    [
+     "lines_normalised",
+     "Indiranagar, Bengaluru 560034"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Juniper Hollow Foods Pvt Ltd, Pune"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : September 2019 to Till Now"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : QA Engineer"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Brightmarsh Analytics LLP, Bengaluru"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : May 2016 to August 2019"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Finance Controller"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Pinewhistle Motors Ltd, Kochi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : May 2013 to April 2016"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 50 Station Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Indiranagar, Bengaluru 560034"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 11 September 1988"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Gujarati, Hindi"
+    ],
+    [
+     "one_line",
+     "Sales Manager with nine years of experience in warehouse operations, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Won the regional team award two years running"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Kochi | 2012 | 73.7%"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Pune | 2009 | 92.5%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Kochi | 2012 | 73.7%"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Pune | 2009 | 92.5%"
+    ],
+    [
+     "footer",
+     "Resume of Neel Gokhale · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Juniper Hollow Foods Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Neel Gokhale n.gokhale59@example.com +91 91234 50607"
+    ],
+    [
+     "name",
+     "Neel Gokhale"
+    ],
+    [
+     "jobs",
+     "Designation : Sales Manager / Company : Juniper Hollow Foods Pvt Ltd, Pune / Duration : September 2019 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : QA Engineer / Company : Brightmarsh Analytics LLP, Bengaluru / Duration : May 2016 to August 2019"
+    ],
+    [
+     "jobs",
+     "Designation : Finance Controller / Company : Pinewhistle Motors Ltd, Kochi / Duration : May 2013 to April 2016"
+    ]
+   ],
+   "markdown_sha256": "f5731195f27de237c47c2c7339b0b18c35a1eff4ec28e8db569b4577509758ce",
+   "sha256": "9897fbed851e74cd4bdd01fcfb662cdf2cd879d8c9554157699d31f5edb2b42a"
+  },
+  "resume-13.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     9
+    ],
+    "headings_line": [
+     9,
+     9
+    ],
+    "jobs": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     4,
+     8
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     8
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : tara.rao@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91-99887-76655"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 17 November 1994"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : tara.rao@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91-99887-76655"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 17 November 1994"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : tara.rao@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91-99887-76655"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 17 November 1994"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi"
+    ],
+    [
+     "one_line",
+     "Marketing Associate with four years of experience in payments reconciliation, known for calm release weeks."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "## Marketing Associate — Tamarind Circuitworks, Kochi"
+    ],
+    [
+     "headings_level",
+     "## Data Analyst — Coralnest Finserv Ltd, Mumbai"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Ahmedabad | 2018 | 80.5%"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Pune | 2015 | 9.1 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Tech, Computer Science | Marigold Institute of Technology, Ahmedabad | 2018 | 80.5%"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Pune | 2015 | 9.1 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Tara Rao · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Tamarind Circuitworks can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Tara Rao tara.rao@example.com +91-99887-76655"
+    ]
+   ],
+   "markdown_sha256": "03fb9476f68c0f85554e2e3726b77b1e7799f52e83f089e11576d7c6c56a3515",
+   "sha256": "aa0c4d2cb665a3d8d915207f3725bc488cb23892131b51595e10fb08cca16fc3"
+  },
+  "resume-14.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     10
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:job-tab-dates": [
+     0,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     10
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Accounts Executive — Ambervale Logistics Pvt Ltd, Indore\tJun 2020 – Present"
+    ],
+    [
+     "lines_strict",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Bengaluru\tJul 2017 – May 2020"
+    ],
+    [
+     "lines_strict",
+     "HR Generalist — Coralnest Finserv Ltd, Ahmedabad\tSep 2015 – Jun 2017"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 20 January 1990"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi, Marathi"
+    ],
+    [
+     "lines_strict",
+     "Address : 13 Station Road"
+    ],
+    [
+     "lines_strict",
+     "Powai, Hyderabad 500081"
+    ],
+    [
+     "lines_normalised",
+     "Accounts Executive — Ambervale Logistics Pvt Ltd, Indore Jun 2020 – Present"
+    ],
+    [
+     "lines_normalised",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Bengaluru Jul 2017 – May 2020"
+    ],
+    [
+     "lines_normalised",
+     "HR Generalist — Coralnest Finserv Ltd, Ahmedabad Sep 2015 – Jun 2017"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 20 January 1990"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 13 Station Road"
+    ],
+    [
+     "lines_normalised",
+     "Powai, Hyderabad 500081"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Accounts Executive — Ambervale Logistics Pvt Ltd, Indore Jun 2020 – Present"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Bengaluru Jul 2017 – May 2020"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "HR Generalist — Coralnest Finserv Ltd, Ahmedabad Sep 2015 – Jun 2017"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 20 January 1990"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 13 Station Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Powai, Hyderabad 500081"
+    ],
+    [
+     "one_line",
+     "Accounts Executive with six years of experience in warehouse operations, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Power BI"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Chennai | 2015 | 8.7 CGPA"
+    ],
+    [
+     "table_rows",
+     "BBA | Northmere College, Kochi | 2012 | 67.2%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Chennai | 2015 | 8.7 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "BBA | Northmere College, Kochi | 2012 | 67.2%"
+    ],
+    [
+     "footer",
+     "Resume of Vikram Patil · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Ambervale Logistics Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Vikram Patil vikramp@example.com +91 90000 12345"
+    ],
+    [
+     "name",
+     "Vikram Patil"
+    ],
+    [
+     "jobs",
+     "Accounts Executive — Ambervale Logistics Pvt Ltd, Indore Jun 2020 – Present"
+    ],
+    [
+     "jobs",
+     "Senior Software Engineer — Juniper Hollow Foods Pvt Ltd, Bengaluru Jul 2017 – May 2020"
+    ],
+    [
+     "jobs",
+     "HR Generalist — Coralnest Finserv Ltd, Ahmedabad Sep 2015 – Jun 2017"
+    ]
+   ],
+   "markdown_sha256": "aec1577fcafb6e605ce5fb8e63d850a47be146e55b5d21cd60497515c968c803",
+   "sha256": "bbc384276c367dbb68f7f8ac0b0cfce3b3b7e51b3411bab44a9ecd373fd851fe"
+  },
+  "resume-15.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     2
+    ],
+    "lines_normalised": [
+     6,
+     14
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     3,
+     3
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     6
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     14
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : a.joshi80@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : (+91) 98989 89898"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Sales Manager"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Tamarind Circuitworks, Mumbai"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: October 2022 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Product Manager"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Kestrelwick Retail Ltd, Chennai"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: April 2020 to September 2022"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 1 April 1997"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Malayalam, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : a.joshi80@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : (+91) 98989 89898"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_normalised",
+     "Duration : October 2022 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Product Manager"
+    ],
+    [
+     "lines_normalised",
+     "Duration : April 2020 to September 2022"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 1 April 1997"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Malayalam, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : a.joshi80@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : (+91) 98989 89898"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : October 2022 to Till Now"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Product Manager"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : April 2020 to September 2022"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 1 April 1997"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Malayalam, Hindi"
+    ],
+    [
+     "one_line",
+     "Sales Manager with nine years of experience in vendor onboarding, known for clean month-end closes."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Won the regional team award two years running"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Advanced Excel"
+    ],
+    [
+     "list_items_marked",
+     "SQL"
+    ],
+    [
+     "list_items_marked",
+     "Power BI"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "BBA | Northmere College, Ahmedabad | 2020 | 86.7%"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Hyderabad | 2018 | 87.6%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "BBA | Northmere College, Ahmedabad | 2020 | 86.7%"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Hyderabad | 2018 | 87.6%"
+    ],
+    [
+     "footer",
+     "Resume of Anika Joshi · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Tamarind Circuitworks can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Anika Joshi a.joshi80@example.com (+91) 98989 89898"
+    ],
+    [
+     "jobs",
+     "Designation : Sales Manager / Company Name : Tamarind Circuitworks, Mumbai / Duration : October 2022 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : Product Manager / Company Name : Kestrelwick Retail Ltd, Chennai / Duration : April 2020 to September 2022"
+    ]
+   ],
+   "markdown_sha256": "e67391e61580f0991e8bac2292b98a32e21b851799801c2d106f8793d6d29207",
+   "sha256": "d3fbb3dfb00134cc4657c8cf8e5c136172226ba740055411ea19a3a2af9abb8d"
+  },
+  "resume-16.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     3,
+     3
+    ],
+    "lines_normalised": [
+     12,
+     16
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     11,
+     11
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     11,
+     16
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Date of Birth\t: 22 February 1992"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Hindi, Marathi"
+    ],
+    [
+     "lines_strict",
+     "Address : 61 Lakeview Road"
+    ],
+    [
+     "lines_strict",
+     "Madhapur, Indore 452010"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 22 February 1992"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 61 Lakeview Road"
+    ],
+    [
+     "lines_normalised",
+     "Madhapur, Indore 452010"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 22 February 1992"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Hindi, Marathi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 61 Lakeview Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Madhapur, Indore 452010"
+    ],
+    [
+     "one_line",
+     "Product Manager with five years of experience in B2B software sales, known for calm release weeks."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Built a weekly sales dashboard used by six regional heads"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Led the move of payroll for 900 staff to a new system"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "list_items_marked",
+     "Advanced Excel"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Kochi | 2016 | 7.9 CGPA"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Mumbai | 2013 | 83.6%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Kochi | 2016 | 7.9 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Mumbai | 2013 | 83.6%"
+    ],
+    [
+     "footer",
+     "Resume of Farhan Kulkarni · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Monsoonlight Media can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Farhan Kulkarni farhan.kulkarni@example.com +91 97531 86420"
+    ],
+    [
+     "name",
+     "Farhan Kulkarni"
+    ]
+   ],
+   "markdown_sha256": "a097bb89de2284ff3861953b922e92aac0182f76b2fb42dcc52b806d831c4ec0",
+   "sha256": "f619f43aebda5a346957df7097c839477f4b3bbbc62961d9ff6fdfa03289e2a5"
+  },
+  "resume-17.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     9
+    ],
+    "headings_line": [
+     9,
+     9
+    ],
+    "jobs": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     4,
+     8
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     8
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : leelas@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91 92468 13579"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 19 December 1996"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Malayalam, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Email : leelas@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91 92468 13579"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 19 December 1996"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Malayalam, Hindi"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : leelas@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91 92468 13579"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 19 December 1996"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Malayalam, Hindi"
+    ],
+    [
+     "one_line",
+     "HR Generalist with nine years of experience in regional payroll, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "## HR Generalist — Kestrelwick Retail Ltd, Pune"
+    ],
+    [
+     "headings_level",
+     "## Data Analyst — Ambervale Logistics Pvt Ltd, Mumbai"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Won the regional team award two years running"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "Power BI"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Ahmedabad | 2019 | 79.6%"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Kochi | 2017 | 8.6 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Ahmedabad | 2019 | 79.6%"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Kochi | 2017 | 8.6 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Leela Shah · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Kestrelwick Retail Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Leela Shah leelas@example.com +91 92468 13579"
+    ]
+   ],
+   "markdown_sha256": "a55f9584b672a9cf46e11712104f6301618abe53f3734466428e541e71aa9d7d",
+   "sha256": "d22ba60d309151ae71d4a716c85f67e1d4fc5344345942947bad34e24a3192f8"
+  },
+  "resume-18.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     10
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:job-tab-dates": [
+     0,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     10
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Data Analyst — Tamarind Circuitworks, Hyderabad\tFeb 2021 – Present"
+    ],
+    [
+     "lines_strict",
+     "Operations Lead — Coralnest Finserv Ltd, Indore\tMar 2019 – Jan 2021"
+    ],
+    [
+     "lines_strict",
+     "Sales Manager — Ambervale Logistics Pvt Ltd, Kochi\tOct 2016 – Feb 2019"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 8 June 1990"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Kannada"
+    ],
+    [
+     "lines_strict",
+     "Address : 58 Garden Road"
+    ],
+    [
+     "lines_strict",
+     "Powai, Hyderabad 500081"
+    ],
+    [
+     "lines_normalised",
+     "Data Analyst — Tamarind Circuitworks, Hyderabad Feb 2021 – Present"
+    ],
+    [
+     "lines_normalised",
+     "Operations Lead — Coralnest Finserv Ltd, Indore Mar 2019 – Jan 2021"
+    ],
+    [
+     "lines_normalised",
+     "Sales Manager — Ambervale Logistics Pvt Ltd, Kochi Oct 2016 – Feb 2019"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 8 June 1990"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Kannada"
+    ],
+    [
+     "lines_normalised",
+     "Address : 58 Garden Road"
+    ],
+    [
+     "lines_normalised",
+     "Powai, Hyderabad 500081"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Data Analyst — Tamarind Circuitworks, Hyderabad Feb 2021 – Present"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Operations Lead — Coralnest Finserv Ltd, Indore Mar 2019 – Jan 2021"
+    ],
+    [
+     "lines_normalised:job-tab-dates",
+     "Sales Manager — Ambervale Logistics Pvt Ltd, Kochi Oct 2016 – Feb 2019"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 8 June 1990"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Kannada"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 58 Garden Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Powai, Hyderabad 500081"
+    ],
+    [
+     "one_line",
+     "Data Analyst with seven years of experience in B2B software sales, known for short hiring cycles."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Ran quarterly planning with the regional teams"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "list_items_marked",
+     "SQL"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "Selenium"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "MBA, Finance | Coralnest School of Management, Hyderabad | 2015 | 66.9%"
+    ],
+    [
+     "table_rows",
+     "M.Sc, Statistics | Ambervale University, Chennai | 2012 | 78.0%"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "MBA, Finance | Coralnest School of Management, Hyderabad | 2015 | 66.9%"
+    ],
+    [
+     "table_rows_exact",
+     "M.Sc, Statistics | Ambervale University, Chennai | 2012 | 78.0%"
+    ],
+    [
+     "footer",
+     "Resume of Omkar Kulkarni · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Tamarind Circuitworks can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Omkar Kulkarni o.kulkarni90@example.com 098765 01234"
+    ],
+    [
+     "name",
+     "Omkar Kulkarni"
+    ],
+    [
+     "jobs",
+     "Data Analyst — Tamarind Circuitworks, Hyderabad Feb 2021 – Present"
+    ],
+    [
+     "jobs",
+     "Operations Lead — Coralnest Finserv Ltd, Indore Mar 2019 – Jan 2021"
+    ],
+    [
+     "jobs",
+     "Sales Manager — Ambervale Logistics Pvt Ltd, Kochi Oct 2016 – Feb 2019"
+    ]
+   ],
+   "markdown_sha256": "3ac825ba66fa841b5d1a45f0ed6b10ee136d4508ca993438e7696ee8fb73a500",
+   "sha256": "c12adaa85b53b7918f4edf2d977effa3a42d8b670f80f7a203efac3e8de140b8"
+  },
+  "resume-19.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     2
+    ],
+    "lines_normalised": [
+     6,
+     14
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     2
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     3,
+     3
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     6
+    ],
+    "lines_normalised:title": [
+     1,
+     1
+    ],
+    "lines_strict": [
+     3,
+     14
+    ],
+    "list_items_line": [
+     9,
+     9
+    ],
+    "list_items_marked": [
+     0,
+     9
+    ],
+    "name": [
+     1,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Email : ritu.nair@example.com"
+    ],
+    [
+     "lines_strict",
+     "Mobile : +91 99001 12233"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Marketing Associate"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Vellora Softworks Pvt Ltd, Bengaluru"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: January 2019 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation\t: Customer Success Manager"
+    ],
+    [
+     "lines_strict",
+     "Company Name\t: Ambervale Logistics Pvt Ltd, Bengaluru"
+    ],
+    [
+     "lines_strict",
+     "Duration\t: December 2016 to December 2018"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 3 March 1991"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Kannada"
+    ],
+    [
+     "lines_normalised",
+     "Email : ritu.nair@example.com"
+    ],
+    [
+     "lines_normalised",
+     "Mobile : +91 99001 12233"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Marketing Associate"
+    ],
+    [
+     "lines_normalised",
+     "Duration : January 2019 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Customer Success Manager"
+    ],
+    [
+     "lines_normalised",
+     "Duration : December 2016 to December 2018"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 3 March 1991"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Kannada"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Email : ritu.nair@example.com"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Mobile : +91 99001 12233"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Marketing Associate"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : January 2019 to Till Now"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Designation : Customer Success Manager"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Duration : December 2016 to December 2018"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 3 March 1991"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Kannada"
+    ],
+    [
+     "one_line",
+     "Marketing Associate with seven years of experience in retail demand forecasting, known for calm release weeks."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Handled escalations from key accounts"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Reduced test-cycle time by a third with a shared regression suite"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Tally"
+    ],
+    [
+     "list_items_marked",
+     "SQL"
+    ],
+    [
+     "list_items_marked",
+     "Python"
+    ],
+    [
+     "list_items_marked",
+     "Salesforce"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.E., Mechanical | Silverbirch Engineering College, Mumbai | 2015 | 8.7 CGPA"
+    ],
+    [
+     "table_rows",
+     "BBA | Northmere College, Bengaluru | 2012 | 6.0 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.E., Mechanical | Silverbirch Engineering College, Mumbai | 2015 | 8.7 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "BBA | Northmere College, Bengaluru | 2012 | 6.0 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Ritu Nair · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Vellora Softworks Pvt Ltd can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Ritu Nair ritu.nair@example.com +91 99001 12233"
+    ],
+    [
+     "jobs",
+     "Designation : Marketing Associate / Company Name : Vellora Softworks Pvt Ltd, Bengaluru / Duration : January 2019 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : Customer Success Manager / Company Name : Ambervale Logistics Pvt Ltd, Bengaluru / Duration : December 2016 to December 2018"
+    ]
+   ],
+   "markdown_sha256": "4af6944c729586c2cdc8dc9b0cfc0df86188be046ebeeb46cac6e04d12b4a28f",
+   "sha256": "5032c8d9e1a09d97ae8964d209f5d19c6c4f7cfd3da801326ac39bc1282e7cdb"
+  },
+  "resume-20.docx": {
+   "checks": {
+    "email": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "footnote": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     7
+    ],
+    "headings_line": [
+     7,
+     7
+    ],
+    "jobs": [
+     0,
+     3
+    ],
+    "lines_normalised": [
+     3,
+     16
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     11
+    ],
+    "lines_normalised:br-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     2,
+     16
+    ],
+    "list_items_line": [
+     10,
+     10
+    ],
+    "list_items_marked": [
+     0,
+     10
+    ],
+    "name": [
+     0,
+     1
+    ],
+    "one_line": [
+     0,
+     1
+    ],
+    "phone": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     12,
+     12
+    ],
+    "table_rows": [
+     0,
+     3
+    ],
+    "table_rows_exact": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_strict",
+     "Company : Brightmarsh Analytics LLP, Indore"
+    ],
+    [
+     "lines_strict",
+     "Duration : February 2021 to Till Now"
+    ],
+    [
+     "lines_strict",
+     "Designation : Data Analyst"
+    ],
+    [
+     "lines_strict",
+     "Company : Coralnest Finserv Ltd, Bengaluru"
+    ],
+    [
+     "lines_strict",
+     "Duration : March 2019 to January 2021"
+    ],
+    [
+     "lines_strict",
+     "Designation : HR Generalist"
+    ],
+    [
+     "lines_strict",
+     "Company : Vellora Softworks Pvt Ltd, Bengaluru"
+    ],
+    [
+     "lines_strict",
+     "Duration : July 2016 to February 2019"
+    ],
+    [
+     "lines_strict",
+     "Date of Birth\t: 28 June 1992"
+    ],
+    [
+     "lines_strict",
+     "Nationality\t: Indian"
+    ],
+    [
+     "lines_strict",
+     "Languages Known\t: English, Tamil, Hindi"
+    ],
+    [
+     "lines_strict",
+     "Address : 16 Garden Road"
+    ],
+    [
+     "lines_strict",
+     "Adyar, Bengaluru 560034"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_normalised",
+     "Company : Brightmarsh Analytics LLP, Indore"
+    ],
+    [
+     "lines_normalised",
+     "Duration : February 2021 to Till Now"
+    ],
+    [
+     "lines_normalised",
+     "Designation : Data Analyst"
+    ],
+    [
+     "lines_normalised",
+     "Company : Coralnest Finserv Ltd, Bengaluru"
+    ],
+    [
+     "lines_normalised",
+     "Duration : March 2019 to January 2021"
+    ],
+    [
+     "lines_normalised",
+     "Designation : HR Generalist"
+    ],
+    [
+     "lines_normalised",
+     "Company : Vellora Softworks Pvt Ltd, Bengaluru"
+    ],
+    [
+     "lines_normalised",
+     "Duration : July 2016 to February 2019"
+    ],
+    [
+     "lines_normalised",
+     "Date of Birth : 28 June 1992"
+    ],
+    [
+     "lines_normalised",
+     "Languages Known : English, Tamil, Hindi"
+    ],
+    [
+     "lines_normalised",
+     "Address : 16 Garden Road"
+    ],
+    [
+     "lines_normalised",
+     "Adyar, Bengaluru 560034"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Sales Manager"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Brightmarsh Analytics LLP, Indore"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : February 2021 to Till Now"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : Data Analyst"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Coralnest Finserv Ltd, Bengaluru"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : March 2019 to January 2021"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Designation : HR Generalist"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Company : Vellora Softworks Pvt Ltd, Bengaluru"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Duration : July 2016 to February 2019"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Address : 16 Garden Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Adyar, Bengaluru 560034"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Date of Birth : 28 June 1992"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Languages Known : English, Tamil, Hindi"
+    ],
+    [
+     "one_line",
+     "Sales Manager with five years of experience in mobile app testing, known for calm release weeks."
+    ],
+    [
+     "headings_level",
+     "# Professional Summary"
+    ],
+    [
+     "headings_level",
+     "# Work Experience"
+    ],
+    [
+     "headings_level",
+     "# Key Achievements"
+    ],
+    [
+     "headings_level",
+     "# Skills"
+    ],
+    [
+     "headings_level",
+     "## Technical Skills"
+    ],
+    [
+     "headings_level",
+     "# Education"
+    ],
+    [
+     "headings_level",
+     "# Personal Details"
+    ],
+    [
+     "list_items_marked",
+     "Owned the weekly reporting pack for leadership"
+    ],
+    [
+     "list_items_marked",
+     "Mentored two junior colleagues"
+    ],
+    [
+     "list_items_marked",
+     "Reconciled ledgers across three entities"
+    ],
+    [
+     "list_items_marked",
+     "Cut the monthly close from nine working days to five"
+    ],
+    [
+     "list_items_marked",
+     "Moved 40 vendor contracts onto one renewal calendar"
+    ],
+    [
+     "list_items_marked",
+     "Trained twelve new joiners on the reconciliation workflow"
+    ],
+    [
+     "list_items_marked",
+     "Stakeholder reporting"
+    ],
+    [
+     "list_items_marked",
+     "GST filing"
+    ],
+    [
+     "list_items_marked",
+     "SQL"
+    ],
+    [
+     "list_items_marked",
+     "Jira"
+    ],
+    [
+     "table_rows",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows",
+     "B.E., Mechanical | Silverbirch Engineering College, Ahmedabad | 2015 | 6.2 CGPA"
+    ],
+    [
+     "table_rows",
+     "B.Com | Tamarind College of Commerce, Chennai | 2013 | 9.7 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "Qualification | Institution | Year | Score"
+    ],
+    [
+     "table_rows_exact",
+     "B.E., Mechanical | Silverbirch Engineering College, Ahmedabad | 2015 | 6.2 CGPA"
+    ],
+    [
+     "table_rows_exact",
+     "B.Com | Tamarind College of Commerce, Chennai | 2013 | 9.7 CGPA"
+    ],
+    [
+     "footer",
+     "Resume of Yash Rao · Updated October 2026"
+    ],
+    [
+     "footnote",
+     "Two referees from Brightmarsh Analytics LLP can be contacted after an interview."
+    ],
+    [
+     "header",
+     "Yash Rao yashr@example.com +91 93210 98765"
+    ],
+    [
+     "name",
+     "Yash Rao"
+    ],
+    [
+     "jobs",
+     "Designation : Sales Manager / Company : Brightmarsh Analytics LLP, Indore / Duration : February 2021 to Till Now"
+    ],
+    [
+     "jobs",
+     "Designation : Data Analyst / Company : Coralnest Finserv Ltd, Bengaluru / Duration : March 2019 to January 2021"
+    ],
+    [
+     "jobs",
+     "Designation : HR Generalist / Company : Vellora Softworks Pvt Ltd, Bengaluru / Duration : July 2016 to February 2019"
+    ]
+   ],
+   "markdown_sha256": "09872a773af9cf433c1ab4a5fac8e9bcf6bc66bccc34fea2fc49f24c0dab4bdf",
+   "sha256": "e22f400fd5d126834567e0bad4d88e8273125b5c2c4c7c28b772c4396bd6174b"
+  }
+ },
+ "documents_scored": 20,
+ "generator": [
+  "office-resumes/1"
+ ],
+ "producers": [],
+ "set": "target/measure-sets/office-resumes"
+}
