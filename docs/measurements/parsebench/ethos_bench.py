@@ -219,7 +219,7 @@ def _ocr(source: str, scratch: Path, image: bool) -> str:
 # LightOnOCR-3-0.8B's raw `grounding` replies under `<group dir>/<file>`, rendered to Markdown by
 # ParseBench's own LightOnOCR-3 provider code, as its leaderboard row is. A page the engine read keeps
 # its Markdown and gains the model's table and chart blocks, each with the title or caption block set
-# right before it. A page whose Markdown holds under 30% of the words the model reads there, where the
+# right before it. A page whose Markdown holds under 30% of the distinct words (two letters or more) the model reads there, where the
 # model reads at least half as many words as the engine, is the model's page instead: a scan under a
 # stray text layer, a script or a hand the engine's OCR does not read, a font whose `/ToUnicode`
 # misleads. Grounding reads the engine's boxes, so it does not move; a page the engine refused stays
