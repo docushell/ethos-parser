@@ -154,6 +154,8 @@ recognized runs as runs; a rule that reads a font reads none.
 - Image files: "Yes, include image files".
 - Models: "Commit them".
 - Toolchain: "Install it".
+- Releases, 2026-11-14: every release archive carries `ethos-parser-ocr` beside `ethos-parser`,
+  built on its own toolchain and fingerprinted with one `--ocr` read (`docs/RELEASING.md` §8).
 
 ## 10. The acceptance bar, set before the code
 
@@ -196,5 +198,5 @@ recognized runs as runs; a rule that reads a font reads none.
 
 Photos (perspective, lighting, orientation); composite pages (mixed raster content, strips, soft
 masks); CCITT, JPEG 2000 and JBIG2; grounding an image file; pages with a stray text layer (contract §6 as it stands); tables,
-headings and emphasis on recognized pages; languages other than English; how the recognizer is
-released and installed.
+headings and emphasis on recognized pages; languages other than English. How the recognizer is
+released is decided (§9): beside `ethos-parser` in every release archive.

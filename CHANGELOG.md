@@ -32,6 +32,20 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Build and release
+
+- **The Linux binary is built on `ubuntu-22.04`**, so it needs glibc 2.35 or newer (Ubuntu 22.04,
+  Debian 12) rather than 0.65.0's 2.39, which came from two weak symbols. `ci/release-artifacts.sh`
+  prints the highest `GLIBC_` version each Linux binary references and fails the release above
+  2.35. GitHub supports that runner image until 2027-04-17.
+- **Every release archive carries `ethos-parser-ocr`** beside `ethos-parser`, where `--ocr` looks
+  for it, and `NOTICE`, which now names the PP-OCRv5 models (Apache-2.0). The script builds the
+  recognizer on its own pinned toolchain and adds one `extract --ocr` read of a committed scan to
+  the fingerprint the four runners must agree on. The recognizer refuses an x86-64 CPU without AVX2
+  and FMA, so the script asks Rosetta 2 to report them (`ROSETTA_ADVERTISE_AVX=1`); the local
+  `x86_64-apple-darwin` pair then matches the arm64 fingerprint byte for byte. The engine's output
+  is unchanged.
+
 ### Columns of prose are no table, and a header set flush left heads figures set flush right (decision #127)
 
 Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no

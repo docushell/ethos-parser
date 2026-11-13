@@ -81,16 +81,18 @@ jobs:
       # `--native` builds nothing else, so nothing here is cross-compiled and every packaged binary
       # was executed by the kind of machine it is for. Why each runner:
       #
-      # - `x86_64-unknown-linux-gnu` on `ubuntu-24.04`: gnu rather than musl. The runner's own
+      # - `x86_64-unknown-linux-gnu` on `ubuntu-22.04`: gnu rather than musl. The runner's own
       #   triple is x86_64-unknown-linux-gnu, so this is the one Linux binary that is `verified` in
       #   the script's sense with no second libc, no `apt-get install musl-tools`, no
       #   `rustup target add` and no cross-link step to be wrong about. The cost is a glibc floor:
-      #   the binary links the runner image's glibc and runs on distributions at least that new. A
-      #   static musl build lifts that and is one more leg — musl-tools plus
-      #   `--target x86_64-unknown-linux-musl` — when somebody asks for it; pinning `runs-on` to an
-      #   older Ubuntu lowers the floor too. Pinned, not `ubuntu-latest`: that label moves to
-      #   Ubuntu 26 from 2026-10-19, which would raise the floor through a label change rather than
-      #   a commit.
+      #   the binary links the runner image's glibc and runs on distributions at least that new.
+      #   On `ubuntu-24.04` that was 2.39 (0.65.0, for two weak symbols); this image's 2.35 runs on
+      #   Ubuntu 22.04 and Debian 12, and the script fails a binary that needs more. Pinned, not
+      #   `ubuntu-latest`: that label moves to Ubuntu 26 from 2026-10-19, which would raise the floor
+      #   through a label change rather than a commit. GitHub began retiring this image on
+      #   2026-09-17 and supports it until 2027-04-17 (actions/runner-images#14254); after that
+      #   the leg fails to schedule, and the floor needs another route — a 22.04 container on a
+      #   newer runner, or a static musl leg (musl-tools plus `--target x86_64-unknown-linux-musl`).
       # - `x86_64-pc-windows-msvc` on `windows-latest`: a `.tar.gz` here too, not a `.zip` — one
       #   packaging path, GNU tar in Git Bash, and no dependency on `zip` or 7-Zip being on the
       #   image. Windows 10 and later ship `tar`, and Windows 11's Explorer opens the archive.
@@ -110,7 +112,7 @@ jobs:
         env:
           WANTED: ${{ github.event_name == 'workflow_dispatch' && inputs.targets || '' }}
           TARGETS: >-
-            [{"target": "x86_64-unknown-linux-gnu", "os": "ubuntu-24.04"},
+            [{"target": "x86_64-unknown-linux-gnu", "os": "ubuntu-22.04"},
              {"target": "x86_64-pc-windows-msvc", "os": "windows-latest"},
              {"target": "aarch64-apple-darwin", "os": "macos-latest"},
              {"target": "x86_64-apple-darwin", "os": "macos-15-intel"}]
@@ -154,7 +156,8 @@ jobs:
       # As ci.yml's `check` job does, and for the reasons given there: rust-toolchain.toml is what
       # selects 1.88.0; the action only preinstalls it, and naming the version keeps the two in
       # agreement. No rust-cache: a release is built cold from the pinned lockfile, and this
-      # workflow runs rarely.
+      # workflow runs rarely. The recognizer's own compiler (ocr/rust-toolchain.toml) is installed
+      # and held to its pin by the script, which builds it.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"

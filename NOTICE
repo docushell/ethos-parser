@@ -128,6 +128,25 @@ binary form:
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
+PP-OCRv5 mobile models (Apache-2.0)
+--------------------------------------------------------------------------------
+
+ocr/models/ holds PaddleOCR's PP-OCRv5 mobile text detection and English
+recognition models and their character dictionary, unmodified, in the ONNX
+conversion RapidOCR publishes (source, version and SHA-256 in
+ocr/models/MODELS.md). They are built into ethos-parser-ocr, the recognizer
+behind --ocr, which each release archive carries beside ethos-parser.
+
+  PaddleOCR: Copyright (c) 2016 PaddlePaddle Authors. Apache License 2.0.
+  RapidOCR:  Copyright (c) 2021 RapidOCR Authors. Apache License 2.0.
+
+The licence text is ./LICENSE. Neither project's repository carries a NOTICE
+file (checked 2026-11-14), so there is no further notice to reproduce.
+ocr/vendor/rten-vecmath is rten-vecmath 0.26.0 (MIT OR Apache-2.0, used here
+under Apache-2.0), with the changes recorded in
+ocr/vendor/rten-vecmath/ETHOS-PATCH.md.
+
+--------------------------------------------------------------------------------
 Adobe CMap resources: NOT PRESENT
 --------------------------------------------------------------------------------
 
