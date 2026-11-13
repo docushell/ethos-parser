@@ -98,7 +98,7 @@ pub use error::EngineError;
 pub use figures::FigureRecord;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
 pub use html::{
-    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V13, HTML_SCHEMA_VERSION,
+    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V14, HTML_SCHEMA_VERSION,
 };
 pub use identity::{
     ArtifactBinding, ArtifactIdentity, CoordinateOrigin, CoordinateSystem, CoordinateUnit,
@@ -117,7 +117,7 @@ pub use markdown::{
     GFM_LIST_ITEM_RUN_JOINS, GFM_ROW_ZERO_SEPARATOR, GFM_SPAN_SLOTS_UNREPRESENTABLE,
     GFM_TABLE_NOT_PROJECTED, HEADING_LEVEL_UNREPRESENTABLE, HEADING_LEVEL_UNRESOLVED,
     HEADING_NUMBER_JOINS, LAYOUT_UNIT_GAP_JOINS, LAYOUT_UNIT_LINE_JOINS, MARKDOWN_ARTIFACT_TYPE,
-    MARKDOWN_RULE_BLOCKS_V13, MARKDOWN_SCHEMA_VERSION, MCID_RUN_JOINS,
+    MARKDOWN_RULE_BLOCKS_V14, MARKDOWN_SCHEMA_VERSION, MCID_RUN_JOINS,
 };
 pub use outlines::OutlineRecord;
 pub use profile::{

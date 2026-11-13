@@ -32,6 +32,34 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A tagged paragraph's next line keeps its line break (decision #126)
+
+Rule ids `markdown-blocks-v14` and `html-blocks-v14`; `profile_sha256` moves.
+
+- **A run that opens its block element's next line joins it with a line break,** where decision #84
+  wrote one space. Chromium's export opens a marked-content sequence at every line, so a resume's
+  fields read as one line: `Designation: **Relationship Manager** Company: ICICI Bank Duration: …`.
+  Each field now keeps its line, inside one Markdown block or one `<p>`, as decision #109 keeps an
+  untagged paragraph's lines.
+- **One space still in a heading**, which an ATX heading must keep on one line; **on a line its column
+  wrapped** (decisions #47, #81, #85); **from a bold run onto a bold run**, so a bold paragraph its
+  column wrapped stays one span, unless the second is a label ending in `:` — `**Duration:** 2019`
+  keeps its line; and **before a line CommonMark reads as a block of its own** — a list marker, `>`,
+  `#`, a fence, an HTML tag, or a line of `=`, `-` or `|` alone — so HTML's one `<p>` and the
+  Markdown agree. A soft wrap inside one sequence stays a space.
+- **A short bold line over another bold line reads as one span**, `**ICICI Bank Relationship
+  Manager**`: two lines alone cannot tell it from a wrap, since the second's first word would not
+  have fitted after the first within either.
+- **Any other span closes at the line's end** and opens again on the next: `*a*` over `*b*` is written
+  where `*a b*` was, and so is a script.
+- The join is unchanged, so `ground`, `locate` and the census are too; an untagged page projects byte
+  for byte as before.
+- ParseBench: content 0.6750 -> 0.6753 engine-only and 0.7546 -> 0.7549 with `--ocr` (16 pages up,
+  5 down by at most 0.0024; the words are the same, only line breaks move), formatting 0.5131 ->
+  0.5132, tables, charts and grounding unchanged on every page. opendataloader-bench is byte for
+  byte, none of its documents tagged. DocuShell's made-up resume sets, from raw Markdown: all jobs
+  right 67% -> 100% (main) and 75% -> 100% (holdout).
+
 ### A scanned page keeps a word read past its line's end, and its columns are no table (decision #125)
 
 - **A recognized word whose box encloses nothing keeps its text.** A word the recognizer read in the

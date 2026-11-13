@@ -294,7 +294,7 @@
       "minLength": 1,
       "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2 and again at S3). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree or an EPUB's own `<h1>`-`<h6>`, whether a word the page broke across a line is closed up in the export, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "markdown-blocks-v13"
+        "markdown-blocks-v14"
       ]
     },
     "html_rule": {
@@ -302,7 +302,7 @@
       "minLength": 1,
       "description": "Version id of the HTML projection rule in force (v1.1-S4). Decides what `ethos.html.v1` contains. SEPARATE from `markdown_rule` and it moves independently: the two projections say different things about the same table, because GFM has no `rowspan` and `<td rowspan>` does, so one id covering both would make every artifact non-comparable each time either moved. A profile predating v1.1-S4 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "html-blocks-v13"
+        "html-blocks-v14"
       ]
     },
     "locate_rule": {
@@ -573,10 +573,10 @@
       "form_annotation_rule": "form-annotations-v2",
       "furniture_rule": "margin-bands-v1",
       "heading_inference_rule": "type-size-v7",
-      "html_rule": "html-blocks-v13",
+      "html_rule": "html-blocks-v14",
       "layout_unit_rule": "line-units-v6",
       "locate_rule": "locate-scalar-exact-v1",
-      "markdown_rule": "markdown-blocks-v13",
+      "markdown_rule": "markdown-blocks-v14",
       "observation_rule": "page-observations-v4",
       "outline_rule": "outlines-v3",
       "page_budget": {

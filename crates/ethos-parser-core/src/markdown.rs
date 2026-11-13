@@ -145,6 +145,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -270,7 +271,17 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// painted is written once ([`overprinted_runs`]), and the census counts it. And so is decision
 /// #111's: a run with no reach goes on along its baseline from a space it ends with
 /// ([`unit_gap_continues`]).
-pub const MARKDOWN_RULE_BLOCKS_V13: &str = "markdown-blocks-v13";
+///
+/// `-v14` (decision #126): on a tagged page a run that opens its block element's next line keeps
+/// the line break ([`element_next_line`]), where `-v13` wrote one space, so a resume Chromium
+/// tagged a line at a time reads a field a line. One space still in a heading, on a line its column
+/// wrapped ([`wrapped_labels`]), from a bold run onto a bold run unless the second is a label
+/// ending in `:`, so a bold paragraph its column wrapped stays one span, and before a line
+/// CommonMark reads as a block of its own ([`opens_block_syntax`]). Any other span — italic, a
+/// script — now closes at the line's end and opens again on the next: `*a*` and `*b*` on two
+/// lines where `-v13` wrote `*a b*`. An untagged page projects byte for byte what `-v13`
+/// projected. Both ids move.
+pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -401,9 +412,9 @@ pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
 /// document's structure tree declares holds them both — a paragraph, a heading, a list item, a
 /// cell (decision #84, [`sequence_join`]): a producer that changes sequence at every change of
 /// style and at every line, as Word's export does, wrote each piece as a block of its own. Along a
-/// line a space goes in only where the page drew one; onto the element's next line, one space for
-/// the line break. The licence is the element, not the sequence, so it is counted apart from
-/// [`MCID_RUN_JOINS`].
+/// line a space goes in only where the page drew one; onto the element's next line, a line break,
+/// or one space where [`element_next_line`] says (decision #126). The licence is the element, not
+/// the sequence, so it is counted apart from [`MCID_RUN_JOINS`].
 pub const BLOCK_ELEMENT_RUN_JOINS: &str = "block-element-run-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
@@ -1743,7 +1754,8 @@ pub(crate) struct GroupKey {
 pub(crate) enum SequenceJoin {
     /// One block element holds both, on one line: `space` where the page drew one.
     ElementLine { space: bool },
-    /// One block element holds both, and this run opens the element's next line.
+    /// One block element holds both, and this run opens the element's next line, written as
+    /// [`element_next_line`] says (decision #126).
     ElementNextLine,
     /// Children of one kind of element, drawn next along one line.
     Line,
@@ -1770,10 +1782,10 @@ pub(crate) struct Between {
 ///    continues as a run of one sequence would. On `prev`'s line: where the page drew a space,
 ///    or no gap ([`Between`]), and never drawn back over `prev` — starting more than half a glyph
 ///    of its font before `prev`'s ink ends, as the second drawing does where a page thickens a
-///    heading by drawing its line twice. On a later line:
-///    with one space, where the baseline moved at least a glyph of `prev`'s font — less is the
-///    same line drawn twice — and `prev` does not end in a hyphen, since joined by a space a
-///    broken word would read `Dupont- Steilacoom`.
+///    heading by drawing its line twice. On a later line, where the baseline moved at least a
+///    glyph of `prev`'s font — less is the same line drawn twice — and `prev` does not end in a
+///    hyphen, since joined by a space a broken word would read `Dupont- Steilacoom`; written as
+///    [`element_next_line`] says (decision #126).
 /// 2. **Children of one kind of element**, at one heading level, joined where the page drew
 ///    `node` next along `prev`'s line ([`ink_sequenced`]), as an untagged page's runs join: a
 ///    producer that tags one line as several elements, or a run as none the file numbers.
@@ -1818,6 +1830,55 @@ pub(crate) fn sequence_join(
         && ink_sequenced(ink, end, reference, node);
     (along && same_parent(prev, node) && heading_level(prev) == heading_level(node))
         .then_some(SequenceJoin::Line)
+}
+
+/// Decision #126. What joins `node`, whose text is `text`, onto `prev`'s element's next line
+/// ([`SequenceJoin::ElementNextLine`]): a line break, as [`body_line_continues`] keeps one on an
+/// untagged page, since a producer that opens a sequence at every line — Chromium's — sets a
+/// resume's fields a line each. One space in a `heading`, which an ATX heading must keep on one
+/// line; on a line [`wrapped_labels`] says its column wrapped (decisions #47, #81, #85); from a
+/// bold run onto a bold run, so a bold phrase or paragraph its column wrapped stays one span,
+/// unless `node` is a label opening its line, `Duration:`; and before a line CommonMark would
+/// read as a block of its own ([`opens_block_syntax`]). Any other span — italic, a script —
+/// closes at the line's end and opens again on the next. Called by both projections.
+pub(crate) fn element_next_line(
+    prev: &crate::Node,
+    node: &crate::Node,
+    text: &str,
+    heading: bool,
+    wrapped: &std::collections::BTreeSet<&str>,
+) -> &'static str {
+    let bold = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.bold);
+    let label = text.trim_end().ends_with(':');
+    if heading
+        || wrapped.contains(node.id.as_str())
+        || (bold(prev) && bold(node) && !label)
+        || opens_block_syntax(text)
+    {
+        " "
+    } else {
+        "\n"
+    }
+}
+
+/// Whether `text`, opening a line, would read in CommonMark as a block of its own — an ATX
+/// heading, a quote, a list item, a fence, an HTML block — or as a setext underline, a thematic
+/// break or a table's delimiter row under the line above (decision #126).
+fn opens_block_syntax(text: &str) -> bool {
+    let t = text.trim_start();
+    let spaced = |rest: &str| rest.is_empty() || rest.starts_with([' ', '\t']);
+    let hashes = t.len() - t.trim_start_matches('#').len();
+    let number = t.trim_start_matches(|c: char| c.is_ascii_digit());
+    let digits = t.len() - number.len();
+    ((1..=6).contains(&hashes) && spaced(&t[hashes..]))
+        || t.starts_with('>')
+        || (t.starts_with(['-', '+', '*']) && spaced(&t[1..]))
+        || ((1..=9).contains(&digits) && number.starts_with(['.', ')']) && spaced(&number[1..]))
+        || t.starts_with("```")
+        || t.starts_with("~~~")
+        || (t.starts_with('<')
+            && t[1..].starts_with(|c: char| c.is_ascii_alphabetic() || "/!?".contains(c)))
+        || (!t.is_empty() && t.chars().all(|c| "-=*_|: \t".contains(c)))
 }
 
 /// Whether `node`, just joined with `line_ink` its ink, sits on another line than `open_line`, or
@@ -2955,7 +3016,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v13`
+/// # The rule, in full — `markdown-blocks-v14`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -3055,6 +3116,8 @@ pub fn to_markdown(
     // box — set where a block opens and where a run joins it at the ink. A block a gap join
     // extends holds a space, and is no section number standing alone, so the join leaves it.
     let mut open_at: Option<usize> = None;
+    // Decision #126: whether the open block was opened as a heading, which keeps its lines on one.
+    let mut open_heading = false;
     let mut pending_space = false;
     // Decision #65: the open block's text, which [`heading_number_continues`] reads for a section
     // number standing alone.
@@ -3382,11 +3445,18 @@ pub fn to_markdown(
                 if across.is_some() {
                     open_group = key;
                 }
+                // Decision #126: onto its element's next line, on a line of its own.
+                let separator = match (across, open_prev) {
+                    (Some(SequenceJoin::ElementNextLine), Some(prev)) => {
+                        element_next_line(prev, node, &text, open_heading, &wrapped)
+                    }
+                    _ => " ",
+                };
                 if space {
                     // `syntax`, not source: the document drew a space somewhere, and this is this
                     // exporter's single normalized rendering of it. `html.rs`'s cell join settled
                     // the same question the same way.
-                    e.syntax(" ");
+                    e.syntax(separator);
                     e.source(&text, node.id.as_str());
                 } else if declared {
                     e.source_continuing(&text, node.id.as_str());
@@ -3398,7 +3468,7 @@ pub fn to_markdown(
                     e.source(&text, node.id.as_str());
                 }
                 if space {
-                    block_text.push(' ');
+                    block_text.push_str(separator);
                 }
                 block_text.push_str(&text);
                 let code = if matches!(
@@ -3448,7 +3518,9 @@ pub fn to_markdown(
         // The heading marker, when the tree said so. Also `syntax`: `## ` is this exporter's
         // rendering of a role, not bytes the page drew. Emitted at block open only — a run joined
         // into an open block never re-emits it, which is why the `continue` above is above this.
-        if let Some(level) = heading_level(node) {
+        let level = heading_level(node);
+        open_heading = level.is_some();
+        if let Some(level) = level {
             e.syntax(&"#".repeat(level as usize));
             e.syntax(" ");
             e.heading();
@@ -8579,9 +8651,9 @@ pub(crate) mod tests {
     /// Word's export changes sequence at every change of style and at every line, and the element
     /// citing them is the paragraph the document declared. Along a line a run joins where the page
     /// drew a space or no gap, and never drawn back over the run before it — a heading drawn twice
-    /// to thicken it stays two lines; onto the next line with one space, where the baseline moved
-    /// at least a glyph and the line does not end in a hyphen. Two elements stay two blocks, and so
-    /// does each half of a page break, a column or a region.
+    /// to thicken it stays two lines; onto the next line on a line of its own (decision #126),
+    /// where the baseline moved at least a glyph and the line does not end in a hyphen. Two
+    /// elements stay two blocks, and so does each half of a page break, a column or a region.
     #[test]
     fn one_elements_runs_are_one_block_across_sequences() {
         let p = |mcid, element| tagged_in(mcid, &["Document", "P"], Some(element));
@@ -8598,7 +8670,7 @@ pub(crate) mod tests {
             ("revenue", p(3, 9), 8400, 7200, Some(1400), None),
             ("rose", p(4, 9), 7200, 5800, Some(800), None),
         ]);
-        assert_eq!(one.markdown, "Total revenue rose\n");
+        assert_eq!(one.markdown, "Total revenue\nrose\n");
         assert_eq!(count(&one, BLOCK_ELEMENT_RUN_JOINS), 2);
         assert_eq!(count(&one, MCID_RUN_JOINS), 0);
         assert!(one.coverage.balances());
@@ -8634,7 +8706,7 @@ pub(crate) mod tests {
             ("al", p(2, 9), 7800, 7200, Some(400), None),
             ("rose", p(3, 9), 7200, 5800, Some(800), None),
         ]);
-        assert_eq!(word.markdown, "Total rose\n");
+        assert_eq!(word.markdown, "Total\nrose\n");
         let sources = word
             .anchor_map
             .segments
@@ -8693,6 +8765,121 @@ pub(crate) mod tests {
                 ("rose", p(3, 10), 7200, 5800, Some(800), None),
             ]),
             2
+        );
+    }
+
+    /// **An element's next line keeps its line break** (decision #126): Chromium's export opens a
+    /// sequence at every line of a paragraph, so a field set a line at a time read as one line,
+    /// `Designation: **Relationship Manager** Company: ICICI Bank`. A heading stays on one line,
+    /// as an ATX heading must; a bold line its column wrapped stays one span; and a line CommonMark
+    /// would read as a block of its own, `- Led a team`, stays on the line above.
+    #[test]
+    fn an_elements_next_line_keeps_its_line_break() {
+        let p = |mcid| tagged_in(mcid, &["Document", "P"], Some(9));
+        let styled = |specs: &[LineSpec<'_>], bold: &[usize]| {
+            artifact_of(with_styles(repr_of_placed(specs), bold, &[])).markdown
+        };
+        let resume = artifact_of(with_styles(
+            repr_of_placed(&[
+                ("Designation: ", p(12), 7200, 7200, Some(1300), None),
+                ("Relationship Manager", p(13), 8500, 7200, Some(2200), None),
+                ("Company: ICICI Bank", p(14), 7200, 5800, Some(2000), None),
+            ]),
+            &[1],
+            &[],
+        ));
+        assert_eq!(
+            resume.markdown,
+            "Designation: **Relationship Manager**\nCompany: ICICI Bank\n"
+        );
+        assert!(resume.coverage.balances());
+        // A plain line onto a bold one keeps its break, and so does a bold line onto a bold label.
+        let two = |a: &'static str, b: &'static str, bold: &[usize]| {
+            styled(
+                &[
+                    (a, p(1), 7200, 7200, Some(2000), None),
+                    (b, p(2), 7200, 5800, Some(2000), None),
+                ],
+                bold,
+            )
+        };
+        assert_eq!(
+            two("Company: ICICI Bank", "Relationship Manager", &[1]),
+            "Company: ICICI Bank\n**Relationship Manager**\n"
+        );
+        assert_eq!(
+            styled(
+                &[
+                    ("Designation: ", p(1), 7200, 7200, Some(1300), None),
+                    ("Relationship Manager", p(2), 8500, 7200, Some(2200), None),
+                    ("Duration:", p(3), 7200, 5800, Some(900), None),
+                    (" 2019", p(4), 8100, 5800, Some(1000), None),
+                ],
+                &[1, 2],
+            ),
+            "Designation: **Relationship Manager**\n**Duration:** 2019\n"
+        );
+        // A line CommonMark reads as a block of its own, or as an underline, stays on the line
+        // above, as HTML's one `<p>` holds it.
+        for marker in [
+            "- Led a team",
+            "+ Led a team",
+            "* Led a team",
+            "> 5 years",
+            "# 1",
+            "1. Led",
+            "1) Led",
+            "===",
+            "---",
+            "```",
+            "~~~",
+            "<div>",
+        ] {
+            assert_eq!(
+                two("Experience", marker, &[]),
+                format!("Experience {marker}\n"),
+                "{marker}"
+            );
+        }
+        // Not a marker: a line that only opens with the character keeps its break.
+        assert_eq!(two("Experience", "-5 years", &[]), "Experience\n-5 years\n");
+
+        let h = |mcid| tagged_in(mcid, &["Document", "H1"], Some(9));
+        let heading = project_lines(&[
+            ("Annual report", h(1), 7200, 7200, Some(2600), None),
+            ("for 2025", h(2), 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(heading.markdown, "# Annual report for 2025\n");
+        // A block a heading opened keeps one line past a next line read as no heading.
+        let opened = artifact_of(with_inferred_headings(
+            repr_of_placed(&[
+                ("Annual report", p(1), 7200, 7200, Some(2600), None),
+                ("for 2025", p(2), 7200, 5800, Some(1600), None),
+                ("and 2026", p(3), 7200, 4400, Some(1600), None),
+            ]),
+            &[0],
+        ));
+        assert_eq!(opened.markdown, "# Annual report for 2025 and 2026\n");
+
+        // A bold line its column wrapped (decision #85: it opens lowercase) stays one span, and so
+        // does any bold line onto a bold one: a paragraph set bold across a full column. A short
+        // bold line over another reads as one span too, which no geometry of two lines can part
+        // from a wrap.
+        assert_eq!(
+            two("Building resilience", "across markets", &[0, 1]),
+            "**Building resilience across markets**\n"
+        );
+        assert_eq!(
+            two(
+                "Contact the Funds Service Center at",
+                "JPMorgan Funds for a prospectus.",
+                &[0, 1]
+            ),
+            "**Contact the Funds Service Center at JPMorgan Funds for a prospectus.**\n"
+        );
+        assert_eq!(
+            two("ICICI Bank", "Relationship Manager", &[0, 1]),
+            "**ICICI Bank Relationship Manager**\n"
         );
     }
 

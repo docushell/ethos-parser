@@ -141,21 +141,21 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` documents — an ODT
+/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents — an ODT
 /// or ODP `<text:h>` now projects as `<h1>`..`<h6>` at the level it declared, where before it
 /// projected `<p>`. Both ids move together for the reason `-v3` gives: the change went through
 /// `heading_level`, which both projections call. A level past six projects `<p>`, because
 /// `<h300>` is not an element. **The same id also carries the erasure declaration**, folded for
-/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` gives: a declared heading that comes out
+/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` gives: a declared heading that comes out
 /// `<p>` is counted, at the same value its sibling counts, because both projections commit the
 /// same flattening. Not one character of the HTML changes; the census does.
 ///
-/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` documents. Both ids
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids
 /// move together because both projections call `ink_sequenced`.
 ///
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
-/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V13`, whose decision #38 folds — emphasis,
+/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V14`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
@@ -171,7 +171,12 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// breaks, decision #110's run painted over a copy of itself written once, and decision #111's run
 /// with no reach going on along its line from a space it ends with. Both ids move
 /// together, for the reason `-v5` gives.
-pub const HTML_RULE_BLOCKS_V13: &str = "html-blocks-v13";
+///
+/// `-v14`: decision #126's tagged element's next line on a line of its own inside its `<p>`, with
+/// the same exceptions and the same spans closed at the line's end, as
+/// `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids move together, for the reason
+/// `-v5` gives.
+pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -350,7 +355,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v13`
+/// # The rule, in full — `html-blocks-v14`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
@@ -721,9 +726,20 @@ pub fn to_html(
 
         if let Some(space) = joining {
             use crate::markdown::SequenceJoin;
+            // Decision #126, as in `crate::markdown`: onto its element's next line, on a line of
+            // its own, except in a heading, on a line its column wrapped, from bold onto bold but a
+            // label, and before a line Markdown would read as a block of its own, so the two
+            // projections agree.
+            let separator = match (across, open_prev) {
+                (Some(SequenceJoin::ElementNextLine), Some(prev)) => {
+                    let heading = matches!(open_block, Some(Some(_)));
+                    crate::markdown::element_next_line(prev, node, &text, heading, &wrapped)
+                }
+                _ => " ",
+            };
             if space {
-                e.syntax(" ");
-                block_text.push(' ');
+                e.syntax(separator);
+                block_text.push_str(separator);
             }
             escaped_source(&mut e, &text, node.id.as_str());
             block_text.push_str(&text);
@@ -1153,7 +1169,7 @@ mod tests {
             ]))
         };
         let a = one(9);
-        assert!(a.html.contains("<p>Total revenue rose</p>"), "{}", a.html);
+        assert!(a.html.contains("<p>Total revenue\nrose</p>"), "{}", a.html);
         let joins = a
             .coverage
             .structural_erasures
@@ -1211,6 +1227,104 @@ mod tests {
         };
         assert_eq!(count(crate::markdown::MCID_RUN_JOINS), 1);
         assert_eq!(count(crate::markdown::BASELINE_RUN_JOINS_SPACED), 1);
+    }
+
+    /// **An element's next line keeps its line break** (decision #126), as in Markdown: a heading
+    /// stays on one line, a bold line its column wrapped stays one span, and a line Markdown would
+    /// read as a block of its own stays on the line above, so the two projections agree.
+    #[test]
+    fn an_elements_next_line_keeps_its_line_break() {
+        let p = |mcid| tagged_in(mcid, &["Document", "P"], Some(9));
+        let resume = artifact_of(with_styles(
+            repr_of_placed(&[
+                ("Designation: ", p(12), 7200, 7200, Some(1300), None),
+                ("Relationship Manager", p(13), 8500, 7200, Some(2200), None),
+                ("Company: ICICI Bank", p(14), 7200, 5800, Some(2000), None),
+            ]),
+            &[1],
+            &[],
+        ));
+        assert!(
+            resume.html.contains(
+                "<p>Designation: <strong>Relationship Manager</strong>\nCompany: ICICI Bank</p>"
+            ),
+            "{}",
+            resume.html
+        );
+        assert!(resume.coverage.balances());
+
+        let h = |mcid| tagged_in(mcid, &["Document", "H1"], Some(9));
+        let heading = artifact_of(repr_of_placed(&[
+            ("Annual report", h(1), 7200, 7200, Some(2600), None),
+            ("for 2025", h(2), 7200, 5800, Some(1600), None),
+        ]));
+        assert!(
+            heading.html.contains("<h1>Annual report for 2025</h1>"),
+            "{}",
+            heading.html
+        );
+        let opened = artifact_of(with_inferred_headings(
+            repr_of_placed(&[
+                ("Annual report", p(1), 7200, 7200, Some(2600), None),
+                ("for 2025", p(2), 7200, 5800, Some(1600), None),
+                ("and 2026", p(3), 7200, 4400, Some(1600), None),
+            ]),
+            &[0],
+        ));
+        assert!(
+            opened
+                .html
+                .contains("<h1>Annual report for 2025 and 2026</h1>"),
+            "{}",
+            opened.html
+        );
+
+        let two = |a: &'static str, b: &'static str, bold: &[usize]| {
+            artifact_of(with_styles(
+                repr_of_placed(&[
+                    (a, p(1), 7200, 7200, Some(2000), None),
+                    (b, p(2), 7200, 5800, Some(2000), None),
+                ]),
+                bold,
+                &[],
+            ))
+            .html
+        };
+        for (a, b, bold, want) in [
+            (
+                "Company: ICICI Bank",
+                "Relationship Manager",
+                &[1][..],
+                "<p>Company: ICICI Bank\n<strong>Relationship Manager</strong></p>",
+            ),
+            (
+                "Contact the Funds Service Center at",
+                "JPMorgan Funds for a prospectus.",
+                &[0, 1][..],
+                "<p><strong>Contact the Funds Service Center at JPMorgan Funds for a prospectus.</strong></p>",
+            ),
+            (
+                "Designation:",
+                "Duration:",
+                &[0, 1][..],
+                "<p><strong>Designation:</strong>\n<strong>Duration:</strong></p>",
+            ),
+            (
+                "Building resilience",
+                "across markets",
+                &[0, 1][..],
+                "<p><strong>Building resilience across markets</strong></p>",
+            ),
+            (
+                "Experience",
+                "- Led a team",
+                &[][..],
+                "<p>Experience - Led a team</p>",
+            ),
+        ] {
+            let html = two(a, b, bold);
+            assert!(html.contains(want), "{html}");
+        }
     }
 
     /// **A tagged title's lines read on into one `<strong>`** (decision #85), as in Markdown, and
