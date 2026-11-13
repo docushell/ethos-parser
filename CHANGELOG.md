@@ -32,6 +32,29 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Small pieces stay with their text on untagged pages (decision #129)
+
+Rule id `line-units-v7`; `profile_sha256` moves.
+
+- **A footnote mark set against its line's last letter is that line's.** A script had to lie inside
+  its line, so a mark set after the last letter was a layout unit of its own and split its
+  paragraph. It now joins where it starts no more than a quarter of the line's height past the
+  line's end and ends no more than the line's height past it, so a run-in heading's text and a
+  smaller aside set after a line stay lines of their own.
+- **A list marker or a label set apart from what follows it stays with it.** A piece that is a list
+  marker alone (`1.`, `(a)`) or ends in a colon (`Invoice No:`) ended short and was cut from the
+  piece after it on its line; it now ends short of nothing where the piece after it is no such
+  piece itself, so a label with no value does not take the next label's.
+- **A list item's next line at its hanging indent continues it.** Set a line and a half below, it
+  started more than its height right of the marker and was a unit of its own; a line within a
+  quarter of its height of where the item's text starts after a marker alone in its run, opening
+  with a word, now continues the item within the page's body leading and a twentieth more, or
+  within its own height on a page that sets no leading of its own. A marker set in one run with
+  its text sets no hanging indent. The quarter and the height are chosen, not measured.
+- Geometry and punctuation alone: no list or paragraph role is read from layout, and a unit is not a
+  list item.
+- ParseBench visual grounding 0.5987 -> 0.5999 engine-only and 0.6312 -> 0.6325 with `--ocr` (12 and 13 pages up, 4 down), content unchanged at four places (5 pages down by at most 0.0007, where a numbered paragraph's `13.` and a label's value now join their text), tables, charts and formatting unchanged on every page; opendataloader-bench NID, TEDS and MHS unchanged (12 documents' Markdown moves, no score).
+
 ### Build and release
 
 - **The Linux binary is built on `ubuntu-22.04`**, so it needs glibc 2.35 or newer (Ubuntu 22.04,

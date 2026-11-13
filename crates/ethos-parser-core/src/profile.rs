@@ -1653,6 +1653,21 @@ pub const LAYOUT_UNIT_RULE_V5: &str = "line-units-v5";
 /// document.
 pub const LAYOUT_UNIT_RULE_V6: &str = "line-units-v6";
 
+/// [`LAYOUT_UNIT_RULE_V6`] **with small pieces kept with their text** (decision #129). A script
+/// starting no more than a quarter of its line's height past the line's end and ending no more than
+/// that height past it — a footnote mark set against the last letter — is that line's, where it
+/// had to lie inside the line. A list marker alone, or a label closed by a colon, ends short of
+/// nothing where the piece after it on its line is no such piece itself, so a `1.` set apart keeps
+/// its item's text and `Invoice No:` its value, and a label with no value takes no other label's.
+/// And a line set within a quarter of its height of where a list item's text starts after a marker
+/// alone in its run, opening with a word, continues the item within the page's body leading and a
+/// twentieth more, or within its own height on a page that sets no leading of its own, where it
+/// started too far right of the marker. A marker set in one run with its text sets no hanging
+/// indent. The quarter and the height are chosen, not measured. Geometry and punctuation alone: a
+/// unit is no list item, and units stay where, never what. Measured: ParseBench grounding
+/// up, every other ParseBench and opendataloader-bench score unchanged.
+pub const LAYOUT_UNIT_RULE_V7: &str = "line-units-v7";
+
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
 /// edges**.
 ///
@@ -2688,7 +2703,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the layout-unit rule in force (decision #38).
     ///
-    /// See [`LAYOUT_UNIT_RULE_V6`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// See [`LAYOUT_UNIT_RULE_V7`]. Its own field for `heading_inference_rule`'s reason: it runs
     /// only where the document declares no structure, so folding it into a rule that runs on every
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
@@ -2867,7 +2882,7 @@ impl Default for Profile {
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V2.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
-            layout_unit_rule: LAYOUT_UNIT_RULE_V6.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V7.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
             right_to_left_rule: RIGHT_TO_LEFT_RULE_V1.to_string(),
@@ -4185,7 +4200,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v6","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5391,11 +5406,16 @@ mod tests {
              Moved for decision #126, `sha256:8c2f8672…` -> `sha256:57d4edd8…`: `markdown_rule` \
              `markdown-blocks-v13` -> `-v14` and `html_rule` `html-blocks-v13` -> `-v14`, for a \
              tagged element's next line kept on a line of its own, and decision #128's two list \
-             bodies the file numbers as two items, folded in. Nothing else."
+             bodies the file numbers as two items, folded in. Nothing else.\n\n\
+             Moved for decision #129, `sha256:57d4edd8…` -> `sha256:ef336dec…`: \
+             `layout_unit_rule` `line-units-v6` -> `-v7`, which keeps a footnote mark set against \
+             its line's last letter, a list marker set apart from its item's text, the item's next \
+             line at its hanging indent within the page's leading, and a label closed by a colon \
+             with its value. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:57d4edd8d1c3c795271b7c6bb2bb26ee87764c48ad1da28b157767d4fe1aaf1d"
+            "sha256:ef336dec96e5c08b15ccf927f20b8734d050fc5fbbc008abaf79c481232e5c08"
         );
     }
 

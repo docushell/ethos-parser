@@ -4601,6 +4601,82 @@ fn a_line_is_read_where_the_reading_order_reads_it_and_its_words_where_they_stan
     );
 }
 
+/// **Small pieces stay with their text** (`line-units-v7`), end to end, on three pages the reading
+/// order does not divide. A footnote mark raised against a line's last letter is that line's: it
+/// lay past the line's end and was a unit of its own. A list item whose `1.` stands apart from its
+/// text, set a line and a half apart, is one unit with its next line at the hanging indent: the
+/// marker ended short and was cut, and the next line started too far right of the marker — and so
+/// is one whose `1.` is one piece with its text, as Word sets a hanging indent. And a label closed
+/// by a colon keeps its value beside it, where the label ended short and was cut, though a label
+/// with no value does not take the next label's.
+#[test]
+fn small_pieces_stay_with_their_text() {
+    let units = |content: &str| -> Vec<(String, u32)> {
+        let a = helvetica_letter_page(content);
+        runs(&a)
+            .into_iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .map(|r| {
+                assert!(
+                    r.region.is_none(),
+                    "the reading order divides none of these"
+                );
+                (
+                    r.text.clone(),
+                    r.layout_unit.expect("every line has a unit"),
+                )
+            })
+            .collect()
+    };
+    let of = |units: &[(String, u32)]| units.iter().map(|(_, u)| *u).collect::<Vec<_>>();
+
+    let mark = units(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm \
+         (The rate of interest was revised in that year under the new notification.) Tj \
+         /F1 7 Tf 4 Ts (1) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 686 Tm (All invoices raised after that date carry the new rate.) Tj ET",
+    );
+    assert_eq!(of(&mark), [1, 1, 1], "{mark:?}");
+
+    // A title across the whole page leaves no gutter for the reading order to divide it at.
+    let list = units(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over the list and its markers) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 700 Tm (1.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 96 700 Tm \
+         (Payment is due within fifteen days of the invoice date. Late payments) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 96 682 Tm (carry interest at eighteen per cent a year.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 664 Tm (2.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 96 664 Tm (Goods once sold will not be taken back.) Tj ET",
+    );
+    assert_eq!(of(&list), [1, 2, 2, 2, 3, 3], "{list:?}");
+    // Word's own hanging indent: the item's text 18 points right of its `1.`, one piece with it.
+    let word = units(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over the list and its markers) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 700 Tm (1.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 90 700 Tm \
+         (Payment is due within fifteen days of the invoice date. Late payments) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 90 682 Tm (carry interest at eighteen per cent a year.) Tj ET",
+    );
+    assert_eq!(of(&word), [1, 2, 2, 2], "{word:?}");
+
+    let labels = units(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm (Invoice No:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 160 700 Tm (ST/26-27/0198) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 330 700 Tm (Date:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 380 700 Tm (13/11/2026) Tj ET",
+    );
+    assert_eq!(of(&labels), [1, 1, 2, 2], "{labels:?}");
+    // A label with no value leads into no other label.
+    let empty = units(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm (Name:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 330 700 Tm (Date:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 380 700 Tm (13/11/2026) Tj ET",
+    );
+    assert_eq!(of(&empty), [1, 2, 2], "{empty:?}");
+}
+
 /// **A line set at its page's own leading continues its unit** (decision #103), end to end: 12-point
 /// Helvetica on a 20-point pitch leaves more than half a line between its lines' boxes, and the page
 /// reads its two paragraphs, the 40-point pitch between them still opening the second. A line set
