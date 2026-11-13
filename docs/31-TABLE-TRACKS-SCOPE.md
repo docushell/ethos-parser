@@ -56,7 +56,10 @@ in the position pairing `tagged-tables-v1` relies on.
    row *r* + 1. Columns may interleave within a row, because a wrapped cell's second line comes
    after the next cell's first. This is `unruled-align-v1`'s rule 5 — author evidence rather than
    a threshold — taken at row grain. Detection runs before reading order, as that rule's does, so
-   it reads the order the content stream produced.
+   it reads the order the content stream produced. **On a page of recognized text that order is the
+   recognizer's** — row by row down the whole page, across any columns — so it is no evidence there
+   (decision #125): such a grid stands only on the waiver's clauses (§7), three rows and three
+   columns or more with no column of running text, and no column of numbers is asked.
 7. **Fabrication 0 by construction.** A cell's text is its runs' text concatenated, in content
    order; no run is in two cells; a run in no track ends the table rather than being dropped.
 

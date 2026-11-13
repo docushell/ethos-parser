@@ -130,7 +130,10 @@ several images on the page; an inline image; a stream whose filter the recognize
 not read; an image a soft mask or a mask shapes, since the protocol carries the image alone. A recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
 missing one does. A word whose box's centre falls outside the page's visible box is not written and
 is counted; one whose centre is on the page and whose box runs past its edge is written without its
-box (`measured_off_page`), as a drawn run is. Two declared limitations ride on every OCR artifact: text in a rotated or upside-down
+box (`measured_off_page`), as a drawn run is; and one whose box encloses nothing — read in the
+padding past a short line's end, a lone `−`, so both its edges fall on the line's last column — keeps
+its text and reports no box (`not_reported_by_reader`), as a drawn run without an advance does,
+where it refused the whole document (decision #125). Two declared limitations ride on every OCR artifact: text in a rotated or upside-down
 orientation within an upright image is not turned; a recognized word has no font, so emphasis
 (bold, italic) and a font's own size are not read on recognized pages.
 

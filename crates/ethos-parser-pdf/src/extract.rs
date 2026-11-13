@@ -997,7 +997,7 @@ fn extract_page(
             op_indices.push(usize::MAX);
             ems.push(Some(w.font_size).filter(|em| *em > 0));
             glyph_starts.push(w.origin_x);
-            ink_ends.push(Some(w.rect.x1()));
+            ink_ends.push(w.rect.map(|r| r.x1()));
             code_chars.push(vec![1; w.text.chars().count()]);
             clipped.push(false);
             runs.push(TextRun {
@@ -1026,13 +1026,16 @@ fn extract_page(
                     advance: w.advance,
                 },
                 // As a drawn run's, above: a word whose centre is on the page and whose box runs
-                // past its edge keeps its text, not a box the seal would refuse the document for.
-                geometry: if geom.contains(w.rect) {
-                    ethos_parser_core::GeometryPresence::Measured(w.rect)
-                } else {
-                    ethos_parser_core::GeometryPresence::Absent(
+                // past its edge keeps its text, not a box the seal would refuse the document for;
+                // a word whose box encloses nothing reports none, as a run without an advance.
+                geometry: match w.rect {
+                    Some(r) if geom.contains(r) => ethos_parser_core::GeometryPresence::Measured(r),
+                    Some(_) => ethos_parser_core::GeometryPresence::Absent(
                         ethos_parser_core::GeometryAbsence::MeasuredOffPage,
-                    )
+                    ),
+                    None => ethos_parser_core::GeometryPresence::Absent(
+                        ethos_parser_core::GeometryAbsence::NotReportedByReader,
+                    ),
                 },
                 mcid: None,
                 structural: None,
@@ -1237,6 +1240,10 @@ fn extract_page(
             && no_author_structure(structure.as_ref())
         {
             let track_runs = rule_runs(&runs, &ems, &ink_ends, &tables);
+            // Decision #125: a page of recognized text, whose stream order is the recognizer's.
+            let recognized = runs
+                .iter()
+                .any(|r| r.derivation == DerivationClass::Recognized);
             // The page's drawn horizontal ink: its stroked rules, and the top and bottom of each
             // rectangle it paints in a colour of its own.
             let mut ink = stroke_rules.clone();
@@ -1249,7 +1256,9 @@ fn extract_page(
                     });
                 }
             }
-            for table in crate::tracks::detect(page_number, &track_runs, &ink, &mut alloc)? {
+            for table in
+                crate::tracks::detect(page_number, &track_runs, &ink, recognized, &mut alloc)?
+            {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
                 }
@@ -1292,6 +1301,7 @@ fn extract_page(
                     &unheld,
                     &columns,
                     &ink,
+                    recognized,
                     &mut alloc,
                 )? {
                     if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {

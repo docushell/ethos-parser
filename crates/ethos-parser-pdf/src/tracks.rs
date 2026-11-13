@@ -234,7 +234,12 @@
 //!    em or more above it, and none crosses the gap, the table is cut there and each side read down
 //!    to its last line, with no row order of its own asked of it inside the rows the two stood as.
 //!    A filing boxes two schedules side by side, written row by row across both, and they stood as
-//!    one table of both their columns.
+//!    one table of both their columns. **And on a page of recognized text the clause is no evidence**
+//!    (decision #125): its stream order is the recognizer's, row by row down the whole page across
+//!    any columns, so three columns of a scanned newsletter passed it as a table of their lines.
+//!    There a grid stands only on the waiver's clauses — three rows and three columns or more, no
+//!    column of running text — and no column of numbers is asked, since with no order to read a
+//!    list of names and marks is a table as much as a table of values is.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -362,6 +367,9 @@ struct Group {
 
 /// Every table `whitespace-tracks-v10` finds on one page, in reading-down order. `rules` is the
 /// page's horizontal ink (`-v16`): its stroked rules, and each painted rectangle's top and bottom.
+/// `recognized` says the page's runs are text a recognizer read (decision #125): their stream order
+/// is the recognizer's, row by row down the whole page across any columns, so it is no evidence that
+/// a grid was written as a table, and such a grid stands only as one written in no order does.
 ///
 /// # Errors
 ///
@@ -370,9 +378,10 @@ pub(crate) fn detect(
     page: u32,
     runs: &[TrackRun<'_>],
     rules: &[Rule],
+    recognized: bool,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
-    detect_within(page, runs, rules, None, alloc)
+    detect_within(page, runs, rules, None, recognized, alloc)
 }
 
 /// [`detect`], where `ordered` names the baseline of the first row of a table that stood (`-v16`,
@@ -384,6 +393,7 @@ fn detect_within(
     runs: &[TrackRun<'_>],
     rules: &[Rule],
     ordered: Option<i64>,
+    recognized: bool,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
     let lines = lines(runs);
@@ -396,7 +406,7 @@ fn detect_within(
             let stands = |rows: &[Row], end: usize| {
                 let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
                 (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
-                    && accepted(rows, runs, within)
+                    && accepted(rows, runs, within, recognized)
             };
             let mut stand = stands(&rows, end);
             // `-v9`: a table its reach past the pitch cannot keep stands without it.
@@ -432,7 +442,14 @@ fn detect_within(
                             ..*r
                         })
                         .collect();
-                    tables.extend(detect_within(page, &side, rules, side_ordered, alloc)?);
+                    tables.extend(detect_within(
+                        page,
+                        &side,
+                        rules,
+                        side_ordered,
+                        recognized,
+                        alloc,
+                    )?);
                 }
                 i = end;
                 floor = end;
@@ -1139,6 +1156,7 @@ pub(crate) fn detect_in_columns(
     runs: &[TrackRun<'_>],
     columns: &[Vec<usize>],
     rules: &[Rule],
+    recognized: bool,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
     if !columns.iter().any(|column| prose(runs, column)) {
@@ -1155,7 +1173,7 @@ pub(crate) fn detect_in_columns(
                 ..*run
             })
             .collect();
-        tables.extend(detect(page, &own, rules, alloc)?);
+        tables.extend(detect(page, &own, rules, recognized, alloc)?);
     }
     Ok(tables)
 }
@@ -1840,7 +1858,7 @@ fn split_number_pair(
 
 /// Whether the rows are a table: enough of them, a steady pitch, and written row by row — or
 /// `ordered` (`-v16`), one side of rows that stood as a table already.
-fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool) -> bool {
+fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool) -> bool {
     let columns = rows[0].cells.len();
     if rows.len() < MIN_ROWS
         || (columns == 2 && rows.len() < MIN_ROWS_OF_TWO_COLUMNS)
@@ -1905,7 +1923,8 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool) -> bool {
     }
     // Every run of a row emitted before any run of the next: the rows, read in content order,
     // never go back up.
-    if ordered || written_row_by_row(rows, 0..columns) {
+    // On a page of recognized text the order is the recognizer's (decision #125), and says nothing.
+    if ordered || (!recognized && written_row_by_row(rows, 0..columns)) {
         return true;
     }
     // A grid of three rows and three columns or more with a column of numbers and no column of
@@ -1915,13 +1934,16 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool) -> bool {
     // column of text — whatever the text's letters say.
     rows.len() >= MIN_ROWS_UNORDERED
         && columns >= MIN_COLUMNS_UNORDERED
-        && (0..columns).any(|k| numbers(&column(k)))
+        // On a page of recognized text no column of numbers is asked (decision #125): with no order to
+        // read, a list of names and marks is a table, and prose is still refused as running text.
+        && (recognized || (0..columns).any(|k| numbers(&column(k))))
         && (0..columns).all(|k| !running_text(&column(k)))
-        && !(1..columns).any(|k| {
-            written_row_by_row(rows, 0..k)
-                && written_row_by_row(rows, k..columns)
-                && !(k == 1 && label_column(rows, runs))
-        })
+        && (recognized
+            || !(1..columns).any(|k| {
+                written_row_by_row(rows, 0..k)
+                    && written_row_by_row(rows, k..columns)
+                    && !(k == 1 && label_column(rows, runs))
+            }))
 }
 
 /// The column the second of two flows opens at (`-v14`), where a candidate written neither row by
@@ -2326,7 +2348,7 @@ mod tests {
     }
 
     fn tables(runs: &[TrackRun<'_>]) -> Vec<DetectedTable> {
-        detect(1, runs, &[], &mut alloc()).expect("detects")
+        detect(1, runs, &[], false, &mut alloc()).expect("detects")
     }
 
     fn texts(table: &DetectedTable) -> Vec<Vec<String>> {
@@ -3963,7 +3985,7 @@ mod tests {
             "the premise: read across, no table"
         );
         let found =
-            detect_in_columns(1, &runs, &[left, right], &[], &mut alloc()).expect("detects");
+            detect_in_columns(1, &runs, &[left, right], &[], false, &mut alloc()).expect("detects");
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
@@ -3984,8 +4006,8 @@ mod tests {
             .copied()
             .filter(|&i| runs[i].x != 30000)
             .collect();
-        let found =
-            detect_in_columns(1, &runs, &[labels, values], &[], &mut alloc()).expect("detects");
+        let found = detect_in_columns(1, &runs, &[labels, values], &[], false, &mut alloc())
+            .expect("detects");
         assert!(found.is_empty());
     }
 
@@ -4326,7 +4348,7 @@ mod tests {
     }
 
     fn drawn(runs: &[TrackRun<'_>], rules: &[Rule]) -> Vec<DetectedTable> {
-        detect(1, runs, rules, &mut alloc()).expect("detects")
+        detect(1, runs, rules, false, &mut alloc()).expect("detects")
     }
 
     /// **Two tables drawn side by side are two tables, though they stood as one** (`-v16`, decision
@@ -5186,5 +5208,89 @@ mod tests {
                 assert!(seen.insert(i), "run {i} is in two cells");
             }
         }
+    }
+
+    /// Three columns of prose set on one baseline grid, written row by row across them — the order
+    /// a recognizer reads a scanned newsletter in, line by line down the whole page.
+    fn newsletter() -> Vec<TrackRun<'static>> {
+        let lines = [
+            [
+                "There are other advantages as",
+                "you can build that into your",
+                "for not staying on top of it",
+            ],
+            [
+                "well, says Marcus R. Chatterton,",
+                "requests. So the collection",
+                "and what the rule now asks",
+            ],
+            [
+                "chair of the litigation section",
+                "becomes regularized, he said",
+                "of every party to a dispute",
+            ],
+            [
+                "of the bar and its committee on",
+                "and it saves a trial a full",
+                "who must authenticate the",
+            ],
+        ];
+        lines
+            .iter()
+            .enumerate()
+            .flat_map(|(r, row)| {
+                row.iter()
+                    .enumerate()
+                    .map(move |(c, &text)| run(60 + 170 * c as i64, 100 + 12 * r as i64, 150, text))
+            })
+            .collect()
+    }
+
+    /// **On a page of recognized text, row order is no evidence of a table** (decision #125): the
+    /// three columns a drawn page writes row by row stand as a table, as they always have, and the
+    /// same columns read by a recognizer, whose order is row by row whatever the page holds, do not.
+    #[test]
+    fn a_recognized_page_does_not_read_its_columns_of_prose_as_a_table() {
+        let runs = newsletter();
+        assert_eq!(
+            tables(&runs).len(),
+            1,
+            "a drawn page's row order still says table"
+        );
+        assert!(detect(1, &runs, &[], true, &mut alloc())
+            .expect("detects")
+            .is_empty());
+    }
+
+    /// **And a recognized grid with no running text stands without a column of numbers**
+    /// (decision #125): a scanned list of hospitals, their counties and the services each marks.
+    #[test]
+    fn a_recognized_list_of_names_and_marks_is_a_table() {
+        let rows = [
+            ["Alameda Hospital", "Alameda", "•", "•"],
+            ["Alta Bates Medical", "Alameda", "•", ""],
+            ["Eden Medical Center", "Alameda", "", "•"],
+            ["Enloe Medical Center", "Butte", "•", "•"],
+        ];
+        let runs: Vec<TrackRun<'static>> = rows
+            .iter()
+            .enumerate()
+            .flat_map(|(r, row)| {
+                row.iter()
+                    .enumerate()
+                    .filter(|(_, text)| !text.is_empty())
+                    .map(move |(c, &text)| {
+                        run(
+                            60 + 120 * c as i64,
+                            100 + 14 * r as i64,
+                            90.min(8 * text.len() as i64),
+                            text,
+                        )
+                    })
+            })
+            .collect();
+        let found = detect(1, &runs, &[], true, &mut alloc()).expect("detects");
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].rows, found[0].columns), (4, 4));
     }
 }

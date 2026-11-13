@@ -25,7 +25,8 @@
 //! stays testable with a recognizer that is a function, and the CLI owns the binary.
 
 use ethos_parser_core::{
-    quantize, EngineError, PdfObjectNumber, QRect, RecognizerIdentity, QUANTUM_PER_POINT,
+    quantize, EngineError, PdfObjectNumber, QRect, QRectError, RecognizerIdentity,
+    QUANTUM_PER_POINT,
 };
 use serde::{Deserialize, Serialize};
 
@@ -256,8 +257,9 @@ pub(crate) struct PageWord {
     /// The height of the word's line, between its quad's top and bottom edges: the size a text
     /// layer would set it at.
     pub font_size: i64,
-    /// The word's left and right over its line's top and bottom.
-    pub rect: QRect,
+    /// The word's left and right over its line's top and bottom; `None` where they enclose no
+    /// area, as for a word read in the padding past a short line's end.
+    pub rect: Option<QRect>,
     pub image: Option<PdfObjectNumber>,
     pub pixels: [[i32; 2]; 4],
 }
@@ -585,17 +587,25 @@ pub(crate) fn place(
                 continue;
             }
             let (qx0, qy0, qx1, qy1) = (q(x0)?, q(ly0)?, q(x1)?, q(ly1)?);
-            let rect = QRect::new(qx0, qy0, qx1.max(qx0), qy1.max(qy0)).map_err(|_| {
-                EngineError::Malformed {
-                    what: "recognized word".into(),
-                    detail: "a recognized word's box is not a rectangle".into(),
+            // A word read in the padding past a short line's end — a lone `−`, the `in Data` of a
+            // narrow label — has steps that map past the line's last column at both edges, so its
+            // box encloses nothing. It keeps its text and its origin, and reports no box, as a
+            // drawn run without an advance reports none; one such word refused the whole document.
+            let rect = match QRect::new(qx0, qy0, qx1.max(qx0), qy1.max(qy0)) {
+                Ok(rect) => Some(rect),
+                Err(QRectError::NonPositiveArea) => None,
+                Err(QRectError::OutOfRange) => {
+                    return Err(EngineError::Malformed {
+                        what: "recognized word".into(),
+                        detail: "a recognized word's box is not a rectangle".into(),
+                    })
                 }
-            })?;
+            };
             out.push(PageWord {
                 text,
                 origin_x: qx0,
                 origin_y: qy1,
-                advance: advances.then(|| qx1.max(qx0) - qx0),
+                advance: rect.filter(|_| advances).map(|r| r.x1() - r.x0()),
                 font_size: height,
                 rect,
                 image,
@@ -1042,6 +1052,27 @@ mod tests {
                 ethos_parser_core::GeometryAbsence::MeasuredOffPage
             )
         );
+        crate::to_representation(&artifact, &profile).expect("seals");
+    }
+
+    #[test]
+    fn a_word_whose_box_encloses_nothing_keeps_its_text_and_reports_no_box() {
+        // ParseBench under --ocr: a word read in the padding past a short line's end came back with
+        // no width — a lone `−` at x = 206..206 — and the whole document was refused.
+        let profile = Profile::ocr_v0();
+        let mut fake = Fake::new();
+        fake.reach = 11; // "world", 11..11: no width; its centre, 11, is on the 20-pixel image
+        let png = b"\x89PNG\r\n\x1a\n".to_vec();
+        let artifact = crate::extract_image(&png, &profile, &mut fake).expect("extracts");
+        let world = &artifact.pages[0].runs[1];
+        assert_eq!(world.text, "world");
+        assert_eq!(
+            world.geometry,
+            ethos_parser_core::GeometryPresence::Absent(
+                ethos_parser_core::GeometryAbsence::NotReportedByReader
+            )
+        );
+        assert_eq!(world.locator.advance, None);
         crate::to_representation(&artifact, &profile).expect("seals");
     }
 

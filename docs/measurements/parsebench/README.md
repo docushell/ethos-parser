@@ -1461,6 +1461,31 @@ The 3 refused image files and one PDF fail on a recognized word whose box enclos
 the padding past a short line's end; keeping such a word's text without a box reads them, measured
 at +0.07 overall alone and +0.12 beside this change, and the owner holds that fix.
 
+### Two OCR-lane fixes from the grounding census (decision #125, 2026-11-13)
+
+That held fix shipped with a second the census found: every table `whitespace-tracks-v16` read on
+the scanned layout pages it opened was false, three columns of prose taken for a table of their lines
+because a recognizer writes every page row by row and the rule read that order as a table's. On a
+page of recognized text a word whose box encloses nothing now keeps its text, and row order is no
+evidence of a table there. On #124's tree with `--ocr`:
+
+| Dimension | Before | After | Pages up / down | Refusals |
+| --- | ---: | ---: | ---: | ---: |
+| Layout | 0.6282 | 0.6312 | 5 / 1 | 6 -> 2 |
+| Content faithfulness | 0.7524 | 0.7546 | 9 / 1 | 6 -> 5 |
+| Semantic formatting | 0.5261 | 0.5275 | 1 / 0 | 6 -> 5 |
+| Tables | 0.6454 | 0.6454 | 0 / 0 | 6 -> 6 |
+| Charts | 0.1726 | 0.1726 | 0 / 0 | 0 -> 0 |
+
+Overall 54.49 -> 54.63, 108th -> 107th of 157. The rises are the refused documents read, and scanned
+pages freed from a false table — a German customer letter, 0.41 of content, among them; the layout
+page down by 0.067 holds a table no longer read on the scan's columns, and the content page down by
+0.0005 loses two false tables of the recognizer's misreads. A born-digital page takes neither change. Measured and not built, on the same
+pages: reading a recognized page's columns where its first cut fails (four variants, none netting more
+than +0.002: a full-width title peeled off finds the columns of three scans, and false gutters in short
+justified blocks break others), and a bold label joining the lines it names (net 0, 64 pages up and
+59 down, the answer key keeping some labels apart and merging others).
+
 ## Scores reused, and a held-out split measured (decision #121, 2026-11-10)
 
 Two lessons from articles on extraction pipelines, measured on the stored runs of the last six

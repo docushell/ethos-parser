@@ -32,6 +32,21 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A scanned page keeps a word read past its line's end, and its columns are no table (decision #125)
+
+- **A recognized word whose box encloses nothing keeps its text.** A word the recognizer read in the
+  padding past a short line's end — a lone `−`, `in Data` — came back with no width, and the whole
+  document was refused. It now keeps its text and reports no box (`not_reported_by_reader`), as a
+  drawn run without an advance does: five ParseBench documents are read that were refused.
+- **On a page of recognized text, row order is no evidence of a table.** `whitespace-tracks-v16`
+  takes a grid the content stream wrote row by row for a table, and a recognizer writes every page row
+  by row, so three columns of a scanned newsletter read as a table of their lines. There a grid now
+  stands on three rows and three columns or more with no column of running text, and no column of
+  numbers is asked, so a scanned list of names and marks is still a table.
+- ParseBench with `--ocr`: overall 54.49 -> 54.63, 108th -> 107th of 157; layout 0.6282 -> 0.6312,
+  content 0.7524 -> 0.7546, formatting 0.5261 -> 0.5275, tables and charts unchanged on every page.
+  A born-digital page takes neither change.
+
 ### ParseBench grounds image files from `extract` (decision #124)
 
 - **The ParseBench adapter grounds an image file** from `extract`'s own output where `ground` refuses
