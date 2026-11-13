@@ -32,6 +32,15 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Chart, pie and stroke geometry no longer calls the platform's `hypot`
+
+- Lengths in the chart, pie and line readers are exact integer roots, and a stroke's width and a
+  slice's distances to its centre are taken in IEEE arithmetic alone, where `f64::hypot` called
+  each operating system's own libm. An integer length of 2^25 centipoints or more, off any page,
+  can differ by 1 cp from before: exact, where the old float was not. Output is byte-identical on
+  the gate and engine fixtures, ParseBench's 568 chart PDFs and opendataloader-bench's 200;
+  `atan2` in the pie reader still calls libm.
+
 ### Small pieces stay with their text on untagged pages (decision #129)
 
 Rule id `line-units-v7`; `profile_sha256` moves.

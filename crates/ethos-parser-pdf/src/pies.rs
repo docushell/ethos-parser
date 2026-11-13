@@ -26,7 +26,7 @@ use std::f64::consts::{PI, TAU};
 
 use ethos_parser_core::{EngineError, IdAllocator};
 
-use crate::charts::{chart_table, is_year, labels, number, Label, Value};
+use crate::charts::{chart_table, hypot_floor, hypot_round, is_year, labels, number, Label, Value};
 use crate::lines::{legend, Mark};
 use crate::tables::{DetectedTable, QuantRect};
 use crate::text_state::Fill;
@@ -94,7 +94,7 @@ impl Pie {
     fn gap(&self, l: &Label) -> i64 {
         let dx = (l.x0 - self.centre.0).max(0).max(self.centre.0 - l.x1);
         let dy = (l.y0 - self.centre.1).max(0).max(self.centre.1 - l.y1);
-        ((dx as f64).hypot(dy as f64) as i64 - self.r).max(0)
+        (hypot_floor(dx, dy) - self.r).max(0)
     }
 
     /// The angle a label's centre stands at about this pie's.
@@ -287,9 +287,7 @@ fn pies(slices: &[Slice]) -> Vec<Pie> {
         let (Some(arc), Some(&p0)) = (arc(s), s.rim.first()) else {
             continue;
         };
-        let r = ((p0.0 - s.centre.0) as f64)
-            .hypot((p0.1 - s.centre.1) as f64)
-            .round() as i64;
+        let r = hypot_round(p0.0 - s.centre.0, p0.1 - s.centre.1);
         match pies.iter_mut().find(|p| {
             (p.centre.0 - s.centre.0).abs() <= SAME_CENTRE
                 && (p.centre.1 - s.centre.1).abs() <= SAME_CENTRE
