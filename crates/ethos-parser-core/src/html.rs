@@ -180,7 +180,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// paragraph's runs are one `<p>`, keeping the tabs and line breaks it holds, as in Markdown. And
 /// decision #131's: a raised or lowered mark stays on its line, as in Markdown. And decision
 /// #136's: a DOCX heading, list item and table as the file declares them, and a layout table as
-/// its blocks, as in Markdown.
+/// its blocks, as in Markdown. And decision #142's: a table the next page goes on with is one
+/// `<table>`, as in Markdown.
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -437,7 +438,7 @@ pub fn to_html_with(
     } else {
         Default::default()
     };
-    let mut plans = plan_tables(payload, &mut erasures, &office);
+    let mut plans = plan_tables(repr, &mut erasures, &office, options.drop_furniture);
     // Decision #139, as in `crate::markdown`.
     let flagged = if options.drop_flagged {
         crate::markdown::flagged_runs(repr)
@@ -498,13 +499,20 @@ pub fn to_html_with(
     let stretches = crate::markdown::read_stretches(&payload.nodes, &pitch);
     let wrapped = crate::markdown::wrapped_labels(repr);
     let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &pitch);
-    let furniture = if options.drop_furniture {
+    let mut furniture = if options.drop_furniture {
         let mut furniture = crate::markdown::repeated_furniture(repr, &owner);
         furniture.extend(office);
         furniture
     } else {
         Default::default()
     };
+    // Decision #142: a continuation's header row repeating its table's, left out with them.
+    let repeated: std::collections::BTreeSet<&str> = plans
+        .iter()
+        .flat_map(|p| &p.repeated)
+        .map(|n| n.id.as_str())
+        .collect();
+    furniture.extend(&repeated);
     // Decision #138, as in `crate::markdown`.
     let items = if options.infer_lists {
         crate::markdown::marker_items(repr)
@@ -525,9 +533,12 @@ pub fn to_html_with(
 
         // Decision #134, as in `crate::markdown`.
         let dropped = dropped_code(node.kind).or_else(|| {
-            furniture
-                .contains(node.id.as_str())
-                .then_some(crate::markdown::PAGE_FURNITURE_NOT_PROJECTED)
+            let id = node.id.as_str();
+            furniture.contains(id).then_some(if repeated.contains(id) {
+                crate::markdown::REPEATED_TABLE_HEADER_NOT_PROJECTED
+            } else {
+                crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
+            })
         });
         if let Some(code) = dropped {
             let b = buckets.entry(code).or_insert((0, 0));
@@ -2573,6 +2584,63 @@ mod tests {
         .expect("projects");
         assert_eq!(a.html, plain.html.replace("<p>Acme Ltd</p>\n", ""));
         assert_eq!(a.html.matches("<ul>").count(), 2);
+    }
+
+    /// **A table the next page goes on with is one `<table>`** (decision #142), counted as
+    /// Markdown counts it, and a second page's repeat of its header row is a row of it unless
+    /// furniture is left out on request, as in Markdown.
+    #[test]
+    fn a_table_the_next_page_goes_on_with_is_one_table_element() {
+        use crate::markdown::tests::{paged_tables, staff, FIRST, SECOND};
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let with = |drop_furniture| {
+            let options = ProjectionOptions {
+                drop_furniture,
+                ..ProjectionOptions::default()
+            };
+            let html = to_html_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                options,
+            );
+            let md = crate::to_markdown_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.markdown_rule,
+                options,
+            );
+            (html.expect("projects"), md.expect("projects"))
+        };
+        let (a, md) = with(false);
+        assert_eq!(
+            a.html,
+            "<p>Staff</p>\n<table>\n<tr>\n<td>Name</td>\n<td>Dept</td>\n</tr>\n<tr>\n<td>Ann</td>\n\
+             <td>Audit</td>\n</tr>\n<tr>\n<td>Name</td>\n<td>Dept</td>\n</tr>\n<tr>\n<td>Bob</td>\n\
+             <td>Tax</td>\n</tr>\n<tr>\n<td>Cy</td>\n<td>Legal</td>\n</tr>\n</table>\n\
+             <p>Page 1</p>\n<p>Page 2</p>\n"
+        );
+        let joins = |c: &crate::Coverage| {
+            c.structural_erasures
+                .iter()
+                .find(|e| e.code == crate::markdown::TABLES_JOINED_ACROSS_PAGES)
+                .map(|e| e.count)
+        };
+        assert_eq!(joins(&a.coverage), Some(1));
+        assert_eq!(joins(&md.coverage), Some(1));
+        assert!(a.coverage.balances());
+
+        let (a, md) = with(true);
+        assert_eq!(a.html.matches("<td>Name</td>").count(), 1);
+        assert_eq!(a.coverage.dropped, md.coverage.dropped);
+        assert!(a.coverage.dropped.iter().any(|b| b.code
+            == crate::markdown::REPEATED_TABLE_HEADER_NOT_PROJECTED
+            && (b.chars, b.nodes) == (8, 2)));
+        assert!(a.coverage.balances());
     }
 
     /// **A unit opening with a marker is an `<li>`, on request** (decision #138), nested inside

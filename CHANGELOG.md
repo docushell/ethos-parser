@@ -32,6 +32,47 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A table the next page goes on with is one table (decision #142)
+
+Markdown, HTML and `elements` wrote one table a page, so a table running onto a second page read
+as two. **The representation is unchanged**: both table records stay as read.
+
+- A table goes on from the one before it, a false join being the worse failure, only where all
+  of these hold: both were read off the page (`ruled-rects`, `stroke-ruled`, `unruled-align`,
+  `whitespace-tracks`), with rows and columns, and stand in `tables[]` in reading order; the
+  second is on the very next page, of the same size and rotation, with as many columns; between
+  their runs lie only running heads and folios another page repeats at the same side and place
+  (as `--drop-furniture` reads them), `/Artifact`s, blank runs, annotations and form fields —
+  never an inferred heading, a caption, a note or text; the running head over both pages reads
+  the same, digits and all, and so does the running foot but for a folio (a number one greater
+  on the second page, as a page number is), so an account, a schedule or a section named
+  in either ends the table; no picture stands below the first or above the second but one placed
+  at the same place on another page, as a logo is; the first reaches, within the height of the second's
+  first row under its header (the row that did not fit), the lowest point the document's body
+  text or tables reach on a page of its height; and **the second's
+  first row repeats the first's header cell for cell**, spans and all. Where an author's tree
+  cites either table, only the tree joins them: the header's own cells inside a `/TR`, cited
+  again on the next page, as Chrome prints a long table. Three pages join twice.
+- The second's rows follow the first's; the furniture between them is written after the table.
+  Each join is counted under `tables-joined-across-pages-v1` in the structural census. The
+  element view gives one table element: cells on a later page carry `page` and their own box,
+  and `continued` names the records joined in (draft schema updated).
+- A repeated header row stays a row. `--drop-furniture` leaves it out, counted under the census
+  bucket `repeated-table-header-not-projected-v1`.
+- Folded into `markdown-blocks-v14`, `html-blocks-v14` and `elements-units-v1`, which no release
+  carries yet; no `profile_sha256` moves. Measured: ParseBench and opendataloader-bench byte-identical (every page of both is one page); on the gate's documents with their structure trees stripped, 50 joins in five NIST publications, each read and each a real continuation, none false; the review probe and the made-up four-page statement read as one table; three rounds of review with made-up PDFs found no false join left in the cases the known limits do not name.
+- Known limits: **a continuation that does not repeat its header stays a table of its own** —
+  on an untagged page nothing else tells the rest of a table from a new table drawn on the same
+  grid, so a header that is not repeated, or repeated in another case (`ITEM` under `Item`),
+  keeps two; so does a running head printed on one page only (a two-page document whose first
+  page carries a title instead), a page number in the running head, running heads that
+  alternate between odd and even pages, a picture between that no other page repeats at its
+  place, and a first table that stops more than the next page's first body row short of the
+  lowest point the body reaches anywhere in the document (a short label row the producer kept
+  with a taller row after it keeps a real table two; and the floor is the whole document's, so in
+  a short document a table ending mid-page can still reach it). A tagged table whose next page
+  does not cite its header again stays two.
+
 ### Labels heading recurring sections head an untagged document nothing else heads (decision #140)
 
 Rule id `heading_inference_rule` `type-size-v7` -> `type-size-v8`; `profile_sha256` moves.

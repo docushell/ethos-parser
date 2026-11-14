@@ -176,7 +176,10 @@ enum Command {
     /// a tagged one or one the reader inferred from its type, as Markdown writes it with `#`; a
     /// header or footer is the reader's page furniture; there is no list or caption label. A DOCX
     /// paragraph is one element. Boxes are integer centipoints from the top-left of the page; a
-    /// source with no pages has neither pages nor boxes.
+    /// source with no pages has neither pages nor boxes. A table the next page goes on with is
+    /// one `table` element on its first page (decision #142): the next page's rows follow its
+    /// own, each of their cells carries its own `page` and box, and `continued` names the table
+    /// records joined in.
     ///
     /// **Nothing is dropped silently**: a node no element carries — a run with no measured box, a
     /// form field's value, an annotation — is listed under `omitted` with its reason, and one line
@@ -492,7 +495,9 @@ struct MarkdownArgs {
     /// and a folio go, a whole line at a time; a numbered chapter title at the top of each
     /// chapter's page goes too. A Word document's header and footer parts go whole, their tables
     /// with them (decision #136) — so a resume whose name sits only in its page header loses it. Counted under the census bucket `page-furniture-not-projected-v1`; the
-    /// representation keeps every run (decision #134).
+    /// representation keeps every run (decision #134). A table's header row that the next page
+    /// repeats, where the table goes on there as one, goes too, counted under
+    /// `repeated-table-header-not-projected-v1` (decision #142).
     #[arg(long)]
     drop_furniture: bool,
 

@@ -2,8 +2,8 @@
 
 **Measured 2026-11-14** with the snapshot binary `target/proto/measure/bin/c9b364c/ethos-parser`
 (`ethos-parser 0.66.0-dev.1`, built at c9b364c; its sha256 is in [`results.json`](results.json)).
-Fifteen made-up documents are written by [`make_financial.py`](make_financial.py), each with an
-answer key. They are scored by the shared scorer
+Sixteen made-up documents are written by [`make_financial.py`](make_financial.py), each with an
+answer key; §3 and `results.json` score the first fifteen, and §3a the sixteenth, added later. They are scored by the shared scorer
 [`../office-resumes/score.py`](../office-resumes/score.py).
 
 **Everything is invented, and all of it is CC0.**
@@ -27,7 +27,7 @@ The generator builds one model per document and renders it in one of three forma
 | --- | --- | --- |
 | DOCX | 3 | 2 |
 | XLSX | 2 | 2 |
-| PDF (Chrome) | 3 | 3 |
+| PDF (Chrome) | 3 | 4 |
 
 - **Invoices** carry:
   - a seller block and a buyer block, each with a GSTIN;
@@ -126,6 +126,20 @@ ETHOS_PARSER_BIN=target/proto/measure/bin/c9b364c/ethos-parser \
 | `headings_line` · `headings_level` | 28/28 · 0/28 | 13/13 · 0/13 | 15/15 · 0/15 | — |
 | `header` · `footer` | 0/5 · 0/5 | 0/5 · 0/5 | — | — |
 | `text` (single-cell XLSX rows) | 32/32 | — | — | 32/32 |
+
+## 3a. The sixteenth document: one table over four pages (decision #142)
+
+`statement-08.pdf` is a statement of 90 transactions, the generator's last document, so the fifteen
+before it draw the same numbers and are byte-identical to the ones §3 scores. Chrome prints its
+ruled table over four A4 pages, the fourth holding its last rows and the summary, and repeats the
+header row at the top of each, citing it by the same `/TH` elements as the first page's.
+
+- **c9b364c reads four tables**, one a page, each opening with the header row.
+- **Since decision #142 it reads one**: the next page's piece goes on with the table, by the tree's
+  own header elements cited again (3 joins, `tables-joined-across-pages-v1`). The three repeated
+  header rows stay rows; `--drop-furniture` leaves them out, counted.
+- Its own checks, the same at c9b364c and after the join: `table_rows` and `table_rows_exact`
+  91/95 (the summary's four pairs fail, as on every statement), `amounts` 183/183, `dates` 13/13.
 
 ## 4. What fails today, and which plan item should move it
 

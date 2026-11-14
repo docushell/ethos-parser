@@ -295,6 +295,8 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// run before it with nothing between them, or one space where the page drew one
 /// ([`script_continues`]), where `-v13` wrote a line break either side of a mark inside a line,
 /// and emphasis stays open where only the script changes between two runs with nothing between.
+/// And so is decision #142's: a table the next page goes on with is one table
+/// ([`continued_tables`]), where `-v13` wrote one a page.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -415,6 +417,348 @@ pub(crate) fn layout_tables(
         })
         .map(|&(.., t)| t)
         .collect()
+}
+
+/// A table written as the rest of the one before it, where the document continues a table across
+/// a page (decision #142), counted once per join. The record keeps both tables as read.
+pub(crate) const TABLES_JOINED_ACROSS_PAGES: &str = "tables-joined-across-pages-v1";
+
+/// The runs of a continuation's first row where it repeats its table's header cell for cell,
+/// left out on request ([`ProjectionOptions::drop_furniture`]), as a running head is (decision
+/// #142). Kept, as a row of the table, by default.
+pub(crate) const REPEATED_TABLE_HEADER_NOT_PROJECTED: &str =
+    "repeated-table-header-not-projected-v1";
+
+/// The detectors whose tables may be joined across a page: those that read a grid off the page's
+/// ink or its text. A tagged table is the tree's own, a chart's is read off its marks, and an
+/// office table's part has no pages.
+const JOINABLE_RULES: [&str; 4] = [
+    "ruled-rects-",
+    "stroke-ruled-",
+    "unruled-align-",
+    "whitespace-tracks-",
+];
+
+/// Decision #142. For each table of `tables[]`, the one it goes on from, and whether its first
+/// row repeats that one's header — `None` for every table that is no continuation. **A false join is the worse failure, so every clause must hold**, and a
+/// continuation that does not repeat its header stays a table of its own: nothing else on an
+/// untagged page tells a table running on from a new table drawn on the same grid.
+///
+/// - Both are read off the page by a [`JOINABLE_RULES`] detector, each with rows and columns, the
+///   second after the first in `tables[]` as in reading order, on the very next page, of the
+///   same size and turn, with as many columns.
+/// - Nothing lies between their runs in reading order but a running head or foot that
+///   [`repeated_furniture`] reads as one — its text repeated on another page at the same side
+///   and place, a folio's number read as any number — or an `/Artifact`, a run of whitespace, an
+///   annotation or a form field; never an inferred heading. The running head over both pages is
+///   one: the repeated furniture in the top half of each page reads the same, digits and all, and
+///   so does the bottom half's but for folios, numbers one greater on the second page, as a page
+///   number is — so an account, a schedule, a section or a month named in either ends the table,
+///   and heads that alternate between odd and even pages keep it two. No picture, painted image
+///   or figure region, stands below the first table on its page or above the second on its, but one placed at the
+///   same place on another page, as a logo is.
+/// - The first reaches the foot of the document's body: its bottom lies within the height of the
+///   second's first row under its header — the row that did not fit — of the lowest edge any text
+///   not furniture, or any table, reaches on a page of its height.
+/// - On a page no author tagged, the second's first row repeats the first table's header cell for
+///   cell, spans and all. Where an author's tree cites either table, only the tree may say so:
+///   the second's first row is cited by the very elements, within a table row (`/TR`), that cite
+///   the first table's header, as Chrome cites a header it repeats on each page.
+///
+/// A table of three pages goes on twice.
+pub(crate) fn continued_tables(repr: &crate::DocumentRepresentation) -> Vec<Option<(usize, bool)>> {
+    let payload = repr.payload();
+    let tables = &payload.tables;
+    let at: std::collections::BTreeMap<&str, usize> = payload
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.id.as_str(), i))
+        .collect();
+    let runs = |t: &crate::TableRecord| -> Vec<usize> {
+        t.cells
+            .iter()
+            .flat_map(|c| &c.node_ids)
+            .filter_map(|id| at.get(id.as_str()).copied())
+            .collect()
+    };
+    // Each table's first and last run in reading order, and the tables in the order they open.
+    let reach: Vec<Option<(usize, usize)>> = tables
+        .iter()
+        .map(|t| Some((runs(t).into_iter().min()?, runs(t).into_iter().max()?)))
+        .collect();
+    let mut order: Vec<usize> = (0..tables.len()).filter(|&t| reach[t].is_some()).collect();
+    order.sort_by_key(|&t| reach[t]);
+    let pages: std::collections::BTreeMap<&crate::NodeId, &crate::representation::PageRecord> =
+        payload.pages.iter().map(|p| (&p.id, p)).collect();
+    let page = |id: &crate::NodeId| pages.get(id).copied();
+
+    // What may lie between: furniture another page repeats, read as `--drop-furniture` reads it,
+    // with each table's runs left to it; an `/Artifact`; whatever no projection writes as text.
+    let owner: std::collections::BTreeMap<&str, usize> = tables
+        .iter()
+        .enumerate()
+        .flat_map(|(t, r)| {
+            r.cells
+                .iter()
+                .flat_map(|c| &c.node_ids)
+                .map(move |id| (id.as_str(), t))
+        })
+        .collect();
+    let repeated = repeated_furniture(repr, &owner);
+    let furniture = |n: &crate::Node| {
+        dropped_code(n.kind).is_some()
+            || n.text.trim().is_empty()
+            || (!text_run_attributes(n).is_some_and(|a| a.inferred_heading)
+                && (is_page_artifact(n) || repeated.contains(n.id.as_str())))
+    };
+    // How low the body reaches on a page of each height: its text that is no furniture, and its
+    // tables.
+    let mut floor: std::collections::BTreeMap<i64, i64> = std::collections::BTreeMap::new();
+    let mut lower = |height: i64, y: i64| {
+        let f = floor.entry(height).or_insert(y);
+        *f = (*f).max(y);
+    };
+    for (i, n) in payload.nodes.iter().enumerate() {
+        let flagged = text_run_attributes(n).is_some_and(|a| a.furniture.is_some());
+        if n.kind != NodeKind::TextRun || n.text.trim().is_empty() || flagged || is_page_artifact(n)
+        {
+            continue;
+        }
+        if let (Some((.., y1)), Some(p)) = (measured_box(repr, i), page(&n.parent)) {
+            lower(p.height, y1);
+        }
+    }
+    for t in tables {
+        if let (Some(r), Some(p)) = (t.geometry.measured(), page(&t.page)) {
+            lower(p.height, r.y1());
+        }
+    }
+    // Every picture's page and box: a painted image, or a figure region.
+    let mut pictures: Vec<(&crate::NodeId, crate::QRect)> = payload
+        .figures
+        .iter()
+        .filter_map(|f| Some((&f.page, f.geometry.measured()?)))
+        .collect();
+    for n in &payload.nodes {
+        if let crate::NativeLocator::PdfImage(image) = &n.native_locator {
+            if let Some(r) = image.rect.painted() {
+                pictures.push((&n.parent, r));
+            }
+        }
+    }
+    let middle = |a: i64, b: i64| a + (b - a) / 2;
+    // A picture placed at the same place on another page is furniture, as a logo is.
+    let mut placed: std::collections::BTreeMap<
+        (i64, i64, i64, i64),
+        std::collections::BTreeSet<&crate::NodeId>,
+    > = std::collections::BTreeMap::new();
+    for (p, r) in &pictures {
+        placed
+            .entry((r.x0(), r.y0(), r.x1(), r.y1()))
+            .or_default()
+            .insert(*p);
+    }
+    pictures.retain(|(_, r)| placed[&(r.x0(), r.y0(), r.x1(), r.y1())].len() < 2);
+    // Each page's running head and foot: its repeated furniture in the top half and in the bottom
+    // half, whitespace aside.
+    let mut sides: std::collections::BTreeMap<(&crate::NodeId, bool), String> =
+        std::collections::BTreeMap::new();
+    for (i, n) in payload.nodes.iter().enumerate() {
+        let (Some((_, y0, _, y1)), Some(p)) = (measured_box(repr, i), page(&n.parent)) else {
+            continue;
+        };
+        if repeated.contains(n.id.as_str()) {
+            let top = 2 * middle(y0, y1) < p.height;
+            sides
+                .entry((&n.parent, top))
+                .or_default()
+                .extend(n.text.chars().filter(|c| !c.is_whitespace()));
+        }
+    }
+    // Two pages' running feet are one where they read the same but for folios: numbers that grow
+    // from the first page to the next by one, as `Page 7` does to `Page 8`. A head is one only read
+    // the same, digits and all, so `Schedule 1` and `Schedule 2` stay two.
+    let runs_of = |s: &str| -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for c in s.chars() {
+            match out.last_mut() {
+                Some(r) if r.starts_with(|d: char| d.is_ascii_digit()) == c.is_ascii_digit() => {
+                    r.push(c)
+                }
+                _ => out.push(c.to_string()),
+            }
+        }
+        out
+    };
+    let feet_one = |a: &str, b: &str| {
+        let (a, b) = (runs_of(a), runs_of(b));
+        a.len() == b.len()
+            && a.iter().zip(&b).all(|(x, y)| {
+                x == y
+                    || matches!(
+                        (x.parse::<i64>(), y.parse::<i64>()),
+                        (Ok(x), Ok(y)) if x.checked_add(1) == Some(y)
+                    )
+            })
+    };
+    let sides_one = |a: &crate::NodeId, b: &crate::NodeId| {
+        sides.get(&(a, true)) == sides.get(&(b, true))
+            && match (sides.get(&(a, false)), sides.get(&(b, false))) {
+                (Some(x), Some(y)) => feet_one(x, y),
+                (x, y) => x == y,
+            }
+    };
+
+    // A table's first row, by column: where each cell stands and how far it reaches, its text, and
+    // the author's element citing it within a table row.
+    struct HeadCell {
+        at: (u32, u32, u32),
+        text: String,
+        element: Option<crate::PdfObjectNumber>,
+    }
+    let head = |t: &crate::TableRecord| -> Vec<HeadCell> {
+        let mut row: Vec<HeadCell> = t
+            .cells
+            .iter()
+            .filter(|c| c.position.row == 0)
+            .map(|c| HeadCell {
+                at: (c.position.column, c.position.colspan, c.position.rowspan),
+                text: normalize(&c.text),
+                element: c
+                    .node_ids
+                    .first()
+                    .and_then(|id| at.get(id.as_str()))
+                    .and_then(|&i| row_element(&payload.nodes[i])),
+            })
+            .collect();
+        row.sort_by_key(|c| c.at);
+        row
+    };
+    // The height of a table's first row under its repeated header, the row that did not fit on the
+    // page before: the row its header's cells reach down to, measured by its cells that span one.
+    let body_row = |t: &crate::TableRecord| {
+        let row = t
+            .cells
+            .iter()
+            .filter(|c| c.position.row == 0)
+            .map(|c| c.position.rowspan)
+            .max()
+            .unwrap_or(1);
+        t.cells
+            .iter()
+            .filter(|c| c.position.row == row && c.position.rowspan == 1)
+            .filter_map(|c| c.geometry.measured())
+            .map(|r| r.y1() - r.y0())
+            .max()
+            .unwrap_or(0)
+    };
+    let joinable = |t: &crate::TableRecord| {
+        JOINABLE_RULES
+            .iter()
+            .any(|rule| t.detection_rule.starts_with(rule))
+    };
+    let tagged = |t: &crate::TableRecord| {
+        runs(t)
+            .into_iter()
+            .any(|i| author_element(&payload.nodes[i]).is_some())
+    };
+
+    let mut out = vec![None; tables.len()];
+    for pair in order.windows(2) {
+        let (i, j) = (pair[0], pair[1]);
+        let (a, b) = (&tables[i], &tables[j]);
+        let (Some((_, last)), Some((next, _)), Some(pa), Some(pb), Some(ra), Some(rb)) = (
+            reach[i],
+            reach[j],
+            page(&a.page),
+            page(&b.page),
+            a.geometry.measured(),
+            b.geometry.measured(),
+        ) else {
+            continue;
+        };
+        if !(i < j
+            && joinable(a)
+            && joinable(b)
+            && a.rows > 0
+            && b.rows > 0
+            && a.columns > 0
+            && a.columns == b.columns
+            && pa.index.checked_add(1) == Some(pb.index)
+            && (pa.width, pa.height, pa.rotation) == (pb.width, pb.height, pb.rotation)
+            && last < next
+            && payload.nodes[last + 1..next].iter().all(furniture)
+            && sides_one(&a.page, &b.page)
+            && !pictures.iter().any(|(p, r)| {
+                (*p == &a.page && middle(r.y0(), r.y1()) > ra.y1())
+                    || (*p == &b.page && middle(r.y0(), r.y1()) < rb.y0())
+            })
+            && floor
+                .get(&pa.height)
+                .is_some_and(|&f| ra.y1() + body_row(b) >= f))
+        {
+            continue;
+        }
+        // The first's own header, which its own first page repeated if it went on from one.
+        let (first, own) = (head(a), head(b));
+        let same = first.len() == own.len()
+            && own.iter().any(|c| !c.text.is_empty())
+            && first
+                .iter()
+                .zip(&own)
+                .all(|(x, y)| (x.at, &x.text) == (y.at, &y.text));
+        // A row to leave out only where no cell of it reaches into the row below.
+        let repeated = same && own.iter().all(|c| c.at.2 == 1);
+        let one = if tagged(a) || tagged(b) {
+            // The tree's word alone: the header's own cells, cited again on this page.
+            !own.is_empty()
+                && own.iter().all(|c| c.element.is_some())
+                && first
+                    .iter()
+                    .map(|c| (c.at, c.element))
+                    .eq(own.iter().map(|c| (c.at, c.element)))
+        } else {
+            same
+        };
+        if one {
+            out[j] = Some((i, repeated));
+        }
+    }
+    out
+}
+
+/// The numbered element an author's tree cites `node` under where its role path, after the
+/// `/RoleMap`, holds a table row (`/TR`): a header cell, or a paragraph in one. A `/P` citing a
+/// whole page is in no row.
+fn row_element(node: &crate::Node) -> Option<crate::PdfObjectNumber> {
+    match node.structural_locator.as_ref()? {
+        crate::StructuralLocator::PdfTagged(t)
+            if t.derivation == crate::DerivationClass::Extracted
+                && t.standard_role_path
+                    .as_ref()
+                    .unwrap_or(&t.role_path)
+                    .iter()
+                    .any(|r| r == "TR") =>
+        {
+            t.block_element
+        }
+        _ => None,
+    }
+}
+
+/// The block element an author's tree cites `node` under — `Some(None)` where that element is a
+/// direct object, which the file does not number — or `None` for a run no author's tree cites. A
+/// tree this engine wrote is no author's.
+fn author_element(node: &crate::Node) -> Option<Option<crate::PdfObjectNumber>> {
+    match node.structural_locator.as_ref()? {
+        crate::StructuralLocator::PdfTagged(t)
+            if t.derivation == crate::DerivationClass::Extracted =>
+        {
+            Some(t.block_element)
+        }
+        _ => None,
+    }
 }
 
 /// Runs appended to a list item that was already open, joined on a guess the tree did not make.
@@ -3127,7 +3471,10 @@ pub struct ProjectionOptions {
     /// left out ends there, and the list around it, as the furniture's own block ended them.
     /// Since decision #136, a Word document's header and footer parts go too, whole: a section
     /// sets them on its pages by declaration, and the record reads each once.
-    /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`].
+    /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`]. Since decision
+    /// #142, a table's header row the next page repeats, where the table goes on there as one
+    /// ([`continued_tables`]), goes too, counted as `repeated-table-header-not-projected-v1`; by
+    /// default it stays a row of the table.
     pub drop_furniture: bool,
     /// Write a list item for each layout unit opening with a list marker, on a document that
     /// declares no author structure (decision #138): a bullet, or a number of up to three digits
@@ -4083,7 +4430,7 @@ pub fn to_markdown_with(
     } else {
         Default::default()
     };
-    let mut plans = plan_tables(payload, &mut erasures, &office);
+    let mut plans = plan_tables(repr, &mut erasures, &office, options.drop_furniture);
     // Decision #139: flagged runs leave their cells, so no table writes them.
     let flagged = if options.drop_flagged {
         flagged_runs(repr)
@@ -4139,13 +4486,20 @@ pub fn to_markdown_with(
     let stretches = read_stretches(&payload.nodes, &pitch);
     let wrapped = wrapped_labels(repr);
     let overprinted = overprinted_runs(&payload.nodes, &owner, &pitch);
-    let furniture = if options.drop_furniture {
+    let mut furniture = if options.drop_furniture {
         let mut furniture = repeated_furniture(repr, &owner);
         furniture.extend(office);
         furniture
     } else {
         Default::default()
     };
+    // Decision #142: a continuation's header row repeating its table's, left out with them.
+    let repeated: std::collections::BTreeSet<&str> = plans
+        .iter()
+        .flat_map(|p| &p.repeated)
+        .map(|n| n.id.as_str())
+        .collect();
+    furniture.extend(&repeated);
     // Decision #138: the runs that open a list item on request, and the unit of the one open.
     let items = if options.infer_lists {
         marker_items(repr)
@@ -4166,9 +4520,12 @@ pub fn to_markdown_with(
 
         // Decision #134: furniture left out on request goes as a node of a dropped kind goes.
         let dropped = dropped_code(node.kind).or_else(|| {
-            furniture
-                .contains(node.id.as_str())
-                .then_some(PAGE_FURNITURE_NOT_PROJECTED)
+            let id = node.id.as_str();
+            furniture.contains(id).then_some(if repeated.contains(id) {
+                REPEATED_TABLE_HEADER_NOT_PROJECTED
+            } else {
+                PAGE_FURNITURE_NOT_PROJECTED
+            })
         });
         if let Some(code) = dropped {
             let b = buckets.entry(code).or_insert((0, 0));
@@ -4840,6 +5197,10 @@ pub(crate) struct TablePlan<'a> {
     /// The worksheet name the table's cells are addressed under, written as a heading over it
     /// (decision #135). `None` for every table whose cells are not workbook cells.
     pub(crate) caption: Option<&'a str>,
+    /// Decision #142: the runs of each continuation's first row that repeats this table's
+    /// header, left out on request and counted under [`REPEATED_TABLE_HEADER_NOT_PROJECTED`].
+    /// Empty by default, where that row stays a row of the table.
+    pub(crate) repeated: Vec<&'a crate::Node>,
 }
 
 /// What one slot of a planned grid is (v1.1-S4).
@@ -4867,11 +5228,18 @@ pub(crate) enum SlotRole {
 /// no run it has no place in reading order but the end. A DOCX layout table ([`layout_tables`]) is
 /// no grid either: its runs project as the blocks they are, in document order, counted under
 /// [`LAYOUT_TABLE_AS_BLOCKS`].
+///
+/// Decision #142: a table the next page goes on with ([`continued_tables`]) takes that page's
+/// rows under its own, a [`TABLES_JOINED_ACROSS_PAGES`] each, and the continuation is no grid of
+/// its own. Its first row, where it repeats the header cell for cell, is left out where
+/// `leave_out_repeated` asks, its runs in [`TablePlan::repeated`].
 pub(crate) fn plan_tables<'a>(
-    payload: &'a crate::representation::RepresentationPayload,
+    repr: &'a DocumentRepresentation,
     erasures: &mut std::collections::BTreeMap<&'static str, usize>,
     left_out: &std::collections::BTreeSet<&str>,
+    leave_out_repeated: bool,
 ) -> Vec<TablePlan<'a>> {
+    let payload = repr.payload();
     let by_id: std::collections::BTreeMap<&str, &crate::Node> =
         payload.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
     // Document-wide, not per table: two tables on one page can only claim the same run if the
@@ -4897,6 +5265,7 @@ pub(crate) fn plan_tables<'a>(
                 rows,
                 columns,
                 caption: None,
+                repeated: Vec::new(),
             });
             continue;
         }
@@ -4911,6 +5280,7 @@ pub(crate) fn plan_tables<'a>(
                 rows,
                 columns,
                 caption: None,
+                repeated: Vec::new(),
             });
             continue;
         }
@@ -4926,6 +5296,7 @@ pub(crate) fn plan_tables<'a>(
                 rows,
                 columns,
                 caption: None,
+                repeated: Vec::new(),
             });
             continue;
         }
@@ -5055,7 +5426,36 @@ pub(crate) fn plan_tables<'a>(
             rows,
             columns,
             caption,
+            repeated: Vec::new(),
         });
+    }
+
+    // Decision #142: a table the next page goes on with takes that page's rows under its own,
+    // and the continuation is no grid of its own. Its delimiter row goes with it.
+    let mut opens: Vec<usize> = (0..plans.len()).collect();
+    for (t, link) in continued_tables(repr).into_iter().enumerate() {
+        let Some((prev, repeated)) = link else {
+            continue;
+        };
+        let h = opens[prev];
+        opens[t] = h;
+        let (head, rest) = plans.split_at_mut(t);
+        let (head, part) = (&mut head[h], &mut rest[0]);
+        let skip = if repeated && leave_out_repeated {
+            part.columns
+        } else {
+            0
+        };
+        head.repeated.extend(part.slots.drain(..skip).flatten());
+        head.slots.append(&mut part.slots);
+        head.roles.extend(part.roles.drain(skip..));
+        head.rows += part.rows - usize::from(skip > 0);
+        part.projected = false;
+        part.roles.clear();
+        *erasures.entry(TABLES_JOINED_ACROSS_PAGES).or_insert(0) += 1;
+        if let Some(n) = erasures.get_mut(GFM_ROW_ZERO_SEPARATOR) {
+            *n -= 1;
+        }
     }
 
     plans
@@ -10977,6 +11377,894 @@ pub(crate) mod tests {
             }
         }
         DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    /// A made-up table over runs of a [`paged_repr`] on `page`: `columns` wide, the cell at row `r`
+    /// and column `c` the run at `cells[r * columns + c]`, column `c` set across `spans[c]`, its
+    /// first row's top `top` down the page and each row `height` tall.
+    #[derive(Clone, Copy)]
+    pub(crate) struct Grid<'a> {
+        pub(crate) page: u32,
+        pub(crate) columns: usize,
+        pub(crate) cells: &'a [usize],
+        pub(crate) spans: &'a [(i64, i64)],
+        pub(crate) top: i64,
+        pub(crate) height: i64,
+    }
+
+    /// [`paged_repr`] with a table read by `rule` over each of `grids`, each cell's run measured
+    /// across its cell and every other line that is no furniture over the tables, near the top.
+    pub(crate) fn paged_tables(
+        lines: &[(&str, u32, Option<crate::Furniture>)],
+        grids: &[Grid<'_>],
+        rule: &str,
+    ) -> DocumentRepresentation {
+        let repr = paged_repr(lines, false);
+        let mut payload = repr.payload().clone();
+        let mut geometry = repr.geometry().to_vec();
+        for (k, line) in lines.iter().enumerate() {
+            if line.2.is_none() {
+                geometry[k].presence =
+                    GeometryPresence::Measured(QRect::new(7200, 500, 9000, 800).unwrap());
+            }
+        }
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        for g in grids {
+            let id = alloc.next(IdKind::Table).unwrap();
+            let rows = g.cells.len() / g.columns;
+            let cells = g
+                .cells
+                .iter()
+                .enumerate()
+                .map(|(k, &i)| {
+                    let (r, c) = (k / g.columns, k % g.columns);
+                    let y = g.top + g.height * r as i64;
+                    let cell = QRect::new(g.spans[c].0, y, g.spans[c].1, y + g.height).unwrap();
+                    geometry[i].presence = GeometryPresence::Measured(cell);
+                    crate::TableCellRecord {
+                        id: alloc.next(IdKind::Element).unwrap(),
+                        position: crate::TableCellPosition {
+                            row: r as u32,
+                            column: c as u32,
+                            rowspan: 1,
+                            colspan: 1,
+                            table_id: id.clone(),
+                        },
+                        geometry: GeometryPresence::Measured(cell),
+                        text: payload.nodes[i].text.clone(),
+                        node_ids: vec![payload.nodes[i].id.clone()],
+                    }
+                })
+                .collect();
+            let (x0, x1) = (g.spans[0].0, g.spans[g.columns - 1].1);
+            payload.tables.push(crate::TableRecord {
+                id,
+                page: payload.pages[g.page as usize - 1].id.clone(),
+                geometry: GeometryPresence::Measured(
+                    QRect::new(x0, g.top, x1, g.top + g.height * rows as i64).unwrap(),
+                ),
+                rows: rows as u32,
+                columns: g.columns as u32,
+                cells,
+                derivation: DerivationClass::Computed,
+                detection_rule: rule.to_string(),
+                locator_check: crate::LocatorCheck {
+                    check_id: crate::LOCATOR_CHECK_V1.into(),
+                    check_version: "1".into(),
+                    outcome: crate::CheckStatus::Ok,
+                },
+                tagged_check: None,
+            });
+        }
+        DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    pub(crate) const SPANS: [(i64, i64); 2] = [(7200, 20000), (20000, 30000)];
+
+    /// A staff list over two pages: a title, the table's header and first row on page 1 over its
+    /// folio, and on page 2, after that page's folio, the header again over the next two rows —
+    /// then `more`. The two folios repeat, a number read as any number.
+    pub(crate) fn staff(
+        more: &[(&'static str, u32, Option<crate::Furniture>)],
+    ) -> Vec<(&'static str, u32, Option<crate::Furniture>)> {
+        use crate::Furniture::Footer;
+        let mut lines = vec![
+            ("Staff", 1, None),
+            ("Name", 1, None),
+            ("Dept", 1, None),
+            ("Ann", 1, None),
+            ("Audit", 1, None),
+            ("Page 1", 1, Some(Footer)),
+            ("Page 2", 2, Some(Footer)),
+            ("Name", 2, None),
+            ("Dept", 2, None),
+            ("Bob", 2, None),
+            ("Tax", 2, None),
+            ("Cy", 2, None),
+            ("Legal", 2, None),
+        ];
+        lines.extend_from_slice(more);
+        lines
+    }
+
+    pub(crate) const FIRST: Grid<'static> = Grid {
+        page: 1,
+        columns: 2,
+        cells: &[1, 2, 3, 4],
+        spans: &SPANS,
+        top: 1000,
+        height: 400,
+    };
+    pub(crate) const SECOND: Grid<'static> = Grid {
+        page: 2,
+        columns: 2,
+        cells: &[7, 8, 9, 10, 11, 12],
+        spans: &SPANS,
+        top: 1000,
+        height: 400,
+    };
+
+    /// How many GFM tables a Markdown string holds: one delimiter row each.
+    fn grids_in(markdown: &str) -> usize {
+        markdown.lines().filter(|l| l.starts_with("| ---")).count()
+    }
+
+    /// `repr` with its payload edited by `edit`, resealed over the same geometry.
+    fn edited(
+        repr: &DocumentRepresentation,
+        edit: &dyn Fn(&mut crate::representation::RepresentationPayload),
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        edit(&mut payload);
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// The joins Markdown counts on `repr`, its census checked.
+    fn joins_in(repr: DocumentRepresentation) -> usize {
+        let a = artifact_of(repr);
+        assert!(a.coverage.balances());
+        erasure(&a, TABLES_JOINED_ACROSS_PAGES)
+    }
+
+    /// **A table whose next page repeats its header is one table** (decision #142): that page's
+    /// rows follow the first page's, the furniture between the two goes after it, and the join is
+    /// counted. The repeated header stays a row unless furniture is left out on request, where it
+    /// goes too, counted under its own code. The record keeps both tables.
+    #[test]
+    fn a_table_whose_next_page_repeats_its_header_is_one_table() {
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        assert_eq!(repr.payload().tables.len(), 2, "the record keeps both");
+        let a = artifact_of(repr.clone());
+        assert_eq!(
+            a.markdown,
+            "Staff\n\n| Name | Dept |\n| --- | --- |\n| Ann | Audit |\n| Name | Dept |\n\
+             | Bob | Tax |\n| Cy | Legal |\n\nPage 1\n\nPage 2\n"
+        );
+        assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 1);
+        assert_eq!(erasure(&a, GFM_ROW_ZERO_SEPARATOR), 1, "one delimiter row");
+        assert_eq!(bucket(&a, REPEATED_TABLE_HEADER_NOT_PROJECTED), None);
+        assert!(a.coverage.balances());
+
+        let d = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(
+            d.markdown,
+            "Staff\n\n| Name | Dept |\n| --- | --- |\n| Ann | Audit |\n| Bob | Tax |\n\
+             | Cy | Legal |\n"
+        );
+        assert_eq!(
+            bucket(&d, REPEATED_TABLE_HEADER_NOT_PROJECTED),
+            Some((8, 2))
+        );
+        assert_eq!(erasure(&d, TABLES_JOINED_ACROSS_PAGES), 1);
+        assert!(d.coverage.balances());
+    }
+
+    /// A table of three pages goes on twice, and is one table.
+    #[test]
+    fn a_table_of_three_pages_is_one_table() {
+        let lines = staff(&[
+            ("Page 3", 3, Some(crate::Furniture::Footer)),
+            ("Name", 3, None),
+            ("Dept", 3, None),
+            ("Dee", 3, None),
+            ("Ops", 3, None),
+        ]);
+        let third = Grid {
+            page: 3,
+            cells: &[14, 15, 16, 17],
+            ..FIRST
+        };
+        let a = artifact_of(paged_tables(
+            &lines,
+            &[FIRST, SECOND, third],
+            crate::TABLE_DETECTION_STROKE_V2,
+        ));
+        assert_eq!(grids_in(&a.markdown), 1, "{}", a.markdown);
+        assert!(a
+            .markdown
+            .contains("| Cy | Legal |\n| Name | Dept |\n| Dee | Ops |\n"));
+        assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 2);
+        assert!(a.coverage.balances());
+    }
+
+    /// **Anything that does not say "the same table" keeps two** (review of decision #142), one
+    /// change at a time from the joined pair: a next page that does not repeat the header — the
+    /// rest of the table, a header of its own, one differing by a letter, one with a hole, two
+    /// empty first rows; text between; a page between, or unlike; another column count; a grid
+    /// no detector read off the page; tables out of order, or with no rows or columns; a running
+    /// head that changes.
+    #[test]
+    fn two_tables_stay_two_where_anything_says_they_are_not_one() {
+        let rule = crate::TABLE_DETECTION_V14;
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], rule);
+        assert_eq!(joins_in(repr.clone()), 1);
+        let two = |r: DocumentRepresentation, why: &str| {
+            let a = artifact_of(r);
+            assert!(a.coverage.balances(), "{why}");
+            assert_eq!(
+                erasure(&a, TABLES_JOINED_ACROSS_PAGES),
+                0,
+                "{why}: {}",
+                a.markdown
+            );
+        };
+        let rest = Grid {
+            cells: &[9, 10, 11, 12],
+            ..SECOND
+        };
+        two(
+            paged_tables(&staff(&[]), &[FIRST, rest], rule),
+            "the rest, no header",
+        );
+        two(
+            edited(&repr, &|p| p.tables[1].cells[1].text = "Dept.".into()),
+            "a letter",
+        );
+        two(
+            edited(&repr, &|p| {
+                p.tables[1].cells.remove(1);
+            }),
+            "a hole",
+        );
+        two(
+            edited(&repr, &|p| {
+                for (t, k) in [(0, 1), (0, 2), (1, 7), (1, 8)] {
+                    p.nodes[k].text = " ".into();
+                    let cell = &mut p.tables[t].cells[(k - 1) % 2];
+                    cell.text = String::new();
+                    cell.node_ids.clear();
+                }
+            }),
+            "empty first rows",
+        );
+        let mut own = staff(&[]);
+        own[7] = ("Region", 2, None);
+        own[8] = ("Sales", 2, None);
+        two(
+            paged_tables(&own, &[FIRST, SECOND], rule),
+            "a header of its own",
+        );
+        // Text between: a heading over the second, a line under the first.
+        let mut lines = staff(&[]);
+        lines.insert(7, ("Branch office", 2, None));
+        let after = Grid {
+            cells: &[8, 9, 10, 11, 12, 13],
+            ..SECOND
+        };
+        two(paged_tables(&lines, &[FIRST, after], rule), "a heading");
+        let mut lines = staff(&[]);
+        lines.insert(5, ("Signed", 1, None));
+        two(paged_tables(&lines, &[FIRST, after], rule), "a last line");
+        // The page after next; a page of another size, or turned.
+        let mut lines = staff(&[]);
+        for line in &mut lines[6..] {
+            line.1 = 3;
+        }
+        let third = Grid { page: 3, ..SECOND };
+        two(
+            paged_tables(&lines, &[FIRST, third], rule),
+            "a page between",
+        );
+        two(edited(&repr, &|p| p.pages[1].width += 1), "a wider page");
+        two(edited(&repr, &|p| p.pages[1].height += 1), "a taller page");
+        two(
+            edited(&repr, &|p| p.pages[1].rotation = 90),
+            "a turned page",
+        );
+        // Three columns on the next page.
+        let lines = staff(&[("x", 2, None), ("y", 2, None), ("z", 2, None)]);
+        let wide = Grid {
+            columns: 3,
+            cells: &[7, 8, 13, 9, 10, 14, 11, 12, 15],
+            spans: &[(7200, 20000), (20000, 25000), (25000, 30000)],
+            ..SECOND
+        };
+        two(paged_tables(&lines, &[FIRST, wide], rule), "three columns");
+        two(
+            edited(&paged_tables(&lines, &[FIRST, wide], rule), &|p| {
+                p.tables[1]
+                    .cells
+                    .retain(|c| (c.position.row, c.position.column) != (0, 2))
+            }),
+            "three columns under the same two header cells",
+        );
+        // A grid no detector read off the page, on either side.
+        for other in [
+            crate::TABLE_DETECTION_TAGGED_V1,
+            crate::TABLE_DETECTION_CHARTS_V3,
+        ] {
+            two(paged_tables(&staff(&[]), &[FIRST, SECOND], other), other);
+        }
+        for k in [0, 1] {
+            two(
+                edited(&repr, &|p| {
+                    p.tables[k].detection_rule = crate::TABLE_DETECTION_CHARTS_V3.into()
+                }),
+                "a chart on one side",
+            );
+        }
+        // Out of reading order, as no reader writes it: no join, no panic.
+        let swapped = edited(&repr, &|p| p.tables.reverse());
+        two(swapped.clone(), "swapped");
+        assert_eq!(continued_tables(&swapped), vec![None, None]);
+        // No rows, or no columns, on either side.
+        two(edited(&repr, &|p| p.tables[1].rows = 0), "no rows second");
+        two(edited(&repr, &|p| p.tables[0].rows = 0), "no rows first");
+        two(
+            edited(&repr, &|p| {
+                for t in &mut p.tables {
+                    t.columns = 0;
+                }
+            }),
+            "no columns",
+        );
+        // A running head that names another section, or month, over the second page.
+        use crate::Furniture::Header;
+        let lines = staff(&[]);
+        let mut headed = vec![("Statement for January 2024", 1, Some(Header))];
+        headed.extend(lines[..6].iter().copied());
+        headed.push(("Statement for February 2024", 2, Some(Header)));
+        headed.extend(lines[6..].iter().copied());
+        headed.extend([
+            ("Statement for February 2024", 3, Some(Header)),
+            ("Page 3", 3, Some(crate::Furniture::Footer)),
+        ]);
+        let (first, second) = (
+            Grid {
+                cells: &[2, 3, 4, 5],
+                ..FIRST
+            },
+            Grid {
+                cells: &[9, 10, 11, 12, 13, 14],
+                ..SECOND
+            },
+        );
+        two(
+            paged_tables(&headed, &[first, second], rule),
+            "another month",
+        );
+        let numbered = |heads: [&'static str; 3]| {
+            headed
+                .iter()
+                .map(|&(t, page, f)| match f {
+                    Some(Header) => (heads[page as usize - 1], page, f),
+                    _ => (t, page, f),
+                })
+                .collect::<Vec<_>>()
+        };
+        two(
+            paged_tables(
+                &numbered(["Account 1234", "Account 5678", "Account 5678"]),
+                &[first, second],
+                rule,
+            ),
+            "another account, its number alone",
+        );
+        two(
+            paged_tables(
+                &numbered(["Statement page 1", "Statement page 2", "Statement page 3"]),
+                &[first, second],
+                rule,
+            ),
+            "a number in the head, even one that tracks the page",
+        );
+        assert_eq!(
+            joins_in(paged_tables(
+                &numbered(["Account 1234", "Account 1234", "Account 1234"]),
+                &[first, second],
+                rule
+            )),
+            1,
+            "the same head"
+        );
+        // The same head drawn as two runs on one page and one on the next.
+        let same = numbered([
+            "Statement for all",
+            "Statement for all",
+            "Statement for all",
+        ]);
+        let mut split = vec![("Statement", 1, Some(Header)), ("for all", 1, Some(Header))];
+        split.extend(same[1..].iter().copied());
+        let split = paged_tables(
+            &split,
+            &[
+                Grid {
+                    cells: &[3, 4, 5, 6],
+                    ..FIRST
+                },
+                Grid {
+                    cells: &[10, 11, 12, 13, 14, 15],
+                    ..SECOND
+                },
+            ],
+            rule,
+        );
+        let split = edited(&split, &|p| on_one_line(&mut p.nodes, &[0, 1]));
+        assert_eq!(joins_in(split), 1, "the same head in two runs");
+        // The running foot is read as the head is, but for folios: numbers one greater on the
+        // second page, as a page number is.
+        use crate::Furniture::Footer;
+        let feet = |feet: [&'static str; 4]| {
+            let lines = [
+                ("Intro", 1, None),
+                (feet[0], 1, Some(Footer)),
+                ("Name", 2, None),
+                ("Dept", 2, None),
+                ("Ann", 2, None),
+                ("Audit", 2, None),
+                (feet[1], 2, Some(Footer)),
+                ("Name", 3, None),
+                ("Dept", 3, None),
+                ("Bob", 3, None),
+                ("Tax", 3, None),
+                (feet[2], 3, Some(Footer)),
+                (feet[3], 4, Some(Footer)),
+            ];
+            let grids = [
+                Grid {
+                    page: 2,
+                    cells: &[2, 3, 4, 5],
+                    ..FIRST
+                },
+                Grid {
+                    page: 3,
+                    cells: &[7, 8, 9, 10],
+                    ..FIRST
+                },
+            ];
+            joins_in(paged_tables(&lines, &grids, rule))
+        };
+        assert_eq!(
+            feet([
+                "Part A - Page 1",
+                "Part A - Page 2",
+                "Part A - Page 3",
+                "Part A - Page 4"
+            ]),
+            1,
+            "folios"
+        );
+        assert_eq!(
+            feet([
+                "Part A - Page 1",
+                "Part A - Page 2",
+                "Part B - Page 3",
+                "Part B - Page 4"
+            ]),
+            0,
+            "another part in the foot"
+        );
+        assert_eq!(
+            feet(["Part 7", "Part 7", "Part 9", "Part 9"]),
+            0,
+            "another part, its number alone"
+        );
+        let (seven, nine) = ("Ref 99999999999999999997", "Ref 99999999999999999999");
+        assert_eq!(
+            feet([seven, seven, nine, nine]),
+            0,
+            "numbers past any page's"
+        );
+        assert_eq!(
+            feet(["Page 9", "Page 10", "Page 11", "Page 12"]),
+            1,
+            "a folio's digits grow"
+        );
+        assert_eq!(
+            feet(["Page 1", "Page 2", "Page 3 draft", "Page 4 draft"]),
+            0,
+            "more in the foot"
+        );
+        let changed = [
+            ("Staff", 1, None),
+            ("Name", 1, None),
+            ("Dept", 1, None),
+            ("Ann", 1, None),
+            ("Audit", 1, None),
+            ("Annual report", 1, Some(Footer)),
+            ("Name", 2, None),
+            ("Dept", 2, None),
+            ("Bob", 2, None),
+            ("Tax", 2, None),
+            ("Notes", 2, Some(Footer)),
+            ("Annual report", 3, Some(Footer)),
+        ];
+        let below = Grid {
+            cells: &[6, 7, 8, 9],
+            ..SECOND
+        };
+        two(
+            paged_tables(&changed, &[FIRST, below], rule),
+            "a running foot on the first page alone",
+        );
+    }
+
+    /// **What may lie between, one change at a time**: an `/Artifact` no page repeats, comments and
+    /// spaces the page drew leave the table one; a running head set on one page alone, a note
+    /// under the first table, and a heading repeated at each page's head keep two. A record whose
+    /// tables interleave, which no reader writes, is read without a join.
+    #[test]
+    fn what_lies_between_keeps_or_breaks_the_join() {
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let joins = |edit: &dyn Fn(&mut crate::representation::RepresentationPayload)| {
+            joins_in(edited(&repr, edit))
+        };
+        let flag = |n: &mut Node, f: Option<crate::Furniture>, heading: bool| {
+            if let NodeAttributes::TextRun(a) = &mut n.attributes {
+                a.furniture = f;
+                a.inferred_heading = heading;
+            }
+        };
+        assert_eq!(joins(&|_| {}), 1);
+        assert_eq!(
+            joins(&|p| {
+                p.nodes[6].text = "Draft".into();
+                for n in &mut p.nodes[5..7] {
+                    flag(n, None, false);
+                    n.structural_locator = Some(StructuralLocator::PdfArtifact(
+                        crate::representation::PdfArtifactLocator { mcid: None },
+                    ));
+                }
+            }),
+            1,
+            "/Artifacts no page repeats"
+        );
+        assert_eq!(
+            joins(&|p| {
+                for n in &mut p.nodes[5..7] {
+                    n.kind = NodeKind::Annotation;
+                    n.attributes = NodeAttributes::Annotation(crate::AnnotationAttributes {
+                        subtype: "Text".into(),
+                        name: None,
+                        title: None,
+                        flags: Vec::new(),
+                        unrecognized_flag_bits: Vec::new(),
+                    });
+                }
+            }),
+            1,
+            "comments"
+        );
+        assert_eq!(
+            joins(&|p| {
+                for n in &mut p.nodes[5..7] {
+                    flag(n, None, false);
+                    n.text = " ".into();
+                }
+            }),
+            1,
+            "drawn spaces"
+        );
+        assert_eq!(
+            joins(&|p| {
+                p.nodes[6].text = "Acme Ltd catalogue".into();
+                flag(&mut p.nodes[6], Some(crate::Furniture::Header), false);
+            }),
+            0,
+            "a running head on one page"
+        );
+        assert_eq!(
+            joins(&|p| p.nodes[5].text = "Prices exclude VAT".into()),
+            0,
+            "a note under the first"
+        );
+        assert_eq!(
+            joins(&|p| {
+                for n in &mut p.nodes[5..7] {
+                    n.text = "Statement".into();
+                    flag(n, Some(crate::Furniture::Footer), true);
+                }
+            }),
+            0,
+            "a heading the pages repeat"
+        );
+        assert_eq!(
+            joins(&|p| {
+                p.tables[0].cells[3].node_ids = vec![p.nodes[9].id.clone()];
+                p.tables[0].cells[3].text = p.nodes[9].text.clone();
+            }),
+            0,
+            "interleaved"
+        );
+    }
+
+    /// **The first must reach the foot of the body, and no picture may stand between** (review of
+    /// decision #142): the foot is the lowest any text not furniture, or any table, reaches on a
+    /// page of that height, within the taller of the two tables' rows; a picture is a figure
+    /// region or a painted image below the first table or above the second, but one placed at the
+    /// same place on both pages, as a logo is, is furniture.
+    #[test]
+    fn a_short_first_table_or_a_picture_between_keeps_two_tables() {
+        let rule = crate::TABLE_DETECTION_V14;
+        let lower = Grid {
+            top: 3000,
+            ..SECOND
+        };
+        assert_eq!(
+            joins_in(paged_tables(&staff(&[]), &[FIRST, lower], rule)),
+            0,
+            "short"
+        );
+        // The second's taller rows give the first room to stop a row of them short.
+        let tall = Grid {
+            top: 500,
+            height: 600,
+            ..SECOND
+        };
+        assert_eq!(
+            joins_in(paged_tables(&staff(&[]), &[FIRST, tall], rule)),
+            1,
+            "taller rows"
+        );
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], rule);
+        // A tall last row is no row that did not fit.
+        let mut payload = repr.payload().clone();
+        let mut geometry = repr.geometry().to_vec();
+        for (k, cell) in payload.tables[1].cells.iter_mut().enumerate().skip(4) {
+            let r = cell.geometry.measured().unwrap();
+            let tall = QRect::new(r.x0(), r.y0(), r.x1(), r.y0() + 3000).unwrap();
+            cell.geometry = GeometryPresence::Measured(tall);
+            geometry[[11, 12][k - 4]].presence = GeometryPresence::Measured(tall);
+        }
+        payload.tables[1].geometry =
+            GeometryPresence::Measured(QRect::new(7200, 1000, 30000, 4800).unwrap());
+        assert_eq!(
+            joins_in(DocumentRepresentation::seal(payload, geometry).unwrap()),
+            0,
+            "a tall last row on the next page"
+        );
+        // A cell of that row reaching into the next measures no row.
+        let reaching = edited(&repr, &|p| {
+            let t = &mut p.tables[1];
+            t.cells[2].position.rowspan = 2;
+            t.cells[2].geometry =
+                GeometryPresence::Measured(QRect::new(7200, 1400, 20000, 2200).unwrap());
+            t.cells.remove(4);
+            t.geometry = GeometryPresence::Measured(QRect::new(7200, 1000, 30000, 2500).unwrap());
+            p.nodes[11].text = " ".into();
+        });
+        assert_eq!(joins_in(reaching), 0, "a body row's cell reaching two rows");
+        assert_eq!(
+            joins_in(edited(&repr, &|p| {
+                p.tables[1].geometry =
+                    GeometryPresence::Measured(QRect::new(7200, 1000, 30000, 3000).unwrap())
+            })),
+            0,
+            "a table reaching lower than its text"
+        );
+        let noted = paged_tables(&staff(&[("Notes", 2, None)]), &[FIRST, SECOND], rule);
+        let mut geometry = noted.geometry().to_vec();
+        geometry[13].presence =
+            GeometryPresence::Measured(QRect::new(7200, 3000, 9000, 3300).unwrap());
+        assert_eq!(
+            joins_in(DocumentRepresentation::seal(noted.payload().clone(), geometry).unwrap()),
+            0,
+            "text reaching lower on the next page"
+        );
+        let figures = |at: &[(usize, i64)]| {
+            joins_in(edited(&repr, &|p| {
+                p.assurance.capabilities.figures = true;
+                for &(page, y) in at {
+                    p.figures.push(crate::FigureRecord {
+                        page: p.pages[page].id.clone(),
+                        geometry: GeometryPresence::Measured(
+                            QRect::new(7200, y, 20000, y + 300).unwrap(),
+                        ),
+                        derivation: DerivationClass::Computed,
+                        detection_rule: crate::FIGURE_RULE_V1.into(),
+                        runs_inside: Vec::new(),
+                    });
+                }
+            }))
+        };
+        assert_eq!(figures(&[(1, 600)]), 0, "a figure over the second");
+        assert_eq!(figures(&[(0, 2000)]), 0, "a figure under the first");
+        assert_eq!(figures(&[(0, 600)]), 1, "a figure over the first");
+        assert_eq!(figures(&[(1, 2500)]), 1, "a figure under the second");
+        assert_eq!(
+            figures(&[(0, 2000), (1, 2000)]),
+            1,
+            "a figure on both pages"
+        );
+        // A painted image over the second, read after every run as a reader writes it.
+        let mut payload = repr.payload().clone();
+        let mut geometry = repr.geometry().to_vec();
+        let rect = QRect::new(7200, 600, 20000, 900).unwrap();
+        let image = Node {
+            id: crate::NodeId::from_parts(IdKind::Image, 1),
+            kind: NodeKind::Image,
+            parent: payload.pages[1].id.clone(),
+            ordinal: 8,
+            text: String::new(),
+            native_locator: NativeLocator::PdfImage(crate::representation::PdfImageLocator {
+                page: 2,
+                object: 9,
+                generation: 0,
+                rect: crate::representation::PaintedRect::Painted(rect),
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::Image(crate::representation::ImageAttributes {
+                stream_sha256: Sha256Hex::parse(format!("sha256:{}", "0".repeat(64))).unwrap(),
+                stream_bytes: 0,
+                filters: Vec::new(),
+                media_type: crate::representation::ImageMediaType::Standalone("image/jpeg".into()),
+                pixel_width: None,
+                pixel_height: None,
+                image_mask: false,
+                runs_inside: Vec::new(),
+            }),
+        };
+        geometry.push(NodeGeometry {
+            node: image.id.clone(),
+            presence: GeometryPresence::Measured(rect),
+        });
+        payload.nodes.push(image);
+        assert_eq!(
+            joins_in(DocumentRepresentation::seal(payload, geometry).unwrap()),
+            0,
+            "an image over the second"
+        );
+    }
+
+    /// **Only a whole first row equal cell for cell repeats the header, and only a row of single
+    /// rows is left out**: a header cell reaching into the row below, the same on both pages,
+    /// says one table and stays a row of it.
+    #[test]
+    fn a_repeated_header_reaching_two_rows_joins_and_stays() {
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let reaching = edited(&repr, &|p| {
+            for t in &mut p.tables {
+                t.cells[0].position.rowspan = 2;
+                t.cells.remove(2);
+            }
+            p.nodes[3].text = " ".into();
+            p.nodes[9].text = " ".into();
+        });
+        let a = artifact_with(&reaching, DROP_FURNITURE);
+        assert!(a.coverage.balances());
+        assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 1);
+        assert_eq!(bucket(&a, REPEATED_TABLE_HEADER_NOT_PROJECTED), None);
+        // The row under a header two rows deep is the one that did not fit: a taller one gives
+        // the first room to stop its height short.
+        let mut payload = reaching.payload().clone();
+        let mut geometry = reaching.geometry().to_vec();
+        for (k, cell) in payload.tables[1].cells.iter_mut().enumerate().skip(3) {
+            let r = cell.geometry.measured().unwrap();
+            let tall = QRect::new(r.x0(), r.y0(), r.x1(), r.y0() + 800).unwrap();
+            cell.geometry = GeometryPresence::Measured(tall);
+            geometry[[11, 12][k - 3]].presence = GeometryPresence::Measured(tall);
+        }
+        payload.tables[1].geometry =
+            GeometryPresence::Measured(QRect::new(7200, 1000, 30000, 2600).unwrap());
+        assert_eq!(
+            joins_in(DocumentRepresentation::seal(payload, geometry).unwrap()),
+            1,
+            "a taller row under a deeper header"
+        );
+    }
+
+    /// **Where an author's tree cites the tables, only the tree says they are one**: the second's
+    /// first row cited by the very elements, within a table row, that cite the first's header, as
+    /// Chrome cites a header it repeats on each page. A repeated header the tree does not cite so
+    /// says nothing there; one `/P` citing every run is no table row; a tree this engine wrote is
+    /// no author's.
+    #[test]
+    fn on_a_tagged_page_only_the_tree_joins_two_tables() {
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let tag =
+            |shared: bool, role: &[&str], derivation: DerivationClass, only: Option<usize>| {
+                resealed(
+                    &repr,
+                    |nodes| {
+                        for (k, n) in nodes.iter_mut().enumerate() {
+                            if only.is_some_and(|o| o != k) {
+                                continue;
+                            }
+                            let object = match k {
+                                7 if shared => 1,
+                                8 if shared => 2,
+                                _ => k as u32,
+                            };
+                            n.structural_locator = Some(StructuralLocator::PdfTagged(
+                                PdfTaggedLocator {
+                                    mcid: k as i64,
+                                    role_path: role.iter().map(|r| (*r).into()).collect(),
+                                    standard_role_path: None,
+                                    element_id: None,
+                                    block_element: Some(crate::PdfObjectNumber {
+                                        object: if role.contains(&"P") && role.len() == 2 {
+                                            1
+                                        } else {
+                                            object
+                                        },
+                                        generation: 0,
+                                    }),
+                                    derivation,
+                                }
+                                .into(),
+                            ));
+                        }
+                    },
+                    &[],
+                )
+            };
+        let row = ["Table", "TR", "TD"];
+        let extracted = DerivationClass::Extracted;
+        assert_eq!(
+            joins_in(tag(false, &row, extracted, None)),
+            0,
+            "own elements"
+        );
+        assert_eq!(
+            joins_in(tag(true, &row, extracted, None)),
+            1,
+            "the header's"
+        );
+        assert_eq!(
+            joins_in(tag(false, &row, DerivationClass::Computed, None)),
+            1
+        );
+        assert_eq!(
+            joins_in(tag(false, &["Document", "P"], extracted, None)),
+            0,
+            "one /P"
+        );
+        for k in [1, 7] {
+            assert_eq!(
+                joins_in(tag(true, &row, extracted, Some(k))),
+                0,
+                "run {k} alone"
+            );
+        }
+        let unnumbered = resealed(
+            &repr,
+            |nodes| {
+                for k in [1, 2, 7, 8] {
+                    nodes[k].structural_locator = Some(StructuralLocator::PdfTagged(
+                        PdfTaggedLocator {
+                            mcid: k as i64,
+                            role_path: row.iter().map(|r| (*r).into()).collect(),
+                            standard_role_path: None,
+                            element_id: None,
+                            block_element: None,
+                            derivation: extracted,
+                        }
+                        .into(),
+                    ));
+                }
+            },
+            &[],
+        );
+        assert_eq!(joins_in(unnumbered), 0, "a header the tree does not number");
+        let headless = edited(&tag(false, &row, extracted, None), &|p| {
+            p.nodes[7].text = " ".into();
+            p.nodes[8].text = " ".into();
+            for t in &mut p.tables {
+                t.cells.retain(|c| c.position.row > 0);
+            }
+        });
+        assert_eq!(joins_in(headless), 0, "no first row on a tagged pair");
     }
 
     /// The runs at `indices` set on one baseline, the first's.

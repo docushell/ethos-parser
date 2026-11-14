@@ -42,6 +42,10 @@
 //!   units again. Its `bbox` is the record's measured box, absent where the record has none — a
 //!   tagged table's grid, an office table. The adapter dropped a table with no box and kept its
 //!   runs as one element each: 4,163 of the `cfpb-home-loan-toolkit` gate document's 5,260.
+//!   **A table the next page goes on with is one element** (decision #142, both projections'
+//!   rule): that page's rows follow its own, each of their cells carrying its page and its own
+//!   box, and the grid names the record they come from under `continued`. Its `bbox` is its first
+//!   page's.
 //! - A **picture** is a painted image placement or a figure region with a measured box, its text
 //!   that of each unit holding a run the record names inside it (decision #97).
 //!
@@ -187,6 +191,11 @@ pub struct ElementTable {
     pub columns: u32,
     /// Its cells, in record order.
     pub cells: Vec<ElementCell>,
+    /// The table records on the following pages this table goes on in (decision #142), in page
+    /// order: their rows follow its own, their cells carry their page. Absent where it goes on in
+    /// none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub continued: Vec<NodeId>,
 }
 
 /// One cell.
@@ -201,6 +210,10 @@ pub struct ElementCell {
     pub rowspan: u32,
     /// Columns it spans; 1 means not merged.
     pub colspan: u32,
+    /// Its page's `index`, where that is not its element's: a cell of a table going on from the
+    /// page before (decision #142). Absent on every other cell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
     /// Its measured box. Absent where the record has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bbox: Option<QRect>,
@@ -532,17 +545,47 @@ pub fn to_elements(
             None,
         ));
     }
-    for t in &payload.tables {
+    // Decision #142: a table the next page goes on with is one element with that page's rows
+    // under its own, each cell there carrying its page.
+    let links = crate::markdown::continued_tables(repr);
+    let mut tables: Vec<Option<Element>> = Vec::with_capacity(payload.tables.len());
+    let mut opens: Vec<usize> = (0..payload.tables.len()).collect();
+    for (k, t) in payload.tables.iter().enumerate() {
         let cell_nodes = t.cells.iter().flat_map(|c| c.node_ids.iter());
-        out.push(element(
+        let text = t
+            .cells
+            .iter()
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let page = page_of(&t.page)?;
+        if let Some((prev, _)) = links[k] {
+            opens[k] = opens[prev];
+            if let Some(Some(head)) = tables.get_mut(opens[k]) {
+                let grid = head
+                    .table
+                    .as_mut()
+                    .expect("a table element carries its grid");
+                let below = grid.rows;
+                grid.rows += t.rows;
+                grid.continued.push(t.id.clone());
+                grid.cells.extend(t.cells.iter().map(|c| ElementCell {
+                    row: c.position.row + below,
+                    page,
+                    ..cell_of(c)
+                }));
+                head.text.push(' ');
+                head.text.push_str(&text);
+                head.node_ids.extend(cell_nodes.cloned());
+                tables.push(None);
+                continue;
+            }
+        }
+        tables.push(Some(element(
             ElementLabel::Table,
-            page_of(&t.page)?,
+            page,
             t.geometry.measured(),
-            t.cells
-                .iter()
-                .map(|c| c.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" "),
+            text,
             cell_nodes.clone().cloned().collect(),
             None,
             Some(ElementTable {
@@ -553,22 +596,12 @@ pub fn to_elements(
                     .map(str::to_string),
                 rows: t.rows,
                 columns: t.columns,
-                cells: t
-                    .cells
-                    .iter()
-                    .map(|c| ElementCell {
-                        row: c.position.row,
-                        column: c.position.column,
-                        rowspan: c.position.rowspan,
-                        colspan: c.position.colspan,
-                        bbox: c.geometry.measured(),
-                        text: c.text.clone(),
-                        node_ids: c.node_ids.clone(),
-                    })
-                    .collect(),
+                cells: t.cells.iter().map(cell_of).collect(),
+                continued: Vec::new(),
             }),
-        ));
+        )));
     }
+    out.extend(tables.into_iter().flatten());
     for (i, node) in nodes.iter().enumerate() {
         if node.kind != NodeKind::Image {
             continue;
@@ -667,6 +700,20 @@ pub fn to_elements(
         elements: out,
         omitted: omissions,
     })
+}
+
+/// A table record's cell, as an element's grid carries it.
+fn cell_of(c: &crate::TableCellRecord) -> ElementCell {
+    ElementCell {
+        row: c.position.row,
+        column: c.position.column,
+        rowspan: c.position.rowspan,
+        colspan: c.position.colspan,
+        page: None,
+        bbox: c.geometry.measured(),
+        text: c.text.clone(),
+        node_ids: c.node_ids.clone(),
+    }
 }
 
 /// An element before its id is given.
@@ -902,6 +949,75 @@ mod tests {
         assert_eq!(grid.cells[3].node_ids, [nodes[4].id.clone()]);
         assert!(table.bbox.is_some());
         assert_eq!(got[2].text, "After");
+    }
+
+    /// **A table the next page goes on with is one element** (decision #142): that page's rows
+    /// follow its own, each of those cells carries its page and box, and the grid names the record
+    /// it goes on in. Every node is still in one place.
+    #[test]
+    fn a_table_the_next_page_goes_on_with_is_one_element() {
+        use crate::markdown::tests::{paged_tables, staff, FIRST, SECOND};
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let got = elements(&repr);
+        let tables: Vec<&Element> = got
+            .iter()
+            .filter(|e| e.label == ElementLabel::Table)
+            .collect();
+        assert_eq!(tables.len(), 1);
+        let (table, record) = (tables[0], &repr.payload().tables);
+        assert_eq!(table.page, Some(1));
+        assert_eq!(table.text, "Name Dept Ann Audit Name Dept Bob Tax Cy Legal");
+        let grid = table
+            .table
+            .as_ref()
+            .expect("a table element carries its grid");
+        assert_eq!((grid.rows, grid.columns, grid.cells.len()), (5, 2, 10));
+        assert_eq!(grid.id, record[0].id);
+        assert_eq!(grid.continued, [record[1].id.clone()]);
+        assert_eq!(grid.cells[6].row, 3);
+        assert_eq!(grid.cells[6].text, "Bob");
+        assert_eq!(grid.cells[6].page, Some(2));
+        assert_eq!(grid.cells[6].bbox, record[1].cells[2].geometry.measured());
+        assert_eq!(grid.cells[3].page, None);
+        let nodes = &repr.payload().nodes;
+        assert_eq!(table.node_ids.len(), 10);
+        assert!(table.node_ids.contains(&nodes[12].id));
+        // A third page goes on with the same element.
+        let lines = staff(&[
+            ("Page 3", 3, Some(crate::Furniture::Footer)),
+            ("Name", 3, None),
+            ("Dept", 3, None),
+            ("Dee", 3, None),
+            ("Ops", 3, None),
+        ]);
+        let third = crate::markdown::tests::Grid {
+            page: 3,
+            cells: &[14, 15, 16, 17],
+            ..FIRST
+        };
+        let three = elements(&paged_tables(
+            &lines,
+            &[FIRST, SECOND, third],
+            crate::TABLE_DETECTION_V14,
+        ));
+        let grids: Vec<&ElementTable> = three.iter().filter_map(|e| e.table.as_ref()).collect();
+        assert_eq!(grids.len(), 1);
+        assert_eq!((grids[0].rows, grids[0].continued.len()), (7, 2));
+        assert_eq!(
+            grids[0].cells.last().map(|c| (c.row, c.page)),
+            Some((6, Some(3)))
+        );
+        // The furniture between the pieces comes after the table, as read.
+        let labels: Vec<ElementLabel> = got.iter().map(|e| e.label).collect();
+        assert_eq!(
+            labels,
+            [
+                ElementLabel::Text,
+                ElementLabel::Table,
+                ElementLabel::PageFooter,
+                ElementLabel::PageFooter
+            ]
+        );
     }
 
     /// A table whose record has no box — a tagged table's grid — is one element with its cells and

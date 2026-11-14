@@ -6,7 +6,8 @@ Everything here is invented: sellers, buyers, banks, account holders, addresses,
 and account numbers. This script and every file it writes are dedicated to the public domain under
 CC0 1.0, like the engine fixtures.
 
-Fifteen documents from one model each, rendered three ways:
+Sixteen documents from one model each, rendered three ways (the sixteenth a statement whose
+transactions run over four pages, a table each page goes on with):
   DOCX  stdlib zipfile, fixed dates: label rows with tabs, `<w:br/>` blocks, `w:tbl` line items, and
         `₹` written in the amount's run, in a run of its own, and with a space;
   XLSX  stdlib zipfile, fixed dates: two sheets, real date cells (`dd-mm-yyyy`), and amounts as
@@ -41,12 +42,13 @@ sys.path.insert(0, str(HERE.parent / "office-resumes"))
 from make_resumes import (FIRST, LAST, REL, XML, Doc, add_lines, check_key, docx_parts,  # noqa: E402
                           new_key, para, write_package)
 
-GENERATOR = "financial-en/1"
+GENERATOR = "financial-en/2"
 DEFAULT_OUT = HERE.parents[2] / "target" / "measure-sets" / "financial-en"
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 SEED = 20261115
 INVOICE_FORMATS = ["docx", "pdf", "xlsx", "docx", "pdf", "xlsx", "docx", "pdf"]
 STATEMENT_FORMATS = ["docx", "pdf", "xlsx", "docx", "pdf", "xlsx", "pdf"]
+LONG_STATEMENT_ROWS = 90  # the last document's transactions: one table over four A4 pages
 
 
 @dataclass(frozen=True)
@@ -173,7 +175,7 @@ def invoice(rng, n, source):
                        "totals": [[l, show(a)] for l, a in totals]}}
 
 
-def statement(rng, n, source):
+def statement(rng, n, source, count=None):
     bank, code = BANKS[n % len(BANKS)]
     place, branch = rng.choice(PLACES), rng.choice(BRANCHES)
     holder = f"{rng.choice(FIRST)} {rng.choice(LAST)}"
@@ -183,7 +185,7 @@ def statement(rng, n, source):
     opening, credits, debits, rows = balance, 0, 0, []
     day = 1
     employer = rng.choice(BUYERS)
-    for t in range(rng.randint(10, 15)):
+    for t in range(count or rng.randint(10, 15)):
         day = min(day + rng.randint(0, 3), 28)
         ref = f"{rng.randint(10 ** 11, 10 ** 12 - 1)}"
         if t == 2:
@@ -470,6 +472,8 @@ def main():
     chrome_version = subprocess.run([args.chrome, "--version"], capture_output=True, text=True, check=True).stdout.strip()
     rng = random.Random(SEED)
     plan = [("invoice", f, invoice) for f in INVOICE_FORMATS] + [("statement", f, statement) for f in STATEMENT_FORMATS]
+    # Last, so the documents before it draw the same numbers as when there were fifteen.
+    plan.append(("statement", "pdf", lambda rng, n, source: statement(rng, n, source, LONG_STATEMENT_ROWS)))
     counters, turns = {}, {"docx": itertools.count(), "pdf": itertools.count()}
     for kind, fmt, build in plan:
         n = counters[kind] = counters.get(kind, 0) + 1

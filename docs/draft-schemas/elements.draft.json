@@ -228,9 +228,18 @@
           "type": "integer",
           "minimum": 0
         },
+        "continued": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The table records on the following pages this table goes on in (decision #142), in page order: their rows follow its own and their cells carry their page. Absent where it goes on in none."
+        },
         "cells": {
           "type": "array",
-          "description": "The record's cells, in its order. A merged cell is one entry at its top-left slot.",
+          "description": "The record's cells, in its order, then those of each record in `continued`, its rows below this one's. A merged cell is one entry at its top-left slot.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -262,6 +271,11 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "Columns it spans; 1 means not merged."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Its page's `index`, where that is not its element's: a cell of a table going on from the page before (decision #142). Absent on every other cell."
               },
               "bbox": {
                 "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect",

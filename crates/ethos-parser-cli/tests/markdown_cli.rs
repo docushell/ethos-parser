@@ -497,6 +497,81 @@ fn drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A page of a ruled price list on a 300 by 400 point page, under `Acme Ltd` at its head and over
+/// its folio: `before` drawn at the head of its body, then `rows` of three cells, 16 points tall,
+/// from 345 points up, each cell a stroked rectangle.
+fn ruled_page(before: &str, rows: &[[&str; 3]], folio: u32) -> String {
+    let mut ops = format!(
+        "BT /F1 8 Tf 1 0 0 1 36 385 Tm (Acme Ltd) Tj ET {before} \
+         BT /F1 8 Tf 1 0 0 1 140 10 Tm (Page {folio}) Tj ET"
+    );
+    let x = [36, 156, 216, 276];
+    for (r, row) in rows.iter().enumerate() {
+        let y = 345 - 16 * r as i32;
+        for (c, cell) in row.iter().enumerate() {
+            ops.push_str(&format!(
+                " {} {} {} 16 re S BT /F1 9 Tf 1 0 0 1 {} {} Tm ({cell}) Tj ET",
+                x[c],
+                y - 16,
+                x[c + 1] - x[c],
+                x[c] + 3,
+                y - 12
+            ));
+        }
+    }
+    ops
+}
+
+/// **A table whose next page repeats its header is one table; a heading, a header of its own or
+/// no header on that page keeps two** (decision #142), on made-up PDFs: a price list of 20 rows
+/// that fills its page and goes on under its header for 2 more on the next, under a running head
+/// and over folios both pages repeat. A month's heading drawn at the head of the second page,
+/// where the reader flags it as furniture, a second table opening with a header of its own, and
+/// the rest of the list set without its header, are each another table.
+#[test]
+fn a_table_whose_next_page_repeats_its_header_is_one_table_and_a_heading_keeps_two() {
+    let dir = scratch("continued-table");
+    let head = ["Item", "Price", "Qty"];
+    let first: Vec<[&str; 3]> = std::iter::once(head)
+        .chain(std::iter::repeat_n(["Widget", "$3.50", "2"], 19))
+        .collect();
+    let more = [head, ["Gadget", "$4.50", "3"], ["Gadget", "$4.50", "3"]];
+    let joins = |label: &str, before: &str, second: &[[&str; 3]]| {
+        let pdf = dir.join(format!("{label}.pdf"));
+        let pages = [ruled_page("", &first, 1), ruled_page(before, second, 2)];
+        std::fs::write(&pdf, pdf_of_pages(&pages)).expect("write PDF");
+        let a = markdown_of(&extract_to(&dir, &pdf));
+        let markdown = a["markdown"].as_str().unwrap().to_string();
+        let joined = a["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == "tables-joined-across-pages-v1")
+            .map_or(0, |e| e["count"].as_u64().unwrap());
+        let grids = markdown.lines().filter(|l| l.starts_with("| ---")).count();
+        (joined, grids, markdown)
+    };
+    let (joined, grids, markdown) = joins("goes-on", "", &more);
+    assert_eq!((joined, grids), (1, 1), "{markdown}");
+    assert!(
+        markdown.contains("| Widget | $3.50 | 2 |\n| Item | Price | Qty |\n| Gadget | $4.50 | 3 |"),
+        "{markdown}"
+    );
+
+    let heading = "BT /F1 14 Tf 1 0 0 1 36 368 Tm (February) Tj ET";
+    let (joined, grids, markdown) = joins("heading", heading, &more);
+    assert_eq!((joined, grids), (0, 2), "{markdown}");
+
+    let mut own = more;
+    own[0] = ["Region", "Sales", "Growth"];
+    let (joined, grids, markdown) = joins("own-header", "", &own);
+    assert_eq!((joined, grids), (0, 2), "{markdown}");
+
+    let (joined, grids, markdown) = joins("no-header", "", &more[1..]);
+    assert_eq!((joined, grids), (0, 2), "{markdown}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **`--infer-lists` writes a list item for each line opening with a marker on an untagged page,
 /// and counts them** (decision #138): the marker stays as drawn after `- `, a lettered item set in
 /// further nests under the numbered one, and a section number (`2.3.1`) and a decimal (`1.5`)
