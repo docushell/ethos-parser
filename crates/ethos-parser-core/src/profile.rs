@@ -173,6 +173,22 @@ pub const READING_ORDER_RULE_V3: &str = "gutter-columns-v3";
 /// sweep reads across the gutter a slab at a time — the cost decision #32 measured and accepted.
 pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 
+/// [`READING_ORDER_RULE_V4`] **with a side band joined to the band whose rows it sits on**
+/// (decision #133). Where the vertical cut divides a block into bands, one of two neighbours is
+/// at most half as wide as the other, the other is a single column (the cut, run on it alone,
+/// opens no vertical cut), three of every four of the narrow band's cells — its lines run
+/// together, no more than a leading and a quarter apart — start within a quarter of the column's
+/// modal leading of the first line of one of the column's blocks and end within that block, and
+/// one such cell, with another below it, ends before its block's last line, the two are one band: a
+/// résumé's dates in a narrow column, or flush right on each job's first line, are read with the
+/// job rather than after the last one. A page whose only cut that was is not divided and is read
+/// down its slabs, in the order the document drew them, never sorted by baseline; inside a column
+/// the joined band is read by its blocks. Two bands of one measured width are never joined, and a
+/// sidebar whose boxes run past the paragraphs beside them stays a column. `columns`, which the
+/// table detector reads, does not join. The half, the quarter and the three in four are chosen,
+/// not measured.
+pub const READING_ORDER_RULE_V5: &str = "gutter-columns-v5";
+
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
 ///
 /// One id covering both because they are one pass over one content stream, reading the same
@@ -2077,7 +2093,8 @@ pub struct Capabilities {
     /// text by page geometry rather than by stream position*. It does not claim every layout is
     /// resolved. Where the page shows no column gutter, [`READING_ORDER_RULE_V4`] (2026-09-26)
     /// reads it top to bottom by leading-gap slabs and keeps content-stream order inside each;
-    /// through `-v3` such a page kept content-stream order whole.
+    /// through `-v3` such a page kept content-stream order whole. Since [`READING_ORDER_RULE_V5`]
+    /// a narrow band set on its neighbour's rows is no column of its own.
     ///
     /// v0 through v1-S4 left this false and said so on every artifact, because the known
     /// heuristic flips on `min_lines < 15` and a one-line edit reordered a whole page. What
@@ -2887,7 +2904,7 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V4.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V5.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V3.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
@@ -4211,7 +4228,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5422,11 +5439,14 @@ mod tests {
              `layout_unit_rule` `line-units-v6` -> `-v7`, which keeps a footnote mark set against \
              its line's last letter, a list marker set apart from its item's text, the item's next \
              line at its hanging indent within the page's leading, and a label closed by a colon \
-             with its value. Nothing else."
+             with its value. Nothing else.\n\n\
+             Moved for decision #133, `sha256:ef336dec…` -> `sha256:a516f5d8…`: \
+             `reading_order_rule` `gutter-columns-v4` -> `-v5`, which joins a band at most half as \
+             wide as its neighbour, set on its rows, to that neighbour. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ef336dec96e5c08b15ccf927f20b8734d050fc5fbbc008abaf79c481232e5c08"
+            "sha256:a516f5d896552f4d9bccefb1620a4f0fbc48dcdc943c005218b9b747fad831ff"
         );
     }
 

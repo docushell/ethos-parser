@@ -4183,13 +4183,20 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V4,
-            "the downward sweep moved the default to the id that promises it (decision #32)"
+            ethos_parser_core::READING_ORDER_RULE_V5,
+            "the side-band join moved the default to the id that promises it (decision #133)"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V5,
+            "gutter-columns-v5",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **`-v4` keeps its exact spelling**: artifacts exist under it, and on a page with a
+        // narrow band set on its neighbour's rows they list runs in the order `-v5` changes.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V4,
             "gutter-columns-v4",
-            "the id is data on every artifact; changing the string is an identity event"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         // **`-v3` keeps its exact spelling**: artifacts exist under it, and on a page the cut never
         // divided they list runs in the order `-v4` changes.
@@ -4217,6 +4224,10 @@ mod tests {
         );
         assert_eq!(ethos_parser_core::READING_ORDER_RULE_V0, "single-column-v1");
         for (a, b) in [
+            (
+                ethos_parser_core::READING_ORDER_RULE_V5,
+                ethos_parser_core::READING_ORDER_RULE_V4,
+            ),
             (
                 ethos_parser_core::READING_ORDER_RULE_V4,
                 ethos_parser_core::READING_ORDER_RULE_V3,

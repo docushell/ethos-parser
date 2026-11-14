@@ -32,6 +32,36 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A narrow band set on its neighbour's rows is read with them (decision #133)
+
+Rule id `gutter-columns-v5`; `profile_sha256` moves.
+
+- **Dates beside a job are read with the job.** A résumé's dates in a narrow column beside each
+  job's first line, or flush right on it, cleared the 12pt gutter and overlapped the text, so the
+  reading-order cut took them for a column and read every date after the last job. Two
+  neighbouring bands are now one band when one is at most half as wide as the other, the other
+  is a single column, three of every four of the narrow band's cells (lines no more than a
+  leading and a quarter apart) start on the first line of one of the column's blocks, within a
+  quarter of its leading, and end inside that block, and one such cell, with another below it,
+  ends before its block's last line. A page whose only cut that was is read down its leading-gap
+  slabs in the order the document drew them, never sorted by baseline; inside a column the joined
+  band is read by its blocks, so each date follows its entry.
+- Two bands of one measured width are never joined. A band holding several columns that a strip
+  across them hides is no column to join, nor is a column of one value per line however marks are
+  raised between them, nor a shorter column whose entries start level with its neighbour's. A
+  sidebar keeps its column, at its own leading or on the body's grid, where its boxes run past the
+  paragraphs beside them or start between their heads. `reading_order::columns`, which table
+  detection reads, does not join. The half, the quarter and the three in four are chosen, not
+  measured.
+- Costs. A sidebar whose boxes each start level with a paragraph and end inside it, one ending
+  before its paragraph does, is read as notes on those paragraphs: a skills sidebar beside a
+  résumé's sections joins and is read in draw order or interleaved by slab. A page undivided by
+  the join keeps the draw order inside each slab, so a date or label at the left drawn after its
+  text is read after it, right before the next entry.
+- Not caught: a label column as wide as its values, one label per value (the OCR probe i03), and
+  page numbers beside a contents list set at one leading.
+- ParseBench: 5 of its 2,037 documents read differently (Ford p16, Marico p46, orbia p15, SERFF TX 838 and att10k: side heads, labels and figures now read with their rows) and every score is unchanged, with and without `--ocr`; opendataloader-bench byte for byte; the made-up resumes with a date column, dates flush right and right-hand dates read each date with its entry.
+
 ### A scan read without `--ocr` says so, and an image file's size is checked (decision #132)
 
 No rule id and no profile field moves; `profile_sha256` is unchanged by this entry.

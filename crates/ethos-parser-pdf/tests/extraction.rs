@@ -1526,7 +1526,7 @@ fn the_artifact_carries_a_full_identity_envelope() {
     );
     assert_eq!(
         a.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert_eq!(a.source.media_type, "application/pdf");
 }
@@ -1597,7 +1597,7 @@ fn two_columns_reads_column_major_under_the_new_rule() {
 
     assert_eq!(
         a.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert_ne!(
         a.reading_order_rule,
@@ -1626,7 +1626,7 @@ fn one_added_line_does_not_reorder_the_page() {
         let a = extract_ok(engine_fx(name));
         assert_eq!(
             a.reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V4
+            ethos_parser_core::READING_ORDER_RULE_V5
         );
         assert!(
             a.pages.iter().all(|p| p.tables.is_empty()),
@@ -3734,7 +3734,7 @@ fn reading_the_structure_tree_changes_no_earlier_slices_answer() {
     let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
     assert_eq!(
         two.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
     assert_eq!(
@@ -4089,7 +4089,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     );
     assert_eq!(
         two.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
 }
@@ -5963,7 +5963,7 @@ fn observing_images_changes_no_earlier_slices_answer() {
     );
     assert_eq!(
         two.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
     assert!(

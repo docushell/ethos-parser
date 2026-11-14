@@ -851,7 +851,9 @@ impl Capabilities {
                  is never consulted as a sorter, because emitting nodes in `/K` order is a \
                  different rule and would need its own id. Second, a run whose font supplies no \
                  advance has an UNKNOWN horizontal extent, so the rule gives it a fixed minimum \
-                 rather than a measured width and judges gutters against that floor. No extent is \
+                 rather than a measured width and judges gutters against that floor, and \
+                 whether a band is narrow enough to be set on its neighbour's rows, which joins \
+                 it to that neighbour rather than reading it as a column. No extent is \
                  ever derived from a font size. Where the rule finds no gutter it moves only \
                  whole stretches its leading separates, and a page with no such gap keeps \
                  content-stream order, which is what a single-column page means and not a \
