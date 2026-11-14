@@ -1001,17 +1001,28 @@ fn check_cannot_reach_a_server_that_is_not_there() {
     assert!(r.stdout.contains("curl-not-found"), "{}", r.stdout);
 }
 
-/// MLX reports `--model` verbatim, so a path would be recorded in every output.
+/// MLX reports `--model` verbatim, so a path would be recorded in every output. The warning
+/// follows the rule the engine refuses replies by (`assist-answers-model-is-path`); an id with
+/// an organisation, as the Hub names models, is not a path.
 #[test]
 fn check_warns_when_the_id_is_a_path() {
-    let dir = scratch("check-path");
-    let id = "/Users/someone/lighton-mlx";
-    let server = serve(&[id], vec![ok(completion(id, "stop", REPLY))]);
-    let r = run(&dir, None, &["check", &server.url()], b"");
-    assert_eq!(r.code, 0, "{}", r.stdout);
-    assert!(
-        r.stdout.contains("\nwarning   the id is a path"),
-        "{}",
-        r.stdout
-    );
+    for (label, id, warned) in [
+        ("check-path-abs", "/Users/someone/lighton-mlx", true),
+        ("check-path-home", "~/lighton-mlx", true),
+        ("check-path-dot", "./lighton-mlx", true),
+        ("check-path-drive", "C:lighton-mlx", true),
+        ("check-path-backslash", "models\\lighton-mlx", true),
+        ("check-path-hub", "lightonai/LightOnOCR-3-0.8B", false),
+    ] {
+        let dir = scratch(label);
+        let server = serve(&[id], vec![ok(completion(id, "stop", REPLY))]);
+        let r = run(&dir, None, &["check", &server.url(), id], b"");
+        assert_eq!(r.code, 0, "{id}: {}", r.stdout);
+        assert_eq!(
+            r.stdout.contains("\nwarning   the id is a path"),
+            warned,
+            "{id}: {}",
+            r.stdout
+        );
+    }
 }

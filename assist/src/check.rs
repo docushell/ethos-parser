@@ -138,11 +138,16 @@ fn run(server: &str, model: Option<&str>) -> Result<(), (u8, String)> {
             format!("the server reports {recorded}   <- every output records this id"),
         );
     }
-    if recorded.starts_with('/') || recorded.starts_with('~') {
+    // The rule the engine refuses a replies file by (`assist-answers-model-is-path`, decision
+    // #145): an id starting `/`, `~` or `.`, or with a drive letter, or holding a backslash.
+    let id_trimmed = recorded.trim();
+    let drive = matches!(id_trimmed.as_bytes(), [letter, b':', ..] if letter.is_ascii_alphabetic());
+    if id_trimmed.starts_with(['/', '~', '.']) || drive || id_trimmed.contains('\\') {
         line(
             "warning",
-            "the id is a path, and every output records it: serve the model by a relative \
-             --model (assist/README.md)",
+            "the id is a path: the engine refuses replies recorded under it \
+             (assist-answers-model-is-path); serve the model by a relative --model \
+             (assist/README.md)",
         );
     }
 
