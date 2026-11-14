@@ -2222,7 +2222,12 @@ pub const NOT_RUN: &str = "not-run-for-this-format";
 /// v2 (0.62.0): a self-closing `<w:p/>` or `<w:r/>` is counted as its long form is, so a
 /// paragraph's or a run's ordinal no longer depends on how the file was serialized (review
 /// 2026-09-25 F19). The order is v1's; the addresses it hands out move.
-pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
+///
+/// v3 (decision #130): a run after a text box is counted in the paragraph that anchors the box.
+/// The box's `<w:p>` sits inside a run of that paragraph, and one counter gave every run after it
+/// the box's paragraph and the box's run count, a locator naming the wrong `<w:p>`. The order is
+/// v2's; the addresses of those runs move.
+pub const DOCX_READING_ORDER_RULE_V3: &str = "docx-document-order-v3";
 
 /// v2-S2's DOCX text rule: the characters `<w:t>` carries, verbatim.
 ///
@@ -2240,12 +2245,18 @@ pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
 /// taken as a long one is (N36); line ends are normalised as XML 1.0 §2.11 requires (N37); a CDATA
 /// section in `<w:t>` is read (tracker I17); and the text of a `<w:moveFrom>` region is passed over
 /// and counted, read once where its `<w:moveTo>` puts it (N18).
-pub const DOCX_TEXT_CODE_RULE_V3: &str = "docx-wt-verbatim-v3";
+/// v4 (decision #130): a run whose only characters are ones it states as elements — a tab, a line
+/// break, a no-break hyphen; `<w:r><w:tab/></w:r>`, as Word writes a label's tab — is a node
+/// holding them, where v3 left it out, so `Company Name` and `: Acme Ltd` had nothing between them.
+/// A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab, is a tab; and only an
+/// element directly in the `<w:r>` states a character, so a text box's tab stop
+/// (`<w:tabs><w:tab/></w:tabs>`, inside a run of the anchoring paragraph) is none.
+pub const DOCX_TEXT_CODE_RULE_V4: &str = "docx-wt-verbatim-v4";
 
 /// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
 /// order their worksheet part lists them.
 ///
-/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V2`] is
+/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V3`] is
 /// not. The workbook states its own sheet order and each sheet states its own cell order; this
 /// engine follows both and sorts nothing. In particular it does **not** re-order cells into
 /// row-major address order — a sheet whose part lists `B1` before `A1` is read that way, because
@@ -2281,7 +2292,7 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 
 /// v2-S4's PPTX text rule: the characters `<a:t>` carries, verbatim.
 ///
-/// The DrawingML counterpart to `docx-wt-verbatim-v3`, and the same small claim: the text is
+/// The DrawingML counterpart to `docx-wt-verbatim-v4`, and the same small claim: the text is
 /// already Unicode, so there is no glyph-code step to get wrong. **No placeholder inheritance is
 /// resolved**: text that a slide layout or master would supply is not substituted in, because
 /// this reader did not read those parts and a substituted string is not one the slide stated.
@@ -2987,7 +2998,7 @@ impl Profile {
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
             },
-            reading_order_rule: DOCX_READING_ORDER_RULE_V2.to_string(),
+            reading_order_rule: DOCX_READING_ORDER_RULE_V3.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
@@ -3003,7 +3014,7 @@ impl Profile {
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: DOCX_TEXT_CODE_RULE_V3.to_string(),
+            text_code_rule: DOCX_TEXT_CODE_RULE_V4.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()

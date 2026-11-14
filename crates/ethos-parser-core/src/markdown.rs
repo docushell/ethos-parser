@@ -145,7 +145,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
-/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -286,7 +286,11 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// run's line goes on from a marker drawn in the `/LI` itself, as from its `/Lbl`, and where it
 /// reads on — opening lowercase with no label of its own ([`list_role_at`]) — as a column break
 /// carries a bullet into a new `/LBody`. A join inside one numbered element counts as
-/// [`BLOCK_ELEMENT_RUN_JOINS`], no longer as [`GFM_LIST_ITEM_RUN_JOINS`]' guess.
+/// [`BLOCK_ELEMENT_RUN_JOINS`], no longer as [`GFM_LIST_ITEM_RUN_JOINS`]' guess. And so is decision
+/// #130's: a DOCX paragraph's runs are one block, joined with the tab, line break or space the
+/// paragraph holds between them or with nothing ([`paragraph_seam`]), and a tab or a line break
+/// inside a run is kept ([`projected_text`]), where `-v13` wrote each run as a block and either as
+/// a space. A PDF projects byte for byte as before.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -426,7 +430,8 @@ pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
 /// or one space where [`element_next_line`] says (decision #126). The licence is the element, not
 /// the sequence, so it is counted apart from [`MCID_RUN_JOINS`]. A list item's runs one numbered
 /// element holds count here too, in a sequence or across them, where they would have counted as
-/// [`GFM_LIST_ITEM_RUN_JOINS`]' guess (decision #128); the list path joins them as it did.
+/// [`GFM_LIST_ITEM_RUN_JOINS`]' guess (decision #128); the list path joins them as it did. So do a
+/// DOCX paragraph's runs, which its `<w:p>` holds (decision #130, [`paragraph_seam`]).
 pub const BLOCK_ELEMENT_RUN_JOINS: &str = "block-element-run-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
@@ -857,6 +862,15 @@ fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIde
 ///
 /// And a segment never holds U+0000, which neither format can carry. That is not this function's
 /// doing — the writer drops it — and it is counted, in `null-characters-not-projected-v1`.
+///
+/// **One exception, for a DOCX run alone** (decision #130): a run of whitespace inside it projects
+/// as one line break where it holds one and one tab where it holds one, so `Designation:<TAB>Senior
+/// Accountant` keeps its tab and an address its lines. Word states both as elements, `<w:tab/>` and
+/// `<w:br/>`, which the reader reads into the run's text. A stretch holding a space, in a run whose
+/// `<w:t>` do not preserve their whitespace, is one space: the XML's own indentation. A line break
+/// before a line CommonMark would read as a block of its own, read across the runs that make it,
+/// is one space. It writes as many characters as this function does, so the census counts the
+/// same. [`projected_text`] applies it; every other run is normalized here.
 pub fn normalize(s: &str) -> String {
     let trimmed = s.trim();
     let mut out = String::with_capacity(trimmed.len());
@@ -914,9 +928,9 @@ pub fn normalize(s: &str) -> String {
 /// outliving the thing it qualifies, so ODS carries neither.
 ///
 /// **DOCX.** Earlier still: the reader keeps no `<w:pStyle>`, so no heading reaches the wire at all
-/// and this function cannot see one to project. Two things stand in the way and the first is
-/// structural: `docx.rs` has no `Event::Empty` arm, and `<w:pStyle/>` and `<w:outlineLvl/>` are
-/// always self-closing, so they are invisible to that reader as written. The second is the
+/// and this function cannot see one to project. Two things stand in the way. The first is the
+/// reader's: `docx.rs` sees self-closing elements in its `Event::Empty` arm, but keeps neither
+/// `<w:pStyle/>` nor `<w:outlineLvl/>`, which are always self-closing. The second is the
 /// honesty question — `w:val="Heading1"` is a **styleId**, an author-chosen token, while the
 /// built-in name ECMA-376 fixes lives in `<w:name>` inside `word/styles.xml`. Mapping the id to a
 /// level without opening that part is matching a convention rather than reading a declaration, so
@@ -1995,6 +2009,137 @@ fn opens_block_syntax(text: &str) -> bool {
         || (t.starts_with('<')
             && t[1..].starts_with(|c: char| c.is_ascii_alphabetic() || "/!?".contains(c)))
         || (!t.is_empty() && t.chars().all(|c| "-=*_|: \t".contains(c)))
+}
+
+/// Decision #130. The `<w:p>` a DOCX run belongs to, as its part and paragraph; `None` for any
+/// other address.
+fn docx_paragraph(node: &crate::Node) -> Option<(&str, u32)> {
+    match &node.native_locator {
+        crate::NativeLocator::Docx(d) => Some((d.part.as_str(), d.paragraph)),
+        _ => None,
+    }
+}
+
+/// Decision #130. Whether a DOCX run's `<w:t>` preserve their whitespace (`xml:space="preserve"`).
+fn docx_preserved(node: &crate::Node) -> bool {
+    matches!(&node.attributes, crate::NodeAttributes::OfficeRun(a) if a.space_preserved)
+}
+
+/// Decision #130. Which of two whitespace characters a stretch holding both projects as: a line
+/// break over a tab, a tab over a space.
+fn wider(a: char, b: char) -> char {
+    match (a, b) {
+        ('\n', _) | (_, '\n') => '\n',
+        ('\t', _) | (_, '\t') => '\t',
+        _ => ' ',
+    }
+}
+
+/// Decision #130. What one stretch of a DOCX run's whitespace projects as: one line break where it
+/// holds one, one tab where it holds one, one space otherwise, nothing where it is empty. **In a
+/// run whose `<w:t>` do not preserve their whitespace, a stretch holding a space is one space**:
+/// it is the XML's own indentation, which ECMA-376 makes insignificant there, as a pretty-printed
+/// `<w:t>` writes it. Word never sets a space beside a tab or a break it states in such a run,
+/// since it preserves a `<w:t>` that starts or ends with one. A lone line feed such a `<w:t>`
+/// holds cannot be told from a `<w:br/>` in the record, and stays a line break.
+fn stretch(whitespace: &str, preserved: bool) -> Option<char> {
+    if !preserved && whitespace.contains(' ') {
+        return Some(' ');
+    }
+    whitespace
+        .chars()
+        .map(|c| if c == '\n' || c == '\t' { c } else { ' ' })
+        .reduce(wider)
+}
+
+/// Decision #130. Whether the line a DOCX paragraph's line break opens — `rest`, then the runs of
+/// the paragraph after `nodes[i]` — would read in CommonMark as a block of its own
+/// ([`opens_block_syntax`]). Its first word is read across up to eight runs, as [`list_role_at`]
+/// reads a list run's, since Word cuts a run anywhere: `1` and `. apples`, `` ` `` and ` `` `.
+fn opens_line(nodes: &[crate::Node], i: usize, rest: &str) -> bool {
+    let paragraph = nodes.get(i).and_then(docx_paragraph);
+    let mut line = rest.to_string();
+    for node in nodes.iter().skip(i + 1).take(8) {
+        if line.trim_start().contains(char::is_whitespace) || docx_paragraph(node) != paragraph {
+            break;
+        }
+        line.push_str(node.reading_text());
+    }
+    opens_block_syntax(line.split_whitespace().next().unwrap_or_default())
+}
+
+/// The text `nodes[i]` projects as: [`normalize`]'s, and for a DOCX run (decision #130) each
+/// stretch of whitespace as [`stretch`] reads it, where `normalize` writes one space for every
+/// stretch; a line break before a line [`opens_line`] reads as a block is one space, as decision
+/// #126 writes one. Word states a tab and a line break as elements, `<w:tab/>` and `<w:br/>`, which
+/// the reader reads into the run's text. Both projections call it.
+pub(crate) fn projected_text(nodes: &[crate::Node], i: usize) -> String {
+    let node = &nodes[i];
+    let text = node.reading_text();
+    if docx_paragraph(node).is_none() {
+        return normalize(text);
+    }
+    let preserved = docx_preserved(node);
+    let trimmed = text.trim();
+    let mut out = String::with_capacity(trimmed.len());
+    let mut from = None;
+    for (at, ch) in trimmed.char_indices() {
+        if ch.is_whitespace() {
+            from.get_or_insert(at);
+            continue;
+        }
+        if let Some(gap) = from
+            .take()
+            .and_then(|start| stretch(&trimmed[start..at], preserved))
+        {
+            let block = gap == '\n' && opens_line(nodes, i, &trimmed[at..]);
+            out.push(if block { ' ' } else { gap });
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Decision #130. What joins `nodes[i]` onto `prev`, the open block's last run, where both are
+/// runs of one DOCX paragraph: the whitespace the paragraph holds between them — at `prev`'s end,
+/// in the whitespace runs between, at `nodes[i]`'s start — each stretch read as [`stretch`] reads
+/// it, the widest of them written ([`wider`]), or nothing where it holds none, so a word its runs
+/// split stays one word. A line break before a line [`opens_line`] reads as a block is one space.
+/// `None` where the two are not runs of one DOCX paragraph. Both projections call it.
+pub(crate) fn paragraph_seam(
+    nodes: &[crate::Node],
+    i: usize,
+    prev: &crate::Node,
+) -> Option<&'static str> {
+    let paragraph = docx_paragraph(prev)?;
+    let node = nodes
+        .get(i)
+        .filter(|n| docx_paragraph(n) == Some(paragraph))?;
+    let (before, after) = (prev.reading_text(), node.reading_text());
+    let between = nodes[..i]
+        .iter()
+        .rev()
+        .take_while(|n| docx_paragraph(n) == Some(paragraph) && n.reading_text().trim().is_empty())
+        .map(|n| stretch(n.reading_text(), docx_preserved(n)));
+    let gap = [stretch(
+        &before[before.trim_end().len()..],
+        docx_preserved(prev),
+    )]
+    .into_iter()
+    .chain(between)
+    .chain([stretch(
+        &after[..after.len() - after.trim_start().len()],
+        docx_preserved(node),
+    )])
+    .flatten()
+    .reduce(wider);
+    Some(match gap {
+        None => "",
+        Some('\n') if opens_line(nodes, i, after) => " ",
+        Some('\n') => "\n",
+        Some('\t') => "\t",
+        Some(_) => " ",
+    })
 }
 
 /// Whether `node`, just joined with `line_ink` its ink, sits on another line than `open_line`, or
@@ -3154,7 +3299,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    glyph, a hanging indent or a font name.
 /// 5. **Blank line between blocks**, which is `syntax` — the document drew no such bytes.
 /// 6. **Node text is normalized** by [`normalize`], and a node whose normalization is empty
-///    contributes no segment at all rather than an empty one.
+///    contributes no segment at all rather than an empty one. A DOCX run keeps its tabs and line
+///    breaks ([`projected_text`]), and a DOCX paragraph's runs are one block (decision #130).
 /// 7. **A word broken across a line is closed up** — v1.1-S3's one cosmetic, and the only clause
 ///    here that removes a character that is not whitespace (rule 6 collapses runs of it, and
 ///    counts them too). The conditions are [`hyphen_tail`]'s, the joined bytes are one `source`
@@ -3307,7 +3453,7 @@ pub fn to_markdown(
             continue;
         }
 
-        let text = normalize(node.reading_text());
+        let text = projected_text(&payload.nodes, i);
         if text.is_empty() {
             // Whitespace-only runs exist (a `Tj` of spaces is a real operator). They contribute no
             // Markdown, and they contribute no dropped characters either: `normalize` removed
@@ -3503,8 +3649,13 @@ pub fn to_markdown(
         // them. Both, like the unit join, only where nothing declared a group. Decision #68: runs
         // of one unit on one line take the gap between them as one space, where a page placed its
         // words by moving its pen and the ink joins above break at every word.
+        // Decision #130: the next run of one DOCX paragraph, with what the paragraph holds between.
         let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
             None
+        } else if let Some(seam) =
+            open_prev.and_then(|prev| paragraph_seam(&payload.nodes, i, prev))
+        {
+            Some((seam, BLOCK_ELEMENT_RUN_JOINS))
         } else if open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped)) {
             Some((" ", LAYOUT_UNIT_LINE_JOINS))
         } else if open_prev

@@ -176,7 +176,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// the same exceptions and the same spans closed at the line's end, as
 /// `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids move together, for the reason
 /// `-v5` gives. And decision #128's, folded in: two list bodies the file numbers are two `<li>`s,
-/// and one body's join counts as the element's, as in Markdown.
+/// and one body's join counts as the element's, as in Markdown. And decision #130's: a DOCX
+/// paragraph's runs are one `<p>`, keeping the tabs and line breaks it holds, as in Markdown.
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -507,7 +508,7 @@ pub fn to_html(
             continue;
         }
 
-        let text = normalize(node.reading_text());
+        let text = crate::markdown::projected_text(&payload.nodes, i);
         if text.is_empty() {
             // v2.2-S1. The space the page drew, which this `continue` used to destroy. The block
             // stays open: a space inside a marked-content sequence does not end it.
@@ -666,8 +667,13 @@ pub fn to_html(
         // and heading-number joins too, from the same predicates, so a label's lines are one `<p>`
         // here as they are one block there. Decision #68: its gap join too, so a page's words set
         // apart by position are one `<p>` here as they are one block there.
+        // Decision #130, as in `crate::markdown`: one DOCX paragraph's runs are one `<p>`.
         let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
             None
+        } else if let Some(seam) =
+            open_prev.and_then(|prev| crate::markdown::paragraph_seam(&payload.nodes, i, prev))
+        {
+            Some((seam, crate::markdown::BLOCK_ELEMENT_RUN_JOINS))
         } else if open_prev
             .is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
         {

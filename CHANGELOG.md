@@ -32,6 +32,43 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A DOCX paragraph is one block, keeping its tabs and line breaks (decision #130)
+
+Rule ids `docx-wt-verbatim-v4` and `docx-document-order-v3`, so the DOCX profile's
+`profile_sha256` moves. The projection change is folded into `markdown-blocks-v14` and
+`html-blocks-v14`, which no release carries yet.
+
+- **A run holding only a tab or a line break is a node**, as is one holding only a no-break
+  hyphen. Word writes a label's tab and a line break as runs of their own,
+  `<w:r><w:tab/></w:r>`, and the reader left them out, so `Company Name` and `: Acme Ltd` had
+  nothing between them. A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab Word
+  sets a right-aligned date with, is a tab. Only an element directly in a `<w:r>` states a
+  character, so a text box's tab stop is none.
+- **A run after a text box is its own paragraph's.** A box's `<w:p>` sits inside a run of the
+  paragraph anchoring it, and the counter gave every run after it the box's paragraph: a wrong
+  locator, and `Ira Testcase` welded to `Experience` once paragraphs joined.
+- **One paragraph, one block.** Every DOCX run was a Markdown block and a `<p>` of its own:
+  `Name:` / `Asha Patil`, and a sentence with one bold phrase in three. The runs one `<w:p>` holds
+  are now one block, joined with a line break where the paragraph holds one between them, a tab
+  where it holds one, a space for any other whitespace, and nothing where it holds none, so a
+  word cut into runs stays one word. Counted as `block-element-run-joins-v1`.
+- **A tab or a line break inside a run is kept**, where it read as a space: `Company Name<TAB>:
+  Acme Ltd` and `Designation:<TAB>Senior Accountant` keep their tabs, an address its lines. This
+  departs from `normalize`'s one space for a DOCX run alone. Whitespace a `<w:t>` does not
+  preserve, holding a space, is the XML's own indentation and one space. A line break before a
+  line CommonMark reads as a block of its own (`- item`, `1. item`, `#`, `---`, a fence, an HTML
+  tag), read across the runs Word cut the line into, is one space, as decision #126 writes it.
+- **Known limits.** `locate` finds no quote that crosses two runs of a DOCX paragraph, though the
+  Markdown now shows them together: `locate-scalar-exact-v1` never crosses a block, and on a
+  page-less document every run is a block. A page-less paragraph rule for `locate` is the
+  follow-up. `ground` likewise stays one element per run. A `<w:sym>` symbol, a picture set inline
+  and a ruby reading yield no text, so the words either side join with nothing between them
+  (`Phone98765`), as they did inside one block before: the record cannot tell those runs from a
+  tracked deletion inside a word or a field's end before its punctuation, where a space would
+  split the word. PPTX is unchanged: its reader does not read `<a:br/>`, so joining a slide
+  paragraph's runs would weld the words either side of a break. PDF output is unchanged.
+- the made-up Word resumes in docs/measurements/office-resumes keep 240 of 240 expected lines whole (68 before; a tab-only run 0 -> 60 of 60, a break inside a run 0 -> 67 of 67), the bold-phrase sentence one paragraph in 20 of 20 (0 before) and every job's lines in 50 of 50 (16 before); the financial set's DOCX lines 60 -> 96 of 96 and the rupee sign beside its amount 15 -> 18 of 26. ParseBench and opendataloader-bench, PDF only, unchanged on every page.
+
 ### Chart, pie and stroke geometry no longer calls the platform's `hypot`
 
 - Lengths in the chart, pie and line readers are exact integer roots, and a stroke's width and a

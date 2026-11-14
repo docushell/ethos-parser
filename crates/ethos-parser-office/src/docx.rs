@@ -161,15 +161,24 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
     reader.config_mut().trim_text(false);
 
     let mut runs: Vec<Run> = Vec::new();
-    let mut paragraph: u32 = 0;
-    let mut run_in_paragraph: u32 = 0;
-    // `Some` while inside a `<w:r>`: the run being built.
+    // The `<w:p>` elements counted so far, and the open ones, innermost last, each with the runs
+    // counted in it. A text box's paragraphs sit inside a run of the paragraph anchoring the box,
+    // so a run after the box is counted in its own paragraph again, where one counter gave it the
+    // box's (review of decision #130). A run outside every paragraph goes on in the last one.
+    let mut paragraphs: u32 = 0;
+    let mut open_paragraphs: Vec<(u32, u32)> = Vec::new();
+    let mut last_paragraph: (u32, u32) = (0, 0);
+    // `Some` while inside a `<w:r>`: the run being built, and the depth of its `<w:r>`, so only
+    // an element directly in it states a character.
     let mut open_run: Option<Run> = None;
+    let mut run_at: i32 = 0;
     // `true` while inside a `<w:t>`, so text outside one is not collected.
     let mut in_text = false;
-    // Whether the open run's `<w:t>` elements held any text. The characters a run states as an
-    // element separate that text and never make the run a node on their own.
+    // Whether the open run's `<w:t>` elements held any text. Since decision #130 the characters a
+    // run states as an element make it a node too, unless the run is inside a `<w:del>`, whose
+    // depth `deleted` is: see `push_stated`.
     let mut run_has_text = false;
+    let mut deleted: u32 = 0;
     // Element depth, checked at EOF. `quick-xml` reports a *mismatched* close tag on its own but
     // reaching the end of input with elements still open is not an error to it — and a body that
     // stopped halfway is a shorter document that still looks whole, which is exactly what
@@ -203,17 +212,21 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
             // counted, so without this a locator depended on how the XML was serialized.
             Ok(Event::Empty(empty)) => match local_name(empty.name().as_ref()) {
                 b"p" => {
-                    paragraph += 1;
-                    run_in_paragraph = 0;
+                    paragraphs += 1;
+                    last_paragraph = (paragraphs, 0);
                 }
-                b"r" => run_in_paragraph += 1,
+                b"r" => {
+                    next_run(&mut open_paragraphs, &mut last_paragraph);
+                }
                 // Taken, as `<mc:Choice></mc:Choice>` is, so a later branch is passed over.
                 b"Choice" if skip_from.is_none() => {
                     if let Some(taken) = alt_taken.last_mut() {
                         *taken = true;
                     }
                 }
-                name if skip_from.is_none() => push_stated(name, open_run.as_mut()),
+                name if skip_from.is_none() && depth == run_at => {
+                    push_stated(name, open_run.as_mut())
+                }
                 _ => {}
             },
 
@@ -250,17 +263,19 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
 
                 let skipping = skip_from.is_some();
                 match name {
+                    b"del" => deleted += 1,
                     b"p" => {
-                        paragraph += 1;
-                        run_in_paragraph = 0;
+                        paragraphs += 1;
+                        open_paragraphs.push((paragraphs, 0));
                     }
                     b"r" => {
-                        run_in_paragraph += 1;
+                        let (paragraph, run) = next_run(&mut open_paragraphs, &mut last_paragraph);
                         if !skipping {
                             run_has_text = false;
+                            run_at = depth;
                             open_run = Some(Run {
                                 paragraph,
-                                run: run_in_paragraph,
+                                run,
                                 text: String::new(),
                                 space_preserved: false,
                             });
@@ -278,7 +293,9 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                             }
                         }
                     }
-                    name if !skipping => push_stated(name, open_run.as_mut()),
+                    name if !skipping && depth == run_at + 1 => {
+                        push_stated(name, open_run.as_mut())
+                    }
                     _ => {}
                 }
             }
@@ -304,12 +321,19 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                 }
                 match name {
                     b"t" => in_text = false,
+                    b"del" => deleted = deleted.saturating_sub(1),
+                    b"p" => {
+                        if let Some(closed) = open_paragraphs.pop() {
+                            last_paragraph = closed;
+                        }
+                    }
                     b"r" => {
                         if let Some(run) = open_run.take() {
-                            // A run with no `<w:t>` — a tab, a break, a drawing anchor — carries no
-                            // text to cite. It is not an erasure either: there was never a character
-                            // in it. Skipped without a count, deliberately.
-                            if run_has_text {
+                            // A run with no character at all — a drawing anchor, a footnote mark —
+                            // carries no text to cite. It is not an erasure either: there was never
+                            // a character in it. Skipped without a count, deliberately. A run that
+                            // states only a tab or a break is a node (decision #130).
+                            if run_has_text || (deleted == 0 && !run.text.is_empty()) {
                                 runs.push(run);
                             }
                         }
@@ -372,18 +396,32 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
 
 use crate::xml::local_name;
 
+/// Count one more `<w:r>` in the paragraph it belongs to — the innermost open one, or the last
+/// one where none is open — and return its address.
+fn next_run(open: &mut [(u32, u32)], last: &mut (u32, u32)) -> (u32, u32) {
+    let at = open.last_mut().unwrap_or(last);
+    at.1 += 1;
+    *at
+}
+
 /// Append the character a run-content element states, if it states one (ECMA-376 §17.3.3).
 ///
 /// `<w:tab/>` is a tab, `<w:br/>` and `<w:cr/>` a line feed, `<w:noBreakHyphen/>` U+2011 — the
 /// characters `odt.rs` reads from `<text:tab/>` and `<text:line-break/>` and `rtf.rs` from `\tab`,
-/// `\line` and `\_`. Without them the text on either side is welded into one word.
+/// `\line` and `\_`. Without them the text on either side is welded into one word. Since the
+/// review of decision #130, `<w:ptab/>`, the positional tab Word sets a right-aligned date with, is
+/// a tab too, and **only an element directly in the `<w:r>` states one**: a text box's
+/// `<w:tabs><w:tab/></w:tabs>`, inside a run of the paragraph anchoring it, defines a tab stop and
+/// holds no character.
 ///
-/// **They never make a run a node on their own.** A run inside `<w:del>` keeps its text in
-/// `<w:delText>`, which is not read, but states its tabs, breaks and hyphens with these same
-/// elements, so counting a run a node for holding one would put a deleted hyphen in the evidence.
+/// **They make a run a node on their own since decision #130**, so a label's tab or a line break
+/// Word writes as a run of its own reaches the paragraph — **but never inside `<w:del>`.** A run
+/// there keeps its text in `<w:delText>`, which is not read, but states its tabs, breaks and
+/// hyphens with these same elements, so counting it a node would put a deleted hyphen in the
+/// evidence.
 fn push_stated(name: &[u8], run: Option<&mut Run>) {
     let stated = match name {
-        b"tab" => '\t',
+        b"tab" | b"ptab" => '\t',
         b"br" | b"cr" => '\n',
         b"noBreakHyphen" => '\u{2011}',
         _ => return,
@@ -496,7 +534,7 @@ mod tests {
     #[test]
     fn a_run_with_no_text_is_not_a_node() {
         let xml = r#"<w:document xmlns:w="x"><w:body>
-            <w:p><w:r><w:br/></w:r><w:r><w:t>only this</w:t></w:r></w:p>
+            <w:p><w:r><w:footnoteReference w:id="1"/></w:r><w:r><w:t>only this</w:t></w:r></w:p>
         </w:body></w:document>"#;
         let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
         assert_eq!(runs.len(), 1);
@@ -507,10 +545,87 @@ mod tests {
         );
     }
 
+    /// **A run holding only a tab or a break is a node** (decision #130). Word writes a label's tab
+    /// and a line break as runs of their own, and dropping them left `Company Name` and
+    /// `: Acme Ltd` with nothing between them. A deleted one is still not a node.
+    #[test]
+    fn a_run_holding_only_a_tab_or_a_break_is_a_node() {
+        let xml = r#"<w:document xmlns:w="x"><w:body>
+            <w:p><w:r><w:t>Company Name</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>: Acme Ltd</w:t></w:r></w:p>
+            <w:p><w:r><w:t>one</w:t></w:r><w:r><w:br/></w:r><w:del><w:r><w:tab/></w:r></w:del><w:r><w:t>two</w:t></w:r></w:p>
+            <w:p><w:del><w:r><w:delText>x</w:delText></w:r></w:del><w:r><w:tab/></w:r><w:r><w:ptab w:alignment="right"/></w:r></w:p>
+        </w:body></w:document>"#;
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+        assert_eq!(
+            runs.iter()
+                .map(|r| (r.paragraph, r.run, r.text.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (1, 1, "Company Name"),
+                (1, 2, "\t"),
+                (1, 3, ": Acme Ltd"),
+                (2, 1, "one"),
+                (2, 2, "\n"),
+                (2, 4, "two"),
+                (3, 2, "\t"),
+                (3, 3, "\t")
+            ],
+            "a tab after a deletion is read, and a positional tab is a tab"
+        );
+    }
+
+    /// **A run after a text box is its own paragraph's** (review of decision #130). A text box's
+    /// `<w:p>` sits inside a run of the paragraph that anchors it, and the counter had no stack,
+    /// so `After` took the box's paragraph and its run count: a locator naming the wrong `<w:p>`.
+    /// Drawn as DrawingML and as VML alike.
+    #[test]
+    fn a_run_after_a_text_box_is_its_own_paragraphs() {
+        for anchor in [
+            "<w:drawing><wps:txbx><w:txbxContent><w:p><w:r><w:t>Box</w:t></w:r></w:p></w:txbxContent></wps:txbx></w:drawing>",
+            "<w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Box</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict>",
+        ] {
+            let xml = format!(
+                r#"<w:document xmlns:w="x" xmlns:wps="s" xmlns:v="v"><w:body>
+                <w:p><w:r><w:t>Before</w:t></w:r><w:r>{anchor}</w:r><w:r><w:t>After</w:t></w:r></w:p>
+                <w:p><w:r><w:t>Next</w:t></w:r></w:p></w:body></w:document>"#
+            );
+            let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+            assert_eq!(
+                runs.iter()
+                    .map(|r| (r.paragraph, r.run, r.text.as_str()))
+                    .collect::<Vec<_>>(),
+                [
+                    (1, 1, "Before"),
+                    (2, 1, "Box"),
+                    (1, 3, "After"),
+                    (3, 1, "Next")
+                ],
+                "{anchor}"
+            );
+        }
+    }
+
+    /// **A tab stop is no tab.** A text box's `<w:tabs><w:tab/></w:tabs>` defines where its tabs
+    /// stop, inside a run of the anchoring paragraph, and read as content it was a `\t` the file
+    /// does not hold. Only an element directly in `<w:r>` states a character.
+    #[test]
+    fn a_tab_stop_inside_a_run_states_nothing() {
+        let xml = r#"<w:document xmlns:w="x" xmlns:wps="s"><w:body>
+            <w:p><w:r><w:t>Before</w:t></w:r><w:r><w:drawing><wps:txbx><w:txbxContent><w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr></w:p></w:txbxContent></wps:txbx></w:drawing></w:r><w:r><w:t>After</w:t></w:r></w:p>
+        </w:body></w:document>"#;
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+        assert_eq!(
+            runs.iter()
+                .map(|r| (r.paragraph, r.run, r.text.as_str()))
+                .collect::<Vec<_>>(),
+            [(1, 1, "Before"), (1, 3, "After")]
+        );
+    }
+
     /// **A tab or a break a run states as an element is a character**, so the text on either
     /// side is not welded: `textutil`'s `Line one<br>Line two` read as `Line oneLine two`. A run
-    /// holding only a break is still not a node, nor is a deleted run holding a no-break hyphen,
-    /// and a passed-over branch states nothing.
+    /// holding only a break is a node since decision #130; a deleted run holding a no-break hyphen
+    /// is not, and a passed-over branch states nothing.
     #[test]
     fn stated_tabs_and_breaks_separate_the_text_they_sit_between() {
         let xml = r#"<w:document xmlns:w="x" xmlns:mc="mc"><w:body>
@@ -527,6 +642,7 @@ mod tests {
             [
                 "Line one\nLine two",
                 "Name:\tValue",
+                "\n",
                 "A\nB\u{2011}C",
                 "kept"
             ]

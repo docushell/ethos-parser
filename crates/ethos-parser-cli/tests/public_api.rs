@@ -216,8 +216,8 @@ const CORE: &[&str] = &[
     "OutlineRecord",
     "OfficeRunAttributes",
     "NOT_RUN",
-    "DOCX_READING_ORDER_RULE_V2",
-    "DOCX_TEXT_CODE_RULE_V3",
+    "DOCX_READING_ORDER_RULE_V3",
+    "DOCX_TEXT_CODE_RULE_V4",
     // v2-S3. The third format's address and its facts. A cell is not a run: it has a value type
     // and it may have a formula, and neither is a thing a `<w:r>` has.
     "XlsxLocator",

@@ -341,6 +341,164 @@ fn two_entries_of_one_name_are_refused_rather_than_read_as_the_first() {
 }
 
 // -------------------------------------------------------------------------------------------
+// One paragraph, one block (decision #130)
+// -------------------------------------------------------------------------------------------
+
+/// `body`, one `<w:p>` per string, read and projected as Markdown and as HTML.
+fn projected(paragraphs: &[&str]) -> (String, String) {
+    let body: String = paragraphs
+        .iter()
+        .map(|p| format!("<w:p>{p}</w:p>"))
+        .collect();
+    let xml = format!(
+        r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wps="s" xmlns:v="v"><w:body>{body}</w:body></w:document>"#
+    );
+    let repr = ethos_parser_office::read(&build_zip(&[("word/document.xml", xml.as_str())]))
+        .expect("reads");
+    let profile = Profile::docx_v0().profile_sha256().expect("a digest");
+    let md = ethos_parser_core::to_markdown(
+        &repr,
+        "test",
+        &profile,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V14,
+    )
+    .expect("projects");
+    let html = ethos_parser_core::to_html(
+        &repr,
+        "test",
+        &profile,
+        ethos_parser_core::HTML_RULE_BLOCKS_V14,
+    )
+    .expect("projects");
+    (md.markdown, html.html)
+}
+
+/// **A label's tab is kept, on the label's line** (decision #130). Word writes `Company Name`, a
+/// tab and `: Acme Ltd` as three runs, and each run was a block of its own, the tab dropped; a tab
+/// inside one run read as a space.
+#[test]
+fn a_paragraphs_runs_are_one_block_with_its_tabs() {
+    let (md, html) = projected(&[
+        "<w:r><w:t>Company Name</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>: Acme Ltd</w:t></w:r>",
+        "<w:r><w:t>Designation:</w:t><w:tab/><w:t>Senior Accountant</w:t></w:r>",
+    ]);
+    assert_eq!(
+        md,
+        "Company Name\t: Acme Ltd\n\nDesignation:\tSenior Accountant\n"
+    );
+    assert!(
+        html.contains("<p>Company Name\t: Acme Ltd</p>")
+            && html.contains("<p>Designation:\tSenior Accountant</p>"),
+        "{html}"
+    );
+}
+
+/// **A line break keeps its line**, in a run of its own and inside a run alike.
+#[test]
+fn a_paragraphs_line_breaks_are_kept() {
+    let (md, html) = projected(&[
+        "<w:r><w:t>Label A : one</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>Label B : two</w:t></w:r>",
+        "<w:r><w:t>Label A : one</w:t><w:br/><w:t>Label B : two</w:t></w:r>",
+    ]);
+    assert_eq!(
+        md,
+        "Label A : one\nLabel B : two\n\nLabel A : one\nLabel B : two\n"
+    );
+    assert_eq!(
+        html.matches("<p>Label A : one\nLabel B : two</p>").count(),
+        2,
+        "{html}"
+    );
+}
+
+/// **A sentence with one bold phrase is one paragraph**, its spaces where its runs hold them, and a
+/// word its runs split stays one word.
+#[test]
+fn a_sentence_cut_into_runs_is_one_paragraph() {
+    let (md, html) = projected(&[
+        r#"<w:r><w:t xml:space="preserve">Your annual cost is </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>Rs. 14,40,000</w:t></w:r><w:r><w:t>, paid monthly.</w:t></w:r>"#,
+        "<w:r><w:t>Accou</w:t></w:r><w:r><w:t>ntant</w:t></w:r>",
+    ]);
+    assert_eq!(
+        md,
+        "Your annual cost is Rs. 14,40,000, paid monthly.\n\nAccountant\n"
+    );
+    assert!(
+        html.contains("<p>Your annual cost is Rs. 14,40,000, paid monthly.</p>")
+            && html.contains("<p>Accountant</p>"),
+        "{html}"
+    );
+}
+
+/// **A line that would read as Markdown of its own stays on the line before**, as decision #126
+/// writes it, so a break before `- item` makes no list.
+#[test]
+fn a_break_before_a_line_markdown_reads_as_a_block_is_a_space() {
+    let (md, _) = projected(&[
+        "<w:r><w:t>Items:</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>- apples</w:t></w:r>",
+        "<w:r><w:t>Total</w:t><w:br/><w:t>---</w:t></w:r>",
+    ]);
+    assert_eq!(md, "Items: - apples\n\nTotal ---\n");
+}
+
+/// **The line is read across the runs Word cut it into** (review of decision #130). Word splits a
+/// run anywhere, so `1` and `. apples`, `` ` `` and ` `` `, `<` and `div>x`, `=` and `==` each
+/// make one line that CommonMark reads as a block — an ordered list, a fence swallowing the
+/// paragraphs after it, an HTML block, a heading's underline.
+#[test]
+fn a_line_markdown_reads_as_a_block_is_read_across_runs() {
+    let (md, html) = projected(&[
+        "<w:r><w:t>Items:</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:t>. apples</w:t></w:r>",
+        "<w:r><w:t>Code:</w:t><w:br/><w:t>`</w:t></w:r><w:r><w:t>``</w:t></w:r>",
+        "<w:r><w:t>Tag:</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>&lt;</w:t></w:r><w:r><w:t>div&gt;x</w:t></w:r>",
+        "<w:r><w:t>Total</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>=</w:t></w:r><w:r><w:t>==</w:t></w:r>",
+        "<w:r><w:t>Second paragraph</w:t></w:r>",
+    ]);
+    assert_eq!(
+        md,
+        "Items: 1. apples\n\nCode: ```\n\nTag: <div>x\n\nTotal ===\n\nSecond paragraph\n"
+    );
+    assert!(html.contains("<p>Items: 1. apples</p>"), "{html}");
+}
+
+/// **A text box is a paragraph of its own, and the text around it is its anchor's** (review of
+/// decision #130): `Ira Testcase` and `Experience` were welded into one word, because the run after
+/// the box took the box's paragraph.
+#[test]
+fn a_text_box_does_not_weld_into_the_paragraph_around_it() {
+    let (md, html) = projected(&[
+        "<w:r><w:t>Before</w:t></w:r><w:r><w:drawing><wps:txbx><w:txbxContent><w:p><w:r><w:t>Ira Testcase</w:t></w:r></w:p></w:txbxContent></wps:txbx></w:drawing></w:r><w:r><w:t>Experience</w:t></w:r>",
+        "<w:r><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Box text</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r><w:r><w:t>After</w:t></w:r>",
+    ]);
+    assert_eq!(
+        md,
+        "Before\n\nIra Testcase\n\nExperience\n\nBox text\n\nAfter\n"
+    );
+    assert!(
+        html.contains("<p>Ira Testcase</p>") && html.contains("<p>After</p>"),
+        "{html}"
+    );
+}
+
+/// **Whitespace a `<w:t>` does not preserve is the XML's own layout, not a line break** (review of
+/// decision #130): a pretty-printed `<w:t>` read as `Pretty` and `printed` on two lines. A tab or
+/// a break the run states stays, and so does a line feed `xml:space="preserve"` keeps. A
+/// positional tab is a tab.
+#[test]
+fn whitespace_a_text_element_does_not_preserve_is_no_line_break() {
+    let (md, _) = projected(&[
+        "<w:r><w:t>\n        Pretty\n      </w:t></w:r><w:r><w:t>\n        printed\n      </w:t></w:r>",
+        "<w:r><w:t>Indented\n    text</w:t></w:r>",
+        "<w:r><w:t xml:space=\"preserve\">Hello\nWorld</w:t></w:r>",
+        r#"<w:r><w:t>Software Engineer</w:t></w:r><w:r><w:ptab w:alignment="right"/></w:r><w:r><w:t>2019 - 2022</w:t></w:r>"#,
+    ]);
+    assert_eq!(
+        md,
+        "Pretty printed\n\nIndented text\n\nHello\nWorld\n\nSoftware Engineer\t2019 - 2022\n"
+    );
+}
+
+// -------------------------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------------------------
 
