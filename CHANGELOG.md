@@ -32,6 +32,44 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Labels heading recurring sections head an untagged document nothing else heads (decision #140)
+
+Rule id `heading_inference_rule` `type-size-v7` -> `type-size-v8`; `profile_sha256` moves.
+
+- The label tier (decision #47) reads a bold line set tight over the text it names as a label,
+  level 7, written as a bold line. On a document no line of which is set large or stands apart,
+  nothing ranks above its labels, so nothing was written as a heading at all. There, on a document
+  that declares no author structure, a label that heads a section is now level 1 — a `#` line, an
+  `<h1>`, a `section-header` in `elements`: the last inked run before it is not bold, the next inked
+  run is in no bold and does not run in along its line, the line below that is in no bold either,
+  and another such label in the document shares its font and size. Every other label stays at
+  level 7 — a form's captions, a resume's contact labels, an invoice's `Bill To`, a caption, a bold
+  line inside a paragraph, one label alone — and so does every label of a tagged document or of one
+  a line of which ranks: those read byte for byte as before. The limitation still counts these
+  lines as labels.
+- Measured: opendataloader-bench MHS 0.6285 -> 0.6378 over #141 alone, none down.
+  Without the recurrence clause MHS read 0.7024, with `#` lines on twelve made-up forms, invoices
+  and resumes; the shipped rule writes none there (`docs/measurements/headings/README.md` §15).
+
+### A heading set a marked-content sequence to a word is one heading line (decision #141)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet; no rule id
+and no `profile_sha256` moves, and the representation does not change.
+
+- On a page whose marked content no structure tree cites (`pdf_mcid` locators, on 143 of
+  opendataloader-bench's 200 documents), both projections joined a run of another sequence only
+  where a tagged parent licensed it, so a producer that opens a sequence at each word wrote a
+  heading's number and each of its words as a `#` line of its own, and a heading set on two lines
+  as two. Two runs read as headings or labels, neither cited by a tree, now join by the clauses that
+  join an untagged page's heading runs: the heading's next line in its unit, a label's lines, a
+  section number and its title, words of one unit set apart on one line. A run a tree cites joins
+  only as the tree says, and body text keeps its blocks.
+- Measured (strict comparison): opendataloader-bench, #141 alone, MHS 0.5903 -> 0.6285,
+  16 documents up and none down; NID 0.8918 -> 0.8921, 26 up and none down; TEDS unchanged.
+  ParseBench formatting and content unchanged on every page. With #140: MHS 0.6378, 17 up and none
+  down; NID 0.8922, 27 up and none down; ParseBench formatting, content and layout unchanged on every
+  page; the gate documents' Markdown byte-identical.
+
 ### Text a reader does not see is flagged three more ways, and can be left out on request (decision #139)
 
 Rule id `page-observations-v5` (was `-v4`); the PDF `profile_sha256` moves. Default Markdown and

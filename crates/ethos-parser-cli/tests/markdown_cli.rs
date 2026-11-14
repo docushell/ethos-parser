@@ -686,6 +686,66 @@ fn drop_hidden_leaves_out_flagged_text_and_counts_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **A heading set a marked-content sequence to a word is one heading line** (decision #141): a
+/// page with no structure tree that opens a sequence at each word of its heading, and again at the
+/// heading's next line, projected a `#` line per sequence, since nothing joins two sequences no
+/// tree cites. The heading rule read the three runs as one heading and the units rule as one unit,
+/// and both projections now join them as they join an untagged page's; the body's lines, each in a
+/// sequence of its own, keep their blocks.
+#[test]
+fn a_heading_set_a_sequence_to_a_word_is_one_heading_line() {
+    let dir = scratch("heading-sequences");
+    let pdf = dir.join("heading.pdf");
+    let seq = |mcid: usize, x: usize, y: usize, size: usize, text: &str| {
+        format!(
+            "/Span <</MCID {mcid}>> BDC BT /F1 {size} Tf 1 0 0 1 {x} {y} Tm ({text}) Tj ET EMC "
+        )
+    };
+    let body = [
+        "Sales rose in every region over the quarter, and",
+        "the margin held near the level of the year before.",
+        "Costs fell as the new plant came on line in May,",
+        "while freight and energy prices stayed high.",
+        "The board expects the second half to be slower,",
+        "and holds its guidance for the full year as set.",
+        "Orders in hand cover most of the next two months,",
+        "with the largest buyers renewing their terms.",
+        "Cash on hand rose, and the debt taken last year",
+        "was repaid ahead of the date it fell due on.",
+    ];
+    let mut stream = seq(0, 20, 370, 16, "Quarterly ")
+        + &seq(1, 100, 370, 16, "Results")
+        + &seq(2, 20, 350, 16, "and Outlook");
+    for (k, line) in body.iter().enumerate() {
+        stream += &seq(3 + k, 20, 320 - 12 * k, 10, line);
+    }
+    std::fs::write(&pdf, pdf_of_pages(&[stream])).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let md = markdown_of(&repr)["markdown"].as_str().unwrap().to_string();
+    assert!(
+        md.starts_with(&format!(
+            "# Quarterly Results and Outlook\n\n{}\n\n{}\n\n",
+            body[0], body[1]
+        )),
+        "{md}"
+    );
+    assert_eq!(md.matches('#').count(), 1, "{md}");
+
+    let out = engine(&["html", repr.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let h: Value = serde_json::from_slice(&out.stdout).expect("canonical JSON");
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        html.starts_with(&format!(
+            "<h1>Quarterly Results and Outlook</h1>\n<p>{}</p>\n",
+            body[0]
+        )),
+        "{html}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// One page with the boxes `boxes` — its `/MediaBox`, its `/CropBox` — drawing `stream`, with
 /// Helvetica as `/F1` and a one-pixel image as `/Im0`.
 fn page_pdf(boxes: &str, stream: &str) -> Vec<u8> {

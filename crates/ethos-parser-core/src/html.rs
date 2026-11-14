@@ -758,7 +758,11 @@ pub fn to_html_with(
         // here as they are one block there. Decision #68: its gap join too, so a page's words set
         // apart by position are one `<p>` here as they are one block there.
         // Decision #130, as in `crate::markdown`: one DOCX paragraph's runs are one `<p>`.
-        let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
+        // Decision #141, as in `crate::markdown`: across sequences no tree cites, between two
+        // heading runs.
+        let sequenced = (key.is_some() || open_group.is_some())
+            && !open_prev.is_some_and(|prev| crate::markdown::unbound_heading_pair(prev, node));
+        let continues = if joining.is_some() || sequenced {
             None
         } else if let Some(seam) =
             open_prev.and_then(|prev| crate::markdown::paragraph_seam(&payload.nodes, i, prev))

@@ -1623,6 +1623,33 @@ pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 /// opendataloader-bench unchanged.
 pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 
+/// [`HEADING_INFERENCE_RULE_V7`] **with the labels that head a document's recurring sections for
+/// its headings, where none of its lines ranks** (decision #140).
+///
+/// **What `-v7` missed.** The label tier (decision #47) reads a bold line set tight over the text
+/// it names as a label, level 7, below every ranked level, and both projections write it as a bold
+/// line. On a document no line of which is set large or stands apart, nothing ranks, so the labels
+/// are the top of its outline and nothing was written as a heading at all: a paper's `Methods`,
+/// `Results`, `References` set bold over their text came out as bold lines in a document with no
+/// heading. On opendataloader-bench, 18 of the 107 documents whose ground truth holds a heading
+/// had no heading in the Markdown; 15 of them had their heading as a label.
+///
+/// **The change.** Where the document declares no author structure and no line of it ranks, a
+/// label is level 1 where it heads a section: the last inked run before it in reading order is not
+/// bold, so it opens no line of a bold passage; the next inked run is set in no bold, not run in
+/// along the label's line a little off its baseline, and the next line below that is in no bold
+/// either, so it heads two lines of text or more, not a stacked label or one line of value; and
+/// another label of the document does the same in the same font at the same size, since sections
+/// recur. A form's captions, a resume's contact labels, a bold line inside a paragraph, a caption,
+/// one label alone stay at level 7. One ranked line anywhere keeps every label at level 7, as before,
+/// and so does a tag tree. The limitation still counts these lines as labels.
+///
+/// **Measured** (`docs/measurements/headings/README.md` §15): opendataloader-bench MHS
+/// 0.6285 -> 0.6378 over decision #141's joins alone, none down; the heading bounds' eleven
+/// documents each rank headings, so they read as under `-v7`. Without the recurrence clause MHS
+/// read 0.7024, but forms, invoices and resumes got `#` lines.
+pub const HEADING_INFERENCE_RULE_V8: &str = "type-size-v8";
+
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.
 ///
 /// On a document that declares no author structure, each page's lines — the runs sharing one
@@ -2848,7 +2875,7 @@ pub struct Profile {
     pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V7`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V8`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -3037,7 +3064,7 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V3.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V2.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V8.to_string(),
             layout_unit_rule: LAYOUT_UNIT_RULE_V7.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
@@ -4389,7 +4416,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5607,11 +5634,15 @@ mod tests {
              Moved for decision #139, `sha256:a516f5d8…` -> `sha256:0ed7c7d4…`: \
              `observation_rule` `page-observations-v4` -> `-v5`, which flags tiny text, text in \
              a layer switched off, and text filled in the colour beneath it, and flags text set \
-             in mode 7 only where nothing paints through its clip. Nothing else."
+             in mode 7 only where nothing paints through its clip. Nothing else.\n\n\
+             Moved for decision #140, `sha256:0ed7c7d4…` -> `sha256:78f195ef…`: \
+             `heading_inference_rule` `type-size-v7` -> `-v8`, which reads the labels heading an \
+             untagged document's recurring sections as its headings where no line of it ranks. \
+             Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:0ed7c7d4641d03ba56e10cab814ef83f6be8536a1869098a03a7b4bc60352dc9"
+            "sha256:78f195efa7ae5cdae0fc35295b0fd58ae04ef91d3d1e3de23c9f50ea7c29c241"
         );
     }
 

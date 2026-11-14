@@ -1726,6 +1726,25 @@ pub(crate) fn unit_continues(
                 && wrapped.contains(node.id.as_str())))
 }
 
+/// Decision #141. Whether two runs read as headings may join by the unit clauses across the
+/// marked-content sequences they sit in: both are inferred headings or labels, and neither
+/// sequence is one a structure element cites — a bare `PdfMcid`, or no locator. A page that opens
+/// a sequence at every word or line and has no tree to bind them says nothing about where its
+/// text joins, and [`sequence_join`] joins across sequences only where a tree does; so a heading
+/// set word by word was a `#` line per word. The heading rule read these runs as one line and the
+/// units rule as one unit, and the unit clauses join them as they join an untagged page's. Body
+/// text keeps its blocks. Called by both projections.
+pub(crate) fn unbound_heading_pair(prev: &crate::Node, node: &crate::Node) -> bool {
+    let unbound = |n: &crate::Node| {
+        matches!(
+            n.structural_locator,
+            None | Some(crate::StructuralLocator::PdfMcid(_))
+        )
+    };
+    let heading = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.inferred_heading);
+    unbound(prev) && unbound(node) && heading(prev) && heading(node)
+}
+
 /// Whether `node` continues, on a line of its own, the plain body text `prev` belongs to (decision
 /// #109): both runs of one layout unit on one page, neither read as a heading nor bold, `node`
 /// opening a new line. The lines stay lines, so a list set without markers still reads a line at a
@@ -4421,7 +4440,10 @@ pub fn to_markdown_with(
         // of one unit on one line take the gap between them as one space, where a page placed its
         // words by moving its pen and the ink joins above break at every word.
         // Decision #130: the next run of one DOCX paragraph, with what the paragraph holds between.
-        let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
+        // Decision #141: and across sequences no tree cites, between two heading runs.
+        let sequenced = (key.is_some() || open_group.is_some())
+            && !open_prev.is_some_and(|prev| unbound_heading_pair(prev, node));
+        let continues = if joining.is_some() || sequenced {
             None
         } else if let Some(seam) =
             open_prev.and_then(|prev| paragraph_seam(&payload.nodes, i, prev))

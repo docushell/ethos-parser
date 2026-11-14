@@ -4382,6 +4382,183 @@ fn a_bold_label_set_tight_over_its_text_is_a_level_seven_label() {
     assert!(!md.contains('#'), "{md}");
 }
 
+/// **Labels that head recurring sections head a document no line of which ranks**
+/// (`type-size-v8`, decision #140). Two labels set alike, each over two lines of text or more, are
+/// level 1; a label over one line of value, two labels stacked, a label run in to its text, two
+/// labels set in different sizes, and one label alone (`a_bold_label_set_tight_over_its_text_is_a_level_seven_label`) stay at level 7;
+/// so does every label where one line is set large, or where a tree is declared. A hanging next
+/// line, set right of the label a leading below, is text it heads.
+#[test]
+fn labels_heading_recurring_sections_head_a_document_nothing_else_heads() {
+    let text = |x: u32, y: u32, n: u32| -> String {
+        (0..n)
+            .map(|k| {
+                format!(
+                    "1 0 0 1 {x} {} Tm 0 Tr (The fees are paid each month for the work done.) Tj ",
+                    y - 12 * k
+                )
+            })
+            .collect()
+    };
+    let label = |y: u32, t: &str| format!("1 0 0 1 72 {y} Tm 2 Tr ({t}) Tj ");
+    let sections = |title: &str, x: u32| {
+        format!(
+            "BT 0.3 w {title}/F1 10 Tf {}{}{}{}{}{}{}{}{}ET",
+            label(700, "Scope of work"),
+            text(x, 688, 1) + &text(72, 676, 2),
+            label(652, "Fees and costs"),
+            text(x, 640, 1) + &text(72, 628, 2),
+            label(604, "Contact"),
+            text(72, 592, 1),
+            label(580, "Article 4"),
+            label(568, "Payment terms"),
+            text(72, 556, 4),
+        )
+    };
+    let levels = |a: &ExtractArtifact| -> Vec<(String, Option<u8>)> {
+        runs(a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| (r.text.clone(), r.inferred_heading_level))
+            .collect()
+    };
+    let read = |l: [Option<u8>; 5]| -> Vec<(String, Option<u8>)> {
+        [
+            "Scope of work",
+            "Fees and costs",
+            "Contact",
+            "Article 4",
+            "Payment terms",
+        ]
+        .into_iter()
+        .map(String::from)
+        .zip(l)
+        .collect()
+    };
+    let headed = read([None, None, Some(7), Some(7), Some(7)]);
+    assert_eq!(levels(&helvetica_letter_page(&sections("", 72))), headed);
+    assert_eq!(
+        levels(&helvetica_letter_page(&sections("", 150))),
+        headed,
+        "a hanging next line is text the label heads"
+    );
+    let unlike = sections("", 72).replace(
+        "1 0 0 1 72 652 Tm 2 Tr (Fees and costs) Tj ",
+        "/F1 11 Tf 1 0 0 1 72 652 Tm 2 Tr (Fees and costs) Tj /F1 10 Tf ",
+    );
+    assert_eq!(
+        levels(&helvetica_letter_page(&unlike)),
+        read([Some(7); 5]),
+        "two labels set unlike are no recurring sections"
+    );
+    let ranked = levels(&helvetica_letter_page(&sections(
+        "/F1 20 Tf 1 0 0 1 72 740 Tm 0 Tr (Service agreement) Tj ",
+        72,
+    )));
+    assert_eq!(ranked[0], ("Service agreement".to_string(), None));
+    assert_eq!(ranked[1..], read([Some(7); 5])[..], "{ranked:?}");
+
+    // Run in: each label's text goes on along its line, a little off its baseline.
+    let run_in = helvetica_letter_page(&format!(
+        "BT 0.3 w /F1 10 Tf {}1 0 0 1 150 699.6 Tm 0 Tr (is set out below.) Tj {}\
+         {}1 0 0 1 150 651.6 Tm 0 Tr (are set out below.) Tj {}ET",
+        label(700, "Scope of work"),
+        text(72, 688, 3),
+        label(652, "Fees and costs"),
+        text(72, 640, 3),
+    ));
+    assert_eq!(
+        levels(&run_in),
+        read([Some(7), Some(7), None, None, None])[..2]
+    );
+
+    // A tree that tags no heading: the same two sections stay labels.
+    let mut content = String::new();
+    for (k, (t, y)) in [("Scope of work", 700), ("Fees and costs", 644)]
+        .into_iter()
+        .enumerate()
+    {
+        content.push_str(&format!(
+            "/P << /MCID {} >> BDC BT /F2 12 Tf 72 {y} Td ({t}) Tj ET EMC\n",
+            2 * k
+        ));
+        content.push_str(&format!(
+            "/P << /MCID {} >> BDC BT /F1 12 Tf 72 {} Td (The fees are paid each month.) Tj \
+             0 -14 Td (The fees are paid each month.) Tj 0 -14 Td (The fees are paid each \
+             month.) Tj ET EMC\n",
+            2 * k + 1,
+            y - 14
+        ));
+    }
+    let tagged = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R \
+           /F2 9 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        b"<< /Type /StructTreeRoot /K [7 0 R 8 0 R] >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K [0 2] >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K [1 3] >>".to_vec(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
+    ]);
+    assert_eq!(
+        levels(&extracted(&tagged).expect("reads")),
+        read([Some(7), Some(7), None, None, None])[..2]
+    );
+}
+
+/// **Heading runs a tree cites stay as its elements put them** (decision #141). The projections
+/// join heading runs across marked-content sequences no tree cites by the unit clauses an untagged
+/// page's take; a tree that tags no heading, so the heading rule reads its type, but cites a
+/// heading's number and its title as two elements keeps them two lines, as before.
+#[test]
+fn heading_runs_a_tree_cites_are_not_joined_across_its_elements() {
+    let mut content = String::from(
+        "/P << /MCID 0 >> BDC BT /F1 16 Tf 72 700 Td (1.) Tj ET EMC\n\
+         /P << /MCID 1 >> BDC BT /F1 16 Tf 95 700 Td (Quarterly) Tj ET EMC\n\
+         /P << /MCID 2 >> BDC BT /F1 12 Tf 72 670 Td",
+    );
+    for _ in 0..5 {
+        content.push_str(" (The fees are paid each month for the work done.) Tj 0 -14 Td");
+    }
+    content.push_str(" ET EMC\n");
+    let pdf = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        b"<< /Type /StructTreeRoot /K [7 0 R 8 0 R 9 0 R] >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K 0 >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K 1 >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K 2 >>".to_vec(),
+    ]);
+    let a = extracted(&pdf).expect("reads");
+    let profile = Profile::default();
+    let rep = ethos_parser_pdf::to_representation(&a, &profile).expect("projects");
+    let md = ethos_parser_core::to_markdown(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects")
+    .markdown;
+    assert!(md.starts_with("# 1.\n\n# Quarterly\n\n"), "{md}");
+}
+
 /// **A font program that states its weight is read for it** (`page-observations-v4`), end to end: a
 /// TrueType font whose dictionary states no weight embeds a program whose `head` table sets the bold
 /// bit, and its run is bold.

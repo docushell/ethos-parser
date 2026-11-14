@@ -693,7 +693,7 @@ fn extract_page(
     // decision #94, its tree tags no heading — and the profile names the rule; any other id,
     // `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V7
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V8
         && (no_author_structure(structure.as_ref())
             || structure.as_ref().is_some_and(|t| !t.declares_headings()));
     let mut heading_lines: HeadingLines = Vec::new();
@@ -2864,6 +2864,64 @@ fn extract_counted(
                 }
                 if let Some(&i) = indices.first() {
                     read_lines.push((p, i, kind));
+                }
+            }
+        }
+        // `type-size-v8` (decision #140): where the document declares no author structure and
+        // none of its lines ranks, labels that head its sections are level 1. A label heads a
+        // section where the last inked run before it is not bold, so it opens no line of a bold
+        // passage, and the two lines after it are text in no bold, so it is neither stacked over
+        // another bold line nor a caption over one line of value; and its sections recur: two
+        // such labels or more, set in one font at one size. A form's field, a resume's contact
+        // label, a page's one bold line stay labels.
+        if no_author_structure(structure.as_ref())
+            && read_lines.iter().all(|&(_, _, kind)| kind == 2)
+        {
+            let inked = |r: &&TextRun| !r.text.trim().is_empty();
+            let mut heads: Vec<(usize, &Vec<usize>, (String, i64))> = Vec::new();
+            for (p, (page, lines)) in pages.iter().zip(&heading_lines_by_page).enumerate() {
+                for (indices, _) in lines {
+                    let (Some(&first), Some(&last)) = (indices.first(), indices.last()) else {
+                        continue;
+                    };
+                    let Some(end) = indices.iter().rev().map(|&i| &page.runs[i]).find(inked) else {
+                        continue;
+                    };
+                    if page.runs[first].inferred_heading_level != Some(crate::headings::LABEL_LEVEL)
+                    {
+                        continue;
+                    }
+                    // A run-in label — `Note:` and the text it opens, set on along its line a
+                    // little off its baseline — heads nothing: the next run starts past its ink,
+                    // within one of its glyphs of its baseline. No width, no verdict.
+                    let runs_on = |r: &TextRun| {
+                        let chars = i64::try_from(end.text.chars().count()).unwrap_or(1);
+                        end.locator.advance.is_none_or(|w| {
+                            let glyph = w / chars.max(1);
+                            r.locator.origin_x >= end.locator.origin_x + w - glyph
+                                && (r.locator.origin_y - end.locator.origin_y).abs() < glyph
+                        })
+                    };
+                    let before = page.runs[..first].iter().rev().find(inked);
+                    let mut after = page.runs[last + 1..].iter().filter(inked);
+                    let next = after.next();
+                    let below = next.and_then(|n| {
+                        let y = n.locator.origin_y;
+                        after.find(|r| r.bold || r.locator.origin_y != y)
+                    });
+                    if !before.is_some_and(|r| r.bold)
+                        && next.is_some_and(|r| !r.bold && !runs_on(r))
+                        && below.is_some_and(|r| !r.bold)
+                    {
+                        heads.push((p, indices, (end.font_id.clone(), end.font_size)));
+                    }
+                }
+            }
+            for (p, indices, style) in &heads {
+                if heads.iter().filter(|(_, _, s)| s == style).count() >= 2 {
+                    for &i in *indices {
+                        pages[*p].runs[i].inferred_heading_level = None;
+                    }
                 }
             }
         }

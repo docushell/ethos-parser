@@ -530,7 +530,11 @@ pub fn headings_inferred_from_type(
              below the smallest size. {labels} are labels: bold lines at the head of their text \
              that do not stand apart, of at most 60 characters, whose text no three lines of the \
              document share, at level 7, below every ranked level, which the projections write \
-             as bold lines and never with `#`.{ledes} A level deeper than 1 travels as \
+             as bold lines and never with `#` — except, in a document that declares no author \
+             structure and no line of which ranks, labels heading recurring sections: the last \
+             inked run before each is not bold, the two lines after it are text in no bold, and \
+             another label in its font and size does the same; those are level 1.{ledes} A level \
+             deeper than 1 travels as \
              `inferred_heading_level`. \
              {precondition} — so EVERY heading in this artifact is this engine's measurement of \
              type and NONE is the author's, and each level is a rank of type sizes, not the \
