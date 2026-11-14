@@ -75,9 +75,15 @@ read in parallel: 1.9 s per page and 1.35 GB peak over the 22 fixture pages.
   read whole; the page is the file's own pixel grid, one pixel to one point, which the document
   limitation `image-resolution-not-read` states. The source is the file — `image/png` or
   `image/jpeg` and its SHA-256 — and no image node is written, because the page is the image.
-  Without `--ocr` an image file is refused by name, with the flag that reads it. **Grounding is not
-  extended:** `ethos.grounding.v1` admits PDF sources and the page-less office ones only (decision
-  #16), so `ground` refuses an image file by name.
+  Without `--ocr` an image file is refused by name, with the flag that reads it. **Amended
+  (decision #132):** the page is built from the size the recognizer answers, so that size must be
+  the one the file's own header states, read before the file is sent — a PNG's `IHDR`, or a JPEG's
+  first frame header, found past tables, fill bytes and stray bytes as libjpeg finds it, where a
+  height of 0, which a DNL marker sets later, states none. A header that states no size is refused
+  `image-size-not-read`, and a size the recognizer answers otherwise `image-size-mismatch`, as a
+  PDF image is against its dictionary.
+  **Grounding is not extended:** `ethos.grounding.v1` admits PDF sources and the page-less office
+  ones only (decision #16), so `ground` refuses an image file by name.
 
 ## 5. How, in this code
 
@@ -115,7 +121,9 @@ read in parallel: 1.9 s per page and 1.35 GB peak over the 22 fixture pages.
   holds both, so contract §6's placement rule is enforced mechanically, not by convention.
 - **The OCR profile** adds the recognizer's identity, so its `profile_sha256` differs from the base
   profile's (contract §6 rule 4). Without `--ocr` every artifact is unchanged but the default
-  profile's hash, which the new field moved (§10.2).
+  profile's hash, which the new field moved (§10.2). **Amended (decision #132):** but a page
+  the trigger takes, which a default artifact counts under `scanned-page-not-recognized` (§7); no
+  rule id and no profile field moved for it.
 - **Projections** need no rule of their own: Markdown, HTML, grounding and `locate` read recognized
   runs as runs, and each span's box is its word's page-space box. Grounding an image file is
   refused (§4).
@@ -124,10 +132,29 @@ read in parallel: 1.9 s per page and 1.35 GB peak over the 22 fixture pages.
 
 ## 7. Refusals and counted absences
 
-A page that needs OCR and is not read is counted under a named reason, never dropped in silence:
+A page that needs OCR and is not read is counted under a named reason, never dropped in silence.
+**Amended (decision #132, owner 2026-11-14):** that includes a read without `--ocr`. A page the
+trigger takes — no text-showing operator, exactly one image placed and loaded, no inline image —
+is counted under the default profile by the reason the request for it would be refused for (a
+filter, a mask, a colour space, a placement), the same name `--ocr` writes, and as
+`ocr-not-requested` where the request would be sent. A page the trigger itself refuses — several
+images, an inline image, an image not loaded — is not counted without the flag. With the flag or
+without it, `extract`, `markdown` and `html` print one line on stderr naming how many pages were
+not read and each reason, and offer the flag only for the pages not requested — `--ocr` on the
+command that read the source, `extract --ocr` or `markdown --source FILE --ocr` on a record, which
+the flag cannot read — since the Markdown and HTML artifacts carry no limitation; stdout is
+unchanged. A recognizer's reason is written there with its control characters as spaces, so the
+line stays one line. MCP prints nothing; its tools return the record, which carries every
+limitation — a hint there is a follow-up. **A known limit:** the trigger has no size condition, so a
+page that places one 1 x 1 spacer image and shows no text is taken, counted `ocr-not-requested`
+and, under `--ocr`, sent; `--ocr` reads it under the same trigger, and nothing is drawn from size.
+Under `--ocr`, the reasons:
 several images on the page; an inline image; a stream whose filter the recognizer does not decode
-(CCITT, JBIG2, JPEG 2000); a placement that is not axis-aligned; a colour space or bit depth it does
-not read; an image a soft mask or a mask shapes, since the protocol carries the image alone. A recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
+(CCITT, JBIG2, JPEG 2000 — the first filter that is neither Flate nor a final DCT, named by the
+engine by the recognizer's own rule before the colour space, which a JPEG 2000 stream may leave to
+its own header, and not sent); a placement that is not axis-aligned; a colour space or bit depth it
+does not read; an image a soft mask or a mask shapes, since the protocol carries the image alone. A
+recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
 missing one does. A word whose box's centre falls outside the page's visible box is not written and
 is counted; one whose centre is on the page and whose box runs past its edge is written without its
 box (`measured_off_page`), as a drawn run is; and one whose box encloses nothing — read in the
@@ -154,6 +181,8 @@ recognized runs as runs; a rule that reads a font reads none.
 - Image files: "Yes, include image files".
 - Models: "Commit them".
 - Toolchain: "Install it".
+- Releases, 2026-11-14: every release archive carries `ethos-parser-ocr` beside `ethos-parser`,
+  built on its own toolchain and fingerprinted with one `--ocr` read (`docs/RELEASING.md` §8).
 
 ## 10. The acceptance bar, set before the code
 
@@ -196,5 +225,5 @@ recognized runs as runs; a rule that reads a font reads none.
 
 Photos (perspective, lighting, orientation); composite pages (mixed raster content, strips, soft
 masks); CCITT, JPEG 2000 and JBIG2; grounding an image file; pages with a stray text layer (contract §6 as it stands); tables,
-headings and emphasis on recognized pages; languages other than English; how the recognizer is
-released and installed.
+headings and emphasis on recognized pages; languages other than English. How the recognizer is
+released is decided (§9): beside `ethos-parser` in every release archive.

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! **Layout units: lines joined by their own spacing** — decision #38's paragraph-like blocks,
-//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V6`.
+//! under `ethos_parser_core::LAYOUT_UNIT_RULE_V7`.
 //!
 //! A page's lines — the runs sharing one band, one `/Artifact` state and one baseline, the heading
 //! rule's own unit — are read in reading order, and a line joins the unit above it when
@@ -31,8 +31,9 @@
 //! the next is wider than the line's height — and a unit is **cut before a piece when the piece
 //! before it ends short**: more than [`SHORT_LINE_HEIGHTS`] of the piece's own height left of the
 //! unit's right edge. That is the last line of a paragraph set with no space after it, a list item
-//! set without a marker, and a label set apart from its value on one line. The unit's right edge
-//! is its widest piece's, so the cut is read once every line is in.
+//! set without a marker, and a label set apart from its value on one line, where no colon closes
+//! it (`line-units-v7`). The unit's right edge is its widest piece's, so the cut is read once every
+//! line is in.
 //!
 //! **And a line its author broke early ends its unit** (`line-units-v3`): a unit of body text is
 //! cut before a line whose first word, with the space before it, would have fit
@@ -84,12 +85,31 @@
 //! it and a full line before it ([`cut_at_indents`]). A hanging indent's next line stays in, so its
 //! lines stay together.
 //!
+//! **And small pieces stay with their text** (`line-units-v7`). A script had to lie inside its
+//! line, so a footnote mark set after the last letter ran past the line's end and was a unit of its
+//! own: it is now that line's where it starts no more than a quarter of the line's height past the
+//! end and ends no more than the line's height past it, so a run-in heading's text and an aside set
+//! smaller after a line stay lines ([`is_script`]). A piece that is a list marker alone, or a label
+//! closed by a colon, ended short and was cut from the piece after it on its line — `1.` from its
+//! item's text, `Invoice No:` from its value — and now ends short of nothing where the piece after
+//! it is no such piece itself, so a label with no value takes no other label's ([`leads_in`]). And
+//! a list item's next line, set at the hanging indent a line and a half below, started more than
+//! its height right of the marker, so it continued nothing: a line within a quarter of its height
+//! of where the item's text starts after a marker alone in its run, opening with a word, now
+//! continues the item where it sits within the page's body leading and [`LEAD_MARGIN_TWENTIETHS`]
+//! more, or, on a page that sets no leading of its own, within its own height
+//! ([`UnitLine::hang`]). A marker set in one run with its text sets no hanging indent. Each reads
+//! geometry and punctuation shape alone: a unit is no list item.
+//!
 //! **Where, never what.** A unit says these lines read as one piece of text; it is not the
 //! author's paragraph, and nothing reads a role from it — decision #19's rule for `region` and
 //! `block` holds here too. A table's runs and an `/Artifact`'s get no unit, nor does a line of
 //! whitespace. The constants were measured, not chosen: on ParseBench's visual-grounding pages
 //! half a line height scored above a third, four fifths and six fifths, and the list-marker and
-//! heading clauses each added to it (`docs/measurements/parsebench/README.md`).
+//! heading clauses each added to it (`docs/measurements/parsebench/README.md`). `line-units-v7`'s
+//! tolerances are chosen, not measured: a quarter of a line's height for where a mark starts and
+//! for the hanging indent, and a line's height for where a mark ends and for the hanging indent's
+//! reach on a page with no leading of its own.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -115,6 +135,9 @@ pub(crate) struct Piece {
     pub first_word: i64,
     /// Its line is an inferred heading.
     pub heading: bool,
+    /// It leads into the next piece of its line, which leads into nothing itself ([`leads_in`]), so
+    /// it ends short of nothing (`line-units-v7`).
+    pub leads: bool,
 }
 
 /// A line's first word must fit this many times over in the room the line above leaves before its
@@ -158,13 +181,16 @@ pub(crate) type LineBox = (i64, i64, i64, i64, i64);
 
 /// Whether the line boxed `line` is a script of the line boxed `base` before it in reading order
 /// (`line-units-v4`): set clearly smaller, its baseline within half the base line's height of the
-/// base line's, and lying inside the base line's extent past its start.
+/// base line's, and starting past the base line's start and, since `line-units-v7`, no more than a
+/// quarter of its height past its end, ending no more than its height past it — a footnote mark set
+/// against the line's last letter, narrower than its line is tall.
 pub(crate) fn is_script(base: LineBox, line: LineBox) -> bool {
     let (base_height, height) = (base.3 - base.1, line.3 - line.1);
     20 * height < SCRIPT_HEIGHT_TWENTIETHS * base_height
         && 2 * (line.4 - base.4).abs() < base_height
         && line.0 > base.0
-        && line.2 <= base.2
+        && 4 * (line.0 - base.2) <= base_height
+        && line.2 - base.2 <= base_height
 }
 
 /// `lines` in reading order with each script joined to the line before it (`line-units-v4`):
@@ -235,6 +261,9 @@ pub(crate) struct UnitLine {
     /// Its text opens with a word ([`opens_with_word`]), so it may continue a unit set at its
     /// page's body leading (decision #103).
     pub worded: bool,
+    /// Where its first inked run is a list marker alone, the left edge of the inked run after it:
+    /// the hanging indent its next lines are set at (`line-units-v7`).
+    pub hang: Option<i64>,
 }
 
 /// Each line's unit, 1-based in reading order. A line with no measured box is a unit of its own.
@@ -249,15 +278,29 @@ pub(crate) fn units(lines: &[UnitLine]) -> Vec<u32> {
                 && continues_within(unit, b, lead + LEAD_MARGIN_TWENTIETHS)
         })
     };
+    // `-v7`: a line set within a quarter of its height of a list item's hanging indent, opening
+    // with a word, continues the item where it sits within the page's body leading and a twentieth
+    // more, or, on a page that sets no leading of its own, within its own height.
+    let at_hang = |hang: Option<i64>, unit: Rect, b: Rect, line: &UnitLine| {
+        hang.is_some_and(|x| 4 * (b.0 - x).abs() <= b.3 - b.1)
+            && line.worded
+            && continues_within(
+                unit,
+                b,
+                lead.map_or(20, |lead| lead + LEAD_MARGIN_TWENTIETHS),
+            )
+    };
     let mut out = Vec::with_capacity(lines.len());
-    let mut open: Option<(Rect, Option<u8>)> = None;
+    let mut open: Option<(Rect, Option<u8>, Option<i64>)> = None;
     let mut n = 0u32;
     for line in lines {
         match (open, line.rect) {
-            (Some((unit, kind)), Some(b))
+            (Some((unit, kind, hang)), Some(b))
                 if kind == line.heading
                     && !line.marker
-                    && (continues(unit, b) || at_lead(unit, b, line)) =>
+                    && (continues(unit, b)
+                        || at_lead(unit, b, line)
+                        || at_hang(hang, unit, b, line)) =>
             {
                 let joined = (
                     unit.0.min(b.0),
@@ -265,11 +308,11 @@ pub(crate) fn units(lines: &[UnitLine]) -> Vec<u32> {
                     unit.2.max(b.2),
                     unit.3.max(b.3),
                 );
-                open = Some((joined, kind));
+                open = Some((joined, kind, hang));
             }
             _ => {
                 n = n.saturating_add(1);
-                open = line.rect.map(|b| (b, line.heading));
+                open = line.rect.map(|b| (b, line.heading, line.hang));
             }
         }
         out.push(n);
@@ -298,6 +341,7 @@ pub(crate) fn cut_after_short_pieces(pieces: &[Piece]) -> Vec<u32> {
             .max();
         for k in start..end {
             let short = k > start
+                && !pieces[k - 1].leads
                 && match (pieces[k - 1].rect, pieces[k].rect, edge) {
                     (Some(before), Some(b), Some(edge)) => {
                         before.2 < edge - SHORT_LINE_HEIGHTS * (b.3 - b.1)
@@ -535,6 +579,19 @@ pub(crate) fn opens_with_marker(text: &str) -> bool {
         && rest.next().is_some_and(char::is_whitespace)
 }
 
+/// Whether `text` is a list marker alone ([`opens_with_marker`]'s), with no text after it.
+fn lone_marker(text: &str) -> bool {
+    let text = text.trim();
+    !text.contains(char::is_whitespace) && opens_with_marker(&format!("{text} "))
+}
+
+/// Whether a piece reading `text` leads into the piece after it on its line (`line-units-v7`): a
+/// list marker alone, or a label closed by a colon, where the piece after it leads into nothing
+/// itself — a label with no value takes no other label's. Its shape, never its role.
+fn leads_in(text: &str) -> bool {
+    lone_marker(text) || text.trim_end().ends_with(':')
+}
+
 /// Set `layout_unit` on every run of `page` the rule gives a unit to.
 pub(crate) fn assign(page: &mut PageExtract) {
     let owned: BTreeSet<usize> = page
@@ -644,11 +701,20 @@ pub(crate) fn assign(page: &mut PageExtract) {
                 .filter(|run| run.inferred_heading)
                 .map(|run| run.inferred_heading_level.unwrap_or(1));
             let height = rect.map_or(0, |r| r.3 - r.1);
+            let mut inked = cut[range.clone()]
+                .iter()
+                .flat_map(|(_, _, runs)| runs.iter())
+                .filter_map(|&i| ink(i).map(|b| (i, b)));
             UnitLine {
                 rect,
                 heading,
                 marker: opens_with_marker(&text(&line, height)),
                 worded: opens_with_word(&text(&cut[range.start].2, height), range.len()),
+                hang: inked
+                    .next()
+                    .filter(|&(i, _)| lone_marker(&page.runs[i].text))
+                    .and_then(|_| inked.next())
+                    .map(|(_, b)| b.0),
             }
         })
         .collect();
@@ -656,13 +722,18 @@ pub(crate) fn assign(page: &mut PageExtract) {
     let mut words = Vec::with_capacity(cut.len());
     for ((range, unit), line) in read.iter().zip(units(&unit_lines)).zip(&unit_lines) {
         let height = line.rect.map_or(0, |r| r.3 - r.1);
-        for (_, rect, runs) in &cut[range.clone()] {
-            let read = text(runs, height);
+        let reads: Vec<String> = cut[range.clone()]
+            .iter()
+            .map(|(_, _, runs)| text(runs, height))
+            .collect();
+        for (k, (_, rect, _)) in cut[range.clone()].iter().enumerate() {
+            let read = &reads[k];
             pieces.push(Piece {
                 rect: *rect,
                 unit,
-                first_word: rect.map_or(0, |r| first_word(&read, r.2 - r.0)),
+                first_word: rect.map_or(0, |r| first_word(read, r.2 - r.0)),
                 heading: line.heading.is_some(),
+                leads: leads_in(read) && reads.get(k + 1).is_some_and(|next| !leads_in(next)),
             });
             words.push(read.split_whitespace().count());
         }
@@ -702,6 +773,7 @@ mod tests {
             heading: None,
             marker: false,
             worded: true,
+            hang: None,
         }
     }
 
@@ -945,6 +1017,7 @@ mod tests {
             unit,
             first_word: 0,
             heading: false,
+            leads: false,
         }
     }
 
@@ -982,9 +1055,117 @@ mod tests {
             piece(154, 72, 100, 2),
         ];
         assert_eq!(cut_after_short_pieces(&pieces), [1, 1, 2, 2]);
-        // A label and its value on one line: the label ends short of the value's right edge.
+        // A label and its value on one line, the label closed by no colon: it ends short of the
+        // value's right edge.
         let pieces = [piece(100, 72, 120, 1), piece(100, 400, 500, 1)];
         assert_eq!(cut_after_short_pieces(&pieces), [1, 2]);
+    }
+
+    /// **A piece leading into the next on its line ends short of nothing** (`line-units-v7`): a
+    /// list marker set apart from its item's text, and a label closed by a colon set apart from its
+    /// value, stay with what follows them; the value ending short still closes the unit after it.
+    #[test]
+    fn a_piece_leading_into_the_next_on_its_line_is_not_cut_after() {
+        let leading = |p: Piece| Piece { leads: true, ..p };
+        // `1.` at 72 points, its item's text at 90, and the item's next line at 90.
+        let item = [
+            leading(piece(100, 72, 80, 1)),
+            piece(100, 90, 405, 1),
+            piece(115, 90, 190, 1),
+        ];
+        assert_eq!(cut_after_short_pieces(&item), [1, 1, 1]);
+        // `Invoice No:` and its value, then `Date:` and its value, on one line.
+        let labels = [
+            leading(piece(100, 72, 125, 1)),
+            piece(100, 150, 216, 1),
+            leading(piece(100, 330, 355, 1)),
+            piece(100, 380, 430, 1),
+        ];
+        assert_eq!(cut_after_short_pieces(&labels), [1, 1, 2, 2]);
+    }
+
+    #[test]
+    fn a_lone_marker_or_a_colon_leads_into_the_next_piece() {
+        for text in ["1.", " 12) ", "(a)", "b.", "•", "Invoice No:", "Date: "] {
+            assert!(leads_in(text), "{text:?}");
+        }
+        for text in ["1. Payment", "1.5", "a.m.", "Note", "•Item", "", " "] {
+            assert!(!leads_in(text), "{text:?}");
+        }
+    }
+
+    /// **A list item's next line, set at its hanging indent, continues it** (`line-units-v7`): a
+    /// line within a quarter of its height of where the item's text starts after its marker, no
+    /// further below than its own height, on a page that sets no leading of its own. The
+    /// boundaries are where they are stated.
+    #[test]
+    fn a_line_at_a_list_item_s_hanging_indent_continues_it() {
+        // `1.` at 72 points, its text from 90 to 405, its lines 16 points apart: 6 points between
+        // 10-point boxes, over half a line.
+        let item = UnitLine {
+            marker: true,
+            hang: Some(9_000),
+            ..body(100, 72, 405)
+        };
+        let next = |top: i64, x0: i64| {
+            let mut line = body(top, 90, 190);
+            line.rect = line.rect.map(|r| (x0, r.1, r.2, r.3));
+            line
+        };
+        assert_eq!(page_lead(&[item, next(116, 9_000)]), None);
+        assert_eq!(
+            units(&[item, next(116, 9_000), next(132, 9_000)]),
+            [1, 1, 1]
+        );
+        assert_eq!(units(&[item, next(116, 9_250)]), [1, 1], "a quarter right");
+        assert_eq!(units(&[item, next(116, 8_750)]), [1, 1], "a quarter left");
+        assert_eq!(units(&[item, next(116, 9_251)]), [1, 2], "further right");
+        assert_eq!(units(&[item, next(116, 8_749)]), [1, 2], "further left");
+        assert_eq!(units(&[item, next(120, 9_000)]), [1, 1], "its height below");
+        let further = UnitLine {
+            rect: next(120, 9_000).rect.map(|r| (r.0, r.1 + 1, r.2, r.3 + 1)),
+            ..next(120, 9_000)
+        };
+        assert_eq!(units(&[item, further]), [1, 2], "further below");
+        // An item whose marker is no piece of its own sets no hanging indent, and a line opening
+        // with no word, or a marker, does not continue it.
+        let plain = UnitLine { hang: None, ..item };
+        assert_eq!(units(&[plain, next(116, 9_000)]), [1, 2]);
+        let symbol = UnitLine {
+            worded: false,
+            ..next(116, 9_000)
+        };
+        assert_eq!(units(&[item, symbol]), [1, 2]);
+        let nested = UnitLine {
+            marker: true,
+            ..next(116, 9_000)
+        };
+        assert_eq!(units(&[item, nested]), [1, 2]);
+    }
+
+    /// **On a page with a leading of its own, the leading bounds the hanging indent's reach**
+    /// (`line-units-v7`): a page setting its 20-point lines 14 points apart reads a list item's next
+    /// line at the hanging indent a twentieth past its leading, 15 points below, and not 16, though
+    /// 16 is under the line's own height — a paragraph's space after the item opens the next.
+    #[test]
+    fn a_page_s_leading_bounds_a_hanging_indent() {
+        let hang = |gap: i64| {
+            let mut lines = set_apart(&[14, 14, 14, 14]);
+            lines[4] = UnitLine {
+                marker: true,
+                hang: Some(9_700),
+                ..lines[4]
+            };
+            let top = 100 + 4 * 34 + 20 + gap;
+            lines.push(UnitLine {
+                rect: Some((9_700, top * 100, 30_000, (top + 20) * 100)),
+                ..tall(top)
+            });
+            assert_eq!(page_lead(&lines), Some(14), "a gap of {gap}");
+            units(&lines)
+        };
+        assert_eq!(hang(15), [1, 1, 1, 1, 2, 2]);
+        assert_eq!(hang(16), [1, 1, 1, 1, 2, 3]);
     }
 
     /// **A unit whose lines cross a page's columns is a stretch per column**: the second column's
@@ -1261,9 +1442,33 @@ mod tests {
         );
     }
 
+    /// **A footnote mark set against its line's last letter is that line's** (`line-units-v7`): a
+    /// script starting no more than a quarter of the line's height past the line's end, and ending
+    /// no more than the line's height past it — a mark is narrower than its line is tall, a run-in
+    /// heading's text or an aside is not. The boundaries are where they are stated: the line is 10
+    /// points tall, so 2.5 points past joins and a centipoint more does not, and so does an end 10
+    /// points past.
+    #[test]
+    fn a_mark_set_against_its_line_s_last_letter_is_that_line_s() {
+        let base = script_box(100, 500, 110, 10);
+        assert!(is_script(base, script_box(500, 503, 106, 7)), "abutting");
+        let from = |x0: i64| {
+            let (_, y0, _, y1, baseline) = script_box(500, 503, 106, 7);
+            (x0, y0, x0 + 300, y1, baseline)
+        };
+        assert!(is_script(base, from(50_250)));
+        assert!(!is_script(base, from(50_251)));
+        let ending = |x1: i64| {
+            let (x0, y0, _, y1, baseline) = script_box(500, 503, 106, 7);
+            (x0, y0, x1, y1, baseline)
+        };
+        assert!(is_script(base, ending(51_000)));
+        assert!(!is_script(base, ending(51_001)), "a run running on");
+    }
+
     /// **A script is read against its line as drawn**: two scripts of one line both join it, and a
     /// line that would be a script only of the taller box the pair makes of it stays a line, as does
-    /// one running past the line's own end.
+    /// one set past the end of the line before it, though it lies inside the first line's extent.
     #[test]
     fn scripts_are_read_against_their_line_as_drawn() {
         let lines = vec![vec![0], vec![1], vec![2], vec![3], vec![4]];

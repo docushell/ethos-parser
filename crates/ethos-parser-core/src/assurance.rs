@@ -251,7 +251,9 @@ pub mod codes {
     /// blank page.
     pub const FORM_XOBJECTS_NOT_DESCENDED: &str = "form-xobjects-not-descended";
     /// A page that showed no text and placed an image was not read by the recognizer the profile
-    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail.
+    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail. Under a
+    /// profile that pins none, a page `--ocr` would read is counted here as `ocr-not-requested`
+    /// (decision #132).
     pub const SCANNED_PAGE_NOT_RECOGNIZED: &str = "scanned-page-not-recognized";
     /// Recognized words left unwritten because the page's visible box does not show where they lie.
     pub const RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX: &str = "recognized-words-outside-visible-box";
@@ -849,7 +851,9 @@ impl Capabilities {
                  is never consulted as a sorter, because emitting nodes in `/K` order is a \
                  different rule and would need its own id. Second, a run whose font supplies no \
                  advance has an UNKNOWN horizontal extent, so the rule gives it a fixed minimum \
-                 rather than a measured width and judges gutters against that floor. No extent is \
+                 rather than a measured width and judges gutters against that floor, and \
+                 whether a band is narrow enough to be set on its neighbour's rows, which joins \
+                 it to that neighbour rather than reading it as a column. No extent is \
                  ever derived from a font size. Where the rule finds no gutter it moves only \
                  whole stretches its leading separates, and a page with no such gap keeps \
                  content-stream order, which is what a single-column page means and not a \

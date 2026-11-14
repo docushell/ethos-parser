@@ -17,7 +17,8 @@
 //!
 //! **This module decodes nothing.** It reads what the image's dictionary states — size, colour
 //! space, filters and their parameters, `/Decode` — and hands the recognizer the stream exactly as
-//! the file stores it; the recognizer decodes, and refuses by name what it cannot. What comes back
+//! the file stores it; the recognizer decodes, and refuses by name what it cannot — save a filter
+//! it has no decoder for, named here first by its own rule. What comes back
 //! is mapped through the matrix the page painted the image with, which is the only arithmetic
 //! here, and it is the same arithmetic `images.rs` applies to the unit square.
 //!
@@ -192,6 +193,40 @@ pub fn image_media_type(head: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// The pixel size an image file's own header states, width then height (decision #132): a PNG's
+/// `IHDR`, which the format puts first, or a JPEG's first frame header, found by stepping over the
+/// marker segments before it as libjpeg does. A header read, not a decode; `None` where neither is
+/// found. A JPEG's height may be 0, set later by a DNL marker.
+pub(crate) fn image_file_size(b: &[u8]) -> Option<(u32, u32)> {
+    let be16 = |i: usize| {
+        b.get(i..i + 2)
+            .map(|x| u32::from(u16::from_be_bytes([x[0], x[1]])))
+    };
+    let be32 = |i: usize| {
+        b.get(i..i + 4)
+            .map(|x| u32::from_be_bytes([x[0], x[1], x[2], x[3]]))
+    };
+    if b.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return (b.get(12..16)? == b"IHDR").then_some((be32(16)?, be32(20)?));
+    }
+    let mut i = 2; // past the JPEG's start-of-image marker
+    loop {
+        // A byte that starts no marker is skipped to the next 0xFF, as libjpeg's `next_marker`
+        // skips it.
+        i += b.get(i..)?.iter().position(|&x| x == 0xFF)?;
+        match *b.get(i + 1)? {
+            0xFF => i += 1,                      // a fill byte
+            0x00 | 0x01 | 0xD0..=0xD8 => i += 2, // no marker, or a marker with no segment
+            0xD9 => return None,                 // the image ended before a frame
+            // A frame header, `SOFn`: its height, then its width. C4, C8 and CC are not frames.
+            m @ 0xC0..=0xCF if !matches!(m, 0xC4 | 0xC8 | 0xCC) => {
+                return Some((be16(i + 7)?, be16(i + 5)?))
+            }
+            _ => i += 2 + be16(i + 2)? as usize,
+        }
+    }
+}
+
 /// A one-page PDF, `width` by `height` points, that draws nothing: the page an image file's words
 /// are set on, one pixel to one point. Never written anywhere; the artifact's source is the file.
 pub(crate) fn blank_page(width: u32, height: u32) -> Result<Vec<u8>, EngineError> {
@@ -301,12 +336,7 @@ pub(crate) fn request(
     let bits_per_component = match int(b"BitsPerComponent") {
         Some(b) => u32::try_from(b).map_err(|_| "bits-per-component-not-read".to_string())?,
         None if image_mask => 1,
-        None => 8, // a JPEG 2000 stream may omit it; the recognizer refuses that filter by name
-    };
-    let colour = if image_mask {
-        None
-    } else {
-        Some(colour(doc, dict.get(b"ColorSpace").ok())?)
+        None => 8, // a JPEG 2000 stream may omit it; that filter is refused by name below
     };
     let names = |o: Option<lopdf::Object>| -> Vec<String> {
         match o {
@@ -320,6 +350,24 @@ pub(crate) fn request(
         }
     };
     let filters = names(resolve_object(doc, dict.get(b"Filter").ok()));
+    // Decision #132: a JPEG 2000 stream may leave its colour space to its own header, so a filter
+    // the recognizer does not decode is named before the colour space is asked for, by the
+    // recognizer's own rule and name (`ocr/src/decode.rs`, `pdf`, which decodes in order): the
+    // first that is neither Flate nor a final DCT. `the_filter_rule_is_the_recognizers` holds the
+    // two together.
+    let last = filters.len().saturating_sub(1);
+    if let Some((_, f)) = filters.iter().enumerate().find(|&(i, f)| match f.as_str() {
+        "FlateDecode" | "Fl" => false,
+        "DCTDecode" | "DCT" => i != last,
+        _ => true,
+    }) {
+        return Err(format!("filter-not-decoded:{f}"));
+    }
+    let colour = if image_mask {
+        None
+    } else {
+        Some(colour(doc, dict.get(b"ColorSpace").ok())?)
+    };
     let parms: Vec<Option<lopdf::Object>> = match resolve_object(doc, dict.get(b"DecodeParms").ok())
     {
         Some(lopdf::Object::Array(a)) => a.iter().map(|o| resolve_object(doc, Some(o))).collect(),
@@ -736,6 +784,43 @@ mod tests {
             .collect()
     }
 
+    /// The one-image scan with its image's dictionary edited.
+    fn scanned_with(edit: impl FnOnce(&mut lopdf::Dictionary)) -> Vec<u8> {
+        let mut pdf =
+            lopdf::Document::load_mem(&scanned("200 0 0 100 0 0", 1, None)).expect("loads");
+        let image = pdf
+            .objects
+            .values_mut()
+            .find_map(|o| match o {
+                lopdf::Object::Stream(s) if s.dict.has(b"Width") => Some(s),
+                _ => None,
+            })
+            .expect("the page's image");
+        edit(&mut image.dict);
+        let mut bytes = Vec::new();
+        pdf.save_to(&mut bytes).expect("saves");
+        bytes
+    }
+
+    /// `filters` as a `/Filter` array.
+    fn filter(filters: &[&str]) -> lopdf::Object {
+        lopdf::Object::Array(
+            filters
+                .iter()
+                .map(|f| lopdf::Object::Name(f.as_bytes().to_vec()))
+                .collect(),
+        )
+    }
+
+    /// The reason the page's `scanned-page-not-recognized` names, if it carries one.
+    fn reason(a: &crate::ExtractArtifact) -> Option<String> {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED)
+            .and_then(|l| l.detail.split('`').nth(1).map(str::to_string))
+    }
+
     #[test]
     fn a_scanned_page_reads_as_recognized_runs() {
         let profile = Profile::ocr_v0();
@@ -882,6 +967,69 @@ mod tests {
     }
 
     #[test]
+    fn a_filter_no_recognizer_decodes_is_named_before_the_colour_space() {
+        // Decision #132: a JPEG 2000 stream may leave its colour space to its own header, so a
+        // filter the recognizer does not decode is refused by the name the recognizer gives it —
+        // the first that is neither Flate nor a final DCT — before the colour space is asked for,
+        // and nothing is sent.
+        let profile = Profile::ocr_v0();
+        for (filters, colour, refused) in [
+            (&["FlateDecode", "JPXDecode"][..], false, Some("JPXDecode")),
+            (
+                &["FlateDecode", "CCITTFaxDecode"],
+                true,
+                Some("CCITTFaxDecode"),
+            ),
+            (&["JBIG2Decode"], true, Some("JBIG2Decode")),
+            (
+                &["ASCII85Decode", "JPXDecode"],
+                false,
+                Some("ASCII85Decode"),
+            ),
+            (&["DCTDecode", "FlateDecode"], true, Some("DCTDecode")),
+            (&["FlateDecode", "DCTDecode"], true, None),
+        ] {
+            let bytes = scanned_with(|d| {
+                d.set("Filter", filter(filters));
+                if !colour {
+                    d.remove(b"ColorSpace");
+                }
+            });
+            let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+            let mut fake = Fake::new();
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            match refused {
+                Some(f) => {
+                    assert!(fake.requests.is_empty(), "{filters:?}: nothing is sent");
+                    assert_eq!(
+                        reason(&artifact).as_deref(),
+                        Some(format!("filter-not-decoded:{f}").as_str()),
+                        "{filters:?}"
+                    );
+                }
+                None => assert_eq!(fake.requests.len(), 1, "{filters:?} is decoded"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_filter_rule_is_the_recognizers() {
+        // `request` names the filters `ocr/src/decode.rs` refuses, before it is asked, so the two
+        // say the same: a decoder added there is a filter admitted here, in the same change.
+        let decode = include_str!("../../../ocr/src/decode.rs");
+        for arm in [
+            r#""FlateDecode" | "Fl" => {"#,
+            r#""DCTDecode" | "DCT" if i + 1 == spec.filters.len() => return dct(spec, &bytes),"#,
+            r#"other => return Err(format!("filter-not-decoded:{other}")),"#,
+        ] {
+            assert!(
+                decode.contains(arm),
+                "ocr/src/decode.rs no longer reads `{arm}`: change `request`'s filter rule with it"
+            );
+        }
+    }
+
+    #[test]
     fn the_profile_and_the_recognizer_must_name_each_other() {
         let bytes = scanned("200 0 0 100 0 0", 1, None);
         // The OCR profile with no recognizer, and a recognizer under a profile pinning none.
@@ -923,17 +1071,57 @@ mod tests {
             Err(EngineError::Unsupported { .. })
         ));
         assert!(matches!(
-            crate::extract_image(b"\x89PNG\r\n\x1a\n", &ocr, &mut two_faced),
+            crate::extract_image(&png(20, 10), &ocr, &mut two_faced),
             Err(EngineError::Unsupported { .. })
         ));
-        // And without `--ocr` nothing about a scanned page changes: no runs, no new limitation.
+        // And without `--ocr` nothing is read: no runs, nothing recognized.
         let doc = Document::open_bytes(&bytes, &base).expect("opens");
         let plain = crate::extract(&doc, &base).expect("extracts");
         assert!(plain.pages[0].runs.is_empty());
-        assert!(!codes(&plain)
-            .iter()
-            .any(|c| c.starts_with("scanned-page") || c.starts_with("recognized")));
+        assert!(!codes(&plain).iter().any(|c| c.starts_with("recognized")));
         assert!(matches!(base.recognizer, RecognizerPin::NotPinned));
+    }
+
+    #[test]
+    fn a_scan_read_without_ocr_is_counted_as_ocr_would_count_it() {
+        // Decision #132: under the default profile, a page `--ocr` would ask the recognizer to
+        // read is counted on its page as not requested, so a scan read without the flag is not a
+        // blank page; one `--ocr` would refuse before asking is counted by that reason.
+        let base = Profile::default();
+        let extract = |bytes: &[u8]| {
+            let doc = Document::open_bytes(bytes, &base).expect("opens");
+            crate::extract(&doc, &base).expect("extracts")
+        };
+        let scan = extract(&scanned("200 0 0 100 0 0", 1, None));
+        assert!(scan.pages[0].runs.is_empty());
+        let l = scan
+            .assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED)
+            .expect("counted on its page");
+        assert_eq!(l.scope, ethos_parser_core::LimitationScope::Page(1));
+        assert_eq!(reason(&scan).as_deref(), Some("ocr-not-requested"));
+        for (bytes, why) in [
+            (
+                scanned_with(|d| d.set("Filter", filter(&["CCITTFaxDecode"]))),
+                "filter-not-decoded:CCITTFaxDecode",
+            ),
+            (
+                scanned_with(|d| d.set("SMask", lopdf::Object::Reference((1, 0)))),
+                "soft-mask-not-read",
+            ),
+        ] {
+            assert_eq!(reason(&extract(&bytes)).as_deref(), Some(why));
+        }
+        // Never on a page that shows text, nor on one the trigger itself does not take.
+        for (images, text) in [(1, Some("drawn")), (2, None)] {
+            let other = extract(&scanned("200 0 0 100 0 0", images, text));
+            assert!(
+                !codes(&other).contains(&ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED),
+                "{images} image(s), text {text:?}"
+            );
+        }
     }
 
     #[test]
@@ -1042,7 +1230,7 @@ mod tests {
         let profile = Profile::ocr_v0();
         let mut fake = Fake::new();
         fake.reach = 24; // "world", 11..24, runs past the 20-pixel image; its centre, 17.5, is on it
-        let png = b"\x89PNG\r\n\x1a\n".to_vec();
+        let png = png(20, 10);
         let artifact = crate::extract_image(&png, &profile, &mut fake).expect("extracts");
         let world = &artifact.pages[0].runs[1];
         assert_eq!(world.text, "world");
@@ -1062,7 +1250,7 @@ mod tests {
         let profile = Profile::ocr_v0();
         let mut fake = Fake::new();
         fake.reach = 11; // "world", 11..11: no width; its centre, 11, is on the 20-pixel image
-        let png = b"\x89PNG\r\n\x1a\n".to_vec();
+        let png = png(20, 10);
         let artifact = crate::extract_image(&png, &profile, &mut fake).expect("extracts");
         let world = &artifact.pages[0].runs[1];
         assert_eq!(world.text, "world");
@@ -1133,11 +1321,37 @@ mod tests {
         assert_eq!(dropped, 1);
     }
 
+    /// A PNG's signature and `IHDR` stating `w` x `h` pixels, then bytes nobody decodes.
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let mut b = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        b.extend(w.to_be_bytes());
+        b.extend(h.to_be_bytes());
+        b.extend(b" and the rest of the file");
+        b
+    }
+
+    /// A JPEG's start, a JFIF segment, and a baseline frame header stating `w` x `h` pixels.
+    fn jpeg(w: u16, h: u16) -> Vec<u8> {
+        jpeg_with(b"", 0xC0, w, h)
+    }
+
+    /// A JPEG's start, a JFIF segment, `between`, and a frame header `sof` stating `w` x `h`.
+    fn jpeg_with(between: &[u8], sof: u8, w: u16, h: u16) -> Vec<u8> {
+        let mut b =
+            b"\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00".to_vec();
+        b.extend(between);
+        b.extend([0xFF, sof, 0x00, 0x0B, 0x08]);
+        b.extend(h.to_be_bytes());
+        b.extend(w.to_be_bytes());
+        b.extend(b"\x01\x01\x11\x00 and the rest of the file");
+        b
+    }
+
     #[test]
     fn an_image_file_is_one_page_of_its_own_pixels() {
         let profile = Profile::ocr_v0();
-        // The fake decodes nothing: a signature is all the engine reads of the file.
-        let png = b"\x89PNG\r\n\x1a\n and the rest of the file".to_vec();
+        // The fake decodes nothing: a signature and a header are all the engine reads of the file.
+        let png = png(20, 10);
         let mut fake = Fake::new();
         let artifact = crate::extract_image(&png, &profile, &mut fake).expect("extracts");
         assert_eq!(fake.requests.len(), 1);
@@ -1192,12 +1406,86 @@ mod tests {
         let profile = Profile::ocr_v0();
         let mut fake = Fake::new();
         fake.refused = Some("not-decoded".into());
-        let e = crate::extract_image(b"\xFF\xD8\xFF\xE0 a JPEG", &profile, &mut fake)
+        let e = crate::extract_image(&jpeg(20, 10), &profile, &mut fake)
             .expect_err("an image file has no other page to count it against");
         assert!(
             e.to_string().contains("image/jpeg") && e.to_string().contains("not-decoded"),
             "{e}"
         );
+    }
+
+    #[test]
+    fn an_image_file_the_recognizer_sizes_otherwise_is_refused_by_name() {
+        // Decision #132: the page is built from the size the recognizer states, so a size the
+        // file's own header does not state is refused, as `image-size-mismatch` refuses a PDF's.
+        let profile = Profile::ocr_v0();
+        for (bytes, media_type) in [
+            (png(30, 10), "image/png"),
+            (png(10, 20), "image/png"),
+            (png(20, 30), "image/png"),
+            (jpeg(10, 20), "image/jpeg"),
+            (jpeg(30, 0), "image/jpeg"),
+        ] {
+            let e = crate::extract_image(&bytes, &profile, &mut Fake::new())
+                .expect_err("the fake answers 20 x 10");
+            assert!(
+                e.to_string().contains(media_type) && e.to_string().contains("image-size-mismatch"),
+                "{e}"
+            );
+        }
+        // A JPEG may state a height of 0 and set it with a DNL marker after its first scan
+        // (T.81 B.2.2): a height of 0 states none, so the width alone is compared.
+        for bytes in [jpeg(20, 10), jpeg(20, 0)] {
+            let artifact =
+                crate::extract_image(&bytes, &profile, &mut Fake::new()).expect("extracts");
+            assert_eq!(
+                (artifact.pages[0].width, artifact.pages[0].height),
+                (2000, 1000)
+            );
+        }
+    }
+
+    #[test]
+    fn an_image_files_size_is_read_from_its_header_before_it_is_sent() {
+        // Decision #132: a JPEG's size is its first frame header's, found as libjpeg finds it:
+        // past tables, fill bytes and bytes that are no marker.
+        let dqt = [&[0xFF, 0xDB, 0x00, 0x43][..], &[0; 65]].concat();
+        let dht = [&[0xFF, 0xC4, 0x00, 0x1F][..], &[0; 29]].concat();
+        for (label, between, sof) in [
+            ("baseline", Vec::new(), 0xC0),
+            ("tables first", [dqt.clone(), dht].concat(), 0xC0),
+            ("progressive", dqt, 0xC2),
+            ("fill bytes", vec![0xFF, 0xFF, 0xFF], 0xC0),
+            ("stray bytes", b"junk".to_vec(), 0xC0),
+        ] {
+            assert_eq!(
+                image_file_size(&jpeg_with(&between, sof, 20, 10)),
+                Some((20, 10)),
+                "{label}"
+            );
+        }
+        assert_eq!(image_file_size(b"\xFF\xD8\xFF\xD9"), None, "it ends first");
+        let profile = Profile::ocr_v0();
+        let artifact = crate::extract_image(
+            &jpeg_with(b"junk", 0xC0, 20, 10),
+            &profile,
+            &mut Fake::new(),
+        )
+        .expect("extracts");
+        assert_eq!(artifact.pages[0].width, 2000);
+        // A header that states no size is refused by its own name, before the recognizer is asked.
+        for (bytes, media_type) in [
+            (&b"\xFF\xD8\xFF\xE0 a JPEG"[..], "image/jpeg"),
+            (b"\x89PNG\r\n\x1a\n and no header", "image/png"),
+        ] {
+            let mut fake = Fake::new();
+            let e = crate::extract_image(bytes, &profile, &mut fake).expect_err("no size");
+            assert!(
+                e.to_string().contains(media_type) && e.to_string().contains("image-size-not-read"),
+                "{e}"
+            );
+            assert!(fake.requests.is_empty(), "nothing is sent");
+        }
     }
 
     #[test]

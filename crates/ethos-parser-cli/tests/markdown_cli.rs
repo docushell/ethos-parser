@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v14");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -341,6 +341,152 @@ fn a_form_field_value_is_a_named_bucket_rather_than_body_text() {
     assert!(b["chars"].as_u64().unwrap() > 0);
 }
 
+/// The running head [`running_furniture_pdf`] sets on each of its three pages.
+const RUNNING_HEAD: &str = "Acme Ltd - Quarterly Report Q2 FY27";
+
+/// Three pages of 9-point Helvetica, each with [`RUNNING_HEAD`] at its top edge, one body line
+/// and `Page n of 3` at its foot: the reader flags the head and the folio as furniture.
+///
+/// Built in-test rather than committed as a fixture, as `oracle.rs` builds its one-line PDF: no
+/// engine fixture has more than two pages of running furniture, and no manifest hash moves for it.
+fn running_furniture_pdf() -> Vec<u8> {
+    let pages = 3;
+    let widths = vec!["500"; 224].join(" ");
+    let kids: Vec<String> = (0..pages).map(|i| format!("{} 0 R", 3 + 2 * i)).collect();
+    let mut objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {pages} >>",
+            kids.join(" ")
+        )
+        .into_bytes(),
+    ];
+    let font = 3 + 2 * pages;
+    for i in 0..pages {
+        let n = i + 1;
+        let stream = format!(
+            "BT /F1 9 Tf 1 0 0 1 36 380 Tm ({RUNNING_HEAD}) Tj ET \
+             BT /F1 9 Tf 1 0 0 1 36 300 Tm (Body text of page {n}.) Tj ET \
+             BT /F1 9 Tf 1 0 0 1 36 15 Tm (Page {n} of {pages}) Tj ET"
+        );
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << \
+                 /F1 {font} 0 R >> >> /Contents {} 0 R >>",
+                4 + 2 * i
+            )
+            .into_bytes(),
+        );
+        objects.push(
+            format!(
+                "<< /Length {} >>\nstream\n{stream}\nendstream",
+                stream.len()
+            )
+            .into_bytes(),
+        );
+    }
+    objects.push(
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    );
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        out.extend_from_slice(o);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref = out.len();
+    out.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    out
+}
+
+/// **`--drop-furniture` leaves out a running head and a folio repeated on every page, and counts
+/// them** (decision #134). The record and `--source` give one artifact, `html` leaves out the same
+/// runs under the same count, and without the flag the head is on every page.
+#[test]
+fn drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them() {
+    let dir = scratch("drop-furniture");
+    let pdf = dir.join("running.pdf");
+    std::fs::write(&pdf, running_furniture_pdf()).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+    assert_eq!(
+        plain["markdown"]
+            .as_str()
+            .unwrap()
+            .matches(RUNNING_HEAD)
+            .count(),
+        3
+    );
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let dropped = run(&["markdown", "--drop-furniture", repr]);
+    assert_eq!(
+        dropped,
+        run(&["markdown", "--drop-furniture", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&dropped).expect("canonical JSON");
+    assert_eq!(
+        a["markdown"],
+        "Body text of page 1.\n\nBody text of page 2.\n\nBody text of page 3.\n"
+    );
+    let coverage = &a["coverage"];
+    let bucket = coverage["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "page-furniture-not-projected-v1")
+        .expect("what went is counted");
+    let head = RUNNING_HEAD.len() as u64;
+    assert_eq!(
+        (bucket["chars"].as_u64(), bucket["nodes"].as_u64()),
+        (Some(3 * head + 3 * "Page 1 of 3".len() as u64), Some(6))
+    );
+    assert_eq!(
+        coverage["source_chars_emitted"].as_u64().unwrap()
+            + coverage["source_chars_dropped"].as_u64().unwrap(),
+        coverage["source_chars_in_representation"].as_u64().unwrap()
+    );
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--drop-furniture", repr])).unwrap();
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        !html.contains(RUNNING_HEAD) && !html.contains("Page "),
+        "{html}"
+    );
+    assert_eq!(h["coverage"]["dropped"], coverage["dropped"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Double-run byte identity — standing rule 6.
 #[test]
 fn two_runs_are_byte_identical() {
@@ -377,7 +523,12 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         flags.iter().all(|f| matches!(
             *f,
-            "--help" | "--version" | "--diagnostics" | "--source" | "--ocr"
+            "--help"
+                | "--version"
+                | "--diagnostics"
+                | "--source"
+                | "--ocr"
+                | "--drop-furniture"
         )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
@@ -409,6 +560,18 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         ocr_help.contains("byte-identical"),
         "--ocr must document the equality that admits it: {ocr_help:?}"
+    );
+    // **`--drop-furniture` is admitted on other evidence** (decision #134): it leaves text out,
+    // which law 1 does not forbid and A14 does unless it is counted. The map still tiles every
+    // byte it writes, and what it leaves out is counted under its own code, which
+    // [`drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them`] asserts.
+    let furniture_help = options
+        .split("--drop-furniture")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        furniture_help.contains("page-furniture-not-projected-v1"),
+        "--drop-furniture must name the count that admits it: {furniture_help:?}"
     );
 
     // And the artifact itself always carries both halves.
@@ -529,17 +692,23 @@ fn lists_come_from_the_tree_and_nowhere_else() {
          indents, the two-run body joins, and the unmarked run ends the list"
     );
 
-    let joins = a["coverage"]["structural_erasures"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["code"] == "gfm-list-item-run-joins-v1")
-        .and_then(|e| e["count"].as_u64())
-        .unwrap_or(0);
+    let count = |code: &str| {
+        a["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == code)
+            .and_then(|e| e["count"].as_u64())
+            .unwrap_or(0)
+    };
     assert_eq!(
-        joins, 1,
-        "one item's body is two marked runs, and nothing in a role path distinguishes that from \
-         two sibling items — so the join is made and counted"
+        (
+            count("gfm-list-item-run-joins-v1"),
+            count("block-element-run-joins-v1")
+        ),
+        (0, 1),
+        "one item's body is two marked runs in one numbered `/LBody`, so the join is the \
+         element's and no guess (decision #128)"
     );
 
     // **The dangerous-looking case, and it is in the conformance corpus.**
@@ -858,7 +1027,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v14");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1487,7 +1656,7 @@ fn an_odts_own_outline_level_projects_as_a_heading() {
         "one `#` and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
          heading:\n{md}"
     );
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v14");
     // **The negative, and it is the one that earns its place.** A heading that projected at its
     // own depth flattened nothing — this is the only guard that a predicate which forgot to
     // short-circuit on a level it CAN write would fail.
@@ -1584,7 +1753,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         1,
         "one heading, and no body line became one"
     );
-    assert_eq!(md["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(md["markdown_rule"], "markdown-blocks-v14");
 
     let first = &md["anchor_map"]["segments"][0];
     assert_eq!(
@@ -1606,7 +1775,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         text.starts_with("<h1>Display line</h1>\n"),
         "the same line, the same level, in the other syntax: {text:?}"
     );
-    assert_eq!(html["html_rule"], "html-blocks-v13");
+    assert_eq!(html["html_rule"], "html-blocks-v14");
 }
 
 /// **`--source` is the same two stages in one process, and the bytes say so.**
@@ -1666,7 +1835,7 @@ fn the_source_path_equals_the_two_step_path() {
 /// **`--ocr` is `extract --ocr` in this process, and the bytes say so** (v3,
 /// `docs/35-OCR-SCOPE.md`). The recognizer is `tests/fake-ocr.sh`, which states the identity the
 /// OCR profile pins and reads "Hello world" off any image; the source is an image file, which the
-/// engine does not decode, so its signature is all of it.
+/// engine does not decode, so its signature and its header are all of it.
 #[cfg(unix)]
 #[test]
 fn the_ocr_source_path_equals_the_two_step_path() {
@@ -1691,7 +1860,13 @@ fn the_ocr_source_path_equals_the_two_step_path() {
     };
     let dir = scratch("ocr-source-equals");
     let image = dir.join("scan.png");
-    std::fs::write(&image, b"\x89PNG\r\n\x1a\n and the rest of the file").expect("write");
+    // The signature and an `IHDR` stating the answer's 200 x 100 pixels (decision #132).
+    let png = [
+        &b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR\0\0\0\xc8\0\0\0\x64"[..],
+        b" and the rest of the file",
+    ]
+    .concat();
+    std::fs::write(&image, png).expect("write");
     let image = image.to_str().unwrap();
 
     let extracted = with_ocr(&["extract", "--ocr", image]);
@@ -1726,6 +1901,219 @@ fn the_ocr_source_path_equals_the_two_step_path() {
     assert!(
         md["markdown"].as_str().unwrap().contains("Hello world"),
         "{md}"
+    );
+}
+
+/// A two-page scan: each 200 x 100 point page paints one 20 x 10 gray image over itself and shows
+/// no text. The image's stream is stored under `filter`, where one is named; nothing decodes it.
+fn two_page_scan(dir: &Path, filter: Option<&str>) -> PathBuf {
+    use lopdf::{dictionary, Object, Stream};
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let mut dict = dictionary! {
+        "Type" => "XObject", "Subtype" => "Image", "Width" => 20, "Height" => 10,
+        "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+    };
+    if let Some(f) = filter {
+        dict.set("Filter", Object::Name(f.as_bytes().to_vec()));
+    }
+    let image = doc.add_object(Stream::new(dict, vec![255u8; 200]));
+    let kids: Vec<Object> = (0..2)
+        .map(|_| {
+            let content = doc.add_object(Stream::new(
+                dictionary! {},
+                b"q 200 0 0 100 0 0 cm /Im0 Do Q".to_vec(),
+            ));
+            doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages,
+                "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } },
+                "Contents" => content,
+            })
+            .into()
+        })
+        .collect();
+    doc.objects.insert(
+        pages,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+    doc.trailer.set("Root", catalog);
+    let scan = dir.join(format!("scan-{}.pdf", filter.unwrap_or("raw")));
+    doc.save(&scan).expect("saves");
+    scan
+}
+
+/// **A scan read without `--ocr` says so on stderr, once, and nowhere else** (decision #132).
+/// The record counts each such page under `scanned-page-not-recognized`; stderr names how many,
+/// the reason and the flag that reads them, and stdout is the artifact it was. A born-digital page
+/// gets neither.
+#[test]
+fn a_scan_read_without_ocr_names_the_flag_on_stderr() {
+    let dir = scratch("scan-without-ocr");
+    let scan = two_page_scan(&dir, None);
+    let scan = scan.to_str().unwrap();
+
+    let extracted = engine(&["extract", scan]);
+    assert_eq!(extracted.status.code(), Some(0));
+    let record: Value = serde_json::from_slice(&extracted.stdout).expect("a record");
+    let counted = record["representation"]["assurance"]["limitations"]
+        .as_array()
+        .expect("limitations")
+        .iter()
+        .filter(|l| {
+            l["code"] == "scanned-page-not-recognized"
+                && l["detail"]
+                    .as_str()
+                    .is_some_and(|d| d.contains("`ocr-not-requested`"))
+        })
+        .count();
+    assert_eq!(counted, 2, "one per page");
+    let repr_path = dir.join("scan.json");
+    std::fs::write(&repr_path, &extracted.stdout).expect("write the record");
+    let one_step = engine(&["markdown", "--source", scan]);
+    let two_step = engine(&["markdown", repr_path.to_str().unwrap()]);
+    assert_eq!(one_step.stdout, two_step.stdout, "stdout is the artifact");
+    for (what, out) in [
+        ("extract", &extracted),
+        ("markdown --source", &one_step),
+        ("markdown", &two_step),
+    ] {
+        assert_eq!(out.status.code(), Some(0), "{what}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.lines().count(), 1, "{what}: one line: {stderr}");
+        assert!(
+            stderr.contains("2 page(s)")
+                && stderr.contains("ocr-not-requested")
+                && stderr.contains("--ocr"),
+            "{what}: {stderr}"
+        );
+    }
+
+    let drawn = engine_fixture("leading-gap-two-blocks");
+    let drawn = drawn.to_str().unwrap();
+    for args in [vec!["extract", drawn], vec!["markdown", "--source", drawn]] {
+        let out = engine(&args);
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}: {:?}", out.stderr);
+    }
+}
+
+/// **A scan `--ocr` does not read names its reason on stderr** (decision #132): the Markdown
+/// artifact carries no limitation, so without this line `markdown --source --ocr` on a CCITT scan
+/// exits 0 with empty Markdown and says nothing. stdout is unchanged. The recognizer is
+/// `tests/fake-ocr.sh`, refusing every image as the real one refuses a CCITT stream.
+#[cfg(unix)]
+#[test]
+fn a_scan_ocr_does_not_read_names_its_reason_on_stderr() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 20, "height": 10,
+        "lines": [], "refused": "filter-not-decoded:CCITTFaxDecode"
+    });
+    let fake = repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh");
+    let dir = scratch("scan-not-read");
+    let scan = two_page_scan(&dir, None);
+    for args in [
+        vec!["extract", "--ocr", scan.to_str().unwrap()],
+        vec!["markdown", "--source", scan.to_str().unwrap(), "--ocr"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+            .args(&args)
+            .env("ETHOS_PARSER_OCR", &fake)
+            .env("FAKE_OCR_IDENTITY", identity.to_string())
+            .env("FAKE_OCR_ANSWER", answer.to_string())
+            .output()
+            .expect("the engine binary runs");
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.lines().count(), 1, "{args:?}: one line: {stderr}");
+        assert!(
+            stderr.contains("2 page(s)")
+                && stderr.contains("filter-not-decoded:CCITTFaxDecode")
+                && !stderr.contains("run with --ocr"),
+            "{args:?}: {stderr}"
+        );
+    }
+}
+
+/// **The hint names what `--ocr` would say, and where to ask for it** (decision #132). A page
+/// `--ocr` would refuse before asking the recognizer is counted by that reason without the flag,
+/// and the flag is not offered for it. On a record, the flag cannot read anything — `markdown`
+/// refuses it without `--source` — so the hint names the commands that read the source again, the
+/// same for `markdown` and `html`.
+#[test]
+fn the_hint_names_what_ocr_would_and_where_to_ask() {
+    let dir = scratch("hint-names");
+    let ccitt = two_page_scan(&dir, Some("CCITTFaxDecode"));
+    let out = engine(&["markdown", "--source", ccitt.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("filter-not-decoded:CCITTFaxDecode (2)") && !stderr.contains("--ocr"),
+        "{stderr}"
+    );
+
+    let scan = two_page_scan(&dir, None);
+    let record = dir.join("scan.json");
+    let extracted = engine(&["extract", scan.to_str().unwrap()]);
+    std::fs::write(&record, &extracted.stdout).expect("write the record");
+    let record = record.to_str().unwrap();
+    let markdown = engine(&["markdown", record]);
+    let html = engine(&["html", record]);
+    assert_eq!(
+        (markdown.status.code(), html.status.code()),
+        (Some(0), Some(0))
+    );
+    let stderr = String::from_utf8_lossy(&markdown.stderr);
+    assert!(
+        stderr.contains("ocr-not-requested (2)") && stderr.contains("--source FILE --ocr"),
+        "{stderr}"
+    );
+    assert_eq!(
+        markdown.stderr, html.stderr,
+        "the same hint on either projection"
+    );
+    let refused = engine(&["markdown", record, "--ocr"]);
+    assert_eq!(
+        refused.status.code(),
+        Some(2),
+        "--ocr reads a source, never a record"
+    );
+    assert!(refused.stdout.is_empty());
+}
+
+/// **A recognizer's reason reaches the terminal as one line**: it is the recognizer's text, so
+/// a control character in it is not written as one (decision #132).
+#[cfg(unix)]
+#[test]
+fn a_recognizers_reason_is_one_line_on_stderr() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 20, "height": 10,
+        "lines": [], "refused": "first\nsecond\u{1b}[31m"
+    });
+    let dir = scratch("reason-one-line");
+    let scan = two_page_scan(&dir, None);
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["markdown", "--source", scan.to_str().unwrap(), "--ocr"])
+        .env(
+            "ETHOS_PARSER_OCR",
+            repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh"),
+        )
+        .env("FAKE_OCR_IDENTITY", identity.to_string())
+        .env("FAKE_OCR_ANSWER", answer.to_string())
+        .output()
+        .expect("the engine binary runs");
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(stderr.lines().count(), 1, "{stderr:?}");
+    assert!(
+        stderr.contains("first second [31m (2)") && !stderr.contains('\u{1b}'),
+        "{stderr:?}"
     );
 }
 

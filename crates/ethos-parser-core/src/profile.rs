@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V13`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V14`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V13`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V14`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -172,6 +172,22 @@ pub const READING_ORDER_RULE_V3: &str = "gutter-columns-v3";
 /// full-width line bridges is still one band, and where both columns break at one height the
 /// sweep reads across the gutter a slab at a time — the cost decision #32 measured and accepted.
 pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
+
+/// [`READING_ORDER_RULE_V4`] **with a side band joined to the band whose rows it sits on**
+/// (decision #133). Where the vertical cut divides a block into bands, one of two neighbours is
+/// at most half as wide as the other, the other is a single column (the cut, run on it alone,
+/// opens no vertical cut), three of every four of the narrow band's cells — its lines run
+/// together, no more than a leading and a quarter apart — start within a quarter of the column's
+/// modal leading of the first line of one of the column's blocks and end within that block, and
+/// one such cell, with another below it, ends before its block's last line, the two are one band: a
+/// résumé's dates in a narrow column, or flush right on each job's first line, are read with the
+/// job rather than after the last one. A page whose only cut that was is not divided and is read
+/// down its slabs, in the order the document drew them, never sorted by baseline; inside a column
+/// the joined band is read by its blocks. Two bands of one measured width are never joined, and a
+/// sidebar whose boxes run past the paragraphs beside them stays a column. `columns`, which the
+/// table detector reads, does not join. The half, the quarter and the three in four are chosen,
+/// not measured.
+pub const READING_ORDER_RULE_V5: &str = "gutter-columns-v5";
 
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
 ///
@@ -1130,6 +1146,15 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// Alone, ParseBench tables 0.6224 → 0.6258, eight pages up and none down, overall 51.49 → 51.56;
 /// opendataloader-bench's Markdown unchanged; the gate documents, trees stripped, gain `irs-fw9`
 /// p5's table.
+///
+/// **And columns of prose are no table, and a header set flush left heads figures set flush right**
+/// (decision #127, folded in). A grid whose every column is running text, its first no column of
+/// labels each under thirty characters, is refused in any order and its lines passed over whole: a
+/// two-column article written line by line across its columns read as a table of interleaved lines.
+/// One side of two tables drawn side by side, which stood as one, is unchanged. And a header line whose cells sit on no track, where the nearest centres put
+/// two on one track, gives each the first track ending at or past its own end, where they come out
+/// left to right and each stays clear of its track's neighbours. Measured: no ParseBench or
+/// opendataloader-bench page moves.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,
@@ -1644,6 +1669,21 @@ pub const LAYOUT_UNIT_RULE_V5: &str = "line-units-v5";
 /// document.
 pub const LAYOUT_UNIT_RULE_V6: &str = "line-units-v6";
 
+/// [`LAYOUT_UNIT_RULE_V6`] **with small pieces kept with their text** (decision #129). A script
+/// starting no more than a quarter of its line's height past the line's end and ending no more than
+/// that height past it — a footnote mark set against the last letter — is that line's, where it
+/// had to lie inside the line. A list marker alone, or a label closed by a colon, ends short of
+/// nothing where the piece after it on its line is no such piece itself, so a `1.` set apart keeps
+/// its item's text and `Invoice No:` its value, and a label with no value takes no other label's.
+/// And a line set within a quarter of its height of where a list item's text starts after a marker
+/// alone in its run, opening with a word, continues the item within the page's body leading and a
+/// twentieth more, or within its own height on a page that sets no leading of its own, where it
+/// started too far right of the marker. A marker set in one run with its text sets no hanging
+/// indent. The quarter and the height are chosen, not measured. Geometry and punctuation alone: a
+/// unit is no list item, and units stay where, never what. Measured: ParseBench grounding
+/// up, every other ParseBench and opendataloader-bench score unchanged.
+pub const LAYOUT_UNIT_RULE_V7: &str = "line-units-v7";
+
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
 /// edges**.
 ///
@@ -2053,7 +2093,8 @@ pub struct Capabilities {
     /// text by page geometry rather than by stream position*. It does not claim every layout is
     /// resolved. Where the page shows no column gutter, [`READING_ORDER_RULE_V4`] (2026-09-26)
     /// reads it top to bottom by leading-gap slabs and keeps content-stream order inside each;
-    /// through `-v3` such a page kept content-stream order whole.
+    /// through `-v3` such a page kept content-stream order whole. Since [`READING_ORDER_RULE_V5`]
+    /// a narrow band set on its neighbour's rows is no column of its own.
     ///
     /// v0 through v1-S4 left this false and said so on every artifact, because the known
     /// heuristic flips on `min_lines < 15` and a one-line edit reordered a whole page. What
@@ -2198,7 +2239,12 @@ pub const NOT_RUN: &str = "not-run-for-this-format";
 /// v2 (0.62.0): a self-closing `<w:p/>` or `<w:r/>` is counted as its long form is, so a
 /// paragraph's or a run's ordinal no longer depends on how the file was serialized (review
 /// 2026-09-25 F19). The order is v1's; the addresses it hands out move.
-pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
+///
+/// v3 (decision #130): a run after a text box is counted in the paragraph that anchors the box.
+/// The box's `<w:p>` sits inside a run of that paragraph, and one counter gave every run after it
+/// the box's paragraph and the box's run count, a locator naming the wrong `<w:p>`. The order is
+/// v2's; the addresses of those runs move.
+pub const DOCX_READING_ORDER_RULE_V3: &str = "docx-document-order-v3";
 
 /// v2-S2's DOCX text rule: the characters `<w:t>` carries, verbatim.
 ///
@@ -2216,12 +2262,18 @@ pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
 /// taken as a long one is (N36); line ends are normalised as XML 1.0 §2.11 requires (N37); a CDATA
 /// section in `<w:t>` is read (tracker I17); and the text of a `<w:moveFrom>` region is passed over
 /// and counted, read once where its `<w:moveTo>` puts it (N18).
-pub const DOCX_TEXT_CODE_RULE_V3: &str = "docx-wt-verbatim-v3";
+/// v4 (decision #130): a run whose only characters are ones it states as elements — a tab, a line
+/// break, a no-break hyphen; `<w:r><w:tab/></w:r>`, as Word writes a label's tab — is a node
+/// holding them, where v3 left it out, so `Company Name` and `: Acme Ltd` had nothing between them.
+/// A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab, is a tab; and only an
+/// element directly in the `<w:r>` states a character, so a text box's tab stop
+/// (`<w:tabs><w:tab/></w:tabs>`, inside a run of the anchoring paragraph) is none.
+pub const DOCX_TEXT_CODE_RULE_V4: &str = "docx-wt-verbatim-v4";
 
 /// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
 /// order their worksheet part lists them.
 ///
-/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V2`] is
+/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V3`] is
 /// not. The workbook states its own sheet order and each sheet states its own cell order; this
 /// engine follows both and sorts nothing. In particular it does **not** re-order cells into
 /// row-major address order — a sheet whose part lists `B1` before `A1` is read that way, because
@@ -2257,7 +2309,7 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 
 /// v2-S4's PPTX text rule: the characters `<a:t>` carries, verbatim.
 ///
-/// The DrawingML counterpart to `docx-wt-verbatim-v3`, and the same small claim: the text is
+/// The DrawingML counterpart to `docx-wt-verbatim-v4`, and the same small claim: the text is
 /// already Unicode, so there is no glyph-code step to get wrong. **No placeholder inheritance is
 /// resolved**: text that a slide layout or master would supply is not substituted in, because
 /// this reader did not read those parts and a substituted string is not one the slide stated.
@@ -2679,7 +2731,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the layout-unit rule in force (decision #38).
     ///
-    /// See [`LAYOUT_UNIT_RULE_V6`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// See [`LAYOUT_UNIT_RULE_V7`]. Its own field for `heading_inference_rule`'s reason: it runs
     /// only where the document declares no structure, so folding it into a rule that runs on every
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
@@ -2702,7 +2754,7 @@ pub struct Profile {
     pub right_to_left_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V13`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V14`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -2713,7 +2765,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V13`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V14`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -2852,19 +2904,19 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V4.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V5.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V3.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V2.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
-            layout_unit_rule: LAYOUT_UNIT_RULE_V6.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V7.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
             right_to_left_rule: RIGHT_TO_LEFT_RULE_V1.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V13.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V14.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V13.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V14.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V2.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
@@ -2963,7 +3015,7 @@ impl Profile {
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
             },
-            reading_order_rule: DOCX_READING_ORDER_RULE_V2.to_string(),
+            reading_order_rule: DOCX_READING_ORDER_RULE_V3.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
@@ -2979,7 +3031,7 @@ impl Profile {
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: DOCX_TEXT_CODE_RULE_V3.to_string(),
+            text_code_rule: DOCX_TEXT_CODE_RULE_V4.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -4176,7 +4228,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v13","layout_unit_rule":"line-units-v6","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v13","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5378,11 +5430,23 @@ mod tests {
              Moved for decision #120, `sha256:0903edb3…` -> `sha256:8c2f8672…`: the new \
              `recognizer` pin, `not_pinned` here and pinned only by the OCR profile \
              (`docs/35-OCR-SCOPE.md`), so an artifact holding recognized text is never \
-             comparable with one that does not by accident. Nothing else."
+             comparable with one that does not by accident. Nothing else.\n\n\
+             Moved for decision #126, `sha256:8c2f8672…` -> `sha256:57d4edd8…`: `markdown_rule` \
+             `markdown-blocks-v13` -> `-v14` and `html_rule` `html-blocks-v13` -> `-v14`, for a \
+             tagged element's next line kept on a line of its own, and decision #128's two list \
+             bodies the file numbers as two items, folded in. Nothing else.\n\n\
+             Moved for decision #129, `sha256:57d4edd8…` -> `sha256:ef336dec…`: \
+             `layout_unit_rule` `line-units-v6` -> `-v7`, which keeps a footnote mark set against \
+             its line's last letter, a list marker set apart from its item's text, the item's next \
+             line at its hanging indent within the page's leading, and a label closed by a colon \
+             with its value. Nothing else.\n\n\
+             Moved for decision #133, `sha256:ef336dec…` -> `sha256:a516f5d8…`: \
+             `reading_order_rule` `gutter-columns-v4` -> `-v5`, which joins a band at most half as \
+             wide as its neighbour, set on its rows, to that neighbour. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8c2f86723df4d63209022e6545f24a029bc305d59d3f0bd3c049b672f4184d19"
+            "sha256:a516f5d896552f4d9bccefb1620a4f0fbc48dcdc943c005218b9b747fad831ff"
         );
     }
 

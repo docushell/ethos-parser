@@ -216,8 +216,8 @@ const CORE: &[&str] = &[
     "OutlineRecord",
     "OfficeRunAttributes",
     "NOT_RUN",
-    "DOCX_READING_ORDER_RULE_V2",
-    "DOCX_TEXT_CODE_RULE_V3",
+    "DOCX_READING_ORDER_RULE_V3",
+    "DOCX_TEXT_CODE_RULE_V4",
     // v2-S3. The third format's address and its facts. A cell is not a run: it has a value type
     // and it may have a formula, and neither is a thing a `<w:r>` has.
     "XlsxLocator",
@@ -304,6 +304,7 @@ const CORE: &[&str] = &[
     "READING_ORDER_RULE_V2",
     "READING_ORDER_RULE_V3",
     "READING_ORDER_RULE_V4",
+    "READING_ORDER_RULE_V5",
     "RELAY_OK",
     "RELAY_REFUSED",
     "RELAY_UNAVAILABLE",
@@ -331,6 +332,7 @@ const CORE: &[&str] = &[
     "LAYOUT_UNIT_RULE_V4",
     "LAYOUT_UNIT_RULE_V5",
     "LAYOUT_UNIT_RULE_V6",
+    "LAYOUT_UNIT_RULE_V7",
     // Decision #41. The page-furniture rule id, and the edge a furniture run stands apart at.
     "FURNITURE_RULE_V1",
     "Furniture",
@@ -363,11 +365,11 @@ const CORE: &[&str] = &[
     "HEADING_LEVEL_UNREPRESENTABLE",
     "HEADING_LEVEL_UNRESOLVED",
     "HTML_ARTIFACT_TYPE",
-    "HTML_RULE_BLOCKS_V13",
+    "HTML_RULE_BLOCKS_V14",
     "HTML_SCHEMA_VERSION",
     "HtmlArtifact",
     "MARKDOWN_ARTIFACT_TYPE",
-    "MARKDOWN_RULE_BLOCKS_V13",
+    "MARKDOWN_RULE_BLOCKS_V14",
     "MARKDOWN_SCHEMA_VERSION",
     "TABLE_DETECTION_CHARTS_V1",
     "TABLE_DETECTION_CHARTS_V2",
@@ -458,6 +460,10 @@ const CORE: &[&str] = &[
     "sort_ids",
     "to_html",
     "to_markdown",
+    // Decision #134: the projections with an option, and the option.
+    "to_html_with",
+    "to_markdown_with",
+    "ProjectionOptions",
     "tables",
     "verifier",
     // v2.3, D1 S1. `locate`'s query, its artifact, and the two ceilings it borrows from

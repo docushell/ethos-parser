@@ -613,11 +613,10 @@ struct PageYield {
     /// that hole. Rewriting only emitted entities would close it and renumber
     /// every id after it.
     local_ids: IdAllocator,
-    /// v3 (`docs/35-OCR-SCOPE.md` §4): the page the OCR trigger took, on its first reading under a
-    /// profile that pins a recognizer.
+    /// v3 (`docs/35-OCR-SCOPE.md` §4): the page the OCR trigger took, on its first reading.
     candidate: Option<crate::recognize::Candidate>,
-    /// v3: why a page the trigger would read was not, by name — the trigger's own refusal or the
-    /// recognizer's. Set only under a profile that pins a recognizer, on a page that showed no text.
+    /// v3: why a page the trigger would read was not, by name — the trigger's own refusal, the
+    /// request's, or the recognizer's; `ocr-not-requested` under a profile that pins none.
     ocr_refusal: Option<String>,
     /// v3: recognized words not written because no viewer shows where they lie.
     recognized_outside: u32,
@@ -1885,15 +1884,10 @@ fn extract_page(
         // v3 (`docs/35-OCR-SCOPE.md` §4): the trigger, a reason code and never a score. A page
         // that showed no text and placed an image is `classify`'s `scanned`; under a profile that
         // pins a recognizer it is read when it placed exactly one image, and refused by name when
-        // it did not. Decided on the first reading only, and only under that profile, so no other
-        // artifact pays for it.
-        if words.is_none()
-            && matches!(
-                profile.recognizer,
-                ethos_parser_core::RecognizerPin::Pinned(_)
-            )
-            && interp.text_operators == 0
-        {
+        // it did not. Decided on the first reading only. Under a profile that pins none, the page
+        // it would read is taken too, and counted after the pages are read (decision #132); a
+        // page it would refuse here is not counted there.
+        if words.is_none() && interp.text_operators == 0 {
             let placed = interp.images.len() + interp.inline_images as usize;
             if interp.images.len() == 1 && interp.inline_images == 0 && images.len() == 1 {
                 let placement = &interp.images[0];
@@ -1903,12 +1897,19 @@ fn extract_page(
                     corners: placement.corners.map(|(x, y)| geom.to_top_left(x, y)),
                     visible: (visible.x0, visible.y0, visible.x1, visible.y1),
                 });
-            } else if interp.inline_images > 0 {
-                ocr_refusal = Some("inline-image".into());
-            } else if placed > 1 {
-                ocr_refusal = Some("several-images".into());
-            } else if placed == 1 || interp.unresolved_xobjects > 0 {
-                ocr_refusal = Some("image-not-loaded".into());
+            } else if matches!(
+                profile.recognizer,
+                ethos_parser_core::RecognizerPin::Pinned(_)
+            ) {
+                ocr_refusal = if interp.inline_images > 0 {
+                    Some("inline-image".into())
+                } else if placed > 1 {
+                    Some("several-images".into())
+                } else if placed == 1 || interp.unresolved_xobjects > 0 {
+                    Some("image-not-loaded".into())
+                } else {
+                    None
+                };
             }
         }
 
@@ -2099,8 +2100,9 @@ struct ImageFile {
 /// # Errors
 ///
 /// [`EngineError::Unsupported`] for bytes that are not a PNG or JPEG, under a profile that does not
-/// pin `recognizer`, and for an image the recognizer refuses to read — an image file has no other
-/// page to count the refusal against; what `recognizer` returns when it fails.
+/// pin `recognizer`, for a file whose header states no size, for an image the recognizer refuses
+/// to read — an image file has no other page to count the refusal against — and for one it answers
+/// at a size the file's header does not state; what `recognizer` returns when it fails.
 pub fn extract_image(
     bytes: &[u8],
     profile: &Profile,
@@ -2114,6 +2116,14 @@ pub fn extract_image(
                 .into(),
         })?;
     let pinned = pinned_recognizer(profile, Some(recognizer.identity()))?;
+    // Decision #132: the page is built from the size the recognizer states, so it must be the size
+    // the file's own header states, as a PDF image's must be its dictionary's — read before the
+    // file is sent, and refused by its own name where the header states none.
+    let (width, height) =
+        crate::recognize::image_file_size(bytes).ok_or_else(|| EngineError::Unsupported {
+            what: "image".into(),
+            detail: format!("this {media_type}'s header states no size: `image-size-not-read`"),
+        })?;
     let answer = recognizer.read(&crate::recognize::RecognitionRequest {
         ocr_request: 1,
         id: "image".into(),
@@ -2135,6 +2145,18 @@ pub fn extract_image(
         return Err(EngineError::Unsupported {
             what: "image".into(),
             detail: format!("the recognizer did not read this {media_type}: `{why}`"),
+        });
+    }
+    // A JPEG may state a height of 0 and set it with a DNL marker after its first scan (T.81
+    // B.2.2): a height of 0 states none, and the width alone is compared.
+    if width != answer.width || (height != 0 && height != answer.height) {
+        return Err(EngineError::Unsupported {
+            what: "image".into(),
+            detail: format!(
+                "the recognizer answered this {media_type} as {} x {} pixels, which its header \
+                 does not state: `image-size-mismatch`",
+                answer.width, answer.height
+            ),
         });
     }
     let doc = Document::open_bytes(
@@ -2530,6 +2552,20 @@ fn extract_counted(
             }
             y.recognized_outside = declare(y.recognized_outside, outside);
         }
+    } else {
+        // Decision #132: with no recognizer, a page the trigger took is counted as `--ocr` would
+        // leave it — by the reason the request refuses it for, or as not requested — so a scan
+        // read without the flag is not a blank page, and the flag is offered only where it reads.
+        for (page_number, outcome) in &mut outcomes {
+            if let Some(Ok(y)) = outcome {
+                if let Some(candidate) = y.candidate.take() {
+                    y.ocr_refusal = Some(
+                        crate::recognize::request(doc.inner(), &candidate, *page_number)
+                            .map_or_else(|why| why, |_| "ocr-not-requested".into()),
+                    );
+                }
+            }
+        }
     }
     // An image file's one page, which was read before it was made ([`extract_image`]).
     if let Some(file) = &image_file {
@@ -2823,7 +2859,7 @@ fn extract_counted(
     // Decision #38. Layout units, after headings — a heading line never shares a unit with body
     // text — and only where the document declares no author structure, whose own structure wins
     // there as it does for headings.
-    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V6
+    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V7
         && no_author_structure(structure.as_ref())
     {
         for page in pages.iter_mut() {
@@ -4147,13 +4183,20 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V4,
-            "the downward sweep moved the default to the id that promises it (decision #32)"
+            ethos_parser_core::READING_ORDER_RULE_V5,
+            "the side-band join moved the default to the id that promises it (decision #133)"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V5,
+            "gutter-columns-v5",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **`-v4` keeps its exact spelling**: artifacts exist under it, and on a page with a
+        // narrow band set on its neighbour's rows they list runs in the order `-v5` changes.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V4,
             "gutter-columns-v4",
-            "the id is data on every artifact; changing the string is an identity event"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         // **`-v3` keeps its exact spelling**: artifacts exist under it, and on a page the cut never
         // divided they list runs in the order `-v4` changes.
@@ -4181,6 +4224,10 @@ mod tests {
         );
         assert_eq!(ethos_parser_core::READING_ORDER_RULE_V0, "single-column-v1");
         for (a, b) in [
+            (
+                ethos_parser_core::READING_ORDER_RULE_V5,
+                ethos_parser_core::READING_ORDER_RULE_V4,
+            ),
             (
                 ethos_parser_core::READING_ORDER_RULE_V4,
                 ethos_parser_core::READING_ORDER_RULE_V3,

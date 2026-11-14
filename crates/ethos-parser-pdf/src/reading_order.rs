@@ -32,7 +32,8 @@
 //! A `fixtures/engine/two-column-14-lines` / `-15-lines` pair exists to hold that: the same order
 //! comes out of both, and a port of the line-count rule fails on exactly that pair. (That is
 //! steps 1–4. Step 5's slabs, since `-v4`, rest on a mode over the page's line gaps; see "Why not
-//! sort by y, then x".)
+//! sort by y, then x". Step 3b, since `-v5`, takes a share of a narrow band's cells, and never
+//! between two bands of one width, which is what the pair is.)
 //!
 //! # The rule
 //!
@@ -47,6 +48,11 @@
 //!    overlap vertically over at least [`COLUMN_OVERLAP_NUMERATOR`]/[`COLUMN_OVERLAP_DENOMINATOR`]
 //!    of the block's own height. Columns run *beside* each other; a heading above an indented
 //!    list does not. See [`bands_sit_side_by_side`].
+//!
+//!    **3b. Side rows** (`gutter-columns-v5`, decision #133). Two neighbouring bands are one band
+//!    where one is at most half as wide as the other, which is a single column, and sets its cells
+//!    at the heads of that column's blocks: a résumé's dates beside each job's first line are not
+//!    a column of their own. See [`join_side_rows`].
 //! 4. **Horizontal cut,** inside a band only: the same sweep on the y axis, splitting a column
 //!    into blocks read top to bottom, and each block may split into columns again.
 //! 5. **No gutter: down the page by slab** (`gutter-columns-v4`, decision #32, 2026-09-26).
@@ -195,6 +201,41 @@ pub const COLUMN_OVERLAP_DENOMINATOR: i64 = 2;
 /// that consume depth.
 pub const MAX_CUT_DEPTH: usize = 32;
 
+/// The reach of a row: `1/ROW_REACH_DEN` of the modal leading of the band a side band is set
+/// against (`gutter-columns-v5`, decision #133).
+///
+/// Four — a quarter of a leading. A line a quarter off one row is three times as far from the
+/// next, so it is on one row or on none; anything under a half would be unambiguous, and the
+/// quarter keeps half of every leading between the reaches of two rows. The same reach says where
+/// a band's lines run together: a gap of more than a leading and a quarter is space set between
+/// two entries, not a line's own leading. Measured from the band's leading rather than fixed, so it
+/// scales with the type. Only a cell's first line must be within it of a row, so a date's second
+/// line set at its own tighter leading — the review's p15 sets a 9pt column at 12pt beside a 14pt
+/// leading — may drift off the rows as it goes.
+pub const ROW_REACH_DEN: i64 = 4;
+
+/// Numerator of the share of a side band's cells that must head a block. See [`ROW_SHARE_DEN`].
+pub const ROW_SHARE_NUM: usize = 3;
+
+/// Denominator of the share: **three of every four** of a side band's cells beside the band it is
+/// set against must head one of that band's blocks.
+///
+/// A half is what chance comes near: a reach of half a leading in every leading lands a line on a
+/// row half the time. Three in four is above it while leaving one cell in four free: the review's
+/// p01 sets a heading, `EDUCATION`, in its date column on no row of the text beside it. A cliff,
+/// and stated as one: on a short side band one more cell off the heads moves the answer.
+pub const ROW_SHARE_DEN: usize = 4;
+
+/// How many times wider the band a side band is set against must be, at least.
+///
+/// Two. A column of the same text is as wide as its neighbour, and so is a panel beside a panel;
+/// dates, places and labels set against rows are a fraction of the text they sit beside — a
+/// fifth to two fifths in the review's three probes. Twice is the line between those, and it is
+/// what keeps two bands of one measured width columns however their rows line up, without
+/// counting the lines of either. A run with no advance is [`UNKNOWN_ADVANCE_EXTENT`] wide, so a
+/// band of such runs measures narrower than it is.
+pub const SIDE_BAND_WIDTH_RATIO: i64 = 2;
+
 const _: () = assert!(
     BLOCK_GUTTER_MIN < COLUMN_GUTTER_MIN,
     "a column gutter must be the wider of the two: if a block gap were wider than a column gap, \
@@ -209,6 +250,15 @@ const _: () = assert!(
     COLUMN_OVERLAP_NUMERATOR > 0 && COLUMN_OVERLAP_NUMERATOR <= COLUMN_OVERLAP_DENOMINATOR,
     "the overlap fraction is a fraction: zero would drop the guard that keeps an indent from \
      reading as a column, and more than one is unsatisfiable"
+);
+const _: () = assert!(
+    ROW_REACH_DEN > 2,
+    "a row's reach must stay under half a leading, or one line could sit on two rows"
+);
+const _: () = assert!(
+    2 * ROW_SHARE_NUM > ROW_SHARE_DEN && ROW_SHARE_NUM <= ROW_SHARE_DEN,
+    "the share must be above the half a band set with no regard for the rows reaches by chance, \
+     and no more than all of its lines"
 );
 
 // -------------------------------------------------------------------------------------------
@@ -302,6 +352,22 @@ impl Regions {
         for &a in group {
             self.of_atom[a] = band;
         }
+    }
+
+    /// Take on a band's arrangement as [`read_alone`] made it, under `band`, and return its order.
+    ///
+    /// The band's own region there is 0 and the regions it opened 1..; here they are `band` and the
+    /// next identities this page has not handed out. Identities need only be distinct — the numbers
+    /// a caller sees come from [`Self::per_run`] — so the order is exactly the one
+    /// [`arrange_blocks`] would have made here.
+    fn replay(&mut self, alone: &Alone, members: &[usize], band: u32) -> Vec<usize> {
+        let base = self.opened;
+        for &a in members {
+            let id = alone.regions.of_atom[a];
+            self.of_atom[a] = if id == 0 { band } else { base + id };
+        }
+        self.opened += alone.regions.opened;
+        alone.order.clone()
     }
 
     /// Number the bands 1..n **in reading order**, per run.
@@ -598,22 +664,35 @@ fn arrange_columns(
         regions.assign(block, band);
         return block.to_vec();
     }
-    match vertical_cut(atoms, block) {
+    let Some(bands) = vertical_cut(atoms, block) else {
+        // No gutter met the rule, so this whole group is one region — the same decision the
+        // returned order expresses.
+        regions.assign(block, band);
+        return block.to_vec();
+    };
+    match join_side_rows(atoms, bands, depth) {
         // **The one place a region is born.** Each band is opened inside the closure rather than
         // ahead of the loop, so identities are handed out in the order `collect` drives them.
         Some(bands) => bands
-            .iter()
-            .flat_map(|b| {
+            .into_iter()
+            .flat_map(|(b, alone)| {
                 let opened = regions.open();
-                arrange_blocks(atoms, b, depth + 1, regions, opened)
+                match alone {
+                    // Already read alone while asking whether it was one column: replayed, not
+                    // read again.
+                    Some(alone) => regions.replay(&alone, &b, opened),
+                    None => arrange_blocks(atoms, &b, depth + 1, regions, opened),
+                }
             })
             .collect(),
-        // No gutter met the rule, so this whole group is one region — the same decision the
-        // returned order expresses.
-        None => {
+        // Every band joined into one (`gutter-columns-v5`): no division. The whole page is then
+        // step 5's to read, down its slabs; a group inside a column is read as a column is, cut
+        // into its blocks, each offered back to the vertical cut, in this group's region.
+        None if depth == 0 => {
             regions.assign(block, band);
             block.to_vec()
         }
+        None => arrange_blocks(atoms, block, depth + 1, regions, band),
     }
 }
 
@@ -750,6 +829,166 @@ fn bands_sit_side_by_side(atoms: &[Atom], block: &[usize], bands: &[Vec<usize>])
         overlap.saturating_mul(COLUMN_OVERLAP_DENOMINATOR)
             >= shorter.saturating_mul(COLUMN_OVERLAP_NUMERATOR)
     })
+}
+
+/// Join each band to the band before it where one of the two is set on the other's rows, or
+/// `None` where one band is left (`gutter-columns-v5`, decision #133).
+///
+/// A résumé's dates in a narrow column beside each job's first line, or flush right on it, clear
+/// the gutter floor and sit beside the text as a column does, so the cut read every date after the
+/// last job. Nothing asked whether the narrow band's lines are the *rows* of the wide one. Joined,
+/// the two are one band. A page whose only cut this was is not divided, and [`sweep_down`] reads
+/// each date in the slab of the line it sits on, in the order the document drew them — never
+/// sorted by baseline, decision 10's refusal standing; inside a column, [`arrange_columns`] reads
+/// the joined band by its blocks. A band beside the joined pair keeps its own column.
+///
+/// **Reading order's alone.** [`columns`], which the table detector reads, keeps the bands as the
+/// cut makes them, so `whitespace-tracks` does not move with this rule.
+fn join_side_rows(
+    atoms: &[Atom],
+    bands: Vec<Vec<usize>>,
+    depth: usize,
+) -> Option<Vec<(Vec<usize>, Option<Alone>)>> {
+    // Each band, with its arrangement read alone where a test below already made it.
+    let mut joined: Vec<(Vec<usize>, Option<Alone>)> = Vec::with_capacity(bands.len());
+    for band in bands {
+        let mut alone = None;
+        let join = match joined.last_mut() {
+            Some((last, last_alone)) => {
+                on_rows(atoms, last, &band, depth, &mut alone)
+                    || on_rows(atoms, &band, last, depth, last_alone)
+            }
+            None => false,
+        };
+        match joined.last_mut() {
+            Some((last, last_alone)) if join => {
+                last.extend(band);
+                last.sort_by_key(|&a| atoms[a].rank);
+                *last_alone = None;
+            }
+            _ => joined.push((band, alone)),
+        }
+    }
+    (joined.len() >= 2).then_some(joined)
+}
+
+/// Whether `side` is set on `body`'s rows rather than beside it as a column.
+///
+/// Geometry only, and four tests, cheapest first:
+///
+/// - **Narrow.** `side` is no more than 1/[`SIDE_BAND_WIDTH_RATIO`] as wide as `body`.
+/// - **Cells at row heads.** Lines no more than a leading and a reach apart — `body`'s modal
+///   leading, and 1/[`ROW_REACH_DEN`] of it — run together: `body`'s *blocks*, and `side`'s
+///   *cells*. A cell heads a block when its first line is within the reach of the block's first
+///   line and its last line no further down than the block's last. [`ROW_SHARE_NUM`] of every
+///   [`ROW_SHARE_DEN`] of `side`'s cells within `body`'s height must head a block: a date or a
+///   label is set at the head of the entry it belongs to, while a sidebar's text boxes run past
+///   the paragraphs beside them or start between their heads, even on one baseline grid.
+/// - **Sparse.** A cell that heads a block, with another cell below it, ends before that block's
+///   last line: `side` annotates entries rather than lining every line of them, so a narrow
+///   column of one value per line stays a column — whatever marks are raised between the lines
+///   beside it. Not the last cell: a column shorter than its neighbour ends inside one of its
+///   entries only because it ends.
+/// - **`body` is one column.** The recursion, run on `body` alone, opens no vertical cut in it. A
+///   band holding several columns that a strip across them hides from the first cut has the rows
+///   of all of them, which a band beside it can meet by chance.
+///
+/// A line is a band's baselines folded as [`crate::blocks::slabs`] folds them, and the leading is
+/// that module's; a `body` with none has no rows to sit on. **The share is a tally against a
+/// threshold**, which steps 1–4 refuse: a cell added to a short side band can move it. What
+/// bounds the cliff is the width: two bands of one measured width never meet it, however many
+/// lines either holds.
+fn on_rows(
+    atoms: &[Atom],
+    side: &[usize],
+    body: &[usize],
+    depth: usize,
+    alone: &mut Option<Alone>,
+) -> bool {
+    let width = |band: &[usize]| {
+        let x0 = band.iter().map(|&a| atoms[a].x0).min().unwrap_or(0);
+        let x1 = band.iter().map(|&a| atoms[a].x1).max().unwrap_or(0);
+        x1.saturating_sub(x0)
+    };
+    if width(side).saturating_mul(SIDE_BAND_WIDTH_RATIO) > width(body) {
+        return false;
+    }
+    let lines = |band: &[usize]| crate::blocks::lines(band.iter().map(|&a| atoms[a].y0).collect());
+    let (side_lines, body_lines) = (lines(side), lines(body));
+    let Some(leading) = crate::blocks::modal_leading(&body_lines) else {
+        return false;
+    };
+    let reach = leading / ROW_REACH_DEN;
+    let (Some(&top), Some(&bottom)) = (body_lines.first(), body_lines.last()) else {
+        return false;
+    };
+    let within = |y: i64, from: i64, to: i64| {
+        from.saturating_sub(reach) <= y && y <= to.saturating_add(reach)
+    };
+    // Each run of lines no more than a leading and a reach apart, as (first, last).
+    let stretches = |ls: &[i64]| {
+        let mut out: Vec<(i64, i64)> = Vec::new();
+        for &y in ls {
+            match out.last_mut() {
+                Some((_, end)) if y.saturating_sub(*end) <= leading.saturating_add(reach) => {
+                    *end = y;
+                }
+                _ => out.push((y, y)),
+            }
+        }
+        out
+    };
+    let blocks = stretches(&body_lines);
+    let cells: Vec<(i64, i64)> = stretches(&side_lines)
+        .into_iter()
+        .filter(|&(head, _)| within(head, top, bottom))
+        .collect();
+    // The block each cell heads, where it heads one: starting within the reach of its first line
+    // and ending no further down than its last.
+    let headed: Vec<(usize, i64, i64)> = cells
+        .iter()
+        .enumerate()
+        .filter_map(|(k, &(head, end))| {
+            blocks
+                .iter()
+                .find(|&&(h, e)| {
+                    head.saturating_sub(h).abs() <= reach && end <= e.saturating_add(reach)
+                })
+                .map(|&(_, e)| (k, end, e))
+        })
+        .collect();
+    if cells.is_empty() || headed.len() * ROW_SHARE_DEN < cells.len() * ROW_SHARE_NUM {
+        return false;
+    }
+    // Sparse: a cell with another below it ends short of its block's last line, so the band
+    // annotates entries rather than lining every line of them. Not the last cell: a column
+    // shorter than its neighbour ends inside one of its entries because it ends.
+    if !headed
+        .iter()
+        .any(|&(k, end, e)| k + 1 < cells.len() && end.saturating_add(reach) < e)
+    {
+        return false;
+    }
+    alone
+        .get_or_insert_with(|| read_alone(atoms, body, depth))
+        .regions
+        .opened
+        == 0
+}
+
+/// A band's arrangement read alone, in a scratch set of regions: what [`arrange_blocks`] makes of
+/// it one level down.
+struct Alone {
+    order: Vec<usize>,
+    regions: Regions,
+}
+
+/// Read `band` alone, one level below `depth`: the test of whether it is one column — the
+/// recursion opens no vertical cut in it — and, where it stays a band of its own, its arrangement.
+fn read_alone(atoms: &[Atom], band: &[usize], depth: usize) -> Alone {
+    let mut regions = Regions::new(atoms.len());
+    let order = arrange_blocks(atoms, band, depth + 1, &mut regions, 0);
+    Alone { order, regions }
 }
 
 /// Split a column band into blocks, top to bottom, **at its most significant gap only**, or
@@ -1199,6 +1438,10 @@ mod tests {
         runs.push(run(52_000, 8_000)); // the marginal element that lets a cut fire at all
         runs.push(run(52_000, 11_600));
 
+        assert!(
+            !arrange_page(&runs, &[]).regions.is_empty(),
+            "this page must divide, or the assertion below holds without a cut"
+        );
         assert_eq!(
             order(&runs, &[]),
             vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -1368,6 +1611,278 @@ mod tests {
         assert_eq!(page.order, vec![6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5]);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // `#133`: a narrow band set on another band's rows is read with those rows, not as a column.
+    // ---------------------------------------------------------------------------------------
+
+    /// **Dates beside a job's first line** (the review's p14): a 240pt-wide body of three entries,
+    /// 14pt leading and an entry gap, and a narrow band at x 450 holding one date per entry, on the
+    /// baselines of body lines 1, 4 and 6 — the third set 2pt above its row. The stream draws the
+    /// dates last, so a column cut read them after every entry. And the same page mirrored, the
+    /// dates in a column at the left edge (the review's p01).
+    ///
+    /// **The mirrored order is a cost, not the right answer.** A page undivided is read down its
+    /// slabs in the order the document drew them, so a date at the left drawn after its entry is
+    /// read after the entry's last line — right before the next entry. This pins what the rule
+    /// does, which is better than every date after the last entry and short of reading it first.
+    #[test]
+    fn a_narrow_band_on_the_rows_of_its_neighbour_is_read_with_its_rows() {
+        for (body_x, dates_x) in [(7_200, 45_000), (30_000, 3_600)] {
+            let mut runs = Vec::new();
+            for y in [9_200, 10_600, 12_000, 14_600, 16_000, 18_600, 20_000] {
+                runs.push(wide(body_x, y, 24_000));
+            }
+            for y in [9_200, 14_600, 18_400] {
+                runs.push(wide(dates_x, y, 9_000));
+            }
+            let page = arrange_page(&runs, &[]);
+            assert_eq!(
+                page.order,
+                vec![0, 1, 2, 7, 3, 4, 8, 5, 6, 9],
+                "dates at x {dates_x}: each is read in the entry whose first line it sits on, not \
+                 after the last entry"
+            );
+            assert!(
+                page.regions.is_empty(),
+                "the two bands are one band, so the cut divided nothing"
+            );
+        }
+    }
+
+    /// **A sidebar keeps its column** (the review's p02): narrow, but set at its own 15pt leading
+    /// beside a body at 17pt — its first box runs past the paragraph beside it and its last starts
+    /// between two heads. The stream draws the body first.
+    #[test]
+    fn a_narrow_sidebar_at_its_own_leading_stays_a_column() {
+        let body = [
+            11_600, 13_300, 15_000, 18_400, 20_100, 21_800, 23_500, 26_900, 28_600,
+        ];
+        let side = [
+            11_200, 12_700, 14_200, 15_700, 18_700, 20_200, 21_700, 23_200, 26_200, 27_700,
+        ];
+        let mut runs: Vec<RunGeometry> = body.iter().map(|&y| wide(21_000, y, 27_000)).collect();
+        runs.extend(side.iter().map(|&y| wide(3_600, y, 10_000)));
+        let page = arrange_page(&runs, &[]);
+        let want: Vec<usize> = (9..19).chain(0..9).collect();
+        assert_eq!(page.order, want, "the sidebar, then the body");
+        assert!(!page.regions.is_empty(), "the sidebar is its own region");
+    }
+
+    /// **Two columns of one width stay columns** however their rows line up: on one grid, each of
+    /// the left's paragraphs starts on a paragraph of the right and ends a line before it — as a
+    /// parallel translation is set. The stream draws the right column first.
+    #[test]
+    fn two_columns_of_one_width_on_one_grid_stay_columns() {
+        let mut runs: Vec<RunGeometry> = [0, 1, 2, 3, 5, 6, 7, 8]
+            .iter()
+            .map(|i| wide(30_000, 6_000 + i * 1_200, 20_000))
+            .collect();
+        for i in [0, 1, 2, 5, 6, 7] {
+            runs.push(wide(7_200, 6_000 + i * 1_200, 20_000));
+        }
+        let want: Vec<usize> = (8..14).chain(0..8).collect();
+        assert_eq!(order(&runs, &[]), want, "left column, then right");
+    }
+
+    /// **A narrow band whose cells fill their blocks stays a column** (review, synth G5a/G5b): one
+    /// value beside every line of three four-line paragraphs, so no cell ends before its
+    /// paragraph does — a column of values, not notes at the paragraphs' heads. The second time a
+    /// footnote mark is set 3.5pt above a line of the second paragraph, a line of its own that no
+    /// value sits on. The stream draws the body first, the mark after its paragraph.
+    #[test]
+    fn a_narrow_band_whose_cells_fill_their_blocks_stays_a_column() {
+        for mark in [false, true] {
+            let mut runs = Vec::new();
+            for head in [9_200, 16_400, 23_600] {
+                for k in 0..4 {
+                    runs.push(wide(7_200, head + k * 1_200, 26_000));
+                }
+                if mark && head == 16_400 {
+                    runs.push(wide(34_000, 17_250, 334));
+                }
+            }
+            let body = runs.len();
+            for head in [9_200, 16_400, 23_600] {
+                for k in 0..4 {
+                    runs.push(wide(44_000, head + k * 1_200, 3_301));
+                }
+            }
+            let page = arrange_page(&runs, &[]);
+            assert_eq!(
+                page.order,
+                (0..runs.len()).collect::<Vec<_>>(),
+                "mark {mark}: the body, then the values"
+            );
+            assert!(
+                !page.regions.is_empty(),
+                "mark {mark}: the values are their own region ({body} body runs)"
+            );
+        }
+    }
+
+    /// **A shorter column on its neighbour's rows stays a column** (ParseBench `novartis` p9: a
+    /// region's facilities beside another's). Each of its entries starts level with one of the
+    /// wider column's, and only its last ends before the entry beside it does — where the column
+    /// itself ends, which is a short column and not a sparse one. The stream draws the wider first.
+    #[test]
+    fn a_shorter_column_on_its_neighbours_rows_stays_a_column() {
+        let mut runs: Vec<RunGeometry> = [
+            10_000, 12_000, 14_000, 15_200, 16_400, 17_600, 18_800, 20_000,
+        ]
+        .iter()
+        .map(|&y| wide(7_200, y, 20_000))
+        .collect();
+        for y in [10_000, 12_000, 14_000, 15_200, 16_400] {
+            runs.push(wide(30_000, y, 9_000));
+        }
+        let page = arrange_page(&runs, &[]);
+        assert_eq!(page.order, (0..runs.len()).collect::<Vec<_>>());
+        assert!(!page.regions.is_empty(), "two columns, two regions");
+    }
+
+    /// **A band beside the joined pair keeps its column**: a sidebar at its own 17pt leading, then
+    /// the body and its dates. The dates join the body; the sidebar is still read first, as a
+    /// region of its own, and each date leads the entry it sits on — the stream draws the dates
+    /// first.
+    #[test]
+    fn a_sidebar_beside_a_body_and_its_dates_keeps_its_column() {
+        let mut runs: Vec<RunGeometry> = [9_200, 14_600, 18_600]
+            .iter()
+            .map(|&y| wide(50_000, y, 9_000))
+            .collect();
+        for y in [9_200, 10_600, 12_000, 14_600, 16_000, 18_600, 20_000] {
+            runs.push(wide(21_000, y, 24_000));
+        }
+        for i in 0..8 {
+            runs.push(wide(3_600, 8_000 + i * 1_700, 10_000));
+        }
+        let page = arrange_page(&runs, &[]);
+        let want: Vec<usize> = (10..18).chain([0, 3, 4, 5, 1, 6, 7, 2, 8, 9]).collect();
+        assert_eq!(page.order, want);
+        let regions: std::collections::BTreeSet<Option<u32>> =
+            page.regions.iter().copied().collect();
+        assert_eq!(regions.len(), 2, "the sidebar, and the body with its dates");
+    }
+
+    /// **A band of columns a strip hides is not one column to sit beside** (review, synth F2): two
+    /// 150pt columns on one grid, a strip across both below them, and a narrow band whose lines
+    /// head the columns' entries. The first cut sees one wide band and the narrow one; run on its
+    /// own, the wide band splits into its columns, so nothing is joined. The stream draws the narrow
+    /// band first.
+    #[test]
+    fn a_band_hiding_columns_behind_a_strip_is_no_column_to_join() {
+        let mut runs: Vec<RunGeometry> = [10_000, 13_800, 17_600]
+            .iter()
+            .map(|&y| wide(45_000, y, 6_000))
+            .collect();
+        for x in [7_200, 25_000] {
+            for y in [10_000, 11_400, 13_800, 15_200, 17_600, 19_000] {
+                runs.push(wide(x, y, 15_000));
+            }
+        }
+        runs.push(wide(7_200, 22_000, 33_000)); // the strip
+        let page = arrange_page(&runs, &[]);
+        let want: Vec<usize> = (3..16).chain(0..3).collect();
+        assert_eq!(
+            page.order, want,
+            "both columns, the strip, then the narrow band"
+        );
+        let regions: std::collections::BTreeSet<Option<u32>> =
+            page.regions.iter().copied().collect();
+        assert_eq!(
+            regions.len(),
+            4,
+            "each column, the strip's band, and the narrow band"
+        );
+    }
+
+    /// **A sidebar on the body's own grid keeps its column** (review, synth A): every line of it
+    /// sits on a row of the body, which sets four paragraphs a line apart, and the stream draws the
+    /// body first. Its boxes, one shape at a time:
+    /// - the first runs on past the paragraph beside it, the second starts a row below a head;
+    /// - the same, the second starting at a head;
+    /// - three short boxes, only the first at a head — most start between heads;
+    /// - a short box at a head, then one that runs on past its paragraph, then one at a head.
+    #[test]
+    fn a_sidebar_on_the_bodys_grid_stays_a_column() {
+        let row = |r: i64| 6_000 + r * 1_400;
+        let shapes: [&[i64]; 4] = [
+            &[0, 1, 2, 3, 4, 5, 6, 7, 15, 16, 17, 18],
+            &[0, 1, 2, 3, 4, 5, 6, 7, 14, 15, 16, 17],
+            &[0, 1, 2, 9, 10, 11, 16, 17, 18],
+            &[0, 1, 2, 7, 8, 9, 10, 11, 12, 13, 14, 15, 21, 22, 23],
+        ];
+        for side in shapes {
+            let mut runs: Vec<RunGeometry> = (0..26)
+                .filter(|r| ![6, 13, 20].contains(r))
+                .map(|r| wide(23_000, row(r), 24_000))
+                .collect();
+            runs.extend(side.iter().map(|&r| wide(5_000, row(r), 9_000)));
+            let page = arrange_page(&runs, &[]);
+            let want: Vec<usize> = (23..runs.len()).chain(0..23).collect();
+            assert_eq!(
+                page.order, want,
+                "sidebar rows {side:?}: the sidebar, then the body"
+            );
+            assert!(!page.regions.is_empty(), "the sidebar is its own region");
+        }
+    }
+
+    /// **A date and a place beside a job's first two lines** (the review's p15): a 9pt column at
+    /// 12pt beside a 14pt body, so the place sits 2pt off the line beside it. The stream draws each
+    /// date and place after its job's title, and the page is read as drawn: one band, no division,
+    /// and no gap the page's leading calls a slab boundary.
+    #[test]
+    fn a_date_and_place_beside_a_jobs_first_lines_stay_with_the_job() {
+        let runs = vec![
+            wide(7_200, 5_200, 14_664),
+            wide(7_200, 7_400, 25_169),
+            wide(7_200, 10_200, 11_837), // title
+            wide(47_000, 10_200, 5_903), // its date
+            wide(47_000, 11_400, 4_102), // its place
+            wide(8_400, 11_600, 350),
+            wide(9_400, 11_600, 25_288),
+            wide(8_400, 13_000, 350),
+            wide(9_400, 13_000, 13_117),
+            wide(7_200, 15_800, 7_279), // title
+            wide(47_000, 15_800, 4_803),
+            wide(47_000, 17_000, 3_352),
+            wide(8_400, 17_200, 350),
+            wide(9_400, 17_200, 18_119),
+        ];
+        let page = arrange_page(&runs, &[]);
+        assert_eq!(page.order, (0..runs.len()).collect::<Vec<_>>());
+        assert!(page.regions.is_empty(), "the date column joined the body");
+    }
+
+    /// **A join inside a column reads the joined band by its blocks** (review, synth E): a sidebar,
+    /// then two sections of two entries each with their dates. The section break is the body's
+    /// widest gap, so each section reaches the vertical cut with its dates; joined there, the
+    /// section is read entry by entry, each date after its entry, rather than every date after
+    /// the section. The stream draws the dates last.
+    #[test]
+    fn a_join_inside_a_column_is_read_by_its_blocks() {
+        let mut runs: Vec<RunGeometry> = (0..8)
+            .map(|i| wide(3_600, 8_000 + i * 1_700, 10_000))
+            .collect();
+        for y in [
+            9_000, 12_000, 13_400, 15_400, 16_800, 21_000, 24_000, 25_400, 27_400, 28_800,
+        ] {
+            runs.push(wide(21_000, y, 24_000));
+        }
+        for y in [12_000, 15_400, 24_000, 27_400] {
+            runs.push(wide(50_000, y, 9_000));
+        }
+        let page = arrange_page(&runs, &[]);
+        let want: Vec<usize> = (0..8)
+            .chain([8, 9, 10, 18, 11, 12, 19, 13, 14, 15, 20, 16, 17, 21])
+            .collect();
+        assert_eq!(page.order, want);
+        let regions: std::collections::BTreeSet<Option<u32>> =
+            page.regions.iter().copied().collect();
+        assert_eq!(regions.len(), 2, "the sidebar, and the body with its dates");
+    }
+
     /// This module's own code: comments stripped, and everything from the test attribute down
     /// removed.
     ///
@@ -1406,9 +1921,13 @@ mod tests {
         );
     }
 
-    /// No number here comes from a font size, and nothing here counts anything.
+    /// No number here comes from a font size, and no minimum line count decides a cut.
+    ///
+    /// Not "nothing counts": step 5's slabs rest on a mode over a page's line gaps (`-v4`), and
+    /// step 3b's join on a share of a side band's cells (`-v5`), each stated where it is used.
+    /// What this holds is narrower — no extent from a type size, and no `min_lines`-style floor.
     #[test]
-    fn the_rule_reads_no_font_size_and_counts_nothing() {
+    fn the_rule_reads_no_font_size_and_no_line_count_floor() {
         let code = rule_code();
         assert!(
             code.contains("UNKNOWN_ADVANCE_EXTENT"),

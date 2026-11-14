@@ -76,7 +76,9 @@
 //! **A header set off its columns is still theirs** (`-v7`, [`header_tracks`]): a header line of
 //! two cells or more whose cells do not each sit on a track — a column name centred over figures
 //! set flush right, a year over its column of numbers — gives each cell the track whose centre is
-//! nearest its own, where they come out in order, one to a track. And the band's first line may
+//! nearest its own, where they come out in order, one to a track — or, where they do not (decision
+//! #127), the first track ending at or past its own end, each clear of its track's neighbours: a
+//! name set flush left over figures set flush right. And the band's first line may
 //! stand two rows' pitch above the table, where a rule and its padding set a header off its first
 //! row — two and a half since `-v15` — and the lines above it still climb a row and a half at most. A header the table cannot be built
 //! with — a cell of it, two column names closer than an em, covering a neighbour's column — is
@@ -239,7 +241,13 @@
 //!    any columns, so three columns of a scanned newsletter passed it as a table of their lines.
 //!    There a grid stands only on the waiver's clauses — three rows and three columns or more, no
 //!    column of running text — and no column of numbers is asked, since with no order to read a
-//!    list of names and marks is a table as much as a table of values is.
+//!    list of names and marks is a table as much as a table of values is. **Nor is it evidence where
+//!    every column is running text** (decision #127, [`columns_of_prose`]): a two-column article
+//!    whose stream writes each left line, then the right line level with it, passed it as a table of
+//!    interleaved lines. Such a grid is refused, and its lines passed over whole, since a shorter run
+//!    of them may open fewer lines lower-case — unless its first column is labels ([`label_column`]),
+//!    as a model's settings or a data dictionary set in lower case are. A table with any other column
+//!    keeps its row order, and one side of two tables drawn side by side is asked nothing new.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -403,8 +411,8 @@ fn detect_within(
     let mut floor = 0;
     while i < lines.len() {
         if let Some((mut rows, mut end, reach)) = grow(&lines, i, runs) {
+            let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
             let stands = |rows: &[Row], end: usize| {
-                let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
                 (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
                     && accepted(rows, runs, within, recognized)
             };
@@ -414,6 +422,12 @@ fn detect_within(
                 rows.truncate(kept);
                 end = at;
                 stand = stands(&rows, end);
+            }
+            // Columns of prose are passed over whole (decision #127): a run of their lines further
+            // down may open fewer of them lower-case, and stood as a table.
+            if !stand && !within && columns_of_prose(&rows, runs) {
+                i = end;
+                continue;
             }
             // `-v14`: two flows side by side, each holding a column of numbers, are each read on
             // their own — the page from the last table's end down, cut at the gutter between them,
@@ -857,8 +871,10 @@ fn stack(header: &mut Row, row: &Row) {
 
 /// The track each of `line`'s cells heads: the one it sits on, clear of its neighbours, where every
 /// cell sits on one; else, for a line of two cells or more (`-v7`), the track whose centre is
-/// nearest each cell's, where those come out strictly left to right. A single cell off every
-/// track — a caption, a units note — heads none.
+/// nearest each cell's, where those come out strictly left to right; else (decision #127) the
+/// first track ending at or past each cell's end, where those come out strictly left to right and
+/// each cell stays clear of its track's neighbours — a column's name set flush left over figures set
+/// flush right. A single cell off every track — a caption, a units note — heads none.
 fn header_tracks(line: &Line, tracks: &[(i64, i64)]) -> Option<Vec<usize>> {
     let on: Option<Vec<usize>> = line.cells.iter().map(|c| track_of(c, tracks)).collect();
     if let Some(on) = on {
@@ -884,7 +900,21 @@ fn header_tracks(line: &Line, tracks: &[(i64, i64)]) -> Option<Vec<usize>> {
                 .unwrap_or(0)
         })
         .collect();
-    nearest.windows(2).all(|w| w[0] < w[1]).then_some(nearest)
+    if nearest.windows(2).all(|w| w[0] < w[1]) {
+        return Some(nearest);
+    }
+    let ending: Vec<usize> = line
+        .cells
+        .iter()
+        .map(|c| tracks.iter().position(|&(_, end)| end >= c.x1))
+        .collect::<Option<_>>()?;
+    (ending.windows(2).all(|w| w[0] < w[1])
+        && line
+            .cells
+            .iter()
+            .zip(&ending)
+            .all(|(c, &k)| clear_of_neighbours(c, k, tracks)))
+    .then_some(ending)
 }
 
 /// A table's header row from its header `band`: each track's cells from every line of the band,
@@ -1923,6 +1953,11 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool
     }
     // Every run of a row emitted before any run of the next: the rows, read in content order,
     // never go back up.
+    // Columns of prose set on one baseline grid, written line by line across them, are no table in
+    // any order (decision #127). One side of two tables that stood as one stays one.
+    if !ordered && columns_of_prose(rows, runs) {
+        return false;
+    }
     // On a page of recognized text the order is the recognizer's (decision #125), and says nothing.
     if ordered || (!recognized && written_row_by_row(rows, 0..columns)) {
         return true;
@@ -2056,6 +2091,19 @@ fn label_column(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
         let text = text.trim();
         !text.is_empty() && text.chars().count() < PROSE_LINE_CHARS
     })
+}
+
+/// Whether the rows are columns of prose (decision #127): every column [`running_text`], and the
+/// first no [`label_column`] — a table of short names in lower case, a model's settings or a data
+/// dictionary, keeps its row order.
+fn columns_of_prose(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    let column = |k: usize| -> Vec<String> {
+        rows.iter()
+            .map(|r| cell_text(&r.cells[k], runs))
+            .filter(|t| !t.trim().is_empty())
+            .collect()
+    };
+    !label_column(rows, runs) && (0..rows[0].cells.len()).all(|k| running_text(&column(k)))
 }
 
 /// Whether the content stream wrote the cells of `columns` row by row: every run of a row in them
@@ -2961,6 +3009,61 @@ mod tests {
         ]);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[0], ["North", "7.5", "112.0"]);
+    }
+
+    /// An invoice's line items under `head`: a label column set flush left at 76 points and three
+    /// columns of figures set flush right at 318, 418 and 536, 20 points apart from 106 down.
+    fn line_items(head: Vec<TrackRun<'static>>) -> Vec<DetectedTable> {
+        let mut runs = head;
+        for (j, row) in [
+            ["Steel rods 12mm", "10", "650.00", "6,500.00"],
+            ["Cement bags 50kg", "40", "385.00", "15,400.00"],
+            ["Binding wire", "5", "92.50", "462.50"],
+            ["Transport", "1", "1,200.00", "1,200.00"],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 106 + 20 * j as i64;
+            runs.push(run(76, y, 6 * row[0].len() as i64, row[0]));
+            for (end, text) in [318, 418, 536].into_iter().zip(&row[1..]) {
+                let w = 6 * text.len() as i64;
+                runs.push(run(end - w, y, w, text));
+            }
+        }
+        tables(&runs)
+    }
+
+    /// **A header set flush left over figures set flush right is still theirs** (decision #127):
+    /// `Qty`, `Rate` and `Amount`, each set where its column's space opens, sit on no track, and
+    /// `Rate` is nearer `Qty`'s figures than its own, so the nearest centres put two names on one
+    /// column. Each heads the first track ending at or past its own end, clear of the track before;
+    /// a name reaching back over the figures before it heads nothing.
+    #[test]
+    fn a_header_set_flush_left_over_figures_set_flush_right_is_theirs() {
+        let found = line_items(vec![
+            run(76, 86, 21, "Item"),
+            run(256, 86, 17, "Qty"),
+            run(326, 86, 22, "Rate"),
+            run(426, 86, 38, "Amount"),
+        ]);
+        assert_eq!((found[0].rows, found[0].columns), (5, 4));
+        assert_eq!(texts(&found[0])[0], ["Item", "Qty", "Rate", "Amount"]);
+        assert_eq!(
+            texts(&found[0])[1],
+            ["Steel rods 12mm", "10", "650.00", "6,500.00"]
+        );
+        let found = line_items(vec![
+            run(76, 86, 21, "Item"),
+            run(256, 86, 17, "Qty"),
+            run(326, 86, 22, "Rate"),
+            run(400, 86, 70, "Amount due"),
+        ]);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Steel rods 12mm", "10", "650.00", "6,500.00"],
+            "`Amount due` starts over `Rate`'s figures"
+        );
     }
 
     /// Four rows of a region's figures in four columns, the first at 200 points, under `head` —
@@ -5246,20 +5349,134 @@ mod tests {
             .collect()
     }
 
-    /// **On a page of recognized text, row order is no evidence of a table** (decision #125): the
-    /// three columns a drawn page writes row by row stand as a table, as they always have, and the
-    /// same columns read by a recognizer, whose order is row by row whatever the page holds, do not.
+    /// **On a page of recognized text, row order is no evidence of a table** (decision #125): two
+    /// columns of prose beside a column of figures, written row by row, stand as a table on a drawn
+    /// page, and the same grid read by a recognizer, whose order is row by row whatever the page
+    /// holds, does not. Three columns of prose are a table on neither page: since decision #127
+    /// no row order makes one of columns that are all running text.
     #[test]
     fn a_recognized_page_does_not_read_its_columns_of_prose_as_a_table() {
         let runs = newsletter();
-        assert_eq!(
-            tables(&runs).len(),
-            1,
-            "a drawn page's row order still says table"
+        assert!(
+            tables(&runs).is_empty(),
+            "every column is running text (#127)"
         );
         assert!(detect(1, &runs, &[], true, &mut alloc())
             .expect("detects")
             .is_empty());
+        let mut beside = newsletter();
+        for (r, figure) in beside
+            .iter_mut()
+            .skip(2)
+            .step_by(3)
+            .zip(["1,204", "387", "2,950", "61"])
+        {
+            r.text = figure;
+        }
+        assert_eq!(
+            tables(&beside).len(),
+            1,
+            "a drawn page's row order still says table"
+        );
+        assert!(detect(1, &beside, &[], true, &mut alloc())
+            .expect("detects")
+            .is_empty());
+    }
+
+    /// A two-column article whose content stream writes each line of the left column, then the line
+    /// level with it on the right: its first `n` lines, 13 points apart.
+    fn article(n: usize) -> Vec<TrackRun<'static>> {
+        const LINES: [[&str; 2]; 8] = [
+            [
+                "The India Meteorological Department expects",
+                "Farmers in Vidarbha have been asked to delay",
+            ],
+            [
+                "normal rainfall over most of the state this",
+                "sowing until the first good spell of rain,",
+            ],
+            [
+                "season, with a slightly weaker June and a",
+                "usually in the third week of June, and to",
+            ],
+            [
+                "stronger August than last year, though the",
+                "keep seed in dry storage until it arrives.",
+            ],
+            [
+                "monsoon may reach the coast a little later",
+                "Officials of the agriculture department in",
+            ],
+            [
+                "than usual, and the department will update",
+                "Nagpur said that seed stocks were adequate.",
+            ],
+            [
+                "its outlook at the end of the month, after",
+                "Reservoir levels stand at 31 percent, the",
+            ],
+            [
+                "the first week of rain has been recorded.",
+                "said a statement issued late on Tuesday.",
+            ],
+        ];
+        LINES[..n]
+            .iter()
+            .enumerate()
+            .flat_map(|(r, row)| {
+                row.iter()
+                    .enumerate()
+                    .map(move |(c, &text)| run(72 + 248 * c as i64, 82 + 13 * r as i64, 184, text))
+            })
+            .collect()
+    }
+
+    /// **Columns of prose written row by row are no table** (decision #127): every column opens
+    /// lines with lower-case letters, as running text does, and the first runs as long as a line of
+    /// prose. **Nor is any shorter run of their lines**: the last four lines of eight open only one
+    /// right-hand line lower-case, and stood as a table once the eight were refused.
+    #[test]
+    fn columns_of_prose_written_row_by_row_are_no_table() {
+        assert!(tables(&article(4)).is_empty(), "four lines");
+        assert!(tables(&article(8)).is_empty(), "eight lines");
+    }
+
+    /// **But a table of short names in lower case keeps its row order** (decision #127): a model's
+    /// settings and a data dictionary open every column lower-case, and their first column is
+    /// labels, each shorter than a line of prose.
+    #[test]
+    fn a_table_of_short_lower_case_names_is_a_table() {
+        let grid = |rows: &[&[&'static str]], xs: &[i64]| -> Vec<TrackRun<'static>> {
+            rows.iter()
+                .enumerate()
+                .flat_map(|(r, row)| {
+                    row.iter().zip(xs).map(move |(&text, &x)| {
+                        run(x, 100 + 13 * r as i64, 6 * text.len() as i64, text)
+                    })
+                })
+                .collect()
+        };
+        let settings: [&[&str]; 7] = [
+            &["Parameter", "Value"],
+            &["learning rate", "0.001"],
+            &["batch size", "32"],
+            &["optimizer", "adam"],
+            &["schedule", "cosine"],
+            &["dropout", "0.1"],
+            &["activation", "relu"],
+        ];
+        let found = tables(&grid(&settings, &[72, 260]));
+        assert_eq!((found[0].rows, found[0].columns), (7, 2));
+        let dictionary: [&[&str]; 6] = [
+            &["Column", "Type", "Constraint"],
+            &["id", "integer", "primary key"],
+            &["email", "varchar(255)", "not null"],
+            &["created_at", "timestamp", "default now()"],
+            &["owner_id", "integer", "references users"],
+            &["status", "text", "not null"],
+        ];
+        let found = tables(&grid(&dictionary, &[72, 200, 330]));
+        assert_eq!((found[0].rows, found[0].columns), (6, 3));
     }
 
     /// **And a recognized grid with no running text stands without a column of numbers**

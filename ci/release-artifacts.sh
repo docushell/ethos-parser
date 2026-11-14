@@ -6,6 +6,7 @@
 #   ci/release-artifacts.sh --native                 # only the host's own target: what each CI runner runs
 #   ci/release-artifacts.sh --tag v0.58.0            # and refuse unless Cargo.toml says 0.58.0
 #   ci/release-artifacts.sh --fingerprint-only BIN   # print BIN's fingerprint over the gate corpus; build nothing
+#                                                    # (BIN's recognizer: beside it, or at ETHOS_PARSER_OCR)
 #   ci/release-artifacts.sh --assemble DIR           # CI's verify job: one set of bytes from every runner's
 #                                                    # output under DIR/*/, or no SHA256SUMS.txt at all
 #   ci/release-artifacts.sh --allow-dirty            # for trying it out; never for a release
@@ -43,6 +44,16 @@
 # runner's, and one difference fails the assembly with nothing written. Identical is not enough
 # either — every fingerprint must also show the whole corpus PRODUCED (`require_produced`), or a
 # corpus every runner refused would compare clean.
+#
+# # The recognizer rides in every archive
+#
+# `ethos-parser-ocr`, the recognizer behind `--ocr`, is its own workspace on its own pinned compiler
+# (ocr/rust-toolchain.toml). It is built for the same target and packaged beside `ethos-parser`,
+# which is where `--ocr` looks for it, and the fingerprint reads one committed scan with
+# `extract --ocr`, so it is executed and compared as the engine is. It refuses an x86-64 CPU without
+# AVX2 and FMA, which Rosetta 2 reports only when ROSETTA_ADVERTISE_AVX is set; this script sets it.
+# A recognizer that still refuses the CPU leaves its `--ocr` row empty, and `require_produced`
+# fails the target by that row.
 #
 # # What this does NOT check
 #
@@ -100,6 +111,18 @@ esac
 # sha256 of zero bytes: what a refused subcommand's stdout digests to.
 EMPTY=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
+# The scan `fingerprint` reads with `extract --ocr`: a committed page whose recognized words
+# ocr/tests/data/expected.jsonl pins on every CPU (ci.yml's `ocr-platforms`).
+OCR_FIXTURE=ocr/tests/data/nist-171r3-p55.png
+# Rosetta 2 reports no AVX2 or FMA unless asked to, and the recognizer refuses an x86-64 CPU without
+# them. Asked, it reports both (measured 2026-11-14 on macOS 26), and the recognizer's AVX2 path
+# gives its NEON bytes (docs/35-OCR-SCOPE.md §3). A process not under Rosetta ignores it.
+export ROSETTA_ADVERTISE_AVX=1
+
+# The newest glibc a Linux gnu binary may need (README "Install"): what the workflow's
+# ubuntu-22.04 runner has. A binary that references a newer GLIBC_ version fails its release.
+GLIBC_FLOOR=2.35
+
 # The corpus a verified binary must reproduce. Small and committed, so this stays cheap: the gate
 # corpus is eight documents this repository owns. `LC_ALL=C` so the rows come out in the same
 # order on every host — `ls` sorts its arguments by the locale's collation, and a runner's locale
@@ -143,6 +166,9 @@ fingerprint() {
     done
   done
   rm -rf "$repr"
+  # One scan through the recognizer `$bin` finds, so the archive's second binary is compared too.
+  printf '%s %s ' "$(basename "$OCR_FIXTURE")" extract--ocr
+  "$bin" extract --ocr "$OCR_FIXTURE" 2>/dev/null | sha256 || true
 }
 
 # **Identical is not enough.** Two binaries that refuse every document agree perfectly, and so do
@@ -157,12 +183,15 @@ require_produced() {
     projected "$doc" || skipped=$((skipped + 1))
   done
   [ "$docs" -gt 0 ] || fail "fixtures/gate holds no PDF; nothing could have been fingerprinted."
-  expected=$(( 2 * docs + 3 * (docs - skipped) ))
+  # The last 1 is the scan read with `extract --ocr`.
+  expected=$(( 2 * docs + 3 * (docs - skipped) + 1 ))
   produced="$(printf '%s\n' "$fp" | awk -v empty="$EMPTY" 'NF == 3 && $3 != empty { n++ } END { print n + 0 }')"
   if [ "$produced" -ne "$expected" ]; then
     refused="$(printf '%s\n' "$fp" | awk -v empty="$EMPTY" 'NF == 3 && $3 == empty { print "  refused: " $1 " " $2 }')"
     fail "$what produced $produced non-empty artifact(s) over the gate corpus; all $expected are required." \
-         "Every gate document must extract and classify, and every projected one must project." \
+         "Every gate document must extract and classify, every projected one must project, and" \
+         "$OCR_FIXTURE must extract with --ocr through the recognizer beside the engine (or at" \
+         "ETHOS_PARSER_OCR), which refuses an x86-64 CPU without AVX2 and FMA by name." \
          "A row digesting to the empty digest is a refusal; a missing row is a document whose" \
          "extract failed. Find out which and why. Do not release." "$refused"
   fi
@@ -268,7 +297,8 @@ assemble() {
   {
     echo "# ethos-parser $version — release artifacts, assembled from ${#targets[@]} runners"
     echo "#"
-    echo "# state 'verified' means the binary was EXECUTED on the runner that built it and every artifact"
+    echo "# state 'verified' means the archive's binaries, ethos-parser and ethos-parser-ocr, were EXECUTED"
+    echo "# on the runner that built them and every artifact"
     echo "# digest over the gate corpus equalled every other runner's: one fingerprint on every system"
     echo "# below. That is plan item 6.1's operating-system axis, measured on these binaries. Nothing"
     echo "# here is 'compiled' — a fingerprint that differed would have failed the assembly, and this"
@@ -317,6 +347,24 @@ host_arch="$(uname -m)"
 NATIVE="$(rustc -vV | sed -n 's/^host: //p')"
 [ -n "$NATIVE" ] || fail "could not read the host target from rustc -vV"
 
+# The recognizer's own compiler, which no runner image carries: installed, then held to its pin,
+# as ci/ocr.sh does in the gate.
+ocr_want="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ocr/rust-toolchain.toml | head -1)"
+rustup toolchain install "$ocr_want" --profile minimal >/dev/null
+ocr_got="$(cd ocr && cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+[ "$ocr_want" = "$ocr_got" ] || fail "ocr/rust-toolchain.toml wants $ocr_want; cargo in ocr/ reports $ocr_got"
+
+# The archive's own recognizer, found beside its engine, is the one fingerprinted.
+unset ETHOS_PARSER_OCR
+
+# Whether the compiler that directory $1 pins has target $2, adding it when rustup can.
+has_target() {
+  (cd "$1" && { rustup target list --installed 2>/dev/null | grep -qx "$2" || rustup target add "$2" >/dev/null 2>&1; })
+}
+
+# The highest GLIBC_ symbol version ELF binary $1 references.
+glibc_need() { objdump -T "$1" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/^GLIBC_//' | sort -uV | tail -n 1; }
+
 # Can this host EXECUTE a binary for the given target? Conservative by design: a target is
 # runnable only where that is a fact about this machine, never an assumption.
 #   - the native target always runs
@@ -353,18 +401,18 @@ native_fp=""
 for target in "${TARGETS[@]}"; do
   echo "[$target]"
 
-  if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
-    if ! rustup target add "$target" >/dev/null 2>&1; then
-      note "rustup cannot install this target here — skipped"
-      echo; continue
-    fi
+  if ! has_target . "$target" || ! has_target ocr "$target"; then
+    note "rustup cannot install this target here for both compilers — skipped"
+    echo; continue
   fi
 
   # `--locked`, as every cargo invocation in ci.yml: the lockfile the gate tested is the one built.
-  # The compiler's output goes to a log — noise on success locally, the only record of what was
-  # built on a runner, and the diagnosis on failure either way.
+  # The engine, then the recognizer in ocr/ on its own compiler. The compilers' output goes to a
+  # log — noise on success locally, the only record of what was built on a runner, and the
+  # diagnosis on failure either way.
   log="$OUT/build-$target.log"
-  if ! cargo build --release --locked --target "$target" -p ethos-parser-cli >"$log" 2>&1; then
+  if ! { cargo build --release --locked --target "$target" -p ethos-parser-cli &&
+         (cd ocr && cargo build --release --locked --target "$target"); } >"$log" 2>&1; then
     if [ "$target" = "$NATIVE" ]; then
       tail -n 40 "$log" >&2
       fail "the native build failed; the full log is $log" \
@@ -380,7 +428,37 @@ for target in "${TARGETS[@]}"; do
   bin="target/$target/release/ethos-parser"
   [ -x "$bin" ] || bin="$bin.exe"
   [ -x "$bin" ] || { note "no binary produced at target/$target/release — skipped"; echo; continue; }
-  ok "built  $(wc -c < "$bin" | tr -d ' ') bytes"
+  ocr="ocr/target/$target/release/ethos-parser-ocr"
+  [ -x "$ocr" ] || ocr="$ocr.exe"
+  [ -x "$ocr" ] || { note "no recognizer produced at ocr/target/$target/release — skipped"; echo; continue; }
+  ok "built  $(wc -c < "$bin" | tr -d ' ') bytes, recognizer $(wc -c < "$ocr" | tr -d ' ') bytes"
+
+  # Staged before anything runs, so what is fingerprinted is the archive's own pair, the engine
+  # finding the recognizer beside itself as it will wherever the archive is unpacked.
+  stage="$OUT/ethos-parser-$version-$target"
+  mkdir -p "$stage"
+  cp "$bin" "$ocr" "$stage/"
+  cp LICENSE "$stage/" 2>/dev/null || true
+  cp NOTICE "$stage/" 2>/dev/null || true
+  cp README.md "$stage/" 2>/dev/null || true
+  bin="$stage/$(basename "$bin")"
+  ocr="$stage/$(basename "$ocr")"
+
+  # The glibc floor, so it cannot creep up unnoticed: a gnu binary loads only on a glibc at least
+  # as new as every GLIBC_ version it references, weak symbols included (0.65.0's 2.39 came from
+  # two weak ones, linked on ubuntu-24.04).
+  case "$target" in
+    *-linux-gnu)
+      command -v objdump >/dev/null || fail "objdump is not on PATH, so the glibc floor of $target cannot be checked."
+      for f in "$bin" "$ocr"; do
+        need="$(glibc_need "$f" || true)"
+        [ -n "$need" ] || fail "objdump -T found no GLIBC_ version in $f."
+        [ "$(printf '%s\n' "$GLIBC_FLOOR" "$need" | sort -V | tail -n 1)" = "$GLIBC_FLOOR" ] || \
+          fail "$(basename "$f") needs glibc $need; the floor is $GLIBC_FLOOR (README \"Install\")." \
+               "The symbols at $need:" "$(objdump -T "$f" | grep "GLIBC_$need")"
+        ok "$(basename "$f") needs glibc $need, floor $GLIBC_FLOOR"
+      done ;;
+  esac
 
   state="compiled"
   if runnable "$target"; then
@@ -405,11 +483,6 @@ for target in "${TARGETS[@]}"; do
     note "this host cannot execute $target — packaged as 'compiled', not 'verified'"
   fi
 
-  stage="$OUT/ethos-parser-$version-$target"
-  mkdir -p "$stage"
-  cp "$bin" "$stage/"
-  cp LICENSE "$stage/" 2>/dev/null || true
-  cp README.md "$stage/" 2>/dev/null || true
   tar -czf "$OUT/ethos-parser-$version-$target.tar.gz" -C "$OUT" "$(basename "$stage")"
   rm -rf "$stage"
   ok "packaged ethos-parser-$version-$target.tar.gz"
@@ -423,9 +496,10 @@ done
 {
   echo "# ethos-parser $version — release artifacts"
   echo "#"
-  echo "# state 'verified' means the binary was EXECUTED on the build host and every artifact"
-  echo "# digest over the gate corpus equalled the native build's. State 'compiled' means it was"
-  echo "# built and never run: this host could not execute it. A compiled artifact is not evidence"
+  echo "# state 'verified' means the archive's binaries, ethos-parser and ethos-parser-ocr, were"
+  echo "# EXECUTED on the build host and every artifact digest over the gate corpus equalled the"
+  echo "# native build's. State 'compiled' means they were built and never run: this host could not"
+  echo "# execute them. A compiled artifact is not evidence"
   echo "# of anything about the platform it targets. See plan item 6.1."
   echo "#"
   for i in "${!built[@]}"; do

@@ -1150,7 +1150,7 @@ impl<'a> Interpreter<'a> {
                 if strokes && !self.gs.dashed && !gone {
                     let m = self.gs.ctm;
                     let width = self.gs.line_width.abs();
-                    let (across_x, across_y) = (width * m.a.hypot(m.c), width * m.b.hypot(m.d));
+                    let (across_x, across_y) = (width * length(m.a, m.c), width * length(m.b, m.d));
                     let capped = matches!(self.gs.line_cap, 1 | 2);
                     for s in &self.pending_segments {
                         let (rect, across) = if s.is_horizontal() {
@@ -1747,6 +1747,23 @@ pub(crate) const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT
 /// [`crate::charts::MIN_BAR`], the least side of a filled bar, which counts centipoints.
 const STROKE_BAR_MIN: f64 = crate::charts::MIN_BAR as f64 / 100.0;
 
+/// The length of `(a, b)` in IEEE arithmetic alone, the same bits on every platform, where
+/// `f64::hypot` calls the platform's libm. Where the squares overflow, both are scaled by an exact
+/// power of two first, so a length that large is measured as `hypot` measured it and what was
+/// refused still is; an infinity is infinite and NaN stays NaN, as `hypot`'s are.
+fn length(a: f64, b: f64) -> f64 {
+    let l = (a * a + b * b).sqrt();
+    if a.is_infinite() || b.is_infinite() {
+        f64::INFINITY
+    } else if l.is_infinite() {
+        let k = 2f64.powi(512);
+        let (x, y) = (a / k, b / k);
+        (x * x + y * y).sqrt() * k
+    } else {
+        l
+    }
+}
+
 /// The thickest rule [`outlined_rules`] reads, in points (decision #113):
 /// [`crate::tables::THICK_RULE`], the thickest the ruled rule reads as one line, which counts
 /// centipoints.
@@ -1793,7 +1810,7 @@ fn wedge(sub: &Subpath) -> Option<Slice> {
     if v.len() > 1 && approx_eq(v[0].0, v[v.len() - 1].0) && approx_eq(v[0].1, v[v.len() - 1].1) {
         v.pop();
     }
-    let dist = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
+    let dist = |a: (f64, f64), b: (f64, f64)| length(a.0 - b.0, a.1 - b.1);
     for (i, &c) in v.iter().enumerate() {
         let rim: Vec<(f64, f64)> = v[i + 1..].iter().chain(&v[..i]).copied().collect();
         let Some(&first) = rim.first() else { continue };
@@ -3576,5 +3593,21 @@ mod tests {
             [run_of("ab ", &[2]), run_of("cd", &[])],
             "a dropped string still drew text, so the gap after it lands on the last run kept"
         );
+    }
+
+    /// A length past `f64`'s range is finite, as `hypot`'s is, so a hostile coordinate is
+    /// refused as it was; within range it is the correctly rounded root.
+    #[test]
+    fn a_length_past_the_range_stays_finite() {
+        assert_eq!(length(3.0, -4.0), 5.0);
+        for (a, b) in [(1e200, 1e200), (-1e200, 3.0), (2.0, f64::MAX)] {
+            let l = length(a, b);
+            assert!(l.is_finite() && l >= a.abs().max(b.abs()), "{a} {b}: {l}");
+        }
+        // The length itself, not the larger side: a slice that wide is still a slice.
+        let l = length(1e155, 1e155);
+        assert!((l / 1.414_213_562_373_095e155 - 1.0).abs() < 1e-15, "{l}");
+        assert_eq!(length(f64::INFINITY, f64::NAN), f64::INFINITY);
+        assert!(length(f64::NAN, 1.0).is_nan());
     }
 }

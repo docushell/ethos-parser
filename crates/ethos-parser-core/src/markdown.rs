@@ -145,6 +145,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -270,7 +271,31 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// painted is written once ([`overprinted_runs`]), and the census counts it. And so is decision
 /// #111's: a run with no reach goes on along its baseline from a space it ends with
 /// ([`unit_gap_continues`]).
-pub const MARKDOWN_RULE_BLOCKS_V13: &str = "markdown-blocks-v13";
+///
+/// `-v14` (decision #126): on a tagged page a run that opens its block element's next line keeps
+/// the line break ([`element_next_line`]), where `-v13` wrote one space, so a resume Chromium
+/// tagged a line at a time reads a field a line. One space still in a heading, on a line its column
+/// wrapped ([`wrapped_labels`]), from a bold run onto a bold run unless the second is a label
+/// ending in `:`, so a bold paragraph its column wrapped stays one span, and before a line
+/// CommonMark reads as a block of its own ([`opens_block_syntax`]). Any other span — italic, a
+/// script — now closes at the line's end and opens again on the next: `*a*` and `*b*` on two
+/// lines where `-v13` wrote `*a b*`. An untagged page projects byte for byte what `-v13`
+/// projected. Both ids move. And so is decision #128's, folded in: a list body run whose element
+/// the file numbers, after a body another number holds, opens the next item ([`ListRole`]), where
+/// `-v13` joined every body run at one depth into one item. A body set no lower than the open
+/// run's line goes on from a marker drawn in the `/LI` itself, as from its `/Lbl`, and where it
+/// reads on — opening lowercase with no label of its own ([`list_role_at`]) — as a column break
+/// carries a bullet into a new `/LBody`. A join inside one numbered element counts as
+/// [`BLOCK_ELEMENT_RUN_JOINS`], no longer as [`GFM_LIST_ITEM_RUN_JOINS`]' guess. And so is decision
+/// #130's: a DOCX paragraph's runs are one block, joined with the tab, line break or space the
+/// paragraph holds between them or with nothing ([`paragraph_seam`]), and a tab or a line break
+/// inside a run is kept ([`projected_text`]), where `-v13` wrote each run as a block and either as
+/// a space. A PDF projects byte for byte as before. And so is decision #131's: on an untagged page a
+/// run set as a superscript or a subscript, and the run after one, goes on along the line of the
+/// run before it with nothing between them, or one space where the page drew one
+/// ([`script_continues`]), where `-v13` wrote a line break either side of a mark inside a line,
+/// and emphasis stays open where only the script changes between two runs with nothing between.
+pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -332,8 +357,12 @@ pub const GFM_TABLE_NOT_PROJECTED: &str = "gfm-table-not-projected-v1";
 ///
 /// PDF 32000 pairs one `/Lbl` with one `/LBody`, so a body run directly after its label is the
 /// **same item** by the standard and is not counted. A second body run is different: the role
-/// path of two sibling `/LI`s is identical, so nothing in the representation distinguishes "the
-/// rest of this item" from "the next item". This projection joins, and says how often.
+/// path of two sibling `/LI`s is identical. Where the file numbers both runs' elements, one
+/// number is one item, counted under [`BLOCK_ELEMENT_RUN_JOINS`], and two are two items
+/// (decision #128); where it leaves either unnumbered, nothing in the representation distinguishes
+/// "the rest of this item" from "the next item". This projection joins those, and two numbered
+/// elements where a body set no lower than the open run's line follows a marker drawn in the
+/// `/LI` itself or reads on ([`ListRole::continues`]), and says how often.
 pub const GFM_LIST_ITEM_RUN_JOINS: &str = "gfm-list-item-run-joins-v1";
 
 /// Runs joined into one block because the document put them in one marked-content sequence
@@ -374,7 +403,9 @@ pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 /// line here too, where it keeps its line break but joins the label's block
 /// ([`label_line_continues`]): the block boundary is what the unit erased. So are decision #81's
 /// bold line its column wrapped and decision #85's tagged bold line read on to the one above
-/// ([`wrapped_labels`]): the same reading of the wrap, on a page whose tree leaves no units.
+/// ([`wrapped_labels`]): the same reading of the wrap, on a page whose tree leaves no units. And
+/// decision #131's mark kept on its line, with no break or one space ([`script_continues`]), where
+/// decision #109 wrote a line break.
 pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
 
 /// A heading's section number or marker joined to the title it opens, across the gap the page set
@@ -401,9 +432,12 @@ pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
 /// document's structure tree declares holds them both — a paragraph, a heading, a list item, a
 /// cell (decision #84, [`sequence_join`]): a producer that changes sequence at every change of
 /// style and at every line, as Word's export does, wrote each piece as a block of its own. Along a
-/// line a space goes in only where the page drew one; onto the element's next line, one space for
-/// the line break. The licence is the element, not the sequence, so it is counted apart from
-/// [`MCID_RUN_JOINS`].
+/// line a space goes in only where the page drew one; onto the element's next line, a line break,
+/// or one space where [`element_next_line`] says (decision #126). The licence is the element, not
+/// the sequence, so it is counted apart from [`MCID_RUN_JOINS`]. A list item's runs one numbered
+/// element holds count here too, in a sequence or across them, where they would have counted as
+/// [`GFM_LIST_ITEM_RUN_JOINS`]' guess (decision #128); the list path joins them as it did. So do a
+/// DOCX paragraph's runs, which its `<w:p>` holds (decision #130, [`paragraph_seam`]).
 pub const BLOCK_ELEMENT_RUN_JOINS: &str = "block-element-run-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
@@ -834,6 +868,15 @@ fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIde
 ///
 /// And a segment never holds U+0000, which neither format can carry. That is not this function's
 /// doing — the writer drops it — and it is counted, in `null-characters-not-projected-v1`.
+///
+/// **One exception, for a DOCX run alone** (decision #130): a run of whitespace inside it projects
+/// as one line break where it holds one and one tab where it holds one, so `Designation:<TAB>Senior
+/// Accountant` keeps its tab and an address its lines. Word states both as elements, `<w:tab/>` and
+/// `<w:br/>`, which the reader reads into the run's text. A stretch holding a space, in a run whose
+/// `<w:t>` do not preserve their whitespace, is one space: the XML's own indentation. A line break
+/// before a line CommonMark would read as a block of its own, read across the runs that make it,
+/// is one space. It writes as many characters as this function does, so the census counts the
+/// same. [`projected_text`] applies it; every other run is normalized here.
 pub fn normalize(s: &str) -> String {
     let trimmed = s.trim();
     let mut out = String::with_capacity(trimmed.len());
@@ -891,9 +934,9 @@ pub fn normalize(s: &str) -> String {
 /// outliving the thing it qualifies, so ODS carries neither.
 ///
 /// **DOCX.** Earlier still: the reader keeps no `<w:pStyle>`, so no heading reaches the wire at all
-/// and this function cannot see one to project. Two things stand in the way and the first is
-/// structural: `docx.rs` has no `Event::Empty` arm, and `<w:pStyle/>` and `<w:outlineLvl/>` are
-/// always self-closing, so they are invisible to that reader as written. The second is the
+/// and this function cannot see one to project. Two things stand in the way. The first is the
+/// reader's: `docx.rs` sees self-closing elements in its `Event::Empty` arm, but keeps neither
+/// `<w:pStyle/>` nor `<w:outlineLvl/>`, which are always self-closing. The second is the
 /// honesty question — `w:val="Heading1"` is a **styleId**, an author-chosen token, while the
 /// built-in name ECMA-376 fixes lives in `<w:name>` inside `word/styles.xml`. Mapping the id to a
 /// level without opening that part is matching a convention rather than reading a declaration, so
@@ -1039,9 +1082,10 @@ pub(crate) fn list_role(node: &crate::Node) -> Option<ListRole> {
         return None;
     };
     let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
-    let label = match path.last()?.as_str() {
-        "Lbl" => true,
-        "LBody" | "LI" => false,
+    let (label, item) = match path.last()?.as_str() {
+        "Lbl" => (true, false),
+        "LBody" => (false, false),
+        "LI" => (false, true),
         _ => return None,
     };
     // Nesting comes from nested `/L`, which is how PDF spells a sub-list. Depth 0 is the
@@ -1050,7 +1094,59 @@ pub(crate) fn list_role(node: &crate::Node) -> Option<ListRole> {
     Some(ListRole {
         depth: lists.checked_sub(1)?,
         label,
+        item,
+        reads_on: false,
+        at: node
+            .native_locator
+            .run_locator()
+            .map(|l| (l.page, l.origin_y)),
+        pitch: None,
+        element: t.block_element,
     })
+}
+
+/// [`list_role`] for `nodes[i]`, with its font's glyph pitch and whether its element's text reads on
+/// ([`reads_on`]), read across the runs the element holds from here up to the first space: a
+/// producer that draws a glyph at a time writes `ii.` as `i`, `i`, `.` (decision #128).
+pub(crate) fn list_role_at(
+    nodes: &[crate::Node],
+    i: usize,
+    pitch: &PitchReference,
+) -> Option<ListRole> {
+    let node = nodes.get(i)?;
+    let role = list_role(node)?;
+    let mut text = String::new();
+    for node in nodes[i..].iter().take(8) {
+        if list_role(node).map(|r| r.element) != Some(role.element) {
+            break;
+        }
+        text.push_str(node.reading_text());
+        if text.trim_start().contains(char::is_whitespace) {
+            break;
+        }
+    }
+    Some(ListRole {
+        reads_on: reads_on(&text),
+        pitch: text_run_attributes(node)
+            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .map(|m| m.pitch),
+        ..role
+    })
+}
+
+/// Whether a list run's `text` reads on from the item before (decision #128): it opens lowercase,
+/// as a tagged line its column wrapped does ([`opens_lowercase`]), with no label of its own — a
+/// letter or a roman numeral closed by `.` or `)` as [`is_label_head`] reads one, spaced or not,
+/// or Word's second-level bullet `o`.
+fn reads_on(text: &str) -> bool {
+    let head = text.split_whitespace().next().unwrap_or_default();
+    let label = head.find(['.', ')']).map(|end| &head[..=end]);
+    opens_lowercase(text) && head != "o" && !label.is_some_and(is_label_head)
+}
+
+/// Whether `text` opens lowercase: the rest of a sentence, not the start of one.
+fn opens_lowercase(text: &str) -> bool {
+    text.trim_start().starts_with(char::is_lowercase)
 }
 
 /// A run's position in a tagged list.
@@ -1060,6 +1156,59 @@ pub(crate) struct ListRole {
     pub(crate) depth: usize,
     /// Whether this run is the item's `/Lbl` — the marker the document itself drew.
     pub(crate) label: bool,
+    /// Whether this run sits in the `/LI` itself, under no `/Lbl` or `/LBody` — a marker a
+    /// producer drew there, as Chromium does.
+    pub(crate) item: bool,
+    /// Whether the run's element reads on from the item before, where [`list_role_at`] read it.
+    pub(crate) reads_on: bool,
+    /// The run's page and baseline, where its locator has them.
+    pub(crate) at: Option<(u32, i64)>,
+    /// The glyph pitch of the run's font, where [`list_role_at`] measured it.
+    pub(crate) pitch: Option<i64>,
+    /// The `/Lbl`, `/LBody` or `/LI` holding the run, where the file numbers it (decision #84).
+    pub(crate) element: Option<crate::PdfObjectNumber>,
+}
+
+impl ListRole {
+    /// Whether this run goes on in `open`, the item the previous run was in: a run at its depth
+    /// that is no `/Lbl`, after that item's `/Lbl`, in the same element, or where the file leaves
+    /// either unnumbered; or a body set nowhere below the open run, after a marker drawn in the
+    /// `/LI` itself or reading on ([`reads_on`]) where a column break carried a bullet into a new
+    /// `/LBody`. Two numbered bodies are otherwise two items (decision #128).
+    pub(crate) fn continues(self, open: Option<ListRole>) -> bool {
+        open.is_some_and(|open| {
+            !self.label
+                && open.depth == self.depth
+                && (open.label
+                    || self.element.is_none()
+                    || open.element.is_none()
+                    || self.element == open.element
+                    || (!self.item && !self.below(open) && (open.item || self.reads_on)))
+        })
+    }
+
+    /// Whether this run sits on a lower line than `open`'s on one page: its baseline further down
+    /// the top-left system than [`same_line`]'s tolerance of the open run's font allows.
+    fn below(self, open: ListRole) -> bool {
+        matches!((self.at, open.at), (Some((page, y)), Some((open_page, open_y)))
+            if page == open_page
+                && y > open_y
+                && !open.pitch.is_some_and(|pitch| on_one_baseline(y, open_y, pitch)))
+    }
+
+    /// The census code a join into `open` counts under, where [`Self::continues`] says it joins:
+    /// none after the item's own `/Lbl`, which PDF 32000 pairs with its body;
+    /// [`BLOCK_ELEMENT_RUN_JOINS`] inside one numbered element; and otherwise
+    /// [`GFM_LIST_ITEM_RUN_JOINS`], the guess.
+    pub(crate) fn join_code(self, open: ListRole) -> Option<&'static str> {
+        if open.label {
+            None
+        } else if self.element.is_some() && self.element == open.element {
+            Some(BLOCK_ELEMENT_RUN_JOINS)
+        } else {
+            Some(GFM_LIST_ITEM_RUN_JOINS)
+        }
+    }
 }
 
 /// The next run, when this one ends in a line-break hyphen and that run finishes the word.
@@ -1294,6 +1443,51 @@ pub(crate) fn body_line_continues(prev: &crate::Node, node: &crate::Node) -> boo
         && unit(prev).is_some()
         && unit(prev) == unit(node)
         && on_different_lines(prev, node)
+}
+
+/// Whether `node` goes on along `prev`'s line across a raised or lowered mark (decision #131),
+/// `Some(true)` with one space and `Some(false)` with none: either run set as a superscript or a
+/// subscript, the two of one block [`body_line_continues`] breaks between, and `node` drawn after
+/// `prev` — starting right of it, set back over its reach ([`ink_reach`]) by no more than one of its
+/// glyphs or, where `prev` has no measure to cap its advance by, past the whole of its advance — on
+/// a baseline less than two of the larger run's median glyphs from `prev`'s: about an em
+/// ([`FontMeasure::word_gap`] reads a median glyph as half of one), where `scripts.rs` sets a script
+/// within half its line's em of it. Measured from the glyphs the page draws, since `font_size` is
+/// the `Tf` operand, which a page that scales its text by the matrix sets at 1; and two glyphs, not
+/// one, since a median glyph runs under half an em: of the 2,277 such pairs a mark makes in the 236
+/// benchmark documents this join first moved, 312 lie more than one glyph off and none two. A mark
+/// sits off its line's baseline, so the line break written there was never on the page. **A known limit**: a column of vertical text, whose glyphs the script
+/// rule may read as marks, sets each glyph within a glyph of the one above, and one set just right
+/// of it joins. The space goes in where the page drew one: in either run's text,
+/// or a gap that [`ink_contiguous`] reads as a word gap. Called by both projections.
+pub(crate) fn script_continues(
+    prev: &crate::Node,
+    node: &crate::Node,
+    pitch: &PitchReference,
+) -> Option<bool> {
+    let script = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.script.is_some());
+    let (Some(a), Some(b)) = (
+        prev.native_locator.run_locator(),
+        node.native_locator.run_locator(),
+    ) else {
+        return None;
+    };
+    let glyph = |n: &crate::Node| {
+        text_run_attributes(n)
+            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .map_or(0, |m| m.pitch)
+    };
+    let along = b.origin_x > a.origin_x
+        && (a.origin_y - b.origin_y).abs() < 2 * glyph(prev).max(glyph(node))
+        && match ink_reach(prev, pitch) {
+            Some((reach, measure)) => b.origin_x - reach >= -measure.pitch,
+            None => a.advance.is_some_and(|w| b.origin_x >= a.origin_x + w),
+        };
+    ((script(prev) || script(node)) && along && body_line_continues(prev, node)).then(|| {
+        prev.reading_text().ends_with(char::is_whitespace)
+            || node.reading_text().starts_with(char::is_whitespace)
+            || !ink_contiguous(prev, node, pitch)
+    })
 }
 
 /// Whether `node` continues, on a line of its own, the label `prev` belongs to (decision #65): both
@@ -1606,9 +1800,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         let word =
             i64::try_from(text.chars().take_while(|c| !c.is_whitespace()).count()).unwrap_or(0);
         let first_word = (1 + word) * (rb.2 - rb.0) / chars.max(1);
-        let lowercase = a.unit.is_none()
-            && a.tagged.is_some()
-            && b.text.trim_start().starts_with(char::is_lowercase);
+        let lowercase = a.unit.is_none() && a.tagged.is_some() && opens_lowercase(&b.text);
         if lowercase || heads.is_some_and(|edge| ra.2 <= edge + height && ra.2 + first_word > edge)
         {
             out.insert(b.first);
@@ -1743,7 +1935,8 @@ pub(crate) struct GroupKey {
 pub(crate) enum SequenceJoin {
     /// One block element holds both, on one line: `space` where the page drew one.
     ElementLine { space: bool },
-    /// One block element holds both, and this run opens the element's next line.
+    /// One block element holds both, and this run opens the element's next line, written as
+    /// [`element_next_line`] says (decision #126).
     ElementNextLine,
     /// Children of one kind of element, drawn next along one line.
     Line,
@@ -1770,10 +1963,10 @@ pub(crate) struct Between {
 ///    continues as a run of one sequence would. On `prev`'s line: where the page drew a space,
 ///    or no gap ([`Between`]), and never drawn back over `prev` — starting more than half a glyph
 ///    of its font before `prev`'s ink ends, as the second drawing does where a page thickens a
-///    heading by drawing its line twice. On a later line:
-///    with one space, where the baseline moved at least a glyph of `prev`'s font — less is the
-///    same line drawn twice — and `prev` does not end in a hyphen, since joined by a space a
-///    broken word would read `Dupont- Steilacoom`.
+///    heading by drawing its line twice. On a later line, where the baseline moved at least a
+///    glyph of `prev`'s font — less is the same line drawn twice — and `prev` does not end in a
+///    hyphen, since joined by a space a broken word would read `Dupont- Steilacoom`; written as
+///    [`element_next_line`] says (decision #126).
 /// 2. **Children of one kind of element**, at one heading level, joined where the page drew
 ///    `node` next along `prev`'s line ([`ink_sequenced`]), as an untagged page's runs join: a
 ///    producer that tags one line as several elements, or a run as none the file numbers.
@@ -1818,6 +2011,186 @@ pub(crate) fn sequence_join(
         && ink_sequenced(ink, end, reference, node);
     (along && same_parent(prev, node) && heading_level(prev) == heading_level(node))
         .then_some(SequenceJoin::Line)
+}
+
+/// Decision #126. What joins `node`, whose text is `text`, onto `prev`'s element's next line
+/// ([`SequenceJoin::ElementNextLine`]): a line break, as [`body_line_continues`] keeps one on an
+/// untagged page, since a producer that opens a sequence at every line — Chromium's — sets a
+/// resume's fields a line each. One space in a `heading`, which an ATX heading must keep on one
+/// line; on a line [`wrapped_labels`] says its column wrapped (decisions #47, #81, #85); from a
+/// bold run onto a bold run, so a bold phrase or paragraph its column wrapped stays one span,
+/// unless `node` is a label opening its line, `Duration:`; and before a line CommonMark would
+/// read as a block of its own ([`opens_block_syntax`]). Any other span — italic, a script —
+/// closes at the line's end and opens again on the next. Called by both projections.
+pub(crate) fn element_next_line(
+    prev: &crate::Node,
+    node: &crate::Node,
+    text: &str,
+    heading: bool,
+    wrapped: &std::collections::BTreeSet<&str>,
+) -> &'static str {
+    let bold = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.bold);
+    let label = text.trim_end().ends_with(':');
+    if heading
+        || wrapped.contains(node.id.as_str())
+        || (bold(prev) && bold(node) && !label)
+        || opens_block_syntax(text)
+    {
+        " "
+    } else {
+        "\n"
+    }
+}
+
+/// Whether `text`, opening a line, would read in CommonMark as a block of its own — an ATX
+/// heading, a quote, a list item, a fence, an HTML block — or as a setext underline, a thematic
+/// break or a table's delimiter row under the line above (decision #126).
+fn opens_block_syntax(text: &str) -> bool {
+    let t = text.trim_start();
+    let spaced = |rest: &str| rest.is_empty() || rest.starts_with([' ', '\t']);
+    let hashes = t.len() - t.trim_start_matches('#').len();
+    let number = t.trim_start_matches(|c: char| c.is_ascii_digit());
+    let digits = t.len() - number.len();
+    ((1..=6).contains(&hashes) && spaced(&t[hashes..]))
+        || t.starts_with('>')
+        || (t.starts_with(['-', '+', '*']) && spaced(&t[1..]))
+        || ((1..=9).contains(&digits) && number.starts_with(['.', ')']) && spaced(&number[1..]))
+        || t.starts_with("```")
+        || t.starts_with("~~~")
+        || (t.starts_with('<')
+            && t[1..].starts_with(|c: char| c.is_ascii_alphabetic() || "/!?".contains(c)))
+        || (!t.is_empty() && t.chars().all(|c| "-=*_|: \t".contains(c)))
+}
+
+/// Decision #130. The `<w:p>` a DOCX run belongs to, as its part and paragraph; `None` for any
+/// other address.
+fn docx_paragraph(node: &crate::Node) -> Option<(&str, u32)> {
+    match &node.native_locator {
+        crate::NativeLocator::Docx(d) => Some((d.part.as_str(), d.paragraph)),
+        _ => None,
+    }
+}
+
+/// Decision #130. Whether a DOCX run's `<w:t>` preserve their whitespace (`xml:space="preserve"`).
+fn docx_preserved(node: &crate::Node) -> bool {
+    matches!(&node.attributes, crate::NodeAttributes::OfficeRun(a) if a.space_preserved)
+}
+
+/// Decision #130. Which of two whitespace characters a stretch holding both projects as: a line
+/// break over a tab, a tab over a space.
+fn wider(a: char, b: char) -> char {
+    match (a, b) {
+        ('\n', _) | (_, '\n') => '\n',
+        ('\t', _) | (_, '\t') => '\t',
+        _ => ' ',
+    }
+}
+
+/// Decision #130. What one stretch of a DOCX run's whitespace projects as: one line break where it
+/// holds one, one tab where it holds one, one space otherwise, nothing where it is empty. **In a
+/// run whose `<w:t>` do not preserve their whitespace, a stretch holding a space is one space**:
+/// it is the XML's own indentation, which ECMA-376 makes insignificant there, as a pretty-printed
+/// `<w:t>` writes it. Word never sets a space beside a tab or a break it states in such a run,
+/// since it preserves a `<w:t>` that starts or ends with one. A lone line feed such a `<w:t>`
+/// holds cannot be told from a `<w:br/>` in the record, and stays a line break.
+fn stretch(whitespace: &str, preserved: bool) -> Option<char> {
+    if !preserved && whitespace.contains(' ') {
+        return Some(' ');
+    }
+    whitespace
+        .chars()
+        .map(|c| if c == '\n' || c == '\t' { c } else { ' ' })
+        .reduce(wider)
+}
+
+/// Decision #130. Whether the line a DOCX paragraph's line break opens — `rest`, then the runs of
+/// the paragraph after `nodes[i]` — would read in CommonMark as a block of its own
+/// ([`opens_block_syntax`]). Its first word is read across up to eight runs, as [`list_role_at`]
+/// reads a list run's, since Word cuts a run anywhere: `1` and `. apples`, `` ` `` and ` `` `.
+fn opens_line(nodes: &[crate::Node], i: usize, rest: &str) -> bool {
+    let paragraph = nodes.get(i).and_then(docx_paragraph);
+    let mut line = rest.to_string();
+    for node in nodes.iter().skip(i + 1).take(8) {
+        if line.trim_start().contains(char::is_whitespace) || docx_paragraph(node) != paragraph {
+            break;
+        }
+        line.push_str(node.reading_text());
+    }
+    opens_block_syntax(line.split_whitespace().next().unwrap_or_default())
+}
+
+/// The text `nodes[i]` projects as: [`normalize`]'s, and for a DOCX run (decision #130) each
+/// stretch of whitespace as [`stretch`] reads it, where `normalize` writes one space for every
+/// stretch; a line break before a line [`opens_line`] reads as a block is one space, as decision
+/// #126 writes one. Word states a tab and a line break as elements, `<w:tab/>` and `<w:br/>`, which
+/// the reader reads into the run's text. Both projections call it.
+pub(crate) fn projected_text(nodes: &[crate::Node], i: usize) -> String {
+    let node = &nodes[i];
+    let text = node.reading_text();
+    if docx_paragraph(node).is_none() {
+        return normalize(text);
+    }
+    let preserved = docx_preserved(node);
+    let trimmed = text.trim();
+    let mut out = String::with_capacity(trimmed.len());
+    let mut from = None;
+    for (at, ch) in trimmed.char_indices() {
+        if ch.is_whitespace() {
+            from.get_or_insert(at);
+            continue;
+        }
+        if let Some(gap) = from
+            .take()
+            .and_then(|start| stretch(&trimmed[start..at], preserved))
+        {
+            let block = gap == '\n' && opens_line(nodes, i, &trimmed[at..]);
+            out.push(if block { ' ' } else { gap });
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Decision #130. What joins `nodes[i]` onto `prev`, the open block's last run, where both are
+/// runs of one DOCX paragraph: the whitespace the paragraph holds between them — at `prev`'s end,
+/// in the whitespace runs between, at `nodes[i]`'s start — each stretch read as [`stretch`] reads
+/// it, the widest of them written ([`wider`]), or nothing where it holds none, so a word its runs
+/// split stays one word. A line break before a line [`opens_line`] reads as a block is one space.
+/// `None` where the two are not runs of one DOCX paragraph. Both projections call it.
+pub(crate) fn paragraph_seam(
+    nodes: &[crate::Node],
+    i: usize,
+    prev: &crate::Node,
+) -> Option<&'static str> {
+    let paragraph = docx_paragraph(prev)?;
+    let node = nodes
+        .get(i)
+        .filter(|n| docx_paragraph(n) == Some(paragraph))?;
+    let (before, after) = (prev.reading_text(), node.reading_text());
+    let between = nodes[..i]
+        .iter()
+        .rev()
+        .take_while(|n| docx_paragraph(n) == Some(paragraph) && n.reading_text().trim().is_empty())
+        .map(|n| stretch(n.reading_text(), docx_preserved(n)));
+    let gap = [stretch(
+        &before[before.trim_end().len()..],
+        docx_preserved(prev),
+    )]
+    .into_iter()
+    .chain(between)
+    .chain([stretch(
+        &after[..after.len() - after.trim_start().len()],
+        docx_preserved(node),
+    )])
+    .flatten()
+    .reduce(wider);
+    Some(match gap {
+        None => "",
+        Some('\n') if opens_line(nodes, i, after) => " ",
+        Some('\n') => "\n",
+        Some('\t') => "\t",
+        Some(_) => " ",
+    })
 }
 
 /// Whether `node`, just joined with `line_ink` its ink, sits on another line than `open_line`, or
@@ -1927,8 +2300,13 @@ pub(crate) fn same_line(line: LineKey, node: &crate::Node, measure: FontMeasure)
         k.page == line.page
             && k.region == line.region
             && k.artifact == line.artifact
-            && 10 * (k.baseline - line.baseline).abs() <= measure.pitch
+            && on_one_baseline(k.baseline, line.baseline, measure.pitch)
     })
+}
+
+/// Whether two baselines are one line's: within a tenth of the font's median glyph, `pitch`.
+fn on_one_baseline(a: i64, b: i64, pitch: i64) -> bool {
+    10 * (a - b).abs() <= pitch
 }
 
 pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
@@ -2361,6 +2739,136 @@ pub(crate) const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-
 /// the representation, which keeps every copy the page drew, and are not in this text.
 pub(crate) const OVERPRINTED_RUN_DROPPED: &str = "overprinted-run-dropped-v1";
 
+/// Runs left out because the caller asked for repeated page furniture to go (decision #134,
+/// [`ProjectionOptions::drop_furniture`]): a running head, a folio. Counted as a node of a kind
+/// the projection drops is counted — every character of its text, U+0000 and whitespace with it —
+/// and the representation keeps every run. Only with the option, so no default artifact has it.
+pub(crate) const PAGE_FURNITURE_NOT_PROJECTED: &str = "page-furniture-not-projected-v1";
+
+/// What a projection leaves out beyond its rule, on its caller's request (decision #134).
+///
+/// **Off by default, and off is [`to_markdown`] and [`crate::to_html`] byte for byte.** No option
+/// moves a rule id. What one leaves out is counted under a code of its own, so an artifact shows
+/// where the option acted; where it found nothing to leave out, the artifact is the default one,
+/// byte for byte, and either call reproduces it.
+///
+/// **Non-exhaustive**, so a later option is no breaking change: a caller outside this crate starts
+/// from `ProjectionOptions::default()` and sets the fields it wants.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ProjectionOptions {
+    /// Leave out page furniture that repeats: a line of runs the reader flagged as a header or a
+    /// footer ([`crate::TextRunAttributes::furniture`], on a page with no author structure), or
+    /// marked `/Artifact` by a tagged page, whose text another page's furniture repeats on the
+    /// same side of it and across the same place — whitespace aside and each run of digits read
+    /// as one, so `Page 9 of 12` and `Page 10 of 12` repeat. A line goes whole or stays whole.
+    /// A running head and a folio go; a title set apart on one page stays, and so does a cover's
+    /// year at its foot where the folios stand elsewhere. **Known limits**: a numbered title at
+    /// the head of each chapter's first page, `Chapter 1`, `Chapter 2`, reads as a running head and
+    /// goes; a year set where the folios stand goes with them; a folio in roman numerals, `ii`,
+    /// `iii`, is not read as a number, so repeats only where its text does. An `/Artifact` may be
+    /// a watermark or a background's text, and one repeated so goes too. The block around a line
+    /// left out ends there, and the list around it, as the furniture's own block ended them.
+    /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`].
+    pub drop_furniture: bool,
+}
+
+/// The runs [`ProjectionOptions::drop_furniture`] leaves out: each furniture line whose text
+/// another page repeats, on the same side of it and across the same place.
+///
+/// **A line, never a run**: a page's consecutive furniture runs on one baseline, so a running
+/// head set a run per word, or per letter, goes whole or stays whole, and a title set apart on
+/// one page keeps every word another page's furniture shares. Its text is compared without its
+/// whitespace and with each run of digits read as one digit. Its side is the half of its page the
+/// middle of its measured box lies in — for a flagged line the side its band names — and its
+/// place the span across the page that box covers, which must overlap the other line's. A line
+/// with no text, or no measured box, is not compared, so a space a page drew as an `/Artifact`
+/// still joins what lies either side of it; and a table's run is left to its cell, as
+/// [`overprinted_runs`] leaves it.
+pub(crate) fn repeated_furniture<'a>(
+    repr: &'a DocumentRepresentation,
+    owner: &std::collections::BTreeMap<&str, usize>,
+) -> std::collections::BTreeSet<&'a str> {
+    type Ink = (i64, i64, i64, i64);
+    let payload = repr.payload();
+    // Each line: its runs, its page, its text as compared, and its box.
+    let mut lines: Vec<(Vec<&str>, &crate::NodeId, String, Option<Ink>)> = Vec::new();
+    let mut prev: Option<&crate::Node> = None;
+    for (i, n) in payload.nodes.iter().enumerate() {
+        let furniture = (text_run_attributes(n).is_some_and(|a| a.furniture.is_some())
+            || is_page_artifact(n))
+            && !owner.contains_key(n.id.as_str());
+        if !furniture {
+            prev = None;
+            continue;
+        }
+        if !prev.is_some_and(|p| p.parent == n.parent && !on_different_lines(p, n)) {
+            lines.push((Vec::new(), &n.parent, String::new(), None));
+        }
+        prev = Some(n);
+        let (ids, _, key, ink) = lines.last_mut().expect("a line is open");
+        ids.push(n.id.as_str());
+        for c in n.text.chars().filter(|c| !c.is_whitespace()) {
+            let c = if c.is_numeric() { '0' } else { c };
+            if !(c == '0' && key.ends_with('0')) {
+                key.push(c);
+            }
+        }
+        if let Some((x0, y0, x1, y1)) = measured_box(repr, i) {
+            *ink = Some(ink.map_or((x0, y0, x1, y1), |(a, b, c, d)| {
+                (a.min(x0), b.min(y0), c.max(x1), d.max(y1))
+            }));
+        }
+    }
+
+    // By text and side, each line's span across, its page, and where it stands in `lines`.
+    let height: std::collections::BTreeMap<&crate::NodeId, i64> =
+        payload.pages.iter().map(|p| (&p.id, p.height)).collect();
+    type Span<'p> = (i64, i64, &'p crate::NodeId, usize);
+    let mut groups: std::collections::BTreeMap<(&str, bool), Vec<Span<'_>>> = Default::default();
+    for (k, (_, page, key, ink)) in lines.iter().enumerate() {
+        if let (false, Some((x0, y0, x1, y1)), Some(h)) = (key.is_empty(), ink, height.get(page)) {
+            let top = y0 + y1 < *h;
+            groups
+                .entry((key, top))
+                .or_default()
+                .push((*x0, *x1, page, k));
+        }
+    }
+    // A line repeats where a line of another page starts before it ends and ends after it starts.
+    // Sorted by start, the lines starting before one ends are a prefix, so each prefix keeps the
+    // furthest end, its page, and the furthest end on any other page.
+    let mut repeated = vec![false; lines.len()];
+    for group in groups.values_mut() {
+        group.sort_unstable_by_key(|&(x0, ..)| x0);
+        let mut reach: (Option<(i64, &crate::NodeId)>, i64) = (None, i64::MIN);
+        let mut prefix = vec![reach];
+        for &(_, x1, page, _) in group.iter() {
+            reach = match reach {
+                (None, other) => (Some((x1, page)), other),
+                (Some((end, p)), other) if p == page => (Some((end.max(x1), p)), other),
+                (Some((end, _)), _) if x1 > end => (Some((x1, page)), end),
+                (best, other) => (best, other.max(x1)),
+            };
+            prefix.push(reach);
+        }
+        for &(x0, x1, page, k) in group.iter() {
+            let (best, other) = prefix[group.partition_point(|&(start, ..)| start <= x1)];
+            let end = match best {
+                Some((end, p)) if p != page => end,
+                _ => other,
+            };
+            repeated[k] |= end >= x0;
+        }
+    }
+    lines
+        .into_iter()
+        .zip(repeated)
+        .filter(|(_, r)| *r)
+        .flat_map(|((ids, ..), _)| ids)
+        .collect()
+}
+
 /// U+0000 in node text, which neither projection writes (review 2026-09-26 N40).
 ///
 /// **Neither format can carry it.** CommonMark replaces it with U+FFFD, and an HTML parser drops
@@ -2712,6 +3220,20 @@ impl Emit {
             self.flush_held();
             return;
         }
+        // Decision #131: where only the script changes, with nothing held between, the emphasis
+        // stays open and only the script's element closes and opens: `*U<sub>t</sub>*`, where
+        // closing it wrote `*U**<sub>t</sub>*`, which CommonMark reads with its asterisks as text.
+        let open = self.emphasis.open;
+        if self.emphasis.held.is_empty() && (style.bold, style.italic) == (open.bold, open.italic) {
+            let script = |script| Style {
+                script,
+                ..Style::default()
+            };
+            self.write_syntax(&script(open.script).markers(markup).1);
+            self.write_syntax(&script(style.script).markers(markup).0);
+            self.emphasis.open = style;
+            return;
+        }
         self.close_emphasis();
         self.flush_held();
         self.write_syntax(&style.markers(markup).0);
@@ -2955,13 +3477,14 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v13`
+/// # The rule, in full — `markdown-blocks-v14`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
 ///    `structural_locator: pdf_artifact`, and checklist O21/O22 is explicit that a reader deleting
 ///    running heads has silently edited the document. The flag stays in the representation and a
-///    consumer that wants them gone drops them itself, knowing it did.
+///    consumer that wants them gone drops them itself, knowing it did — or asks
+///    [`to_markdown_with`] to, which counts what it left out (decision #134).
 /// 2. **A heading when the tree says so**, `#` through `######` — or `#` where the reader read a
 ///    line as a heading from its type (decision #29); a paragraph otherwise.
 /// 3. **A GFM table** for every table on the representation, at the position of the first run one
@@ -2972,7 +3495,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    glyph, a hanging indent or a font name.
 /// 5. **Blank line between blocks**, which is `syntax` — the document drew no such bytes.
 /// 6. **Node text is normalized** by [`normalize`], and a node whose normalization is empty
-///    contributes no segment at all rather than an empty one.
+///    contributes no segment at all rather than an empty one. A DOCX run keeps its tabs and line
+///    breaks ([`projected_text`]), and a DOCX paragraph's runs are one block (decision #130).
 /// 7. **A word broken across a line is closed up** — v1.1-S3's one cosmetic, and the only clause
 ///    here that removes a character that is not whitespace (rule 6 collapses runs of it, and
 ///    counts them too). The conditions are [`hyphen_tail`]'s, the joined bytes are one `source`
@@ -3013,6 +3537,29 @@ pub fn to_markdown(
     profile_sha256: &Sha256Hex,
     markdown_rule: &str,
 ) -> Result<MarkdownArtifact, EngineError> {
+    to_markdown_with(
+        repr,
+        parser_version,
+        profile_sha256,
+        markdown_rule,
+        ProjectionOptions::default(),
+    )
+}
+
+/// [`to_markdown`], leaving out what `options` asks to, counted (decision #134). Rule 1 stands
+/// for a caller who does not ask: page furniture goes only on request, and the census says how
+/// much went.
+///
+/// # Errors
+///
+/// As [`to_markdown`].
+pub fn to_markdown_with(
+    repr: &DocumentRepresentation,
+    parser_version: &str,
+    profile_sha256: &Sha256Hex,
+    markdown_rule: &str,
+    options: ProjectionOptions,
+) -> Result<MarkdownArtifact, EngineError> {
     let payload = repr.payload();
 
     let mut e = Emit::with_emphasis(&payload.nodes, Markup::Markdown);
@@ -3037,8 +3584,8 @@ pub fn to_markdown(
 
     let mut emitted_tables = vec![false; plans.len()];
     let mut last: Option<Block> = None;
-    // The list item currently open, and whether the previous run in it was the item's own `/Lbl`.
-    let mut open_item: Option<(usize, bool)> = None;
+    // The list item currently open: the previous run's place in it, its own `/Lbl` or not.
+    let mut open_item: Option<ListRole> = None;
     // Set when the previous node's hyphen join already emitted this one's text, as the tail of a
     // joined word. Its characters still count toward `in_representation` — they are in the record
     // whether or not this pass reaches them separately — so the flag is read after that.
@@ -3055,6 +3602,8 @@ pub fn to_markdown(
     // box — set where a block opens and where a run joins it at the ink. A block a gap join
     // extends holds a space, and is no section number standing alone, so the join leaves it.
     let mut open_at: Option<usize> = None;
+    // Decision #126: whether the open block was opened as a heading, which keeps its lines on one.
+    let mut open_heading = false;
     let mut pending_space = false;
     // Decision #65: the open block's text, which [`heading_number_continues`] reads for a section
     // number standing alone.
@@ -3069,6 +3618,11 @@ pub fn to_markdown(
     let stretches = read_stretches(&payload.nodes, &pitch);
     let wrapped = wrapped_labels(repr);
     let overprinted = overprinted_runs(&payload.nodes, &owner, &pitch);
+    let furniture = if options.drop_furniture {
+        repeated_furniture(repr, &owner)
+    } else {
+        Default::default()
+    };
     let mut open_line: Option<LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -3080,7 +3634,13 @@ pub fn to_markdown(
             continue;
         }
 
-        if let Some(code) = dropped_code(node.kind) {
+        // Decision #134: furniture left out on request goes as a node of a dropped kind goes.
+        let dropped = dropped_code(node.kind).or_else(|| {
+            furniture
+                .contains(node.id.as_str())
+                .then_some(PAGE_FURNITURE_NOT_PROJECTED)
+        });
+        if let Some(code) = dropped {
             let b = buckets.entry(code).or_insert((0, 0));
             b.0 += node.text.chars().count();
             b.1 += 1;
@@ -3091,6 +3651,14 @@ pub fn to_markdown(
             pending_space = false;
             open_line = None;
             line_ink = None;
+            // Decision #134: and the list item, and the separator, as the furniture's own block
+            // ended them, so the blocks either side are the default's with that block cut out.
+            if code == PAGE_FURNITURE_NOT_PROJECTED {
+                open_item = None;
+                if last.is_some() {
+                    last = Some(Block::Standalone);
+                }
+            }
             continue;
         }
 
@@ -3123,7 +3691,7 @@ pub fn to_markdown(
             continue;
         }
 
-        let text = normalize(node.reading_text());
+        let text = projected_text(&payload.nodes, i);
         if text.is_empty() {
             // Whitespace-only runs exist (a `Tj` of spaces is a real operator). They contribute no
             // Markdown, and they contribute no dropped characters either: `normalize` removed
@@ -3156,13 +3724,12 @@ pub fn to_markdown(
             continue;
         }
 
-        if let Some(role) = list_role(node) {
-            let continues = !role.label && open_item.map(|(d, _)| d) == Some(role.depth);
-            if continues {
+        if let Some(role) = list_role_at(&payload.nodes, i, &pitch) {
+            if role.continues(open_item) {
                 // A second run inside an item the tree did not itself close. Joined here, and
-                // counted there — see `GFM_LIST_ITEM_RUN_JOINS`.
-                if !matches!(open_item, Some((_, true))) {
-                    *erasures.entry(GFM_LIST_ITEM_RUN_JOINS).or_insert(0) += 1;
+                // counted where `ListRole::join_code` says.
+                if let Some(code) = open_item.and_then(|open| role.join_code(open)) {
+                    *erasures.entry(code).or_insert(0) += 1;
                 }
                 // `-v12`: no space between two fragments of one word, as in a table cell.
                 let abuts = i
@@ -3188,7 +3755,7 @@ pub fn to_markdown(
                 e.syntax("- ");
             }
             e.source(&text, node.id.as_str());
-            open_item = Some((role.depth, role.label));
+            open_item = Some(role);
             last = Some(Block::ListItem(role.depth));
             // The list path has its own join and its own census code; a prose block never
             // continues into or out of one.
@@ -3218,7 +3785,8 @@ pub fn to_markdown(
         // block, so `hyphen_tail` can close the word up. Joining it into the block above instead
         // would strand the tail and re-open `nonescr` from the other side.
         let next = payload.nodes.get(i + 1);
-        let next = next.filter(|n| !overprinted.contains(n.id.as_str()));
+        let next = next
+            .filter(|n| !overprinted.contains(n.id.as_str()) && !furniture.contains(n.id.as_str()));
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = group_key(node);
         let mut across: Option<SequenceJoin> = None;
@@ -3320,10 +3888,20 @@ pub fn to_markdown(
         // them. Both, like the unit join, only where nothing declared a group. Decision #68: runs
         // of one unit on one line take the gap between them as one space, where a page placed its
         // words by moving its pen and the ink joins above break at every word.
+        // Decision #130: the next run of one DOCX paragraph, with what the paragraph holds between.
         let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
             None
+        } else if let Some(seam) =
+            open_prev.and_then(|prev| paragraph_seam(&payload.nodes, i, prev))
+        {
+            Some((seam, BLOCK_ELEMENT_RUN_JOINS))
         } else if open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped)) {
             Some((" ", LAYOUT_UNIT_LINE_JOINS))
+        } else if let Some(space) = open_prev.and_then(|prev| script_continues(prev, node, &pitch))
+        {
+            // Decision #131: a mark stays on its line.
+            let separator = if space || pending_space { " " } else { "" };
+            Some((separator, LAYOUT_UNIT_LINE_JOINS))
         } else if open_prev
             .is_some_and(|prev| label_line_continues(prev, node) || body_line_continues(prev, node))
         {
@@ -3382,11 +3960,18 @@ pub fn to_markdown(
                 if across.is_some() {
                     open_group = key;
                 }
+                // Decision #126: onto its element's next line, on a line of its own.
+                let separator = match (across, open_prev) {
+                    (Some(SequenceJoin::ElementNextLine), Some(prev)) => {
+                        element_next_line(prev, node, &text, open_heading, &wrapped)
+                    }
+                    _ => " ",
+                };
                 if space {
                     // `syntax`, not source: the document drew a space somewhere, and this is this
                     // exporter's single normalized rendering of it. `html.rs`'s cell join settled
                     // the same question the same way.
-                    e.syntax(" ");
+                    e.syntax(separator);
                     e.source(&text, node.id.as_str());
                 } else if declared {
                     e.source_continuing(&text, node.id.as_str());
@@ -3398,7 +3983,7 @@ pub fn to_markdown(
                     e.source(&text, node.id.as_str());
                 }
                 if space {
-                    block_text.push(' ');
+                    block_text.push_str(separator);
                 }
                 block_text.push_str(&text);
                 let code = if matches!(
@@ -3448,7 +4033,9 @@ pub fn to_markdown(
         // The heading marker, when the tree said so. Also `syntax`: `## ` is this exporter's
         // rendering of a role, not bytes the page drew. Emitted at block open only — a run joined
         // into an open block never re-emits it, which is why the `continue` above is above this.
-        if let Some(level) = heading_level(node) {
+        let level = heading_level(node);
+        open_heading = level.is_some();
+        if let Some(level) = level {
             e.syntax(&"#".repeat(level as usize));
             e.syntax(" ");
             e.heading();
@@ -3506,7 +4093,14 @@ pub fn to_markdown(
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let markdown = e.markdown;
 
-    let coverage = census(payload, in_representation, emitted_chars, buckets, erasures);
+    let coverage = census(
+        payload,
+        &furniture,
+        in_representation,
+        emitted_chars,
+        buckets,
+        erasures,
+    );
 
     let artifact = MarkdownArtifact {
         identity: ArtifactIdentity {
@@ -3549,8 +4143,12 @@ pub fn to_markdown(
 /// limit of GFM. See `crate::html`'s module documentation for the table. Copying a code onto an
 /// artifact that does not commit the erasure would disclose nothing; dropping one it does commit
 /// would be worse.
+///
+/// `left_out` names the runs an option left out whole (decision #134), which are counted in their
+/// own bucket as a node of a dropped kind is, and so, like one, nowhere else.
 pub(crate) fn census(
     payload: &crate::representation::RepresentationPayload,
+    left_out: &std::collections::BTreeSet<&str>,
     in_representation: usize,
     emitted_chars: usize,
     mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)>,
@@ -3570,10 +4168,12 @@ pub(crate) fn census(
     //
     // U+0000 first, so the residue below is whitespace alone. No writer emits it (`writable`), and
     // every projected run's text is written once, so the record says how many were removed.
+    let projected =
+        |n: &&crate::Node| dropped_code(n.kind).is_none() && !left_out.contains(n.id.as_str());
     let (nulls, nodes) = payload
         .nodes
         .iter()
-        .filter(|n| dropped_code(n.kind).is_none())
+        .filter(projected)
         .map(|n| n.text.matches('\0').count())
         .filter(|&count| count > 0)
         .fold((0, 0), |(chars, nodes), count| (chars + count, nodes + 1));
@@ -3587,8 +4187,7 @@ pub(crate) fn census(
             .nodes
             .iter()
             .filter(|n| {
-                dropped_code(n.kind).is_none()
-                    && normalize(&n.text).chars().count() != n.text.chars().count()
+                projected(n) && normalize(&n.text).chars().count() != n.text.chars().count()
             })
             .count();
         buckets.insert("whitespace-collapsed-v1", (collapsed, nodes));
@@ -5673,6 +6272,165 @@ pub(crate) mod tests {
         assert_eq!(erasure(&paired, GFM_LIST_ITEM_RUN_JOINS), 0);
     }
 
+    /// **Two bodies the file numbers are two items** (decision #128): sibling `/LI`s share one
+    /// role path, and each `/LBody` its own object number. One body's runs stay one item, counted
+    /// as the element's join rather than a guess, and a body still joins its own `/Lbl`.
+    #[test]
+    fn two_numbered_list_bodies_are_two_items() {
+        let path = &["Document", "L", "LI", "LBody"];
+        let body = |mcid, element| tagged_in(mcid, path, Some(element));
+        let label = |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "Lbl"], Some(element));
+        let a = project_lines(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("• Second", body(8, 2796), 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(a.markdown, "- • First\n- • Second\n");
+        assert_eq!(erasure(&a, GFM_LIST_ITEM_RUN_JOINS), 0);
+
+        let one = project_lines(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("continued", body(5, 2795), 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(one.markdown, "- • First continued\n");
+        assert_eq!(erasure(&one, GFM_LIST_ITEM_RUN_JOINS), 0);
+        assert_eq!(erasure(&one, BLOCK_ELEMENT_RUN_JOINS), 1);
+
+        // A body the file does not number stays the guess.
+        let bare = tagged_in(5, path, None);
+        let unnumbered = project_lines(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("continued", bare, 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(unnumbered.markdown, "- • First continued\n");
+        assert_eq!(erasure(&unnumbered, GFM_LIST_ITEM_RUN_JOINS), 1);
+        assert_eq!(erasure(&unnumbered, BLOCK_ELEMENT_RUN_JOINS), 0);
+
+        let labelled = project_lines(&[
+            ("1.", label(3, 2794), 7200, 7200, Some(400), None),
+            ("First", body(4, 2795), 7800, 7200, Some(1000), None),
+            ("2.", label(5, 2796), 7200, 5800, Some(400), None),
+            ("Second", body(6, 2797), 7800, 5800, Some(1200), None),
+        ]);
+        assert_eq!(labelled.markdown, "- 1. First\n- 2. Second\n");
+    }
+
+    /// **A body that reads on goes on in the open item** (decision #128): a bullet a column break
+    /// carried to the top of the next column, which a producer tagged as a new `/LBody`. Reading on
+    /// is opening lowercase with no label of its own — `b)`, `ii.` drawn a glyph at a time, Word's
+    /// `o` — set nowhere below the open run. Counted as the guess. Anything else is the next item:
+    /// a body opening with a capital, a bullet, a number or a symbol font's bullet, wherever it is
+    /// set, and a lowercase one on the next line down.
+    #[test]
+    fn a_body_that_reads_on_goes_on_in_the_open_item() {
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let top = |first: &'static str, second: &'static str| {
+            project_lines(&[
+                (first, body(4, 95), 7200, 7200, Some(4000), None),
+                (second, body(9, 100), 30000, 2000, Some(3000), None),
+            ])
+        };
+        let a = top("\u{F02A} Observations made from", "a viewing platform.");
+        assert_eq!(
+            a.markdown,
+            "- \u{F02A} Observations made from a viewing platform.\n"
+        );
+        assert_eq!(erasure(&a, GFM_LIST_ITEM_RUN_JOINS), 1);
+        assert_eq!(erasure(&a, BLOCK_ELEMENT_RUN_JOINS), 0);
+
+        for second in [
+            "Harvesters shared",
+            "\u{F02A} harvesters shared",
+            "• harvesters",
+            "o added examples",
+            "2. second",
+            "b) second",
+            "[26] second",
+        ] {
+            assert_eq!(
+                top("\u{F02A} First", second).markdown,
+                format!("- \u{F02A} First\n- {second}\n"),
+                "{second:?}"
+            );
+        }
+
+        // A label drawn a glyph at a time is a label still.
+        let glyphs = project_lines(&[
+            ("i. First", body(4, 95), 7200, 7200, Some(1600), None),
+            ("i", body(9, 100), 30000, 2000, Some(200), None),
+            ("i.", body(9, 100), 30200, 2000, Some(300), None),
+            ("second", body(9, 100), 31000, 2000, Some(1400), None),
+        ]);
+        assert_eq!(glyphs.markdown, "- i. First\n- ii. second\n");
+
+        // On one baseline, a body opening with a capital is an item of its own.
+        let beside = project_lines(&[
+            ("First", body(4, 95), 7200, 7200, Some(2000), None),
+            ("Second", body(9, 100), 30000, 7200, Some(2400), None),
+        ]);
+        assert_eq!(beside.markdown, "- First\n- Second\n");
+
+        // Stepping down the page, numbered or reading on, each body is an item of its own.
+        for (first, second) in [("1. alpha", "2. beta"), ("first item", "second item")] {
+            let down = project_lines(&[
+                (first, body(4, 95), 7200, 7200, Some(2000), None),
+                (second, body(9, 100), 7200, 8600, Some(2400), None),
+            ]);
+            assert_eq!(down.markdown, format!("- {first}\n- {second}\n"));
+        }
+    }
+
+    /// **A marker drawn in the `/LI` itself goes on into its body on its line**, as an `/Lbl` does
+    /// (decision #128): `/LI`, `/Lbl` and `/LBody` each have a number of their own. Counted as the
+    /// guess, since nothing pairs the two the way PDF 32000 pairs a label with its body. A body on
+    /// the next line down is the next item.
+    #[test]
+    fn a_marker_drawn_in_the_item_goes_on_into_its_body() {
+        let item = |mcid, element| tagged_in(mcid, &["Document", "L", "LI"], Some(element));
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let a = project_lines(&[
+            ("•", item(3, 2794), 7200, 7200, Some(400), None),
+            ("First", body(4, 2795), 7800, 7200, Some(1000), None),
+            ("•", item(5, 2796), 7200, 5800, Some(400), None),
+            ("Second", body(6, 2797), 7800, 5800, Some(1200), None),
+        ]);
+        assert_eq!(a.markdown, "- • First\n- • Second\n");
+        assert_eq!(erasure(&a, GFM_LIST_ITEM_RUN_JOINS), 2);
+
+        // A baseline a few centipoints off is one line still, as `same_line` reads one.
+        let skewed = project_lines(&[
+            ("•", item(3, 2794), 7200, 7200, Some(400), None),
+            ("First", body(4, 2795), 7800, 7210, Some(1000), None),
+        ]);
+        assert_eq!(skewed.markdown, "- • First\n");
+
+        // A whole item drawn in the `/LI`, and the next item's body on the next line down.
+        let next = project_lines(&[
+            (
+                "3. Approval of Minutes",
+                item(3, 32),
+                7200,
+                25180,
+                Some(9000),
+                None,
+            ),
+            ("4.", body(4, 38), 7200, 28051, Some(800), None),
+            (
+                "Financial Report",
+                body(5, 38),
+                8400,
+                28051,
+                Some(7000),
+                None,
+            ),
+        ]);
+        assert_eq!(
+            next.markdown,
+            "- 3. Approval of Minutes\n- 4. Financial Report\n"
+        );
+    }
+
     /// A run outside the list closes it, and the next block is separated by a blank line.
     #[test]
     fn a_non_list_run_ends_the_list() {
@@ -6495,6 +7253,252 @@ pub(crate) mod tests {
         ]));
         assert_eq!(a.markdown, "develop-\n\nment\n");
         assert!(a.coverage.balances());
+    }
+
+    /// Runs of one layout unit, each `(text, x, y)` at 200 units a character, with `scripts` set.
+    pub(crate) fn unit_with_scripts(
+        runs: &[(&'static str, i64, i64)],
+        scripts: &[(usize, crate::Script)],
+    ) -> DocumentRepresentation {
+        let specs: Vec<LineSpec<'static>> = runs
+            .iter()
+            .map(|&(t, x, y)| (t, None, x, y, Some(200 * t.chars().count() as i64), None))
+            .collect();
+        let units = vec![Some(1); specs.len()];
+        with_scripts(with_units(repr_of_placed(&specs), &units), scripts)
+    }
+
+    /// **A raised or lowered mark stays on its line** (decision #131): the run before it and the
+    /// run after it go on along the line with no break, and with one space where the page drew
+    /// one — in a run's text, or a gap a word gap wide. A line that a mark closes, or that opens on
+    /// one, still breaks, and the join is counted as the line break it replaces was.
+    #[test]
+    fn a_mark_set_on_a_line_stays_on_it() {
+        use crate::Script::{Subscript, Superscript};
+        let md = |runs: &[(&'static str, i64, i64)], scripts: &[(usize, crate::Script)]| {
+            artifact_of(unit_with_scripts(runs, scripts))
+        };
+        let a = md(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8350),
+                (" was revised", 11400, 8600),
+                ("Next line", 7200, 10000),
+            ],
+            &[(1, Superscript)],
+        );
+        assert_eq!(
+            a.markdown,
+            "The rate of interest<sup>1</sup> was revised\nNext line\n"
+        );
+        assert!(a.coverage.balances());
+        let joins = a
+            .coverage
+            .structural_erasures
+            .iter()
+            .find(|e| e.code == LAYOUT_UNIT_LINE_JOINS)
+            .map_or(0, |e| e.count);
+        assert_eq!(joins, 3);
+
+        // A gap a word gap wide is a space the page drew.
+        let a = md(
+            &[("interest", 7200, 8600), ("1", 9400, 8450)],
+            &[(1, Superscript)],
+        );
+        assert_eq!(a.markdown, "interest <sup>1</sup>\n");
+
+        // A mark closing a line, and a subscript inside a word.
+        let a = md(
+            &[
+                ("notification.", 7200, 8600),
+                ("1", 9800, 8450),
+                ("H", 7200, 10000),
+                ("2", 7400, 10100),
+                ("O", 7600, 10000),
+            ],
+            &[(1, Superscript), (3, Subscript)],
+        );
+        assert_eq!(a.markdown, "notification.<sup>1</sup>\nH<sub>2</sub>O\n");
+
+        // A mark opening a line, flush with the line above or set in from it.
+        let a = md(
+            &[
+                ("one.", 7200, 8600),
+                ("2", 7200, 9850),
+                ("Second", 7400, 10000),
+                ("continuation flush left", 7200, 11400),
+                ("3", 7400, 12250),
+                ("Third", 7600, 12400),
+            ],
+            &[(1, Superscript), (4, Superscript)],
+        );
+        assert_eq!(
+            a.markdown,
+            "one.\n<sup>2</sup>Second\ncontinuation flush left\n<sup>3</sup>Third\n"
+        );
+
+        // A mark with no reach to read: the next line still opens left of it. And a space drawn
+        // as a run of its own, however narrow, is a space.
+        let of = |specs: &[LineSpec<'static>], mark: usize| {
+            let units = vec![Some(1); specs.len()];
+            let repr = with_units(repr_of_placed(specs), &units);
+            artifact_of(with_scripts(repr, &[(mark, Superscript)])).markdown
+        };
+        assert_eq!(
+            of(
+                &[
+                    ("notification.", None, 7200, 8600, Some(2600), None),
+                    ("1", None, 9800, 8450, None, None),
+                    ("issued", None, 7200, 10000, Some(1200), None),
+                ],
+                1
+            ),
+            "notification.<sup>1</sup>\nissued\n"
+        );
+        assert_eq!(
+            of(
+                &[
+                    ("x", None, 7200, 8600, Some(200), None),
+                    (" ", None, 7400, 8600, Some(0), None),
+                    ("2", None, 7400, 8450, Some(200), None),
+                ],
+                2
+            ),
+            "x <sup>2</sup>\n"
+        );
+        assert_eq!(
+            of(
+                &[
+                    ("x ", None, 7200, 8600, Some(400), None),
+                    ("2", None, 7600, 8450, Some(200), None),
+                ],
+                1
+            ),
+            "x <sup>2</sup>\n"
+        );
+
+        // A mark in a unit of its own, as a footnote's below the text, keeps its block.
+        let specs: [LineSpec<'static>; 2] = [
+            ("1", None, 7200, 70800, Some(200), None),
+            ("Notification", None, 7400, 70900, Some(2400), None),
+        ];
+        let repr = with_units(repr_of_placed(&specs), &[Some(1), Some(2)]);
+        assert_eq!(
+            artifact_of(with_scripts(repr, &[(0, Superscript)])).markdown,
+            "<sup>1</sup>\n\nNotification\n"
+        );
+
+        // A line set at a size of its own has no measure to read its reach by: a mark opening the
+        // next line, set right of where it starts and within a glyph of its baseline, is drawn
+        // over it, not after it.
+        let sized = |repr: DocumentRepresentation, at: usize, size: i64| {
+            let mut payload = repr.payload().clone();
+            if let NodeAttributes::TextRun(a) = &mut payload.nodes[at].attributes {
+                a.font_size = size;
+            }
+            artifact_of(DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap())
+        };
+        let repr = unit_with_scripts(
+            &[
+                ("A line set at a size of its own", 7200, 8600),
+                ("2", 7600, 8750),
+                ("Line opening", 7800, 8900),
+            ],
+            &[(1, Superscript)],
+        );
+        assert_eq!(
+            sized(repr, 0, 2500).markdown,
+            "A line set at a size of its own\n<sup>2</sup>Line opening\n"
+        );
+        // A mark at a size of its own goes on to a run drawn past the whole of its advance.
+        let repr = unit_with_scripts(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8450),
+                (" was revised", 11400, 8600),
+            ],
+            &[(1, Superscript)],
+        );
+        assert_eq!(
+            sized(repr, 1, 1400).markdown,
+            "The rate of interest<sup>1</sup> was revised\n"
+        );
+        // A page that sets `Tf` 1 and its size in the text matrix: the em is the glyphs' own.
+        let repr = unit_with_scripts(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8450),
+                (" was revised", 11400, 8600),
+            ],
+            &[(1, Superscript)],
+        );
+        let mut payload = repr.payload().clone();
+        for node in &mut payload.nodes {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.font_size = 100;
+            }
+        }
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        assert_eq!(
+            artifact_of(repr).markdown,
+            "The rate of interest<sup>1</sup> was revised\n"
+        );
+
+        // A mark within a glyph of a line's baseline, drawn back over its ink, is not after it.
+        assert_eq!(
+            md(
+                &[("continuation flush left", 7200, 8600), ("3", 7400, 8750)],
+                &[(1, Superscript)]
+            )
+            .markdown,
+            "continuation flush left\n<sup>3</sup>\n"
+        );
+        // A glyph set below another and just right of it is two glyphs or more off its line.
+        assert_eq!(
+            md(&[("H", 7200, 8600), ("2", 7400, 9800)], &[(1, Subscript)]).markdown,
+            "H\n<sub>2</sub>\n"
+        );
+        // An index set under a power, at its x, is drawn over it, not after it.
+        assert_eq!(
+            md(
+                &[("S", 7200, 8600), ("n", 7400, 8500), ("i", 7400, 8650)],
+                &[(1, Superscript), (2, Subscript)]
+            )
+            .markdown,
+            "S<sup>n</sup>\n<sub>i</sub>\n"
+        );
+    }
+
+    /// **Emphasis stays open where only the script changes** (decision #131): an italic letter
+    /// and its italic index, drawn together, are one span, `*U<sub>t</sub>*`; closing and opening
+    /// it wrote `*U**<sub>t</sub>*`, which CommonMark reads with the asterisks as text. Where a
+    /// space comes between, each run keeps a span of its own.
+    #[test]
+    fn emphasis_stays_open_where_only_the_script_changes() {
+        let a = artifact_of(italic_index());
+        assert_eq!(a.markdown, "The state *U<sub>t</sub>* at time\n");
+        assert!(a.coverage.balances());
+        let spaced = with_styles(
+            with_scripts(
+                line_of_words(&["U", " ", "t"]),
+                &[(2, crate::Script::Subscript)],
+            ),
+            &[],
+            &[0, 2],
+        );
+        assert_eq!(artifact_of(spaced).markdown, "*U* *<sub>t</sub>*\n");
+    }
+
+    /// `The state ` then an italic `U` with its italic index `t` drawn against it, in one unit.
+    pub(crate) fn italic_index() -> DocumentRepresentation {
+        let runs = [
+            ("The state ", 7200, 8600),
+            ("U", 9200, 8600),
+            ("t", 9400, 8700),
+            (" at time", 9600, 8600),
+        ];
+        let repr = unit_with_scripts(&runs, &[(2, crate::Script::Subscript)]);
+        with_styles(repr, &[], &[1, 2])
     }
 
     /// **A heading is not joined to a plain line of its unit** (decision #109): a mark set beside a
@@ -8579,9 +9583,9 @@ pub(crate) mod tests {
     /// Word's export changes sequence at every change of style and at every line, and the element
     /// citing them is the paragraph the document declared. Along a line a run joins where the page
     /// drew a space or no gap, and never drawn back over the run before it — a heading drawn twice
-    /// to thicken it stays two lines; onto the next line with one space, where the baseline moved
-    /// at least a glyph and the line does not end in a hyphen. Two elements stay two blocks, and so
-    /// does each half of a page break, a column or a region.
+    /// to thicken it stays two lines; onto the next line on a line of its own (decision #126),
+    /// where the baseline moved at least a glyph and the line does not end in a hyphen. Two
+    /// elements stay two blocks, and so does each half of a page break, a column or a region.
     #[test]
     fn one_elements_runs_are_one_block_across_sequences() {
         let p = |mcid, element| tagged_in(mcid, &["Document", "P"], Some(element));
@@ -8598,7 +9602,7 @@ pub(crate) mod tests {
             ("revenue", p(3, 9), 8400, 7200, Some(1400), None),
             ("rose", p(4, 9), 7200, 5800, Some(800), None),
         ]);
-        assert_eq!(one.markdown, "Total revenue rose\n");
+        assert_eq!(one.markdown, "Total revenue\nrose\n");
         assert_eq!(count(&one, BLOCK_ELEMENT_RUN_JOINS), 2);
         assert_eq!(count(&one, MCID_RUN_JOINS), 0);
         assert!(one.coverage.balances());
@@ -8634,7 +9638,7 @@ pub(crate) mod tests {
             ("al", p(2, 9), 7800, 7200, Some(400), None),
             ("rose", p(3, 9), 7200, 5800, Some(800), None),
         ]);
-        assert_eq!(word.markdown, "Total rose\n");
+        assert_eq!(word.markdown, "Total\nrose\n");
         let sources = word
             .anchor_map
             .segments
@@ -8693,6 +9697,121 @@ pub(crate) mod tests {
                 ("rose", p(3, 10), 7200, 5800, Some(800), None),
             ]),
             2
+        );
+    }
+
+    /// **An element's next line keeps its line break** (decision #126): Chromium's export opens a
+    /// sequence at every line of a paragraph, so a field set a line at a time read as one line,
+    /// `Designation: **Relationship Manager** Company: ICICI Bank`. A heading stays on one line,
+    /// as an ATX heading must; a bold line its column wrapped stays one span; and a line CommonMark
+    /// would read as a block of its own, `- Led a team`, stays on the line above.
+    #[test]
+    fn an_elements_next_line_keeps_its_line_break() {
+        let p = |mcid| tagged_in(mcid, &["Document", "P"], Some(9));
+        let styled = |specs: &[LineSpec<'_>], bold: &[usize]| {
+            artifact_of(with_styles(repr_of_placed(specs), bold, &[])).markdown
+        };
+        let resume = artifact_of(with_styles(
+            repr_of_placed(&[
+                ("Designation: ", p(12), 7200, 7200, Some(1300), None),
+                ("Relationship Manager", p(13), 8500, 7200, Some(2200), None),
+                ("Company: ICICI Bank", p(14), 7200, 5800, Some(2000), None),
+            ]),
+            &[1],
+            &[],
+        ));
+        assert_eq!(
+            resume.markdown,
+            "Designation: **Relationship Manager**\nCompany: ICICI Bank\n"
+        );
+        assert!(resume.coverage.balances());
+        // A plain line onto a bold one keeps its break, and so does a bold line onto a bold label.
+        let two = |a: &'static str, b: &'static str, bold: &[usize]| {
+            styled(
+                &[
+                    (a, p(1), 7200, 7200, Some(2000), None),
+                    (b, p(2), 7200, 5800, Some(2000), None),
+                ],
+                bold,
+            )
+        };
+        assert_eq!(
+            two("Company: ICICI Bank", "Relationship Manager", &[1]),
+            "Company: ICICI Bank\n**Relationship Manager**\n"
+        );
+        assert_eq!(
+            styled(
+                &[
+                    ("Designation: ", p(1), 7200, 7200, Some(1300), None),
+                    ("Relationship Manager", p(2), 8500, 7200, Some(2200), None),
+                    ("Duration:", p(3), 7200, 5800, Some(900), None),
+                    (" 2019", p(4), 8100, 5800, Some(1000), None),
+                ],
+                &[1, 2],
+            ),
+            "Designation: **Relationship Manager**\n**Duration:** 2019\n"
+        );
+        // A line CommonMark reads as a block of its own, or as an underline, stays on the line
+        // above, as HTML's one `<p>` holds it.
+        for marker in [
+            "- Led a team",
+            "+ Led a team",
+            "* Led a team",
+            "> 5 years",
+            "# 1",
+            "1. Led",
+            "1) Led",
+            "===",
+            "---",
+            "```",
+            "~~~",
+            "<div>",
+        ] {
+            assert_eq!(
+                two("Experience", marker, &[]),
+                format!("Experience {marker}\n"),
+                "{marker}"
+            );
+        }
+        // Not a marker: a line that only opens with the character keeps its break.
+        assert_eq!(two("Experience", "-5 years", &[]), "Experience\n-5 years\n");
+
+        let h = |mcid| tagged_in(mcid, &["Document", "H1"], Some(9));
+        let heading = project_lines(&[
+            ("Annual report", h(1), 7200, 7200, Some(2600), None),
+            ("for 2025", h(2), 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(heading.markdown, "# Annual report for 2025\n");
+        // A block a heading opened keeps one line past a next line read as no heading.
+        let opened = artifact_of(with_inferred_headings(
+            repr_of_placed(&[
+                ("Annual report", p(1), 7200, 7200, Some(2600), None),
+                ("for 2025", p(2), 7200, 5800, Some(1600), None),
+                ("and 2026", p(3), 7200, 4400, Some(1600), None),
+            ]),
+            &[0],
+        ));
+        assert_eq!(opened.markdown, "# Annual report for 2025 and 2026\n");
+
+        // A bold line its column wrapped (decision #85: it opens lowercase) stays one span, and so
+        // does any bold line onto a bold one: a paragraph set bold across a full column. A short
+        // bold line over another reads as one span too, which no geometry of two lines can part
+        // from a wrap.
+        assert_eq!(
+            two("Building resilience", "across markets", &[0, 1]),
+            "**Building resilience across markets**\n"
+        );
+        assert_eq!(
+            two(
+                "Contact the Funds Service Center at",
+                "JPMorgan Funds for a prospectus.",
+                &[0, 1]
+            ),
+            "**Contact the Funds Service Center at JPMorgan Funds for a prospectus.**\n"
+        );
+        assert_eq!(
+            two("ICICI Bank", "Relationship Manager", &[0, 1]),
+            "**ICICI Bank Relationship Manager**\n"
         );
     }
 
@@ -9098,5 +10217,391 @@ pub(crate) mod tests {
             .map(|b| b.text)
             .collect();
         assert_eq!(blocks, vec!["Yar", "row"]);
+    }
+
+    /// Lines over pages, each `(text, page, furniture)`, as [`repr_of_lines`] places them, each
+    /// measured from x 7200, 500 a character wide: a header in its page's top tenth, a footer in its
+    /// bottom tenth, a body line between. With `artifact`, a furniture line is marked `/Artifact`,
+    /// as a tagged page marks it, and not flagged.
+    pub(crate) fn paged_repr(
+        lines: &[(&str, u32, Option<crate::Furniture>)],
+        artifact: bool,
+    ) -> DocumentRepresentation {
+        let texts: Vec<&str> = lines.iter().map(|l| l.0).collect();
+        let one_page = repr_of_lines(&texts);
+        let (mut nodes, mut pages) = (
+            one_page.payload().nodes.clone(),
+            one_page.payload().pages.clone(),
+        );
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        alloc.next(IdKind::Page).unwrap();
+        let last = lines.iter().map(|l| l.1).max().unwrap_or(1);
+        for index in 2..=last {
+            pages.push(PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index,
+                ..pages[0].clone()
+            });
+        }
+        let mut ordinal = vec![0u32; last as usize + 1];
+        for (node, &(_, page, furniture)) in nodes.iter_mut().zip(lines) {
+            node.parent = pages[page as usize - 1].id.clone();
+            ordinal[page as usize] += 1;
+            node.ordinal = ordinal[page as usize];
+            if let NativeLocator::Pdf(at) = &mut node.native_locator {
+                at.page = page;
+            }
+            if artifact && furniture.is_some() {
+                node.structural_locator = Some(StructuralLocator::PdfArtifact(
+                    crate::representation::PdfArtifactLocator { mcid: None },
+                ));
+            } else if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.furniture = furniture;
+            }
+        }
+        let geometry = nodes
+            .iter()
+            .zip(lines)
+            .map(|(n, &(text, _, furniture))| {
+                let y = match furniture {
+                    Some(crate::Furniture::Header) => 300,
+                    Some(crate::Furniture::Footer) => 13800,
+                    None => 7000,
+                };
+                let x1 = 7200 + 500 * (text.chars().count() as i64).max(1);
+                NodeGeometry {
+                    node: n.id.clone(),
+                    presence: GeometryPresence::Measured(QRect::new(7200, y, x1, y + 300).unwrap()),
+                }
+            })
+            .collect();
+        DocumentRepresentation::seal(payload(nodes, pages), geometry).unwrap()
+    }
+
+    /// `repr` with its nodes edited by `edit`, and the run at each index of `spans` measured
+    /// across that span, resealed.
+    pub(crate) fn resealed(
+        repr: &DocumentRepresentation,
+        edit: impl FnOnce(&mut [Node]),
+        spans: &[(usize, i64, i64)],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        edit(&mut payload.nodes);
+        let mut geometry = repr.geometry().to_vec();
+        for &(k, x0, x1) in spans {
+            if let GeometryPresence::Measured(r) = geometry[k].presence {
+                geometry[k].presence =
+                    GeometryPresence::Measured(QRect::new(x0, r.y0(), x1, r.y1()).unwrap());
+            }
+        }
+        DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    /// The runs at `indices` set on one baseline, the first's.
+    fn on_one_line(nodes: &mut [Node], indices: &[usize]) {
+        let y = nodes[indices[0]]
+            .native_locator
+            .run_locator()
+            .unwrap()
+            .origin_y;
+        for &k in indices {
+            if let NativeLocator::Pdf(at) = &mut nodes[k].native_locator {
+                at.origin_y = y;
+            }
+        }
+    }
+
+    fn artifact_with(
+        repr: &DocumentRepresentation,
+        options: ProjectionOptions,
+    ) -> MarkdownArtifact {
+        let profile = Profile::default();
+        to_markdown_with(
+            repr,
+            &profile.parser_version,
+            &profile.profile_sha256().unwrap(),
+            &profile.markdown_rule,
+            options,
+        )
+        .expect("projects")
+    }
+
+    const DROP_FURNITURE: ProjectionOptions = ProjectionOptions {
+        drop_furniture: true,
+    };
+
+    /// The `(chars, nodes)` a dropped bucket counts, or `None` where the artifact has none.
+    fn bucket(a: &MarkdownArtifact, code: &str) -> Option<(usize, usize)> {
+        a.coverage
+            .dropped
+            .iter()
+            .find(|b| b.code == code)
+            .map(|b| (b.chars, b.nodes))
+    }
+
+    /// **A running head and a folio go, on request, and are counted** (decision #134): furniture
+    /// whose text repeats on two pages, a folio's number read as any number. Furniture on one page
+    /// stays, and the default is `to_markdown` byte for byte.
+    #[test]
+    fn repeated_furniture_is_left_out_on_request_and_counted() {
+        use crate::Furniture::{Footer, Header};
+        let head = "Acme Ltd - Quarterly Report Q2 FY27";
+        let repr = paged_repr(
+            &[
+                (head, 1, Some(Header)),
+                ("Overview", 1, Some(Header)),
+                ("Body one", 1, None),
+                ("Page 9 of 12", 1, Some(Footer)),
+                (head, 2, Some(Header)),
+                ("Body two", 2, None),
+                ("Page 10 of 12", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(artifact_with(&repr, ProjectionOptions::default()), plain);
+        assert_eq!(plain.markdown.matches(head).count(), 2);
+        assert_eq!(bucket(&plain, PAGE_FURNITURE_NOT_PROJECTED), None);
+
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Overview\n\nBody one\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(a.markdown_rule, plain.markdown_rule);
+        let dropped = 2 * head.chars().count() + "Page 9 of 12".len() + "Page 10 of 12".len();
+        assert_eq!(dropped, 95);
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((dropped, 4)));
+        assert_eq!(
+            a.coverage.source_chars_emitted + dropped,
+            plain.coverage.source_chars_emitted,
+            "nothing else moved"
+        );
+    }
+
+    /// **On a tagged page an `/Artifact` repeated on two pages is furniture too**, on request.
+    #[test]
+    fn a_repeated_artifact_is_left_out_on_request() {
+        use crate::Furniture::Header;
+        let head = "Acme Ltd - Quarterly Report Q2 FY27";
+        let repr = paged_repr(
+            &[
+                (head, 1, Some(Header)),
+                ("Body one", 1, None),
+                (head, 2, Some(Header)),
+                ("Body two", 2, None),
+            ],
+            true,
+        );
+        assert_eq!(artifact_of(repr.clone()).markdown.matches(head).count(), 2);
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Body one\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((70, 2)));
+    }
+
+    /// **A run left out is counted whole, in one bucket**: its U+0000 and its whitespace with it,
+    /// and not again under `null-characters-not-projected-v1` or `whitespace-collapsed-v1`.
+    #[test]
+    fn furniture_left_out_is_counted_once_whatever_it_holds() {
+        use crate::Furniture::Footer;
+        let repr = paged_repr(
+            &[
+                ("Con\0fidential  ", 1, Some(Footer)),
+                ("Body  one", 1, None),
+                ("Con\0fidential  ", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Body one\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((30, 2)));
+        assert_eq!(bucket(&a, NULL_CHARACTERS_NOT_PROJECTED), None);
+        assert_eq!(bucket(&a, "whitespace-collapsed-v1"), Some((1, 1)));
+    }
+
+    /// **A word broken before furniture left out is not closed up with it**: the footer is no
+    /// longer the run after the head.
+    #[test]
+    fn a_word_is_not_closed_up_with_furniture_left_out() {
+        use crate::Furniture::Footer;
+        let repr = paged_repr(
+            &[
+                ("Rates may be recalcu-", 1, None),
+                ("Confidential", 1, Some(Footer)),
+                ("Body two", 2, None),
+                ("Confidential", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Rates may be recalcu-\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((24, 2)));
+    }
+
+    /// The runs [`repeated_furniture`] names, by index.
+    fn named(repr: &DocumentRepresentation, owned: &[usize]) -> Vec<usize> {
+        let nodes = &repr.payload().nodes;
+        let owner = owned.iter().map(|&k| (nodes[k].id.as_str(), 0)).collect();
+        let named = repeated_furniture(repr, &owner);
+        (0..nodes.len())
+            .filter(|&k| named.contains(nodes[k].id.as_str()))
+            .collect()
+    }
+
+    /// The runs [`repeated_furniture`] names: furniture on two pages or more, never a table's run,
+    /// never a body run, never one of whitespace alone, and never one whose text differs other
+    /// than in its numbers.
+    #[test]
+    fn furniture_repeats_on_two_pages_by_its_text_with_numbers_read_alike() {
+        use crate::Furniture::{Footer, Header};
+        let repr = paged_repr(
+            &[
+                ("Page 9 of 12", 1, Some(Footer)),
+                ("Page 10 of 12", 2, Some(Footer)),
+                ("Page 10 of 12", 2, None),
+                ("Section A", 1, Some(Header)),
+                ("Section B", 2, Some(Header)),
+                ("Twice here", 1, Some(Header)),
+                ("Twice here", 1, Some(Footer)),
+                ("Ruled", 1, Some(Header)),
+                ("Ruled", 2, Some(Header)),
+                ("  ", 1, Some(Header)),
+                ("  ", 2, Some(Header)),
+            ],
+            false,
+        );
+        assert_eq!(named(&repr, &[8]), vec![0, 1]);
+    }
+
+    /// **A furniture line goes whole or stays whole** (review of decision #134): a page's
+    /// consecutive furniture runs on one baseline are one line, so a title set a run per word on
+    /// one page keeps every word though its words are furniture elsewhere, and a folio set a run per
+    /// character, space and digits apart, repeats as one.
+    #[test]
+    fn a_furniture_line_goes_whole_or_stays_whole() {
+        use crate::Furniture::{Footer, Header};
+        let repr = paged_repr(
+            &[
+                ("Minutes", 1, Some(Header)),
+                ("of", 1, Some(Header)),
+                ("the", 1, Some(Header)),
+                ("Board", 1, Some(Header)),
+                ("Body one", 1, None),
+                ("p", 1, Some(Footer)),
+                (".", 1, Some(Footer)),
+                (" ", 1, Some(Footer)),
+                ("9", 1, Some(Footer)),
+                ("Board", 2, Some(Header)),
+                ("of", 2, Some(Header)),
+                ("Directors", 2, Some(Header)),
+                ("Body two", 2, None),
+                ("p.", 2, Some(Footer)),
+                ("1", 2, Some(Footer)),
+                ("0", 2, Some(Footer)),
+                ("Board", 3, Some(Header)),
+                ("of", 3, Some(Header)),
+                ("Directors", 3, Some(Header)),
+                ("Body three", 3, None),
+            ],
+            false,
+        );
+        let repr = resealed(
+            &repr,
+            |nodes| {
+                for line in [
+                    &[0, 1, 2, 3][..],
+                    &[5, 6, 7, 8],
+                    &[9, 10, 11],
+                    &[13, 14, 15],
+                ] {
+                    on_one_line(nodes, line);
+                }
+                // Page 3's head on the baseline of page 2's folio, which it follows: a line
+                // never runs across a page.
+                on_one_line(nodes, &[13, 14, 15, 16, 17, 18]);
+            },
+            &[],
+        );
+        assert_eq!(
+            named(&repr, &[]),
+            vec![5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18]
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        for word in ["Minutes", "of", "the", "Board"] {
+            assert!(a.markdown.contains(word), "{word} stays: {:?}", a.markdown);
+        }
+        assert!(!a.markdown.contains("Directors") && !a.markdown.contains('p'));
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((40, 13)));
+    }
+
+    /// **A repeat stands on the same side of its page and across the same place** (review of
+    /// decision #134): a cover's year at its foot is no folio set at the right of the others, and
+    /// a number at the top is no folio at the foot. A chapter's numbered title at the head of each
+    /// chapter's page reads as a running head, and goes.
+    #[test]
+    fn a_repeat_stands_on_the_same_side_across_the_same_place() {
+        use crate::Furniture::{Footer, Header};
+        let repr = paged_repr(
+            &[
+                ("2024", 1, Some(Footer)),
+                ("Chapter 1", 1, Some(Header)),
+                ("2", 2, Some(Footer)),
+                ("Chapter 2", 2, Some(Header)),
+                ("3", 3, Some(Footer)),
+                ("4", 3, Some(Header)),
+            ],
+            false,
+        );
+        let repr = resealed(
+            &repr,
+            |_| {},
+            &[
+                (0, 3600, 5400),
+                (2, 15000, 15450),
+                (4, 15000, 15450),
+                (5, 15000, 15450),
+            ],
+        );
+        assert_eq!(named(&repr, &[]), vec![1, 2, 3, 4]);
+        // Spans that overlap however they lie: one inside the other, either way round.
+        let inside = resealed(&repr, |_| {}, &[(0, 15100, 15200), (2, 14000, 16000)]);
+        assert_eq!(named(&inside, &[]), vec![0, 1, 2, 3, 4]);
+    }
+
+    /// **A list item does not run on across furniture left out** (review of decision #134): the
+    /// blocks either side of it are the default's, with the furniture's own block cut out.
+    #[test]
+    fn a_list_item_does_not_run_on_across_furniture_left_out() {
+        use crate::Furniture::Header;
+        let body = &["Document", "L", "LI", "LBody"];
+        let repr = resealed(
+            &paged_repr(
+                &[
+                    ("Acme Ltd", 1, Some(Header)),
+                    ("Alpha item", 1, None),
+                    ("Acme Ltd", 2, Some(Header)),
+                    ("carries on", 2, None),
+                ],
+                true,
+            ),
+            |nodes| {
+                nodes[1].structural_locator = tagged_in(1, body, None);
+                nodes[3].structural_locator = tagged_in(2, body, None);
+            },
+            &[],
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(
+            plain.markdown,
+            "Acme Ltd\n\n- Alpha item\n\nAcme Ltd\n\n- carries on\n"
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "- Alpha item\n\n- carries on\n");
+        assert_eq!(
+            erasure(&a, GFM_LIST_ITEM_RUN_JOINS),
+            erasure(&plain, GFM_LIST_ITEM_RUN_JOINS)
+        );
     }
 }

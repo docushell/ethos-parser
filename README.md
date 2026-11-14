@@ -111,8 +111,10 @@ chart prints; it never estimates a value from the drawing.
 Every release carries a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel),
 plus a `SHA256SUMS.txt`. A release is assembled only when all four binaries print byte-identical
 artifacts over the gate documents. The Linux binary needs glibc 2.39 or newer (Ubuntu 24.04 and
-later), and the Windows binary needs the Microsoft Visual C++ runtime. On macOS or Linux, set `T` to
-your platform and run:
+later) up to 0.65.0, and 2.35 or newer (Ubuntu 22.04, Debian 12 and later) from 0.66.0. From
+0.66.0 every archive also carries the recognizer `--ocr` runs, `ethos-parser-ocr`, beside
+`ethos-parser`; on an x86-64 CPU without AVX2 and FMA it refuses by name. The Windows binary needs
+the Microsoft Visual C++ runtime. On macOS or Linux, set `T` to your platform and run:
 
 ```bash
 T=aarch64-apple-darwin   # or x86_64-apple-darwin, x86_64-unknown-linux-gnu
@@ -130,13 +132,20 @@ the [releases page](https://github.com/docushell/ethos-parser/releases), compare
 with `SHA256SUMS.txt`, extract it with `tar -xzf`, and run `ethos-parser.exe`. The macOS binaries
 are not notarized: `curl` leaves them runnable, but a copy downloaded through a browser is
 quarantined and killed on launch — once its digest checks out,
-`xattr -d com.apple.quarantine ethos-parser-*/ethos-parser` clears it.
+`xattr -d com.apple.quarantine ethos-parser-*/ethos-parser*` clears it. Keep `ethos-parser` and
+`ethos-parser-ocr` in one directory: `--ocr` looks beside the path the engine was started by, so a
+copy of the engine alone, or a symlink to it, finds no recognizer unless `ETHOS_PARSER_OCR` names
+it.
 
 Or build from source, with the toolchain `rust-toolchain.toml` pins:
 
 ```bash
 cargo build --release --locked
 ```
+
+The recognizer `--ocr` runs builds in `ocr/`, with the toolchain `ocr/rust-toolchain.toml` pins:
+`cd ocr && cargo build --release --locked`. Put `ocr/target/release/ethos-parser-ocr` beside
+`ethos-parser`, or name it with `ETHOS_PARSER_OCR`.
 
 Then, with the binary on your `PATH`:
 
@@ -152,8 +161,8 @@ ethos-parser ground repr.json > grounding.json
 | `classify` | Counts and reason codes for a PDF — is it scanned? is the layout hard? | 0 / 1 / 2 |
 | `extract` | The document as text runs with locators (`DocumentRepresentation v0`). `--ocr` also reads scanned pages, and PNG or JPEG files, through the recognizer `ethos-parser-ocr` ([`docs/35-OCR-SCOPE.md`](docs/35-OCR-SCOPE.md)) | 0 / 2 |
 | `ground` | Turn a representation into `ethos.grounding.v1`, the citation format | 0 / 2 |
-| `markdown` | Markdown plus a map from every character back to a node. Takes a representation, or `--source <FILE>` to read a document and project it in one process — the same bytes, without the record on disk between the two stages | 0 / 2 |
-| `html` | The same thing in HTML, projected from the document rather than from the Markdown | 0 / 2 |
+| `markdown` | Markdown plus a map from every character back to a node. Takes a representation, or `--source <FILE>` to read a document and project it in one process — the same bytes, without the record on disk between the two stages. `--drop-furniture` leaves out a running head or a folio repeated on two pages or more, and counts it | 0 / 2 |
+| `html` | The same thing in HTML, projected from the document rather than from the Markdown; `--drop-furniture` as `markdown` | 0 / 2 |
 | `grounding-check` | Validate a grounding file's structure and its link to the source bytes | 0 / 1 / 2 |
 | `verify` | Hand a citation check to the pinned Ethos verifier and relay its answer | 0 / 1 / 2 |
 | `overlay` | An annotated copy of the PDF showing what was found — and what has no box | 0 / 2 |

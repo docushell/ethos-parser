@@ -32,6 +32,281 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Repeated running heads and folios can be left out of Markdown and HTML, counted (decision #134)
+
+No rule id and no `profile_sha256` moves: the default output is byte for byte what it was.
+
+- **`markdown --drop-furniture` and `html --drop-furniture`**, on a representation or, for
+  `markdown`, with `--source`. A furniture line — a page's consecutive runs on one baseline the
+  reader flagged as its header or footer, or a tagged page marked `/Artifact` — is left out
+  whole where another page's furniture repeats its text on the same side of the page and across
+  the same place: whitespace aside, each run of digits read as one, so `Page 9 of 12` and
+  `Page 10 of 12` repeat. A line set a run per word, or per letter, goes whole or stays whole,
+  so a title set apart on one page keeps every word. A cover's year at its foot stays where the
+  folios stand elsewhere. An `/Artifact` can be a watermark or a background's text, and one
+  repeated so goes too. The block around a line left out ends there, and so does the list
+  around it, so the blocks either side are the default's with the furniture's own cut out. The
+  representation keeps every run.
+- **Counted as `page-furniture-not-projected-v1`**, a new census bucket, so a consumer
+  validating bucket codes against a closed list must add it. A run left out is counted whole,
+  its whitespace and any U+0000 with it, and nowhere else; the census balances. The bucket
+  appears only where the option left something out, and where it found nothing to leave out the
+  artifact is the default one, so the bucket is the whole record of the option.
+- **Library**: `to_markdown_with` and `to_html_with` take `ProjectionOptions`, non-exhaustive,
+  built from `ProjectionOptions::default()` with `drop_furniture` set; `to_markdown` and
+  `to_html` are those calls with the default. MCP's `markdown` tool and the SDKs do not offer it
+  yet.
+- **Known limits.** A numbered title at the head of each chapter's first page (`Chapter 1`,
+  `Chapter 2`) reads as a running head and goes, and a year set where the folios stand goes with
+  them. A folio in roman numerals (`ii`, `iii`) is not read as a number. Found beside it and left
+  for its own decision: by default a body line ending in a hyphen is closed up with a flagged
+  footer after it (`recalcu-` + `Confidential` reads `recalcuConfidential`), since the hyphen
+  rule refuses a join across an `/Artifact` but does not read the furniture flag; with the
+  option the footer is no longer there to join.
+- Default output byte-identical on ParseBench, opendataloader-bench, the gate documents and the engine fixtures; with the flag, NIST SP 800-207 leaves out its running head and margin line on 56 pages and 50 folios (4,523 runs, 7,421 characters) and its first three pages lose nothing; the IRS forms lose nothing.
+
+### A narrow band set on its neighbour's rows is read with them (decision #133)
+
+Rule id `gutter-columns-v5`; `profile_sha256` moves.
+
+- **Dates beside a job are read with the job.** A résumé's dates in a narrow column beside each
+  job's first line, or flush right on it, cleared the 12pt gutter and overlapped the text, so the
+  reading-order cut took them for a column and read every date after the last job. Two
+  neighbouring bands are now one band when one is at most half as wide as the other, the other
+  is a single column, three of every four of the narrow band's cells (lines no more than a
+  leading and a quarter apart) start on the first line of one of the column's blocks, within a
+  quarter of its leading, and end inside that block, and one such cell, with another below it,
+  ends before its block's last line. A page whose only cut that was is read down its leading-gap
+  slabs in the order the document drew them, never sorted by baseline; inside a column the joined
+  band is read by its blocks, so each date follows its entry.
+- Two bands of one measured width are never joined. A band holding several columns that a strip
+  across them hides is no column to join, nor is a column of one value per line however marks are
+  raised between them, nor a shorter column whose entries start level with its neighbour's. A
+  sidebar keeps its column, at its own leading or on the body's grid, where its boxes run past the
+  paragraphs beside them or start between their heads. `reading_order::columns`, which table
+  detection reads, does not join. The half, the quarter and the three in four are chosen, not
+  measured.
+- Costs. A sidebar whose boxes each start level with a paragraph and end inside it, one ending
+  before its paragraph does, is read as notes on those paragraphs: a skills sidebar beside a
+  résumé's sections joins and is read in draw order or interleaved by slab. A page undivided by
+  the join keeps the draw order inside each slab, so a date or label at the left drawn after its
+  text is read after it, right before the next entry.
+- Not caught: a label column as wide as its values, one label per value (the OCR probe i03), and
+  page numbers beside a contents list set at one leading.
+- ParseBench: 5 of its 2,037 documents read differently (Ford p16, Marico p46, orbia p15, SERFF TX 838 and att10k: side heads, labels and figures now read with their rows) and every score is unchanged, with and without `--ocr`; opendataloader-bench byte for byte; the made-up resumes with a date column, dates flush right and right-hand dates read each date with its entry.
+
+### A scan read without `--ocr` says so, and an image file's size is checked (decision #132)
+
+No rule id and no profile field moves; `profile_sha256` is unchanged by this entry.
+
+- **A page the OCR trigger takes is counted without the flag.** A page that shows no text and
+  places one image read as a blank page under the default profile. It is now counted under
+  `scanned-page-not-recognized`, by the reason `--ocr` would refuse it for before asking the
+  recognizer (a filter, a mask, a colour space, a placement), or as `ocr-not-requested`. Markdown
+  text is unchanged; the representation, and the Markdown and HTML artifacts'
+  `representation_sha256`, move on such documents only: 72 of ParseBench's 2,024 extracted
+  documents (69 not requested, 2 CCITT, 1 JPEG 2000), none of the gate's, the engine fixtures' or
+  opendataloader-bench's 200. A page the trigger itself refuses (several images, an inline image)
+  is not counted without the flag.
+  Owner, 2026-11-14.
+- **`extract`, `markdown` and `html` name every unread scanned page on stderr**, in one line: how
+  many, each reason, and the flag for the pages not requested — `--ocr`, or on a record
+  `extract --ocr` or `markdown --source FILE --ocr`. The Markdown artifact carries no limitation,
+  so `markdown --source --ocr` on a CCITT or JPEG 2000 scan exited 0 with empty Markdown and said
+  nothing. A recognizer's reason is written with control characters as spaces. MCP prints nothing.
+- **`markdown RECORD --ocr` is a usage error**, as its help always said: the flag reads a source.
+- **A filter the recognizer does not decode is named before the colour space is read**, by the
+  recognizer's own rule — the first filter that is neither Flate nor a final DCT — and the image is
+  not sent. A JPEG 2000 stream may leave its colour space to its own header, and such a page was
+  refused `colour-space-not-read`. No `--ocr` artifact moves: the gate's, the fixtures',
+  opendataloader-bench's and ParseBench's 2,079 files extract byte-identical with the flag.
+- **An image file is refused when its header and the recognizer disagree on its size.** The page
+  was built from the size the recognizer answered, unchecked. The header — a PNG's `IHDR`, a JPEG's
+  first frame header, found past tables, fill bytes and stray bytes, a height of 0 stating none —
+  is read before the file is sent: `image-size-not-read` where it states no size,
+  `image-size-mismatch` where the answer differs. The committed PNG and JPEG scans hold the same
+  nodes and limitations as before.
+- ParseBench and opendataloader-bench scores unchanged, with and without `--ocr`; `--ocr` artifacts byte-identical on the gate, the engine fixtures, opendataloader-bench and ParseBench; 72 of ParseBench's 2,024 documents gain the page limitation without `--ocr` (69 `ocr-not-requested`, 3 naming the codec `--ocr` cannot read).
+
+### A raised or lowered mark stays on its line (decision #131)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet.
+
+- **No line break around a mark inside a line.** On a page that declares no structure, Markdown
+  and HTML wrote a line break before and after every superscript and subscript, since a mark sits
+  off its line's baseline and the two runs read as two lines of one layout unit:
+  `The rate of interest` / `<sup>1</sup>` / `was revised`, and `notification.` / `<sup>1</sup>`.
+  A mark and the run before it, and the run after it, now go on along the line with nothing
+  between them, or one space where the page drew one — in either run's text, or a gap a word gap
+  wide. A run on the next line still opens a line, so a line that a mark closes or opens on keeps
+  its break: a run starting left of the run before it, or at its x, set back over its ink by more
+  than a glyph — or, where that run's size has no measure, starting before its advance ends — or on
+  a baseline two median glyphs or more from it, about an em where `scripts.rs` sets a script
+  within half its line's em, measured from the glyphs the page draws rather than `font_size`, the
+  `Tf` operand a page that scales its text by the matrix sets at 1. Counted as `layout-unit-line-joins-v1`, as
+  the line break it replaces was. **Known limit**: in a column of vertical text whose glyphs the
+  script rule reads as marks, a glyph set just right of the one above joins it.
+- **Emphasis stays open where only the script changes.** An italic letter and its italic index
+  drawn together wrote `*U**<sub>t</sub>*`, which CommonMark reads with its asterisks as text; with
+  nothing between the two runs the span now stays open and only the script's element closes and
+  opens, `*U<sub>t</sub>*`, and in HTML `<em>U<sub>t</sub></em>`.
+- ParseBench content 0.6754 -> 0.6752 engine-only and 0.7550 -> 0.7548 with `--ocr` (2 pages up, 12 down; the owner accepted it on 2026-11-14: the scorer strips tags, so `Taha<sup>1</sup>` reads as one word where its answer key writes `Taha 1`), formatting, tables, charts and grounding unchanged on every page; opendataloader-bench NID 0.8916 -> 0.8918 and MHS 0.5902 -> 0.5903 (15 and 10 documents up, none down).
+
+### A DOCX paragraph is one block, keeping its tabs and line breaks (decision #130)
+
+Rule ids `docx-wt-verbatim-v4` and `docx-document-order-v3`, so the DOCX profile's
+`profile_sha256` moves. The projection change is folded into `markdown-blocks-v14` and
+`html-blocks-v14`, which no release carries yet.
+
+- **A run holding only a tab or a line break is a node**, as is one holding only a no-break
+  hyphen. Word writes a label's tab and a line break as runs of their own,
+  `<w:r><w:tab/></w:r>`, and the reader left them out, so `Company Name` and `: Acme Ltd` had
+  nothing between them. A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab Word
+  sets a right-aligned date with, is a tab. Only an element directly in a `<w:r>` states a
+  character, so a text box's tab stop is none.
+- **A run after a text box is its own paragraph's.** A box's `<w:p>` sits inside a run of the
+  paragraph anchoring it, and the counter gave every run after it the box's paragraph: a wrong
+  locator, and `Ira Testcase` welded to `Experience` once paragraphs joined.
+- **One paragraph, one block.** Every DOCX run was a Markdown block and a `<p>` of its own:
+  `Name:` / `Asha Patil`, and a sentence with one bold phrase in three. The runs one `<w:p>` holds
+  are now one block, joined with a line break where the paragraph holds one between them, a tab
+  where it holds one, a space for any other whitespace, and nothing where it holds none, so a
+  word cut into runs stays one word. Counted as `block-element-run-joins-v1`.
+- **A tab or a line break inside a run is kept**, where it read as a space: `Company Name<TAB>:
+  Acme Ltd` and `Designation:<TAB>Senior Accountant` keep their tabs, an address its lines. This
+  departs from `normalize`'s one space for a DOCX run alone. Whitespace a `<w:t>` does not
+  preserve, holding a space, is the XML's own indentation and one space. A line break before a
+  line CommonMark reads as a block of its own (`- item`, `1. item`, `#`, `---`, a fence, an HTML
+  tag), read across the runs Word cut the line into, is one space, as decision #126 writes it.
+- **Known limits.** `locate` finds no quote that crosses two runs of a DOCX paragraph, though the
+  Markdown now shows them together: `locate-scalar-exact-v1` never crosses a block, and on a
+  page-less document every run is a block. A page-less paragraph rule for `locate` is the
+  follow-up. `ground` likewise stays one element per run. A `<w:sym>` symbol, a picture set inline
+  and a ruby reading yield no text, so the words either side join with nothing between them
+  (`Phone98765`), as they did inside one block before: the record cannot tell those runs from a
+  tracked deletion inside a word or a field's end before its punctuation, where a space would
+  split the word. PPTX is unchanged: its reader does not read `<a:br/>`, so joining a slide
+  paragraph's runs would weld the words either side of a break. PDF output is unchanged.
+- the made-up Word resumes in docs/measurements/office-resumes keep 240 of 240 expected lines whole (68 before; a tab-only run 0 -> 60 of 60, a break inside a run 0 -> 67 of 67), the bold-phrase sentence one paragraph in 20 of 20 (0 before) and every job's lines in 50 of 50 (16 before); the financial set's DOCX lines 60 -> 96 of 96 and the rupee sign beside its amount 15 -> 18 of 26. ParseBench and opendataloader-bench, PDF only, unchanged on every page.
+
+### Chart, pie and stroke geometry no longer calls the platform's `hypot`
+
+- Lengths in the chart, pie and line readers are exact integer roots, and a stroke's width and a
+  slice's distances to its centre are taken in IEEE arithmetic alone, where `f64::hypot` called
+  each operating system's own libm. An integer length of 2^25 centipoints or more, off any page,
+  can differ by 1 cp from before: exact, where the old float was not. Output is byte-identical on
+  the gate and engine fixtures, ParseBench's 568 chart PDFs and opendataloader-bench's 200;
+  `atan2` in the pie reader still calls libm.
+
+### Small pieces stay with their text on untagged pages (decision #129)
+
+Rule id `line-units-v7`; `profile_sha256` moves.
+
+- **A footnote mark set against its line's last letter is that line's.** A script had to lie inside
+  its line, so a mark set after the last letter was a layout unit of its own and split its
+  paragraph. It now joins where it starts no more than a quarter of the line's height past the
+  line's end and ends no more than the line's height past it, so a run-in heading's text and a
+  smaller aside set after a line stay lines of their own.
+- **A list marker or a label set apart from what follows it stays with it.** A piece that is a list
+  marker alone (`1.`, `(a)`) or ends in a colon (`Invoice No:`) ended short and was cut from the
+  piece after it on its line; it now ends short of nothing where the piece after it is no such
+  piece itself, so a label with no value does not take the next label's.
+- **A list item's next line at its hanging indent continues it.** Set a line and a half below, it
+  started more than its height right of the marker and was a unit of its own; a line within a
+  quarter of its height of where the item's text starts after a marker alone in its run, opening
+  with a word, now continues the item within the page's body leading and a twentieth more, or
+  within its own height on a page that sets no leading of its own. A marker set in one run with
+  its text sets no hanging indent. The quarter and the height are chosen, not measured.
+- Geometry and punctuation alone: no list or paragraph role is read from layout, and a unit is not a
+  list item.
+- ParseBench visual grounding 0.5987 -> 0.5999 engine-only and 0.6312 -> 0.6325 with `--ocr` (12 and 13 pages up, 4 down), content unchanged at four places (5 pages down by at most 0.0007, where a numbered paragraph's `13.` and a label's value now join their text), tables, charts and formatting unchanged on every page; opendataloader-bench NID, TEDS and MHS unchanged (12 documents' Markdown moves, no score).
+
+### Build and release
+
+- **The Linux binary is built on `ubuntu-22.04`**, so it needs glibc 2.35 or newer (Ubuntu 22.04,
+  Debian 12) rather than 0.65.0's 2.39, which came from two weak symbols. `ci/release-artifacts.sh`
+  prints the highest `GLIBC_` version each Linux binary references and fails the release above
+  2.35. GitHub supports that runner image until 2027-04-17.
+- **Every release archive carries `ethos-parser-ocr`** beside `ethos-parser`, where `--ocr` looks
+  for it, and `NOTICE`, which now names the PP-OCRv5 models (Apache-2.0). The script builds the
+  recognizer on its own pinned toolchain and adds one `extract --ocr` read of a committed scan to
+  the fingerprint the four runners must agree on. The recognizer refuses an x86-64 CPU without AVX2
+  and FMA, so the script asks Rosetta 2 to report them (`ROSETTA_ADVERTISE_AVX=1`); the local
+  `x86_64-apple-darwin` pair then matches the arm64 fingerprint byte for byte. The engine's output
+  is unchanged.
+
+### Each tagged list item stays its own item (decision #128)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet, so no rule
+id and no `profile_sha256` moves.
+
+- **Two list bodies the file numbers are two items.** Both projections joined every body run at
+  one depth into the open item, since two sibling `/LI`s share one role path, so NIST SP 800-218's
+  four Executive Summary bullets, each its own `/LBody`, read as one item. Each body's object
+  number, which the reader carries since decision #84, now tells them apart.
+- A body still joins its own `/Lbl`, and one body's runs stay one item across its lines. A body
+  set no lower than the open run's line joins it after a marker drawn in the `/LI` itself, as
+  Chromium draws a bullet, and where it **reads on**: it opens lowercase with no label of its own
+  (`b)`, `ii.` read across the glyphs it is drawn in, Word's `o`), as a column break carries a
+  bullet to the top of the next column in a new `/LBody`. A body on the next line down, or one
+  opening with a capital, a bullet or a number, is an item of its own.
+- **The census counts only the guesses as guesses.** A join inside one numbered element now counts
+  under `block-element-run-joins-v1`, as a paragraph's does; `gfm-list-item-run-joins-v1` counts a
+  join where the file leaves either run's element unnumbered, and the two joins above. On the
+  gate's NIST SP 800-218 every one of its list joins was inside one body. An untagged page
+  projects byte for byte as before.
+- ParseBench content 0.6753 -> 0.6754 engine-only and 0.7549 -> 0.7550 with `--ocr` on top of decision #126 (10 pages up, 1 down by 0.0004: a bullet continued at a column's top), formatting, tables, charts and grounding unchanged on every page; opendataloader-bench byte for byte, none of its documents tagged; NIST SP 800-218's list items 24 -> 55.
+
+### Columns of prose are no table, and a header set flush left heads figures set flush right (decision #127)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **Columns of prose written row by row are no table.** The whitespace rule took a grid the
+  content stream wrote row by row for a table, so a two-column article whose stream writes each
+  left line, then the right line level with it, read as a table of interleaved lines. A grid whose
+  every column is running text, and whose first column is not short labels, is now refused in any
+  order, and its lines are passed over whole, so no shorter run of them stands either. A table with
+  a column of anything else keeps its row order, and so does one whose first column names every row
+  in under thirty characters: a model's settings, a data dictionary. One side of two tables drawn
+  side by side, which stood as one, is unchanged. This reverses one case decision #125 kept: three
+  columns of prose on a drawn page.
+- **A header set flush left over figures set flush right heads them.** `Qty`, `Rate` and `Amount`
+  set where their columns' space opens sat on no track, and the nearest centres put `Rate` over
+  `Qty`'s figures, so the header stood outside the table and its first row of figures became the
+  header. Each name now heads the first column ending at or past its own end, where the names come
+  out left to right and each starts past the column before. A name reaching back over the figures
+  before it heads nothing.
+- ParseBench (engine and `--ocr`), opendataloader-bench and DocuShell's 49 test PDFs are unchanged on every page; the review's probes of both shapes now read right.
+
+### A tagged paragraph's next line keeps its line break (decision #126)
+
+Rule ids `markdown-blocks-v14` and `html-blocks-v14`; `profile_sha256` moves.
+
+- **A run that opens its block element's next line joins it with a line break,** where decision #84
+  wrote one space. Chromium's export opens a marked-content sequence at every line, so a resume's
+  fields read as one line: `Designation: **Relationship Manager** Company: ICICI Bank Duration: …`.
+  Each field now keeps its line, inside one Markdown block or one `<p>`, as decision #109 keeps an
+  untagged paragraph's lines.
+- **One space still in a heading**, which an ATX heading must keep on one line; **on a line its column
+  wrapped** (decisions #47, #81, #85); **from a bold run onto a bold run**, so a bold paragraph its
+  column wrapped stays one span, unless the second is a label ending in `:` — `**Duration:** 2019`
+  keeps its line; and **before a line CommonMark reads as a block of its own** — a list marker, `>`,
+  `#`, a fence, an HTML tag, or a line of `=`, `-` or `|` alone — so HTML's one `<p>` and the
+  Markdown agree. A soft wrap inside one sequence stays a space.
+- **A short bold line over another bold line reads as one span**, `**ICICI Bank Relationship
+  Manager**`: two lines alone cannot tell it from a wrap, since the second's first word would not
+  have fitted after the first within either.
+- **Any other span closes at the line's end** and opens again on the next: `*a*` over `*b*` is written
+  where `*a b*` was, and so is a script.
+- The join is unchanged, so `ground`, `locate` and the census are too; an untagged page projects byte
+  for byte as before.
+- ParseBench: content 0.6750 -> 0.6753 engine-only and 0.7546 -> 0.7549 with `--ocr` (16 pages up,
+  5 down by at most 0.0024; the words are the same, only line breaks move), formatting 0.5131 ->
+  0.5132, tables, charts and grounding unchanged on every page. opendataloader-bench is byte for
+  byte, none of its documents tagged. DocuShell's made-up resume sets, from raw Markdown: all jobs
+  right 67% -> 100% (main) and 75% -> 100% (holdout).
+
 ### A scanned page keeps a word read past its line's end, and its columns are no table (decision #125)
 
 - **A recognized word whose box encloses nothing keeps its text.** A word the recognizer read in the

@@ -1541,7 +1541,7 @@ LightOnOCR-3 provider code, as its leaderboard row is.
 
 - The engine's Markdown stays, and the model's table and chart blocks follow it, each with the title
   or caption block set right before it.
-- Where the engine's Markdown holds under 30% of the words the model reads, and the model reads at
+- Where the engine's Markdown holds under 30% of the distinct words the model reads, and the model reads at
   least half as many words as the engine, the page is the model's instead. On ParseBench these are
   scans under a stray text layer, scripts and hands the engine's OCR does not read, and fonts whose
   `/ToUnicode` misleads: one maps every code to itself while its glyphs sit 29 places off, another

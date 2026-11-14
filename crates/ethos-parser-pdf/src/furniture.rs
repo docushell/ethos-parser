@@ -29,7 +29,8 @@
 //! **Where, never what was meant.** A running head and a page title set apart at the top read
 //! alike here: the rule says only that a line stands apart at its page's edge. A furniture run
 //! stays in the record, in its reading order and in every projection — page furniture is flagged,
-//! never dropped, as an `/Artifact` is.
+//! never dropped, as an `/Artifact` is; a projection leaves it out only on its caller's request,
+//! counted (decision #134).
 //!
 //! The constants were measured, not chosen, on ParseBench's visual-grounding pages
 //! (`docs/measurements/parsebench/README.md`), and three clauses were measured and refused: no

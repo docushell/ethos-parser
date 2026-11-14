@@ -1698,7 +1698,12 @@ pub struct TextRunAttributes {
     /// and starting where the unit starts. Since `line-units-v6` a line is also parted where the
     /// reading order went back left between two of its runs with any gap between them, a first word
     /// ends at an ideograph or a kana, and a body line set in by half its height, where the next line
-    /// returns to the left edge of the line above, opens a unit.
+    /// returns to the left edge of the line above, opens a unit. Since `line-units-v7` a footnote
+    /// mark set against a line's last letter is part of that line; a list marker alone, or a label
+    /// closed by a colon, set apart from the piece after it on its line stays with it, where that
+    /// piece is no such piece itself; and a line at the hanging indent of a list item whose marker
+    /// is a run of its own continues the item within the page's body leading, or within its own
+    /// height on a page that sets none. A unit is still not a list item.
     ///
     /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
     /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a
@@ -1760,7 +1765,8 @@ pub struct TextRunAttributes {
     ///
     /// **Where, never what was meant**: `Computed` from where the page's lines sit, under the
     /// profile's `furniture_rule`. The run stays in the text, in reading order and in every
-    /// projection; furniture is flagged, never dropped, as an `/Artifact` is. Absent on a
+    /// projection; furniture is flagged, never dropped, as an `/Artifact` is — a projection leaves
+    /// it out only where its caller asks, and counts it (decision #134). Absent on a
     /// document that declares author structure, on every other line, and under every other rule
     /// id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
