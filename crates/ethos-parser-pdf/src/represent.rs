@@ -591,6 +591,7 @@ pub fn to_representation(
         // catalog and re-walking it here would be a second place for it to come from.
         outlines: extract.outlines.clone(),
         figures,
+        assist: None,
         assurance,
     };
 

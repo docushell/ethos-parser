@@ -32,6 +32,53 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A drafting model's replies attach to the record as `Proposed` blocks (decision #145)
+
+The first step of the assist lane: a model that reads page images may propose text, and its text is
+never evidence. **Engine-only output does not move**: without the new flag every `extract`,
+Markdown and HTML byte is what it was, and so is every profile's hash.
+
+- `extract --assist-answers FILE` reads a replies file another process wrote, checks that it
+  answers this PDF, and attaches the model's blocks under the record's one new optional key,
+  `assist`. The output is a function of the PDF and FILE alone, and two runs give the same bytes.
+  `--assist-model ID[@VERSION]` names the model FILE must come from; a version left out is not
+  compared.
+- The replies file holds `ethos_assist_answers` (1), the source's digest, the renderer
+  (`ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1`), the request
+  (`lightonocr-3-grounding-v1`), the model's `id` and `version`, and per page asked its number, its
+  rendered size in centipoints (`points`), its `dpi`, pixels and pixel digest, and either `reply`
+  with `finish_reason` or `error`. Unknown fields are refused.
+- A file that does not answer this PDF is refused by name: `assist-answers-unreadable` (an empty
+  model id too), `assist-answers-other-source`, `assist-answers-other-renderer`,
+  `assist-answers-other-request`, `assist-answers-other-page` (a page past the document's last, or
+  rendered more than a point from the box it shows) and `assist-answers-other-model`. A model id
+  that is a file path — starting `/`, `~`, `.` or a drive letter, or holding a backslash, as a
+  server started with a local `--model` reports it — is refused `assist-answers-model-is-path`, so
+  no home directory lands in a record; one naming this engine's processor or recognizer, in any
+  case, `assist-answers-model-is-processor`. A file over 64 MiB, or a reply of more than 2,048
+  block markers, is refused `assist-answers-over-budget` before it is read whole. Office and image
+  bytes are refused `assist-not-pdf`; a record already assisted, or read under another profile,
+  `assist-base`.
+- A reply to a page the document has and the record does not list — cut by `--max-pages`, or not
+  read — is left out, and its page number kept under `assist.pages_left_out`: a block hangs on a
+  listed page.
+- Each reply is read into blocks by ParseBench's rule for LightOnOCR's grounding replies — label,
+  continuation, box on the 0-1000 grid (clamped, an inverted side swapped) and text — but for box
+  digits, which are ASCII only where ParseBench's `\d` takes any script's. Blocks are not nodes,
+  so `ground`, `locate` and `elements` never see them; each is `m`-numbered and of derivation
+  `proposed`. Nothing projects them yet.
+- The profile gains one optional pin, `assist` (rule `assist-lightonocr-v1`), on the base or the OCR
+  profile, so an assisted record's `profile_sha256` is its own. The seal holds what the merge
+  writes, on reading a record too: every block `proposed`, its id `m` and a number used once, its
+  box on the grid with no side inverted; pages declared, in page order, once each, an unanswered
+  one with no block; the model's id neither empty, a path, nor the engine's own.
+- Library: `ethos_parser_core::attach`, the `assist` module's record types and constants,
+  `AssistPin` and `Profile::with_assist`. Draft schemas: the profile's `assist` pin and the record's
+  `assist` key.
+- Measured: engine-only output byte-identical on the gate's 113 documents and opendataloader-bench's 200; decision #123's stored replies to
+  1,567 ParseBench pages read into exactly the 22,355 blocks ParseBench's own parse gives (11 more pages
+  are PDFs the engine refuses without assist).
+
 ### The assist binary asks a model server, through the system `curl` (decision #144)
 
 `ethos-parser-assist` gains `ask` and `check`. Requests go through the system `curl`, run as a

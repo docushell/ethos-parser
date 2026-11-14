@@ -102,9 +102,81 @@
           "$comment": "Decision #46, docs/34-FIGURE-REGIONS-SCOPE.md. The regions `figure-regions-v1` infers from the paths a page paints, in page order. Optional on the wire and always written: an empty array means the rule found none, or did not run on a document that declares author structure, and `assurance.capabilities.figures` says whether the profile runs it at all. Never `nodes`: a region claims no text, and the runs inside it are nodes already — since decision #97 each record names them in `runs_inside`, as an index only.",
           "items": { "$ref": "#/$defs/figure_record" }
         },
+        "assist": {
+          "$ref": "#/$defs/assist_record",
+          "$comment": "Decision #145. A drafting model's replies, read into `proposed` blocks, where `extract --assist-answers` attached a replies file; absent everywhere else, so an engine-only record's bytes do not move. Never `nodes`: a node needs a native locator and model text has none, so a block is uncitable by construction. The seal holds every block `proposed`, on a declared page, from a model whose id is not the processor's name."
+        },
         "assurance": {
           "$ref": "urn:ethos-parser:draft-schema:coverage:0",
           "$comment": "M4's L1 gate, carried forward by value: capabilities, limitations, per-page state, coverage, terminal state. An artifact without it has not reached 'extracted' regardless of how good its text is."
+        }
+      }
+    },
+
+    "assist_record": {
+      "title": "A drafting model's replies for one document (decision #145)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["answers_sha256", "model", "pages"],
+      "properties": {
+        "answers_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "$comment": "Digest of the replies file's bytes." },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "$comment": "The id the server reported. Never blank, a file path (starting `/`, `~`, `.` or a drive letter, or holding a backslash), nor this engine's processor or recognizer in any case: the seal refuses each." },
+            "version": { "type": "string", "$comment": "The version the caller named, or `not-reported`." }
+          }
+        },
+        "pages": {
+          "type": "array",
+          "$comment": "Each page the model was asked about that the record lists, in page order, each once. A page never asked is not here. A page whose outcome is `error` holds no block.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page", "dpi", "width", "height", "pixels_sha256", "outcome", "blocks"],
+            "properties": {
+              "page": { "type": "string", "$comment": "The id of the page record the reply is about." },
+              "dpi": { "type": "integer" },
+              "width": { "type": "integer", "$comment": "The image's pixels." },
+              "height": { "type": "integer" },
+              "pixels_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "$comment": "Provenance only: nothing in the engine renders." },
+              "finish_reason": { "type": "string", "$comment": "Why the model stopped, as the server said. Absent where the page was not answered." },
+              "outcome": {
+                "enum": ["read", "no-blocks", "error"],
+                "$comment": "`read`: a reply with block markers. `no-blocks`: a reply with none, not one this request's format reads. `error`: no reply."
+              },
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "continues", "text", "derivation"],
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^m[0-9]+$", "$comment": "A proposal, never a node; unique across the record." },
+                    "label": { "type": "string", "$comment": "The block's label, lower-cased, a continuation's `+` removed. Absent on text before the first marker." },
+                    "continues": { "type": "boolean", "$comment": "The label ended `+`: the block goes on from the page or column before." },
+                    "grid": {
+                      "type": "array",
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": { "type": "integer", "minimum": 0, "maximum": 1000 },
+                      "$comment": "[x0, y0, x1, y1] on the image's 0-1000 grid, clamped to it and ordered (x0 <= x1, y0 <= y1). Absent where the model gave no box."
+                    },
+                    "text": { "type": "string" },
+                    "derivation": { "const": "proposed" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "pages_left_out": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 1 },
+          "$comment": "The document's page numbers the replies answer that this record lists no page for — cut by `--max-pages`, or not read — ascending, each once. A block hangs on a listed page, so their replies are left out and counted here. Absent where there are none."
         }
       }
     },

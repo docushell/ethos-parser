@@ -68,6 +68,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod assist;
 pub mod assurance;
 pub mod c14n;
 pub mod derivation;
@@ -87,6 +88,14 @@ pub mod representation;
 pub mod tables;
 pub mod verifier;
 
+pub use assist::{
+    attach, AssistBlock, AssistModel, AssistOutcome, AssistPage, AssistRecord,
+    ASSIST_ANSWERS_MAX_BYTES, ASSIST_ANSWERS_MODEL_IS_PATH, ASSIST_ANSWERS_MODEL_IS_PROCESSOR,
+    ASSIST_ANSWERS_OTHER_MODEL, ASSIST_ANSWERS_OTHER_PAGE, ASSIST_ANSWERS_OTHER_RENDERER,
+    ASSIST_ANSWERS_OTHER_REQUEST, ASSIST_ANSWERS_OTHER_SOURCE, ASSIST_ANSWERS_OVER_BUDGET,
+    ASSIST_ANSWERS_UNREADABLE, ASSIST_ANSWERS_VERSION, ASSIST_BASE, ASSIST_MAX_BLOCKS_PER_PAGE,
+    ASSIST_RENDERER, ASSIST_REQUEST_V1, ASSIST_RULE_V1,
+};
 pub use assurance::{
     codes, page_binding_status, Assurance, CoverageSummary, Limitation, LimitationScope,
     PageBindingResult, PageState, PageStateEntry, ProcessingGaps, ProcessingTerminalState,
@@ -127,7 +136,7 @@ pub use markdown::{
 };
 pub use outlines::OutlineRecord;
 pub use profile::{
-    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi,
+    profile_sha256, AssistPin, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi,
     RecognizerIdentity, RecognizerPin, TableDetection, VerifierPin, XrefRepair, CMAP_DATA_VERSION,
     DOCX_READING_ORDER_RULE_V3, DOCX_TEXT_CODE_RULE_V4, EPUB_READING_ORDER_RULE_V1,
     EPUB_TEXT_CODE_RULE_V2, FIGURE_RULE_V1, FORM_ANNOTATION_RULE_V2, FURNITURE_RULE_V1,

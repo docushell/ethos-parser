@@ -402,6 +402,43 @@
           }
         }
       }
+    },
+    "assist": {
+      "type": "object",
+      "description": "Decision #145. The drafting model whose replies an assisted record holds as `proposed` blocks, and how they were asked for and read. The one optional top-level key: absent means no model's reply is in the record, which is true of every engine-only profile and of every profile written before it, so their bytes and hashes do not move. Pinned by `extract --assist-answers`, on the base or the OCR profile.",
+      "required": [
+        "rule",
+        "renderer",
+        "request",
+        "model",
+        "model_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {
+          "type": "string",
+          "examples": ["assist-lightonocr-v1"],
+          "description": "The rule that reads a reply into blocks."
+        },
+        "renderer": {
+          "type": "string",
+          "examples": ["ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1"],
+          "description": "The program and page rule that drew each page the model saw."
+        },
+        "request": {
+          "type": "string",
+          "examples": ["lightonocr-3-grounding-v1"],
+          "description": "How each page was asked, and the reply format read."
+        },
+        "model": {
+          "type": "string",
+          "description": "The model's id, as the server reported it."
+        },
+        "model_version": {
+          "type": "string",
+          "description": "The model's version as the caller named it, or `not-reported`."
+        }
+      }
     }
   },
   "$defs": {

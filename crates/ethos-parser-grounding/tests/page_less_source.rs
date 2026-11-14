@@ -505,6 +505,7 @@ fn payload(nodes: Vec<Node>, pages: Vec<PageRecord>) -> RepresentationPayload {
         tables: Vec::new(),
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(Capabilities::V0, authorized, states, limitations)
             .expect("the assurance block is well-formed"),
     }

@@ -2474,6 +2474,15 @@ pub struct RepresentationPayload {
     /// since decision #97, as an index only.
     #[serde(default)]
     pub figures: Vec<crate::figures::FigureRecord>,
+    /// A drafting model's replies, read into `Proposed` blocks, where a replies file was attached
+    /// (decision #145); absent everywhere else, so an engine-only record's bytes do not move.
+    ///
+    /// **Not nodes.** A node needs a native locator and model text has none, so a block is
+    /// uncitable by construction: `ground`, `locate` and `elements` read nodes and never see it
+    /// (contract §6, rule 3). `check_structure` holds every block `Proposed`, on a declared page,
+    /// from a model that is not this record's processor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assist: Option<crate::assist::AssistRecord>,
     /// M4's L1 gate, carried forward by value: capabilities, limitations, per-page state,
     /// coverage, terminal state.
     pub assurance: Assurance,
@@ -2536,6 +2545,7 @@ impl RepresentationPayload {
             outlines,
             figures,
             tables,
+            assist,
             assurance,
         } = self;
 
@@ -2544,7 +2554,14 @@ impl RepresentationPayload {
             detail: e.to_string(),
         };
 
-        sink.push(b"{\"assurance\":");
+        // `assist` sorts first, and is written only where present, as serde skips it.
+        if let Some(assist) = assist {
+            sink.push(b"{\"assist\":");
+            sink.canonical(assist).map_err(malformed)?;
+            sink.push(b",\"assurance\":");
+        } else {
+            sink.push(b"{\"assurance\":");
+        }
         sink.canonical(assurance).map_err(malformed)?;
         sink.push(b",\"coordinate_system\":");
         sink.canonical(coordinate_system).map_err(malformed)?;
@@ -2694,6 +2711,12 @@ impl DocumentRepresentation {
         };
         d.check_structure()?;
         Ok(d)
+    }
+
+    /// The payload and geometry, so a sealed record can be changed and sealed again
+    /// (`assist::attach`, decision #145). Sealing is the only way back to a record.
+    pub(crate) fn into_parts(self) -> (RepresentationPayload, Vec<NodeGeometry>) {
+        (self.representation, self.geometry)
     }
 
     /// Whether an id was minted as a [`crate::IdKind::Part`].
@@ -2948,12 +2971,103 @@ impl DocumentRepresentation {
             }
         }
 
+        self.check_assist(&pages_by_id)?;
         self.check_geometry_matches_its_declaration()?;
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
         self.check_attributes_agree_with_kind()?;
         self.check_readings_move_characters()?;
         self.check_recognized_placement()?;
 
+        Ok(())
+    }
+
+    /// A drafting model's blocks, checked rather than trusted (decision #145): what
+    /// `assist::attach` writes, held on the way in too.
+    ///
+    /// - The model's id is not empty, not a file path, and not this engine's processor or
+    ///   recognizer, compared trimmed and ASCII case-folded: the processor-identity rule
+    ///   (`docs/04-ARCHITECTURE.md` §6) made mechanical, refused here rather than caught in review.
+    /// - Each page is a declared page, in page order, at most once; a page whose reply is an error
+    ///   holds no block.
+    /// - Each block is `Proposed`, its id `m` and a number, used once, its box on the 0-1000 grid
+    ///   with no side inverted.
+    /// - A page left out is one the document has and this record does not list, in ascending
+    ///   order.
+    fn check_assist(
+        &self,
+        pages_by_id: &std::collections::BTreeMap<&str, &PageRecord>,
+    ) -> Result<(), EngineError> {
+        let p = &self.representation;
+        let Some(assist) = &p.assist else {
+            return Ok(());
+        };
+        if let Some((_, why)) =
+            crate::assist::model_id_refusal(&assist.model.id, &p.processing_run.processor.name)
+        {
+            return Err(Self::malformed(why));
+        }
+        let mut last = 0;
+        let mut ids = std::collections::BTreeSet::new();
+        for page in &assist.pages {
+            let Some(record) = pages_by_id.get(page.page.as_str()) else {
+                return Err(Self::malformed(format!(
+                    "the drafting model's reply names page `{}`, which is not a declared page",
+                    page.page
+                )));
+            };
+            if record.index <= last {
+                return Err(Self::malformed(format!(
+                    "the drafting model's replies are in page order, each page once; `{}` is not",
+                    page.page
+                )));
+            }
+            last = record.index;
+            if page.outcome == crate::assist::AssistOutcome::Error && !page.blocks.is_empty() {
+                return Err(Self::malformed(format!(
+                    "page `{}` holds the error of a request that was not answered, and blocks",
+                    page.page
+                )));
+            }
+            for block in &page.blocks {
+                if block.derivation != DerivationClass::Proposed {
+                    return Err(Self::malformed(format!(
+                        "block `{}` is a drafting model's text and is `{:?}`; a model's text is \
+                         `proposed`, and never evidence (contract §6, rule 3)",
+                        block.id, block.derivation
+                    )));
+                }
+                let id = block.id.as_str();
+                let numbered = id
+                    .strip_prefix('m')
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+                if !numbered || !ids.insert(id) {
+                    return Err(Self::malformed(format!(
+                        "block id `{id}` is not a proposal's own: `m` and a number, used once"
+                    )));
+                }
+                if let Some([x0, y0, x1, y1]) = block.grid {
+                    if x0 > x1 || y0 > y1 || x1 > 1000 || y1 > 1000 {
+                        return Err(Self::malformed(format!(
+                            "block `{id}`'s box [{x0}, {y0}, {x1}, {y1}] is not on the 0-1000 \
+                             grid with its sides in order"
+                        )));
+                    }
+                }
+            }
+        }
+        let left_out = &assist.pages_left_out;
+        if left_out.windows(2).any(|w| w[0] >= w[1])
+            || left_out.iter().any(|&index| {
+                index == 0
+                    || index > p.assurance.coverage.pages_authorized
+                    || p.pages.iter().any(|r| r.index == index)
+            })
+        {
+            return Err(Self::malformed(format!(
+                "pages left out {left_out:?} are not, in ascending order, pages the document has \
+                 and this record does not list"
+            )));
+        }
         Ok(())
     }
 
@@ -3389,6 +3503,7 @@ mod tests {
             tables: Vec::new(),
             outlines: Vec::new(),
             figures: Vec::new(),
+            assist: None,
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,

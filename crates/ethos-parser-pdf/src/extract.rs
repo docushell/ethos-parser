@@ -2648,7 +2648,7 @@ fn extract_counted(
             // Not minted per page, so there is no page-local ordinal to rebase. Enumerated rather
             // than swept into a `_` arm: a sixth rebased kind added later must fail HERE, at the
             // counter, rather than silently taking a zero base and colliding every id it rewrites.
-            IdKind::Page | IdKind::Element | IdKind::Part => panic!(
+            IdKind::Page | IdKind::Element | IdKind::Part | IdKind::Proposal => panic!(
                 "{kind:?} is not rebased on the page path: extraction mints no page-local ids of \
                  this kind, so there is no base to add. A new rebased kind needs a counter above."
             ),

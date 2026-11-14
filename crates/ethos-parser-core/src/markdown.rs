@@ -5781,6 +5781,7 @@ pub(crate) mod tests {
             tables,
             outlines: Vec::new(),
             figures: Vec::new(),
+            assist: None,
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,

@@ -318,6 +318,48 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         representations.push((name.into(), repr));
     }
 
+    // Decision #145: the scan with a made-up model's replies attached, a block before its first
+    // marker and one marked, so the assisted profile and the record's `assist` key are walked too.
+    let scan = representations
+        .iter()
+        .find(|(name, _)| name == "scan.pdf")
+        .map(|(_, repr)| repr.clone())
+        .expect("the scan's record");
+    let page = &scan.payload().pages[0];
+    let pixels = ethos_parser_core::Sha256Hex::of_bytes(b"made-up pixels").to_string();
+    let answers = serde_json::json!({
+        "ethos_assist_answers": 1,
+        "source_sha256": scan.payload().source.sha256.to_string(),
+        "renderer": ethos_parser_core::ASSIST_RENDERER,
+        "request": ethos_parser_core::ASSIST_REQUEST_V1,
+        "model": {"id": "example/made-up-model", "version": "not-reported"},
+        "pages": [{
+            "page": page.index, "points": [page.width, page.height], "dpi": 200,
+            "width": 556, "height": 278, "pixels_sha256": pixels, "finish_reason": "stop",
+            "reply": "made-up words\n\n![text+](10,20,30,40) Hello world"
+        }]
+    });
+    let assisted = ethos_parser_core::attach(
+        scan,
+        &ocr,
+        &serde_json::to_vec(&answers).expect("JSON"),
+        None,
+    )
+    .expect("the replies attach");
+    let pin = ethos_parser_core::AssistPin {
+        rule: ethos_parser_core::ASSIST_RULE_V1.into(),
+        renderer: ethos_parser_core::ASSIST_RENDERER.into(),
+        request: ethos_parser_core::ASSIST_REQUEST_V1.into(),
+        model: "example/made-up-model".into(),
+        model_version: "not-reported".into(),
+    };
+    out.push((
+        "assisted profile".into(),
+        "profile",
+        as_json!(ocr.clone().with_assist(pin)),
+    ));
+    representations.push(("scan.pdf assisted".into(), assisted));
+
     let office = repo_root().join("fixtures/office");
     let mut documents: Vec<PathBuf> = std::fs::read_dir(&office)
         .expect("fixtures/office is readable")

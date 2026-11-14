@@ -2982,6 +2982,38 @@ pub struct Profile {
     /// Which recognizer this run's `Recognized` runs come from (v3, `docs/35-OCR-SCOPE.md`).
     /// [`RecognizerPin::NotPinned`] by default; [`Profile::ocr_v0`] pins one.
     pub recognizer: RecognizerPin,
+    /// The drafting model whose replies an assisted record holds as `Proposed` blocks, or absent
+    /// where no replies file was attached (decision #145). [`Profile::with_assist`] pins one.
+    ///
+    /// **Optional, as `table_detection.office` is, and for its reason.** Absent claims that no
+    /// model's reply is in the record, which is true of every profile written before this key and
+    /// of every engine-only run now, so their bytes and hashes do not move. An unknown key inside
+    /// it is still refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assist: Option<AssistPin>,
+}
+
+/// The drafting model an assisted record's `Proposed` blocks come from, and how its replies were
+/// asked for and read (decision #145).
+///
+/// Pinned by what decides the blocks: the rule that reads a reply, the renderer that drew the
+/// page the model saw, the request that asked, and the model with its version as the replies file
+/// names them. Two assisted records are comparable only where all five agree, and never with an
+/// engine-only record (contract §6, rule 4). The replies file's own digest is per document, so it
+/// is in the record (`assist.answers_sha256`), not here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssistPin {
+    /// The rule that reads a reply into blocks: [`crate::assist::ASSIST_RULE_V1`].
+    pub rule: String,
+    /// The renderer that drew each page: [`crate::assist::ASSIST_RENDERER`].
+    pub renderer: String,
+    /// The request each page was asked with: [`crate::assist::ASSIST_REQUEST_V1`].
+    pub request: String,
+    /// The model's id, as the server reported it.
+    pub model: String,
+    /// The model's version as the caller named it, or `not-reported`.
+    pub model_version: String,
 }
 
 /// Which recognizer a profile's `Recognized` runs come from, if any (v3, `docs/35-OCR-SCOPE.md`
@@ -3082,6 +3114,7 @@ impl Default for Profile {
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
             recognizer: RecognizerPin::NotPinned,
+            assist: None,
         }
     }
 }
@@ -3095,6 +3128,17 @@ impl Profile {
         Self {
             recognizer: RecognizerPin::Pinned(RecognizerIdentity::ethos_parser_ocr()),
             ..Self::default()
+        }
+    }
+
+    /// This profile with a drafting model's replies pinned (decision #145): the profile an
+    /// assisted record is read under, stacked on the base or the OCR profile. It differs from
+    /// `self` in [`Self::assist`] alone, so an assisted record never shares a `profile_sha256` with
+    /// an engine-only one (contract §6, rule 4).
+    pub fn with_assist(self, pin: AssistPin) -> Self {
+        Self {
+            assist: Some(pin),
+            ..self
         }
     }
 
@@ -3768,6 +3812,17 @@ mod tests {
         p.profile_sha256().unwrap().to_string()
     }
 
+    /// A made-up drafting model's pin (decision #145).
+    fn a_pin() -> AssistPin {
+        AssistPin {
+            rule: crate::assist::ASSIST_RULE_V1.into(),
+            renderer: crate::assist::ASSIST_RENDERER.into(),
+            request: crate::assist::ASSIST_REQUEST_V1.into(),
+            model: "example/made-up-model".into(),
+            model_version: "not-reported".into(),
+        }
+    }
+
     /// **Every field of the profile, and of each struct and struct variant inside it, is a key
     /// in the bytes the profile is hashed from.**
     ///
@@ -3801,14 +3856,16 @@ mod tests {
             object.keys().map(String::as_str).collect()
         }
 
-        // Pinned, so the verifier's and the recognizer's struct variants are on the wire too.
+        // Pinned, so the verifier's and the recognizer's struct variants are on the wire too, and
+        // assisted, so the optional `assist` pin is (decision #145).
         let profile = Profile {
             verifier: VerifierPin::pinned(
                 "ethos 0.6.0",
                 Sha256Hex::from_hex(&"0".repeat(64)).expect("hex"),
             ),
             ..Profile::ocr_v0()
-        };
+        }
+        .with_assist(a_pin());
         let bytes = profile.canonical_bytes().expect("canonical");
         let wire: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
 
@@ -3845,6 +3902,20 @@ mod tests {
                 xref_repair,
                 verifier,
                 recognizer,
+                assist,
+            })
+        );
+        let Some(pin) = &profile.assist else {
+            panic!("the assisted profile pins its model");
+        };
+        assert_eq!(
+            keys(&wire["assist"]),
+            declared!(pin => AssistPin {
+                rule,
+                renderer,
+                request,
+                model,
+                model_version,
             })
         );
         assert_eq!(
@@ -4063,6 +4134,7 @@ mod tests {
             xref_repair: _,
             verifier: _,
             recognizer: _,
+            assist: _,
         } = &base;
 
         /// One named single-field mutation.
@@ -4200,6 +4272,12 @@ mod tests {
                 Box::new(|p: &mut Profile| {
                     p.recognizer = RecognizerPin::Pinned(RecognizerIdentity::ethos_parser_ocr())
                 }),
+            ),
+            (
+                // Decision #145. Which drafting model's replies a record holds is part of its
+                // identity: an assisted record must never be comparable with an engine-only one.
+                "assist",
+                Box::new(|p: &mut Profile| p.assist = Some(a_pin())),
             ),
             (
                 "backend.name",
@@ -4356,12 +4434,13 @@ mod tests {
         // added `table_detection.lines` the same way, and forty-seven since decision #90, which
         // added `table_detection.pies` the same way. Forty-eight since decision #120, which added
         // `recognizer` the same way, and forty-nine since decision #135, which added
-        // `table_detection.office` the same way.
+        // `table_detection.office` the same way. Fifty since decision #145, which added `assist`
+        // the same way.
         assert_eq!(
             mutations.len(),
-            49,
-            "{} single-field mutation(s); forty-nine is the number at decision #135, which added \
-             `table_detection.office` with its mutation",
+            50,
+            "{} single-field mutation(s); fifty is the number at decision #145, which added \
+             `assist` with its mutation",
             mutations.len()
         );
 
@@ -6096,10 +6175,18 @@ mod tests {
 
     #[test]
     fn the_profile_round_trips() {
-        let p = Profile::default();
-        let bytes = p.canonical_bytes().unwrap();
-        let back: Profile = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(back, p);
-        assert_eq!(back.profile_sha256().unwrap(), p.profile_sha256().unwrap());
+        // And an assisted one, whose `assist` pin is the one optional key that reads back
+        // (decision #145); the default has none, and none is written.
+        for p in [Profile::default(), Profile::ocr_v0().with_assist(a_pin())] {
+            let bytes = p.canonical_bytes().unwrap();
+            let back: Profile = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(back, p);
+            assert_eq!(back.profile_sha256().unwrap(), p.profile_sha256().unwrap());
+        }
+        assert!(
+            !String::from_utf8(Profile::ocr_v0().canonical_bytes().unwrap())
+                .unwrap()
+                .contains("\"assist\"")
+        );
     }
 }

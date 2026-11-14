@@ -1052,6 +1052,7 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1367,6 +1368,7 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1536,6 +1538,7 @@ fn read_odt(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1715,6 +1718,7 @@ fn read_ods(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1904,6 +1908,7 @@ fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -2046,6 +2051,7 @@ fn read_rtf(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -2241,6 +2247,7 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -2486,6 +2493,7 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 

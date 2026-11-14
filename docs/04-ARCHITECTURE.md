@@ -217,11 +217,14 @@ row's canvas rule mechanical; and one accessor, `NativeLocator::run_locator`, th
 projections read a run's place whichever variant carries it. Grounding was untouched for PDFs; an
 image file is a source its schema does not admit, refused by name.
 
-**The processor-identity rule, designed now and implemented when assist exists:** every lane declares
-its processor identity in the processing run, and a run whose drafting model and representation
-processor share an identity is **rejected mechanically** rather than caught in review. That is
-cheaper than the byte-diff CI it supplements, and it is the precondition that makes a model-assist
-lane safe to build at all.
+**The processor-identity rule, designed before assist existed and implemented with it (decision
+#145):** every lane declares its processor identity in the processing run, and a run whose drafting
+model and representation processor share an identity is **rejected mechanically** rather than caught
+in review. That is cheaper than the byte-diff CI it supplements, and it is the precondition that
+makes a model-assist lane safe to build at all. A replies file whose model id names the processor
+(`processing_run.processor.name`) or the recognizer (`ethos-parser-ocr`), trimmed and ASCII
+case-folded, is refused `assist-answers-model-is-processor`, and the seal refuses such a record on
+both construction paths.
 
 ## 7. What this architecture refuses
 

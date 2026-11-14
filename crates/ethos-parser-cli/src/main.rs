@@ -349,6 +349,22 @@ struct ExtractArgs {
     /// one page, its own pixel grid.
     #[arg(long)]
     ocr: bool,
+
+    /// Attach a drafting model's replies to the record, read from FILE: its blocks, under the
+    /// `assist` key, each of derivation `proposed` — a model's text, never evidence, and never a
+    /// node — under a profile pinning the model, so the record's `profile_sha256` differs from one
+    /// made without it (decision #145). The output is a function of the PDF and FILE alone. FILE
+    /// is refused by name where it does not answer this PDF: another source digest, renderer,
+    /// request, model or page; a model id that is a file path or names this engine; over 64 MiB,
+    /// or a reply over 2,048 block markers. A reply to a page `--max-pages` cut is left out, and
+    /// its number kept under `assist.pages_left_out`. A PDF only.
+    #[arg(long, value_name = "FILE")]
+    assist_answers: Option<PathBuf>,
+
+    /// The model the replies must come from, as `ID` or `ID@VERSION`: FILE naming another is
+    /// refused. A version left out is not compared.
+    #[arg(long, value_name = "ID[@VERSION]", requires = "assist_answers")]
+    assist_model: Option<String>,
 }
 
 #[derive(clap::Args)]
@@ -841,10 +857,37 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         }
         profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
     }
+    // A model reads rendered pages of a PDF; office and image bytes have none it was asked about.
+    if args.assist_answers.is_some()
+        && (routes_to_office(&head) || ethos_parser_pdf::image_media_type(&head).is_some())
+    {
+        return fail(&EngineError::Unsupported {
+            what: "assist-not-pdf".into(),
+            detail: "--assist-answers attaches a model's replies to a PDF's pages; these bytes \
+                     are not a PDF"
+                .into(),
+        });
+    }
     let repr = if args.ocr {
-        recognized_representation(&head, profile)
+        profile = ocr_profile(&profile);
+        recognized_representation(&head, &profile)
     } else {
         representation_for_bytes(&head, &profile)
+    };
+    let repr = match &args.assist_answers {
+        Some(path) => repr.and_then(|r| {
+            // Read no further than the budget the library refuses past, and by the same name.
+            let budget = ethos_parser_core::ASSIST_ANSWERS_MAX_BYTES;
+            let answers = read_source_within(path, budget as u64).map_err(|e| match e {
+                EngineError::ResourceLimit { .. } => EngineError::Malformed {
+                    what: ethos_parser_core::ASSIST_ANSWERS_OVER_BUDGET.into(),
+                    detail: format!("{} holds over {budget} bytes", path.display()),
+                },
+                e => e,
+            })?;
+            ethos_parser_core::attach(r, &profile, &answers, args.assist_model.as_deref())
+        }),
+        None => repr,
     };
     emit_representation(repr.inspect(|r| hint_ocr(r, OCR_ON_SOURCE)))
 }
@@ -889,12 +932,19 @@ fn hint_ocr(repr: &ethos_parser_core::DocumentRepresentation, ask: &str) {
     );
 }
 
-/// `--ocr`: the OCR profile (with any page budget the caller set), the recognizer found and
-/// pinned, and a PDF read through it. Office bytes are refused by name: they have no scanned
-/// pages to read.
+/// The OCR profile, with any page budget `base` sets.
+fn ocr_profile(base: &Profile) -> Profile {
+    Profile {
+        page_budget: base.page_budget,
+        ..Profile::ocr_v0()
+    }
+}
+
+/// `--ocr`: the recognizer found and pinned, and a PDF read through it under `profile`, the OCR
+/// profile. Office bytes are refused by name: they have no scanned pages to read.
 fn recognized_representation(
     head: &[u8],
-    base: Profile,
+    profile: &Profile,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
     if routes_to_office(head) {
         return Err(EngineError::Unsupported {
@@ -904,12 +954,8 @@ fn recognized_representation(
                 .into(),
         });
     }
-    let profile = Profile {
-        page_budget: base.page_budget,
-        ..Profile::ocr_v0()
-    };
     let mut process = recognizer::Process::find()?;
-    representation_for(head, &profile, Some(&mut process))
+    representation_for(head, profile, Some(&mut process))
 }
 
 /// Route bytes to the reader their own signatures name, and return the canonical
@@ -1186,7 +1232,7 @@ fn representation_to_project(
     if let Some(source) = source {
         let bytes = read_source(source)?;
         if ocr {
-            return recognized_representation(&bytes, Profile::default());
+            return recognized_representation(&bytes, &ocr_profile(&Profile::default()));
         }
         return representation_for_bytes(&bytes, &Profile::default());
     }

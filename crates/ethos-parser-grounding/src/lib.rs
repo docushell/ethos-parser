@@ -1296,6 +1296,7 @@ mod schema_limit_tests {
             tables: Vec::new(),
             outlines: Vec::new(),
             figures: Vec::new(),
+            assist: None,
             assurance: Assurance::new(
                 capabilities,
                 pages.iter().map(|p| p.index).max().unwrap_or(0),
