@@ -175,6 +175,16 @@ pub struct ShownText {
     /// Whether its origin lies outside the rectangle the page clips to (decision #105): the chart
     /// rules read no such run.
     pub(crate) clipped: bool,
+    /// What the optional content it lies in makes of it (decision #139): `Off` where an enclosing
+    /// `BDC /OC` or form names a group the document's default configuration switches off.
+    pub(crate) layer: Option<crate::layers::Layer>,
+    /// Whether it is filled in the colour of what lies beneath it (decision #139): see
+    /// [`Interpreter::fill_matches_background`].
+    pub(crate) fill_matches_background: bool,
+    /// Whether, drawn in rendering mode 7, it clips paint drawn after it before the graphics state
+    /// that holds the clip is restored (decision #139): a fill, a stroke, an image, a shading or
+    /// text painted through it, which makes its glyphs visible.
+    pub(crate) clips_paint: bool,
 }
 
 /// One image XObject a page painted with `Do`, in **user space** (v1-S6).
@@ -272,6 +282,112 @@ impl PathRect {
             && self.x1 >= other.x1 - 0.01
             && self.y1 >= other.y1 - 0.01
     }
+
+    /// Whether `other` and this rectangle share any point, edges included (decision #139).
+    fn touches(&self, other: &PathRect) -> bool {
+        self.x0 <= other.x1 && other.x0 <= self.x1 && self.y0 <= other.y1 && other.y0 <= self.y1
+    }
+
+    /// The part of this rectangle `clip` leaves, if any (decision #139).
+    fn clip_to(self, clip: Option<PathRect>) -> Option<Self> {
+        let Some(c) = clip else {
+            return Some(self);
+        };
+        let r = Self {
+            x0: self.x0.max(c.x0),
+            y0: self.y0.max(c.y0),
+            x1: self.x1.min(c.x1),
+            y1: self.y1.min(c.y1),
+        };
+        (r.x0 <= r.x1 && r.y0 <= r.y1).then_some(r)
+    }
+
+    /// The box around the four corners `m` carries the unit square to: where an image lands.
+    fn of_unit_square(m: Matrix) -> Self {
+        let corners = [
+            m.apply(0.0, 0.0),
+            m.apply(1.0, 0.0),
+            m.apply(1.0, 1.0),
+            m.apply(0.0, 1.0),
+        ];
+        let (xs, ys) = (corners.map(|c| c.0), corners.map(|c| c.1));
+        Self {
+            x0: xs.iter().copied().fold(f64::INFINITY, f64::min),
+            y0: ys.iter().copied().fold(f64::INFINITY, f64::min),
+            x1: xs.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            y1: ys.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        }
+    }
+}
+
+/// What a page painted so far, in paint order, for [`Interpreter::fill_matches_background`] alone
+/// (decision #139): each area a fill, a stroke, an image or a shading covered, with its colour where
+/// a fill painted it as one rectangle in a device colour, and `None` where what lies there is not
+/// compared.
+///
+/// **Indexed by where it lies**, so a page of a hundred thousand paths does not compare each run
+/// with every one of them: an area spanning few cells of the first side in [`BACKDROP_CELLS`] is
+/// listed in each, a larger one in each cell of the second side it spans where those are few, and
+/// a larger one still in [`Backdrop::wide`]. Lists keep paint order, so the last paint touching a
+/// band is the largest index any list holding the band's cells gives — the same answer, in any
+/// order of lookup, as reading every paint back to front.
+#[derive(Debug, Default)]
+struct Backdrop {
+    paints: Vec<(PathRect, Option<Fill>)>,
+    cells: [std::collections::BTreeMap<(i64, i64), Vec<usize>>; 2],
+    wide: Vec<usize>,
+}
+
+/// The sides of the cells of [`Backdrop`]'s two grids, in points.
+const BACKDROP_CELLS: [f64; 2] = [32.0, 512.0];
+
+/// How many cells an area may span and still be listed in each.
+const BACKDROP_CELLS_MAX: i64 = 64;
+
+impl Backdrop {
+    /// The cells of side `side` that `r` spans, `(x0, y0, x1, y1)` inclusive, or `None` where it
+    /// spans too many.
+    fn cells_of(r: &PathRect, side: f64) -> Option<(i64, i64, i64, i64)> {
+        let cell = |v: f64| (v / side).floor().clamp(-1e6, 1e6) as i64;
+        let (i0, j0, i1, j1) = (cell(r.x0), cell(r.y0), cell(r.x1), cell(r.y1));
+        ((i1 - i0 + 1) * (j1 - j0 + 1) <= BACKDROP_CELLS_MAX).then_some((i0, j0, i1, j1))
+    }
+
+    fn push(&mut self, area: PathRect, fill: Option<Fill>) {
+        let k = self.paints.len();
+        self.paints.push((area, fill));
+        for (grid, side) in self.cells.iter_mut().zip(BACKDROP_CELLS) {
+            if let Some((i0, j0, i1, j1)) = Self::cells_of(&area, side) {
+                for i in i0..=i1 {
+                    for j in j0..=j1 {
+                        grid.entry((i, j)).or_default().push(k);
+                    }
+                }
+                return;
+            }
+        }
+        self.wide.push(k);
+    }
+
+    /// The last paint touching `band`.
+    fn last_touching(&self, band: &PathRect) -> Option<&(PathRect, Option<Fill>)> {
+        let touching = |k: &&usize| self.paints[**k].0.touches(band);
+        let mut last = self.wide.iter().rev().find(touching).copied();
+        for (grid, side) in self.cells.iter().zip(BACKDROP_CELLS) {
+            let Some((i0, j0, i1, j1)) = Self::cells_of(band, side) else {
+                return self.paints.iter().rev().find(|(a, _)| a.touches(band));
+            };
+            for i in i0..=i1 {
+                for j in j0..=j1 {
+                    let found = grid
+                        .get(&(i, j))
+                        .and_then(|l| l.iter().rev().find(touching));
+                    last = last.max(found.copied());
+                }
+            }
+        }
+        last.map(|k| &self.paints[k])
+    }
 }
 
 /// One axis-aligned rectangle a page **filled**, and the colour it filled it with (decision #42).
@@ -325,6 +441,24 @@ struct MarkedContent {
     artifact: bool,
     /// Its `/MCID`, when the property list was inline and carried one.
     mcid: Option<i64>,
+    /// What a `BDC /OC` makes of the content it opens (decision #139), `None` where a viewer shows
+    /// it or the sequence is no optional content.
+    layer: Option<crate::layers::Layer>,
+}
+
+/// A run drawn in rendering mode 7 whose clip still stands (decision #139).
+#[derive(Debug, Clone, Copy)]
+struct ClipText {
+    /// Its index in [`Interpreter::shown`].
+    index: usize,
+    /// How many forms were open when it was shown.
+    forms: usize,
+    /// How many saved states were open when it was shown.
+    states: usize,
+    /// Its glyphs: from its baseline to seven tenths of its em above, origin to pen end.
+    band: PathRect,
+    /// Whether `ET` has made its clip take effect.
+    armed: bool,
 }
 
 /// A subpath under construction.
@@ -442,6 +576,24 @@ pub struct Interpreter<'a> {
     /// The slices a fill painted (`slice-labels-v1`, decision #90): each subpath [`wedge`] reads,
     /// with its fill colour. Read by the pie rule alone.
     pub wedges: Vec<Wedge>,
+    /// What was painted on the page so far, in paint order, for
+    /// [`Self::fill_matches_background`] alone (decision #139): each area a fill, a wide stroke,
+    /// an image or a shading covered, with its colour where a fill painted it as one rectangle in
+    /// a device colour, and `None` where what lies there is not compared. A form's paint is kept.
+    backdrop: Backdrop,
+    /// The names the page's `/Properties` give content a viewer does not show (decision #139).
+    layers: std::collections::BTreeMap<Vec<u8>, crate::layers::Layer>,
+    /// Runs drawn in rendering mode 7 whose clip still stands (decision #139): each one's index in
+    /// [`Self::shown`], how many forms and saved states were open when it was shown, its glyph
+    /// band, and whether `ET` has made its clip take effect.
+    clip_text: Vec<ClipText>,
+    /// The names the page's `/ExtGState` gives graphics states that change no fill's colour
+    /// (decision #139): no blend mode but `/Normal` or `/Compatible`, no soft mask, no fill alpha
+    /// under one.
+    plain_states: std::collections::BTreeSet<Vec<u8>>,
+    /// How many subpaths of the path being built drew a line (decision #139), so a stroke can tell
+    /// a path of rectangles and axis-aligned lines from one with any other subpath.
+    path_subpaths: usize,
     /// The box of the path being built: every point and control point it has named so far.
     path_box: Option<PathRect>,
     /// Whether a subpath of the path being built drew more than a rectangle or an axis-aligned
@@ -565,6 +717,11 @@ impl<'a> Interpreter<'a> {
             polylines: Vec::new(),
             marks: Vec::new(),
             wedges: Vec::new(),
+            backdrop: Backdrop::default(),
+            layers: std::collections::BTreeMap::new(),
+            clip_text: Vec::new(),
+            plain_states: std::collections::BTreeSet::new(),
+            path_subpaths: 0,
             path_box: None,
             path_shaped: false,
             filled: Vec::new(),
@@ -614,6 +771,24 @@ impl<'a> Interpreter<'a> {
         self
     }
 
+    /// Supply the names the page's `/Properties` give content a viewer does not show (decision
+    /// #139). Without them a `BDC /OC` on the page hides nothing.
+    pub(crate) fn with_layers(
+        mut self,
+        layers: std::collections::BTreeMap<Vec<u8>, crate::layers::Layer>,
+    ) -> Self {
+        self.layers = layers;
+        self
+    }
+
+    /// Supply the names the page's `/ExtGState` gives graphics states that change no fill's colour
+    /// (decision #139). Without them text drawn under any `gs` is not compared with what lies
+    /// beneath it.
+    pub(crate) fn with_plain_states(mut self, names: std::collections::BTreeSet<Vec<u8>>) -> Self {
+        self.plain_states = names;
+        self
+    }
+
     /// Supply what resolves the forms a page draws, and how many operations they may run between
     /// them (`docs/30-FORM-XOBJECTS-SCOPE.md` §5). Without it no form is entered.
     pub(crate) fn with_forms(mut self, forms: &'a FormResolver<'a>, ops_left: usize) -> Self {
@@ -637,6 +812,84 @@ impl<'a> Interpreter<'a> {
     /// The whole stack: artifact content stays artifact content however deeply it is nested.
     fn inside_artifact(&self) -> bool {
         self.mc_stack.iter().any(|m| m.artifact)
+    }
+
+    /// What the open optional content makes of a run shown now (decision #139): hidden where any
+    /// enclosing `BDC /OC` or form is switched off; else not evaluated where one is a membership
+    /// dictionary.
+    fn layer(&self) -> Option<crate::layers::Layer> {
+        let forms = self.form_stack.iter().filter_map(|(_, form, _)| form.layer);
+        self.mc_stack
+            .iter()
+            .filter_map(|m| m.layer)
+            .chain(forms)
+            .max()
+    }
+
+    /// Whether a run on `band` is filled in the colour of what lies beneath it (decision #139).
+    ///
+    /// `band` is the run's glyphs: from its baseline to seven tenths of its em above, from its
+    /// origin to where its pen ends, in user space. Beneath it is the last paint in
+    /// [`Self::backdrop`] that touches it. Matched where that paint is one rectangle filled in a
+    /// device colour under no `gs`, covers the whole band, and is the run's fill — the same
+    /// operands in the same space, or both exactly white — and where nothing was painted there at
+    /// all and the run is exactly white, the page's own colour. Any other paint beneath, a fill
+    /// not set in a device space, or a `gs` that may blend or mask the run itself matches nothing.
+    /// Only a run that is filled and not stroked (`Tr 0` or `4`) is compared.
+    fn fill_matches_background(&self, band: PathRect) -> bool {
+        let fill = self.gs.fill;
+        if !matches!(self.ts.render_mode, 0 | 4) || !self.gs.fill_device || self.gs.text_blends {
+            return false;
+        }
+        match self.backdrop.last_touching(&band) {
+            None => fill.is_exactly_white(),
+            Some((area, Some(beneath))) if area.contains(&band) => {
+                beneath.same(fill) || (beneath.is_exactly_white() && fill.is_exactly_white())
+            }
+            Some(_) => false,
+        }
+    }
+
+    /// Records that `area` was painted over (decision #139), in `fill` where that is a colour
+    /// [`Self::fill_matches_background`] compares: as much of it as the page's known clip shows.
+    ///
+    /// Paint in a layer switched off is not drawn, and is not recorded. Under a clip whose shape is
+    /// not one rectangle the paint is recorded at its full extent, in no colour. Every paint shows
+    /// the rendering-mode-7 runs whose clip it is drawn through.
+    fn paint(&mut self, area: PathRect, fill: Option<Fill>) {
+        let fill = match self.layer() {
+            Some(crate::layers::Layer::Off) => return,
+            Some(crate::layers::Layer::NotEvaluated) => None,
+            None if self.gs.clip_unknown => None,
+            None => fill,
+        };
+        if let Some(shown) = area
+            .clip_to(self.gs.clip)
+            .and_then(|a| a.clip_to(self.gs.form_clip))
+        {
+            self.through_clip_text(&shown);
+            self.backdrop.push(shown, fill);
+        }
+    }
+
+    /// Marks as clipping paint each rendering-mode-7 run whose clip has taken effect, still stands,
+    /// and whose glyphs `area` touches (decision #139).
+    fn through_clip_text(&mut self, area: &PathRect) {
+        let shown = &mut self.shown;
+        self.clip_text.retain(|c| {
+            let through = c.armed && c.band.touches(area);
+            if let (true, Some(run)) = (through, shown.get_mut(c.index)) {
+                run.clips_paint = true;
+            }
+            !through
+        });
+    }
+
+    /// Forgets the rendering-mode-7 runs whose clip the state just restored took away.
+    fn prune_clip_text(&mut self) {
+        let (forms, states) = (self.form_stack.len(), self.gs_stack.len());
+        self.clip_text
+            .retain(|c| c.forms <= forms && (c.forms < forms || c.states <= states));
     }
 
     /// Interpret a decoded content stream.
@@ -677,6 +930,8 @@ impl<'a> Interpreter<'a> {
                 self.polylines.clear();
                 self.marks.clear();
                 self.wedges.clear();
+                self.backdrop = Backdrop::default();
+                self.clip_text.clear();
                 self.subpath = Subpath::default();
                 self.dropped_runs = 0;
                 Err(e)
@@ -771,6 +1026,9 @@ impl<'a> Interpreter<'a> {
     fn flush_subpath(&mut self) {
         let sub = std::mem::take(&mut self.subpath);
         self.note_shape(&sub);
+        if sub.points.len() >= 2 {
+            self.path_subpaths += 1;
+        }
         if sub.vertices.len() >= 2 {
             self.pending_polylines.push(sub.vertices.clone());
         }
@@ -826,6 +1084,8 @@ impl<'a> Interpreter<'a> {
             }
             RestoreState => {
                 let restored = self.gs_stack.pop().unwrap_or_default();
+                // Decision #139: a clip a mode-7 run set ends with the state that held it.
+                self.prune_clip_text();
                 // A CTM change moves where the next glyph lands (§9.4.4), so it places the pen.
                 // Exact comparison: an epsilon would be a threshold, and NaN compares unequal.
                 if restored.ctm != self.gs.ctm {
@@ -860,7 +1120,12 @@ impl<'a> Interpreter<'a> {
                 self.ts.begin_text();
                 self.text_drawn_since_placement = false;
             }
-            EndText => {}
+            // Decision #139: the clip a mode-7 run adds takes effect here.
+            EndText => {
+                for c in &mut self.clip_text {
+                    c.armed = true;
+                }
+            }
 
             // --- text state ---
             CharSpacing => self.ts.char_spacing = num(operands, 0)?,
@@ -933,7 +1198,8 @@ impl<'a> Interpreter<'a> {
             // artifacts are then "treat running heads as prose" or "delete them" — the second
             // being an undeclared document mutation (parity checklist O21/O22).
             BeginMarkedContentProps => {
-                let artifact = is_artifact(marked_content_tag(operands));
+                let tag = marked_content_tag(operands);
+                let artifact = is_artifact(tag);
                 if props_given_by_name(operands) {
                     // The id may exist and this reader did not see it. Counted so the artifact
                     // can say so: an unread id and an absent id are different facts, and only
@@ -950,7 +1216,22 @@ impl<'a> Interpreter<'a> {
                 if !self.form_stack.is_empty() && mcid.take().is_some() {
                     self.form_mcids = self.form_mcids.saturating_add(1);
                 }
-                self.mc_stack.push(MarkedContent { artifact, mcid });
+                // Decision #139: `/OC` names its group in the `/Properties` of the stream it is
+                // in — the form's inside a form (PDF 32000-1 §8.11.3.2).
+                let layer = match (tag, operands.get(1)) {
+                    (Some(b"OC"), Some(lopdf::Object::Name(name))) => {
+                        match self.form_stack.last() {
+                            Some((_, form, _)) => form.layers.get(name).copied(),
+                            None => self.layers.get(name).copied(),
+                        }
+                    }
+                    _ => None,
+                };
+                self.mc_stack.push(MarkedContent {
+                    artifact,
+                    mcid,
+                    layer,
+                });
             }
             BeginMarkedContent => {
                 self.mc_stack.push(MarkedContent {
@@ -958,6 +1239,7 @@ impl<'a> Interpreter<'a> {
                     // `BMC` carries no property list, so there is no id to capture and none is
                     // invented.
                     mcid: None,
+                    layer: None,
                 });
             }
             EndMarkedContent => {
@@ -973,7 +1255,19 @@ impl<'a> Interpreter<'a> {
             // NEW operator cannot join them by accident.
             //
             // Line and colour state:
-            LineJoin | MiterLimit | RenderingIntent | Flatness | ExtGState => {}
+            LineJoin | MiterLimit | RenderingIntent | Flatness => {}
+            // Decision #139: not resolved, so what it sets is not known — an alpha of nought makes
+            // a fill painted under it no background at all.
+            ExtGState => {
+                self.gs.ext_gstate = true;
+                let plain = match self.form_stack.last() {
+                    Some((_, form, _)) => &form.plain_states,
+                    None => &self.plain_states,
+                };
+                if !matches!(operands.first(), Some(lopdf::Object::Name(n)) if plain.contains(n)) {
+                    self.gs.text_blends = true;
+                }
+            }
             // Decision #105: a stroke's width, cap and dash, for a straight line stroked wide as a
             // chart's bar. Operands that are not numbers stroke no bar rather than stopping the
             // parse.
@@ -995,9 +1289,19 @@ impl<'a> Interpreter<'a> {
             // a page that parsed before still parses. Naming a space resets the colour to one not
             // yet known.
             FillGray | FillRgb | FillCmyk | FillColor | FillColorN => {
-                self.gs.fill = crate::text_state::Fill::of(operands)
+                self.gs.fill = crate::text_state::Fill::of(operands);
+                // Decision #139: `g`, `rg` and `k` name their device space; `sc` and `scn` paint
+                // in the space `cs` named last.
+                self.gs.fill_device |= matches!(op, FillGray | FillRgb | FillCmyk);
             }
-            FillColorSpace => self.gs.fill = crate::text_state::Fill::UNKNOWN,
+            FillColorSpace => {
+                self.gs.fill = crate::text_state::Fill::UNKNOWN;
+                self.gs.fill_device = matches!(
+                    operands.first(),
+                    Some(lopdf::Object::Name(n))
+                        if matches!(n.as_slice(), b"DeviceGray" | b"DeviceRGB" | b"DeviceCMYK")
+                );
+            }
             // --- path construction: interpreted as of v1-S1 ---------------------------------
             //
             // These were acknowledged-skips through v0.1. A ruled table is a table the document
@@ -1032,6 +1336,8 @@ impl<'a> Interpreter<'a> {
                 }
                 let before = std::mem::take(&mut self.subpath);
                 self.note_shape(&before);
+                // Decision #139: the rectangle is a subpath, and so is a line drawn before it.
+                self.path_subpaths += 1 + usize::from(before.points.len() >= 2);
                 if before.vertices.len() >= 2 {
                     self.pending_polylines.push(before.vertices);
                 }
@@ -1103,11 +1409,58 @@ impl<'a> Interpreter<'a> {
                 let strokes = !matches!(op, Fill | FillObsolete | FillEvenOdd);
                 let fills = !matches!(op, Stroke | CloseStroke);
                 let shaped = std::mem::take(&mut self.path_shaped);
+                let subpaths = std::mem::take(&mut self.path_subpaths);
                 // Decision #105: a path whose middle the page clips away is no chart's, nor the fill
                 // beneath an inset cell.
                 let gone = self
                     .path_box
                     .is_some_and(|b| self.outside_clip(((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0)));
+                // Decision #139: what a fill covered, in its colour only where the path is one
+                // rectangle and nothing else — a second subpath may cut a hole in it — the page
+                // does not clip, filled in a device colour under no `gs` this reader does not read.
+                if let (true, Some(b)) = (fills, self.path_box) {
+                    let one = matches!(&self.pending[..], [r] if r.contains(&b) && b.contains(r));
+                    let plain = self.gs.fill_device && !self.gs.ext_gstate;
+                    let compared = one && !shaped && !gone && plain;
+                    self.paint(b, compared.then_some(self.gs.fill));
+                }
+                // Decision #139: what a stroke covered, in no colour: each rectangle's four edges
+                // and each axis-aligned line, half the line's width either side, where the path is
+                // nothing else; the path's whole box so widened where it is anything more.
+                if let (true, Some(b)) = (strokes, self.path_box) {
+                    let m = self.gs.ctm;
+                    let half =
+                        self.gs.line_width.abs() * length(m.a, m.c).max(length(m.b, m.d)) / 2.0;
+                    let wide = |r: PathRect| PathRect {
+                        x0: r.x0 - half,
+                        y0: r.y0 - half,
+                        x1: r.x1 + half,
+                        y1: r.y1 + half,
+                    };
+                    let mut bands: Vec<PathRect> = Vec::new();
+                    if !shaped && subpaths == self.pending.len() + self.pending_segments.len() {
+                        for r in &self.pending {
+                            let edge = |x0, y0, x1, y1| wide(PathRect { x0, y0, x1, y1 });
+                            bands.push(edge(r.x0, r.y0, r.x1, r.y0));
+                            bands.push(edge(r.x0, r.y1, r.x1, r.y1));
+                            bands.push(edge(r.x0, r.y0, r.x0, r.y1));
+                            bands.push(edge(r.x1, r.y0, r.x1, r.y1));
+                        }
+                        bands.extend(self.pending_segments.iter().map(|s| {
+                            wide(PathRect {
+                                x0: s.x0,
+                                y0: s.y0,
+                                x1: s.x1,
+                                y1: s.y1,
+                            })
+                        }));
+                    } else {
+                        bands.push(wide(b));
+                    }
+                    for band in bands {
+                        self.paint(band, None);
+                    }
+                }
                 if let Some(b) = self.path_box.take() {
                     self.painted.push((b, shaped));
                     // `point-labels-v1`: a small, near-square filled path is a mark.
@@ -1216,6 +1569,7 @@ impl<'a> Interpreter<'a> {
             EndPath => {
                 self.path_box = None;
                 self.path_shaped = false;
+                self.path_subpaths = 0;
                 self.subpath = Subpath::default();
                 self.pending.clear();
                 self.pending_filled.clear();
@@ -1244,7 +1598,12 @@ impl<'a> Interpreter<'a> {
                             },
                             None => *r,
                         });
+                    } else {
+                        self.gs.clip_unknown = true;
                     }
+                } else {
+                    // Decision #139: a clip of any other shape is not known to this reader.
+                    self.gs.clip_unknown = true;
                 }
                 self.subpath = Subpath::default();
                 self.pending.clear();
@@ -1267,7 +1626,16 @@ impl<'a> Interpreter<'a> {
             // over it would turn files that parse today into failures. It is counted, and the
             // count is declared.
             XObject => self.draw_xobject(operands)?,
-            Shading => {}
+            // Decision #139: a shading paints the whole clip, in no colour this reader compares.
+            Shading => self.paint(
+                PathRect {
+                    x0: f64::MIN,
+                    y0: f64::MIN,
+                    x1: f64::MAX,
+                    y1: f64::MAX,
+                },
+                None,
+            ),
             // Inline images carry their samples in the content stream itself, so there is no
             // object to address and no separate stream to digest. Counted, and declared — an
             // uncounted skip here would let "this page has no image nodes" read as "this page has
@@ -1276,7 +1644,11 @@ impl<'a> Interpreter<'a> {
             // lopdf collapses the whole `BI … ID … EI` sequence into one operand-less `BI`
             // operation, and on a *filtered* inline image it recovers by scanning forward to
             // `EI`. So this arm is the only place the engine can learn one happened at all.
-            BeginInlineImage => self.inline_images = self.inline_images.saturating_add(1),
+            BeginInlineImage => {
+                self.inline_images = self.inline_images.saturating_add(1);
+                // Decision #139: an image covers what lies under it.
+                self.paint(PathRect::of_unit_square(self.gs.ctm), None);
+            }
             InlineImageData | EndInlineImage => {}
             // Type 3 glyph metrics, meaningful only inside a glyph procedure.
             Type3Width | Type3WidthBBox => {}
@@ -1436,6 +1808,34 @@ impl<'a> Interpreter<'a> {
         }
 
         let scale = self.gs.ctm.x_scale();
+        // Decision #139: the run's glyphs, from its baseline to seven tenths of its em above, from
+        // its origin to where its pen ends — what paint beneath it, or paint through its clip,
+        // has to meet.
+        let band = {
+            let up = |(x, y): (f64, f64)| (x + 0.7 * trm.c, y + 0.7 * trm.d);
+            let travel = self.gs.ctm.apply_linear(advance_total, advance_total_f);
+            let end = (origin.0 + travel.0, origin.1 + travel.1);
+            let a = PathRect::from_corners(origin, up(end));
+            let b = PathRect::from_corners(up(origin), end);
+            PathRect {
+                x0: a.x0.min(b.x0),
+                y0: a.y0.min(b.y0),
+                x1: a.x1.max(b.x1),
+                y1: a.y1.max(b.y1),
+            }
+        };
+        // Decision #139: compared with what lies beneath it only where the page does not clip it
+        // away, the pen's travel is known — with no widths the band would be the origin alone —
+        // and the font is no Type 3, whose glyph procedures paint in colours and to sizes of their
+        // own.
+        let type3 = matches!(
+            font.widths,
+            crate::fonts::WidthSource::Widths {
+                type3_scale_x: Some(_),
+                ..
+            }
+        );
+        let compared = !self.outside_clip(origin) && advance_known && !type3;
         let run = ShownText {
             text,
             codes: kept_codes,
@@ -1460,12 +1860,38 @@ impl<'a> Interpreter<'a> {
             font,
             in_form: !self.form_stack.is_empty(),
             clipped: self.outside_clip(origin),
+            layer: self.layer(),
+            // Decision #139: a run the page clips away is hidden by the clip, not by its colour,
+            // and is not compared.
+            fill_matches_background: compared && self.fill_matches_background(band),
+            clips_paint: false,
         };
+        // Decision #139: text painted shows a mode-7 clip it is drawn through; a run that sets one
+        // waits for the paint that would show it, and leaves the paint after it of no shape this
+        // reader knows — as does a run set as a clip in mode 4, 5 or 6.
+        let first = self.shown.len();
+        if !matches!(self.ts.render_mode, 3 | 7) {
+            self.through_clip_text(&band);
+        }
+        if (4..=7).contains(&self.ts.render_mode) {
+            self.gs.clip_unknown = true;
+        }
         if spread && advance_known {
             self.push_glyphs(run, glyphs, scale);
         } else {
             self.last_run = Some(self.shown.len());
             self.shown.push(run);
+        }
+        if self.ts.render_mode == 7 {
+            let (forms, states) = (self.form_stack.len(), self.gs_stack.len());
+            self.clip_text
+                .extend((first..self.shown.len()).map(|index| ClipText {
+                    index,
+                    forms,
+                    states,
+                    band,
+                    armed: false,
+                }));
         }
 
         Ok(())
@@ -1543,6 +1969,7 @@ impl<'a> Interpreter<'a> {
             // nothing here can say what it meant to draw.
             _ => {
                 self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
+                self.paint(PathRect::of_unit_square(self.gs.ctm), None);
                 return Ok(());
             }
         };
@@ -1553,6 +1980,8 @@ impl<'a> Interpreter<'a> {
         };
         let Some(object) = names.and_then(|x| x.get(&name)).copied() else {
             self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
+            // Decision #139: what it drew is not known, so what lies beneath is not either.
+            self.paint(PathRect::of_unit_square(self.gs.ctm), None);
             return Ok(());
         };
         // `docs/30-FORM-XOBJECTS-SCOPE.md` §7. A form that draws itself, directly or through
@@ -1568,6 +1997,8 @@ impl<'a> Interpreter<'a> {
             }
         }
         let m = self.gs.ctm;
+        // Decision #139: an image covers what lies under it.
+        self.paint(PathRect::of_unit_square(m), None);
         self.images.push(ImagePlacement {
             object,
             corners: [
@@ -1624,8 +2055,20 @@ impl<'a> Interpreter<'a> {
             std::mem::take(&mut self.pending_segments),
             self.path_box.take(),
             std::mem::take(&mut self.path_shaped),
+            std::mem::take(&mut self.path_subpaths),
         );
         self.gs.ctm = form.matrix.then(self.gs.ctm);
+        // Decision #139: the form's `/BBox` clips what it paints.
+        if let Some([x0, y0, x1, y1]) = form.bbox {
+            let square = Matrix::new(x1 - x0, 0.0, 0.0, y1 - y0, x0, y0);
+            let bbox = PathRect::of_unit_square(square.then(self.gs.ctm));
+            self.gs.form_clip = Some(bbox.clip_to(self.gs.form_clip).unwrap_or(PathRect {
+                x0: f64::MAX,
+                y0: f64::MAX,
+                x1: f64::MIN,
+                y1: f64::MIN,
+            }));
+        }
         self.form_stack.push((id, Arc::clone(&form), path));
         let mut outcome = Ok(());
         for op in &form.operations {
@@ -1659,7 +2102,9 @@ impl<'a> Interpreter<'a> {
             self.pending_segments,
             self.path_box,
             self.path_shaped,
+            self.path_subpaths,
         ) = saved;
+        self.prune_clip_text();
         outcome
     }
 
@@ -2065,6 +2510,46 @@ fn is_artifact(tag: Option<&[u8]>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **The backdrop's index gives what reading every paint back to front gives** (decision
+    /// #139): over areas from a point to the whole page and beyond, and bands of every size, the
+    /// last paint touching a band is the same paint either way.
+    #[test]
+    fn the_backdrop_index_finds_the_last_paint_touching_a_band() {
+        let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = |span: f64| {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            (seed >> 33) as f64 / f64::from(1u32 << 31) * span
+        };
+        let mut rect = |size: f64| {
+            let (x, y) = (next(700.0) - 50.0, next(900.0) - 50.0);
+            let (w, h) = (next(size), next(size));
+            PathRect {
+                x0: x,
+                y0: y,
+                x1: x + w,
+                y1: y + h,
+            }
+        };
+        let mut backdrop = Backdrop::default();
+        let mut checked = 0;
+        for k in 0..3000 {
+            let size = [4.0, 40.0, 400.0, 2000.0, 9000.0][k % 5];
+            backdrop.push(rect(size), (k % 3 == 0).then_some(Fill::BLACK));
+            if k % 7 == 0 {
+                let band = rect([2.0, 30.0, 900.0][k % 3]);
+                let brute = backdrop.paints.iter().rposition(|(a, _)| a.touches(&band));
+                let indexed = backdrop
+                    .last_touching(&band)
+                    .map(|p| std::ptr::from_ref(p) as usize);
+                let expected = brute.map(|i| std::ptr::from_ref(&backdrop.paints[i]) as usize);
+                assert_eq!(indexed, expected, "paint {k}, band {band:?}");
+                checked += 1;
+            }
+        }
+        assert!(checked > 400 && !backdrop.wide.is_empty());
+        assert!(backdrop.cells.iter().all(|grid| !grid.is_empty()));
+    }
     use std::collections::BTreeMap;
 
     fn ops(src: &str) -> Vec<lopdf::content::Operation> {

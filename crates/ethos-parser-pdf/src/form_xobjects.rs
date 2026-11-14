@@ -47,6 +47,17 @@ pub(crate) struct Form {
     pub(crate) fonts: BTreeMap<String, Arc<Font>>,
     /// The XObjects its own `/Resources` name, or the page's where it has none.
     pub(crate) xobjects: BTreeMap<String, lopdf::ObjectId>,
+    /// What its own `/OC` makes of everything it draws (decision #139), `None` where a viewer
+    /// shows it.
+    pub(crate) layer: Option<crate::layers::Layer>,
+    /// The names its resources' `/Properties` give content a viewer does not show, which a
+    /// `BDC /OC` inside it names (decision #139).
+    pub(crate) layers: BTreeMap<Vec<u8>, crate::layers::Layer>,
+    /// Its `/BBox`, `[x0 y0 x1 y1]` in form space, where it states four numbers (decision #139).
+    pub(crate) bbox: Option<[f64; 4]>,
+    /// The names its resources' `/ExtGState` gives graphics states that change no fill's colour
+    /// (decision #139).
+    pub(crate) plain_states: std::collections::BTreeSet<Vec<u8>>,
 }
 
 /// What an XObject is to the interpreter.
@@ -162,11 +173,25 @@ impl<'d> PageForms<'d> {
             ),
             None => (BTreeMap::new(), BTreeMap::new()),
         };
+        let switches = self.doc.layers();
         let form = Arc::new(Form {
             operations,
             matrix,
             fonts,
             xobjects,
+            layer: (stream.dict.get(b"OC").ok()).and_then(|oc| switches.layer(doc, oc)),
+            layers: switches.names(doc, resources.as_ref()),
+            plain_states: crate::layers::plain_states(doc, resources.as_ref()),
+            bbox: crate::fonts::resolve_array(doc, stream.dict.get(b"BBox").ok()).and_then(|b| {
+                let n: Vec<f64> = b
+                    .iter()
+                    .filter_map(|o| o.as_float().ok().map(f64::from))
+                    .collect();
+                match n[..] {
+                    [a, b, c, d] => Some([a.min(c), b.min(d), a.max(c), b.max(d)]),
+                    _ => None,
+                }
+            }),
         });
         self.cache.borrow_mut().insert(id, Some(Arc::clone(&form)));
         Ok(Lookup::Form(form))

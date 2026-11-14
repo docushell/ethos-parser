@@ -260,6 +260,22 @@ pub mod codes {
     ///
     /// Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
     pub const OFF_PAGE_TEXT: &str = "off-page-text";
+    /// Text on this document was drawn with a rendered em under one point (decision #139).
+    ///
+    /// Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
+    pub const TINY_TEXT: &str = "tiny-text";
+    /// Text on this document lies in optional content its default configuration hides (decision
+    /// #139). Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
+    pub const HIDDEN_LAYER_TEXT: &str = "hidden-layer-text";
+    /// Text on this document is filled in the colour of what was painted beneath it, or white
+    /// where nothing was (decision #139). Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted,
+    /// never removed.
+    pub const FILL_MATCHES_BACKGROUND_TEXT: &str = "fill-matches-background-text";
+    /// Runs inside optional content an `/OCMD` membership dictionary governs, which this profile
+    /// does not evaluate (decision #139): whether a viewer shows them is not known, and they carry
+    /// no `hidden-layer` finding. Document-scoped and counted.
+    pub const OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED: &str =
+        "optional-content-membership-not-evaluated";
     /// Form XObjects were drawn on this document and not descended into (v2.2-S2).
     ///
     /// **Document-scoped, where `form-xobject-text-not-descended` is profile-scoped**, and the
@@ -294,11 +310,13 @@ pub mod codes {
     pub const FORM_XOBJECT_MCIDS_NOT_BOUND: &str = "form-xobject-mcids-not-bound";
     /// Low-contrast text is not detected, at any threshold (v1-S6).
     ///
-    /// The leftover beside the two findings that did ship. Nothing in this profile reads colour:
-    /// the twelve colour operators are accepted and discarded, `/ExtGState` is never resolved, so
-    /// alpha is unreachable, and the graphics state carries no colour slot to put a value in.
-    /// Detecting contrast would need all of that plus a threshold — and a threshold over
-    /// appearance is the `garbled` trap this project already refuses once.
+    /// The leftover beside the findings that did ship. Since decision #139 the PDF reader
+    /// compares a run's fill with the fill painted beneath it, operand for operand
+    /// ([`crate::TextFinding::FillMatchesBackground`]), which catches white on white and nothing
+    /// that is merely faint: `/ExtGState` is never resolved, so alpha is unreachable, and no
+    /// colour is converted or measured against another. Detecting contrast would need a
+    /// threshold, and a threshold over appearance is the `garbled` trap this project already
+    /// refuses once.
     pub const LOW_CONTRAST_NOT_DETECTED: &str = "low-contrast-not-detected";
     /// The document's own author-declared metadata is not read, under any profile.
     ///
@@ -815,17 +833,23 @@ impl Capabilities {
             ));
         }
         // Declared unconditionally, because it is true under every profile this build can
-        // produce: no code path reads colour at all.
+        // produce: no code path measures contrast.
         out.push(Limitation::profile(
             codes::LOW_CONTRAST_NOT_DETECTED,
-            "Text that is invisible BY COLOUR — white on white, or fully transparent — is not \
-             detected, and no threshold for it exists. The twelve colour operators are recognised \
-             and discarded, `/ExtGState` is never resolved so alpha is unreachable, and the \
-             graphics state carries no colour to compare. This is deliberately not approximated: \
-             a contrast threshold is the same shape as the vowel-frequency test this project \
+            "Text that is hard to see BY COLOUR — light grey on white, colour on a near colour, \
+             or transparent — is not detected, and no threshold for it exists. The one colour \
+             test this build makes is exact: under `page-observations-v5` a PDF run filled in a \
+             device colour the same as the last rectangle a fill painted beneath it, or exactly \
+             white where nothing was painted beneath it, carries `fill-matches-background`. \
+             Colours are compared operand for operand and never converted; `/ExtGState` is never \
+             resolved, so alpha, blend modes and soft masks are unreachable, and a fill painted \
+             under one is not compared, nor text drawn under one that may blend or mask it; \
+             text over an image, a shading, a stroke, a path that is not one rectangle or a \
+             text clip is not compared; and paint laid over a run is not read. No \
+             other format's reader reads colour. A contrast threshold is deliberately \
+             not approximated: it is the same shape as the vowel-frequency test this project \
              refuses for `garbled`, and a wrong one would flag ordinary light-grey body text as \
-             hidden. The findings that ARE reported — invisible rendering mode and off-page text \
-             — rest on the content stream's own state rather than on an appearance judgement.",
+             hidden.",
         ));
         // Declared unconditionally, for the reason above it: no reader in this workspace opens a
         // metadata part for its values, in any of the nine formats, so it is true of every run

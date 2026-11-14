@@ -268,6 +268,20 @@ pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 /// bold labels — a trade the owner took; opendataloader-bench and the heading bounds unchanged.
 pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
 
+/// [`OBSERVATION_RULE_V4`] **with three more findings about text a reader does not see**
+/// (decision #139): a run whose rendered em is under a point (`tiny-text`), a run inside optional
+/// content the document's default configuration switches off (`hidden-layer`), and a run filled in
+/// the colour of the rectangle painted beneath it, or white on a page that painted nothing there
+/// (`fill-matches-background`; a fill painted under a `gs`, which is not resolved, is no colour it
+/// compares). Each is a [`crate::TextFinding`] counted under its own code, none is raised on
+/// whitespace, and like the two before them none removes anything. A membership dictionary is not
+/// evaluated, and its runs are counted under `optional-content-membership-not-evaluated`. The colour test
+/// compares operands and never contrast — `codes::LOW_CONTRAST_NOT_DETECTED` still holds for
+/// everything else. A reader of `-v4` refuses an artifact carrying the new findings, which is why
+/// the id moves. And `invisible-render-mode` narrows: a run set in mode 7 carries it only where
+/// nothing is painted through the clip it sets before the state holding that clip is restored.
+pub const OBSERVATION_RULE_V5: &str = "page-observations-v5";
+
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
 ///
 /// **The font's own `/Subtype` decides the code width, and nothing else does.** A simple font is
@@ -3036,7 +3050,7 @@ impl Default for Profile {
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
             text_code_rule: TEXT_CODE_RULE_V4.to_string(),
-            observation_rule: OBSERVATION_RULE_V4.to_string(),
+            observation_rule: OBSERVATION_RULE_V5.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -4375,7 +4389,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5589,11 +5603,15 @@ mod tests {
              with its value. Nothing else.\n\n\
              Moved for decision #133, `sha256:ef336dec…` -> `sha256:a516f5d8…`: \
              `reading_order_rule` `gutter-columns-v4` -> `-v5`, which joins a band at most half as \
-             wide as its neighbour, set on its rows, to that neighbour. Nothing else."
+             wide as its neighbour, set on its rows, to that neighbour. Nothing else.\n\n\
+             Moved for decision #139, `sha256:a516f5d8…` -> `sha256:0ed7c7d4…`: \
+             `observation_rule` `page-observations-v4` -> `-v5`, which flags tiny text, text in \
+             a layer switched off, and text filled in the colour beneath it, and flags text set \
+             in mode 7 only where nothing paints through its clip. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a516f5d896552f4d9bccefb1620a4f0fbc48dcdc943c005218b9b747fad831ff"
+            "sha256:0ed7c7d4641d03ba56e10cab814ef83f6be8536a1869098a03a7b4bc60352dc9"
         );
     }
 

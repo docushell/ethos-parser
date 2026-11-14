@@ -731,9 +731,15 @@ fn extract_page(
         let forms =
             crate::form_xobjects::PageForms::new(doc, page_dict, page_number, content, allowance);
         let resolve = |id| forms.resolve(id);
+        // Decision #139: the names the page's `/Properties` give layers a viewer does not show.
+        let resources = page_resources(doc.inner(), page_dict);
+        let layers = doc.layers().names(doc.inner(), resources.as_ref());
+        let plain = crate::layers::plain_states(doc.inner(), resources.as_ref());
         let mut interp = Interpreter::new(&fonts)
             .with_xobjects(xobjects)
-            .with_forms(&resolve, allowance);
+            .with_forms(&resolve, allowance)
+            .with_layers(layers)
+            .with_plain_states(plain);
         match interp.run(&operations) {
             Err(_) if interp.form_ops_exhausted => return Ok(None),
             outcome => outcome?,
@@ -925,6 +931,7 @@ fn extract_page(
                 _ => None,
             });
 
+            let findings = run_findings(&shown, origin_x, origin_y, &visible);
             code_chars.push(shown.code_chars);
 
             let synthesized: Vec<SynthesizedChar> = shown
@@ -939,6 +946,12 @@ fn extract_page(
             let scalar_code_mismatch = shown.text.chars().count() != shown.codes.len();
 
             clipped.push(shown.clipped);
+            // Decision #139: a run in a membership dictionary is counted, and carries no finding.
+            if shown.layer == Some(crate::layers::Layer::NotEvaluated) {
+                *findings_seen
+                    .entry(ethos_parser_core::codes::OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED)
+                    .or_insert(0) += 1;
+            }
             runs.push(TextRun {
                 id: alloc.next(IdKind::Span)?,
                 text: shown.text,
@@ -978,10 +991,11 @@ fn extract_page(
                 structural: bind_structure(structure.as_ref(), page_id, shown.mcid, shown.artifact),
                 // Text and origins are read from the document's own encoding.
                 derivation: DerivationClass::Extracted,
-                // v1-S6. Observations about the run, never a reason to withhold it. Both are
+                // v1-S6. Observations about the run, never a reason to withhold it. Each is
                 // computed from evidence the page supplies: the text rendering mode the content
-                // stream set, and the visible box the page declares.
-                findings: run_findings(shown.render_mode, origin_x, origin_y, &visible),
+                // stream set, the visible box the page declares, and since decision #139 the size,
+                // the layer and the fill the page drew it in.
+                findings,
                 recognized: None,
             });
         }
@@ -3368,23 +3382,48 @@ fn reorder_page(
 
 /// What was observed about one run, beyond its text (v1-S6).
 ///
-/// Both findings come from evidence the page itself supplies — the rendering mode its content
-/// stream set, and the box it declares as visible. Neither is an appearance judgement, and
-/// neither removes anything: the run this describes is in the artifact with its text and its
-/// origin intact, which is the whole of checklist O21.
+/// Every finding comes from evidence the page itself supplies — the rendering mode its content
+/// stream set, the box it declares as visible, and since decision #139 the size its matrices draw
+/// the run at, the optional content it lies in, and the fill it and what lies beneath it were
+/// painted in. None is an appearance judgement, and none removes anything: the run this describes
+/// is in the artifact with its text and its origin intact, which is the whole of checklist O21.
 fn run_findings(
-    render_mode: i64,
+    shown: &crate::content::ShownText,
     origin_x: i64,
     origin_y: i64,
     visible: &PageBox,
 ) -> Vec<TextFinding> {
     let mut out = Vec::new();
+    let render_mode = shown.render_mode;
     // Modes 3 and 7 fill nothing and stroke nothing (32000-1 Table 106). Mode 7 also adds the
     // glyphs to the clip path, which is a different purpose and the same visible result: no ink.
     // Mode 4 through 6 DO paint and are deliberately not flagged — a rule that called every
     // clipping mode invisible would report ordinary text as hidden.
-    if render_mode == 3 || render_mode == 7 {
+    //
+    // Decision #139: mode 7 only where nothing is painted through the clip it sets before the state
+    // holding it is restored — a heading set as a clip and filled with a shading or an image shows.
+    if render_mode == 3 || (render_mode == 7 && !shown.clips_paint) {
         out.push(TextFinding::InvisibleRenderMode);
+    }
+    // Decision #139: three more, on a run that draws ink — whitespace draws nothing to hide. The
+    // rendered em, the text rendering matrix's vertical scale, under a point — except where a Type
+    // 3 font's `/FontMatrix` does not scale its glyph space by a thousandth, and nothing says how
+    // tall its em is drawn; a layer switched off; and the fill of what lies beneath.
+    if !shown.text.trim().is_empty() {
+        let type3_em_unknown = matches!(
+            shown.font.widths,
+            crate::fonts::WidthSource::Widths { type3_scale_x: Some(s), .. }
+                if s as f32 != 0.001_f32
+        );
+        if shown.em_scale_pt < 1.0 && !type3_em_unknown {
+            out.push(TextFinding::TinyText);
+        }
+        if shown.layer == Some(crate::layers::Layer::Off) {
+            out.push(TextFinding::HiddenLayer);
+        }
+        if shown.fill_matches_background {
+            out.push(TextFinding::FillMatchesBackground);
+        }
     }
     // The origin, because the origin is the run's address and the one coordinate this engine
     // treats as identity. An ink box would be a better test and most runs do not have one.

@@ -1446,6 +1446,11 @@ pub enum ImageMediaType {
 pub enum TextFinding {
     /// The run was drawn in text rendering mode 3 or 7 — painted with no fill and no stroke.
     ///
+    /// Since `page-observations-v5` (decision #139) mode 7 only where nothing is painted through
+    /// the clip it sets — after `ET`, which is where the clip takes effect, over the run's glyphs,
+    /// and before the state holding that clip is restored: a heading set as a clip and filled with
+    /// a shading or an image is seen, and carries no finding.
+    ///
     /// `Tr 3` is how a scanner's OCR layer is laid under a page image, which is ordinary and
     /// useful. It is also how text is hidden from a human reader while staying perfectly legible
     /// to anything that reads the text layer. **This profile does not decide which one it is
@@ -1458,6 +1463,50 @@ pub enum TextFinding {
     /// box a viewer actually shows — after `/Rotate`. Content outside it is in the file and is
     /// not on the page.
     OffPage,
+    /// The run's rendered em is under one point (decision #139, `page-observations-v5`).
+    ///
+    /// The em is the vertical scale of the text rendering matrix — the `Tf` size carried through
+    /// the text matrix and the CTM, in user-space units, before `/UserUnit` — which is the height
+    /// a glyph's 1000-unit em is drawn at. Nought counts: a size of 0 draws nothing. Not reported
+    /// for a Type 3 font whose `/FontMatrix` is not the 1/1000 default, where nothing in the file
+    /// says how tall an em is drawn. Tiny print a reader can still make out with a magnifier is
+    /// flagged too; this reports the size, not legibility.
+    TinyText,
+    /// The run lies inside optional content its document's default configuration hides (decision
+    /// #139): a `BDC /OC /name` sequence, or a form XObject whose `/OC`, names an optional-content
+    /// group listed in `/OCProperties /D /OFF`, or not listed in `/ON` where `/BaseState` is
+    /// `/OFF`.
+    ///
+    /// What a viewer shows on opening the file. A layer the reader can switch on is still flagged,
+    /// and a membership dictionary (`/OCMD`) is not evaluated — its runs are counted under
+    /// `optional-content-membership-not-evaluated` and carry no finding. `/AS` auto-state, print
+    /// usage and intents are not read.
+    HiddenLayer,
+    /// The run is filled in the colour of what lies beneath it (decision #139): its fill, set in
+    /// a device colour space, is the same as that of the last rectangle a fill painted before it
+    /// under the whole run, or exactly white where nothing was painted beneath it. Whitespace draws
+    /// no ink and carries none of this finding, `TinyText` or `HiddenLayer`.
+    ///
+    /// **A comparison of operands, never of contrast.** Two colours match where their operands do
+    /// in the same device space, to the thousandth the reader stores, or where both are exactly
+    /// white; grey at 0.99 on white is not flagged, and black text in `rg` over a black box in `g`
+    /// is not either. Beneath means under the run's glyphs, from its baseline to seven tenths of
+    /// its em above, from its origin to where its pen ends, and a rectangle that does not cover
+    /// them all — a rule through them — is not their background. Any other paint touching them —
+    /// an image, a shading, an XObject that does not resolve, a stroke of any shape (its path
+    /// widened by half its width: a rectangle's edges, a line, or else the whole path's box), a
+    /// fill of any other path, a colour this reader does not compare, a fill under a `gs` it does
+    /// not resolve (whose alpha may be nought), under a clip that is not one rectangle, or under
+    /// text set as a clip (`Tr 4` to `7`) — makes the background unknown and nothing is flagged.
+    /// Nor is a run drawn under a `gs` that sets a blend mode, a soft mask or a fill alpha under
+    /// one, or one not resolved. Paint in a layer switched off is not paint, and paint is
+    /// cut to the known clip and to every enclosing form's `/BBox`. Only runs filled and not
+    /// stroked (`Tr 0` or `4`), none the page clips away, none whose pen travel is unknown (a
+    /// font with no widths, a predefined CMap), and none in a Type 3 font, whose glyph procedures
+    /// paint in colours and to sizes of their own. Not compared: text used as a background (a
+    /// glyph painted as a box), the run's own transparency, and paint laid OVER a run. A white
+    /// fill painted through a mode-7 clip shows that run, though white on white.
+    FillMatchesBackground,
 }
 
 impl TextFinding {
@@ -1470,11 +1519,20 @@ impl TextFinding {
         match self {
             Self::InvisibleRenderMode => crate::codes::INVISIBLE_RENDER_MODE_TEXT,
             Self::OffPage => crate::codes::OFF_PAGE_TEXT,
+            Self::TinyText => crate::codes::TINY_TEXT,
+            Self::HiddenLayer => crate::codes::HIDDEN_LAYER_TEXT,
+            Self::FillMatchesBackground => crate::codes::FILL_MATCHES_BACKGROUND_TEXT,
         }
     }
 
     /// Every finding this profile can report.
-    pub const ALL: [Self; 2] = [Self::InvisibleRenderMode, Self::OffPage];
+    pub const ALL: [Self; 5] = [
+        Self::InvisibleRenderMode,
+        Self::OffPage,
+        Self::TinyText,
+        Self::HiddenLayer,
+        Self::FillMatchesBackground,
+    ];
 }
 
 /// What an interactive form field declares about itself (v1-S4).

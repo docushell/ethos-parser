@@ -81,6 +81,8 @@ pub(crate) mod freed;
 mod furniture;
 pub(crate) mod headings;
 pub(crate) mod images;
+// Decision #139. Optional content a document's default configuration hides.
+pub(crate) mod layers;
 pub(crate) mod lines;
 pub(crate) mod magic;
 pub(crate) mod metrics;

@@ -578,6 +578,262 @@ fn infer_lists_writes_marker_lines_as_items_and_counts_them() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **`--drop-hidden` leaves out the text a reader does not see, and counts it** (decision #139):
+/// white on the bare page and text at half a point go from both projections under one count, the
+/// record and `--source` give one artifact, white on a black box stays, and without the flag every
+/// run is written.
+#[test]
+fn drop_hidden_leaves_out_flagged_text_and_counts_it() {
+    let stream = "BT /F1 9 Tf 1 0 0 1 36 300 Tm (Seen text.) Tj ET \
+                  q 1 g BT /F1 9 Tf 1 0 0 1 36 280 Tm (Unseen instruction.) Tj ET Q \
+                  BT /F1 0.5 Tf 1 0 0 1 36 260 Tm (Tiny print.) Tj ET \
+                  q 0 g 30 230 200 20 re f 1 g BT /F1 9 Tf 1 0 0 1 36 235 Tm (Reversed out.) Tj ET Q";
+    let widths = vec!["500"; 224].join(" ");
+    let objects: Vec<String> = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".into(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] \
+         /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            .into(),
+        format!(
+            "<< /Length {} >>\nstream\n{stream}\nendstream",
+            stream.len()
+        ),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        ),
+    ];
+    let mut bytes = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(bytes.len());
+        bytes.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = bytes.len();
+    bytes.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        bytes.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    bytes.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+
+    let dir = scratch("drop-hidden");
+    let pdf = dir.join("hidden.pdf");
+    std::fs::write(&pdf, bytes).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+    let text = plain["markdown"].as_str().unwrap();
+    assert!(
+        text.contains("Unseen instruction.") && text.contains("Tiny print."),
+        "{text}"
+    );
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let dropped = run(&["markdown", "--drop-hidden", repr]);
+    assert_eq!(
+        dropped,
+        run(&["markdown", "--drop-hidden", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&dropped).expect("canonical JSON");
+    assert_eq!(a["markdown"], "Seen text.\n\nReversed out.\n");
+    let coverage = &a["coverage"];
+    let bucket = coverage["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "flagged-text-not-projected-v1")
+        .expect("what went is counted");
+    assert_eq!(
+        (bucket["chars"].as_u64(), bucket["nodes"].as_u64()),
+        (
+            Some(("Unseen instruction.".len() + "Tiny print.".len()) as u64),
+            Some(2)
+        )
+    );
+    assert_eq!(
+        coverage["source_chars_emitted"].as_u64().unwrap()
+            + coverage["source_chars_dropped"].as_u64().unwrap(),
+        coverage["source_chars_in_representation"].as_u64().unwrap()
+    );
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--drop-hidden", repr])).unwrap();
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        !html.contains("Unseen") && !html.contains("Tiny") && html.contains("Reversed out."),
+        "{html}"
+    );
+    assert_eq!(h["coverage"]["dropped"], coverage["dropped"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// One page with the boxes `boxes` — its `/MediaBox`, its `/CropBox` — drawing `stream`, with
+/// Helvetica as `/F1` and a one-pixel image as `/Im0`.
+fn page_pdf(boxes: &str, stream: &str) -> Vec<u8> {
+    let widths = vec!["500"; 224].join(" ");
+    let objects: Vec<String> = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".into(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        format!(
+            "<< /Type /Page /Parent 2 0 R {boxes} \
+             /Resources << /Font << /F1 5 0 R >> /XObject << /Im0 6 0 R >> >> /Contents 4 0 R >>"
+        ),
+        format!(
+            "<< /Length {} >>\nstream\n{stream}\nendstream",
+            stream.len()
+        ),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        ),
+        "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+         /BitsPerComponent 8 /Length 1 >>\nstream\n0\nendstream"
+            .into(),
+    ];
+    let mut bytes = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(bytes.len());
+        bytes.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = bytes.len();
+    bytes.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        bytes.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    bytes.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    bytes
+}
+
+/// `markdown --drop-hidden --source` over `stream` on a 300 x 400 [`page_pdf`]: its text, and the
+/// `(chars, nodes)` it counts as flagged text left out.
+fn drop_hidden_of(label: &str, stream: &str) -> (String, Option<(u64, u64)>) {
+    drop_hidden_on(label, "/MediaBox [0 0 300 400]", stream)
+}
+
+/// [`drop_hidden_of`] on a page with the boxes `boxes`.
+fn drop_hidden_on(label: &str, boxes: &str, stream: &str) -> (String, Option<(u64, u64)>) {
+    let dir = scratch(label);
+    let pdf = dir.join("scan.pdf");
+    std::fs::write(&pdf, page_pdf(boxes, stream)).expect("write PDF");
+    let out = engine(&[
+        "markdown",
+        "--drop-hidden",
+        "--source",
+        pdf.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let a: Value = serde_json::from_slice(&out.stdout).expect("canonical JSON");
+    let bucket = a["coverage"]["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "flagged-text-not-projected-v1")
+        .map(|b| (b["chars"].as_u64().unwrap(), b["nodes"].as_u64().unwrap()));
+    let _ = std::fs::remove_dir_all(&dir);
+    (a["markdown"].as_str().unwrap().to_owned(), bucket)
+}
+
+/// **`--drop-hidden` keeps a scan's text layer** (decision #139, review of 2026-11-14): invisible
+/// text inside images covering half their page or more is the words of the picture and stays;
+/// invisible text over none goes, and so does invisible text in a picture on a page its pictures
+/// cover less than half of, each counted.
+#[test]
+fn drop_hidden_keeps_a_scan_text_layer() {
+    let (text, bucket) = drop_hidden_of(
+        "drop-hidden-scan",
+        "q 300 0 0 250 0 150 cm /Im0 Do Q \
+         BT 3 Tr /F1 12 Tf 1 0 0 1 40 350 Tm (Scanned words) Tj ET \
+         BT 3 Tr /F1 12 Tf 1 0 0 1 40 60 Tm (Unseen words) Tj ET \
+         BT 0 Tr /F1 12 Tf 1 0 0 1 40 100 Tm (Seen words) Tj ET",
+    );
+    assert!(
+        text.contains("Scanned words") && text.contains("Seen words"),
+        "{text}"
+    );
+    assert!(!text.contains("Unseen"), "{text}");
+    assert_eq!(bucket, Some(("Unseen words".len() as u64, 1)));
+
+    let (text, bucket) = drop_hidden_of(
+        "drop-hidden-small",
+        "q 150 0 0 250 0 150 cm /Im0 Do Q \
+         BT 3 Tr /F1 12 Tf 1 0 0 1 40 350 Tm (Small picture words) Tj ET",
+    );
+    assert!(!text.contains("Small picture"), "{text}");
+    assert_eq!(bucket, Some(("Small picture words".len() as u64, 1)));
+}
+
+/// **An off-page run goes only where its box is known to miss the page** (review of 2026-11-14):
+/// a line whose origin is just off the media box, which extract gives no box, stays, and so does a
+/// line starting left of the crop box and running onto it; a word wholly between the crop box and
+/// the media box, its box measured, goes and is counted.
+#[test]
+fn drop_hidden_keeps_an_off_page_run_that_may_show() {
+    let (text, bucket) = drop_hidden_on(
+        "drop-hidden-off-page",
+        "/MediaBox [0 0 300 400] /CropBox [50 0 300 400]",
+        "BT /F1 12 Tf 1 0 0 1 -4 350 Tm (Over the media edge) Tj ET \
+         BT /F1 12 Tf 1 0 0 1 40 300 Tm (Partly cropped line) Tj ET \
+         BT /F1 12 Tf 1 0 0 1 5 250 Tm (Gone) Tj ET \
+         BT /F1 12 Tf 1 0 0 1 80 200 Tm (Inside) Tj ET",
+    );
+    for kept in ["Over the media edge", "Partly cropped line", "Inside"] {
+        assert!(text.contains(kept), "{kept}: {text}");
+    }
+    assert!(!text.contains("Gone"), "{text}");
+    assert_eq!(bucket, Some(("Gone".len() as u64, 1)));
+}
+
+/// **A scan in strips is one scan, and its text layer may be set under a point** (review of
+/// 2026-11-14): four strips that together cover the page keep the invisible text inside them,
+/// tiny or not.
+#[test]
+fn drop_hidden_keeps_a_scan_in_strips_and_its_tiny_text_layer() {
+    let strips: String = [0, 100, 200, 300]
+        .iter()
+        .map(|y| format!("q 300 0 0 100 0 {y} cm /Im0 Do Q "))
+        .collect();
+    let (text, bucket) = drop_hidden_of(
+        "drop-hidden-strips",
+        &format!(
+            "{strips}BT 3 Tr /F1 12 Tf 1 0 0 1 40 350 Tm (Invoice number 4471) Tj ET \
+             BT 3 Tr /F1 0.9 Tf 1 0 0 1 40 230 Tm (Total due) Tj ET"
+        ),
+    );
+    assert!(
+        text.contains("Invoice number 4471") && text.contains("Total due"),
+        "{text}"
+    );
+    assert_eq!(bucket, None);
+}
+
 /// Double-run byte identity — standing rule 6.
 #[test]
 fn two_runs_are_byte_identical() {
@@ -621,6 +877,7 @@ fn no_cli_path_emits_markdown_without_its_map() {
                 | "--ocr"
                 | "--drop-furniture"
                 | "--infer-lists"
+                | "--drop-hidden"
         )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
@@ -675,6 +932,17 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         lists_help.contains("list-items-inferred-from-markers-v1"),
         "--infer-lists must name the count that admits it: {lists_help:?}"
+    );
+
+    // **`--drop-hidden` on the same evidence** (decision #139), which
+    // [`drop_hidden_leaves_out_flagged_text_and_counts_it`] asserts.
+    let hidden_help = options
+        .split("--drop-hidden")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        hidden_help.contains("flagged-text-not-projected-v1"),
+        "--drop-hidden must name the count that admits it: {hidden_help:?}"
     );
 
     // And the artifact itself always carries both halves.

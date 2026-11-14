@@ -32,6 +32,63 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Text a reader does not see is flagged three more ways, and can be left out on request (decision #139)
+
+Rule id `page-observations-v5` (was `-v4`); the PDF `profile_sha256` moves. Default Markdown and
+HTML text is byte for byte what it was; their artifact JSON carries the new `profile_sha256`.
+`extract` and the representation gain the new findings, and `overlay` draws a box on each newly
+flagged run.
+
+- **Three new findings**, each a `TextFinding` on the run and a count under its own code; like
+  `invisible-render-mode` and `off-page`, none removes anything. `tiny-text`: the rendered em,
+  the text rendering matrix's vertical scale before `/UserUnit`, is under one point (a Type 3
+  font whose `/FontMatrix` is not the 1/1000 default is not measured). `hidden-layer`: the run is
+  inside a `BDC /OC /name` sequence, or a form whose `/OC`, naming an optional-content group the
+  catalog's `/OCProperties /D` switches off, by `/OFF` or by `/BaseState /OFF` without `/ON`. An
+  `/OCMD` is not evaluated: its runs are counted under
+  `optional-content-membership-not-evaluated`. `fill-matches-background`: the run, filled
+  (`Tr 0` or `4`) in a device colour, has the fill operands of the one rectangle a fill painted
+  last beneath its glyphs (baseline to 0.7 em) and covering them, or is exactly white where
+  nothing was painted beneath them. Any other paint touching them — an image, a shading, an
+  unresolved XObject, a stroke of any shape widened by half its width, a fill of any other path,
+  or a fill under a `gs` (not resolved; PowerPoint lays a fully transparent black box under its
+  text), under a clip that is not one rectangle or under text set as a clip (`Tr 4` to `7`) —
+  makes the background unknown, and nothing is flagged; nor is a run under a `gs` that blends,
+  masks, sets a fill alpha or is not resolved. Paint in a layer switched off is not paint; paint
+  is cut to the known clip and to each form's `/BBox`; a run the page clips away is not
+  compared, nor one with no known advance (no widths, a predefined CMap) or in a Type 3 font; a
+  glyph painted as a box is not read as one, and a white fill painted through a mode-7 clip shows
+  the clip's text. Whitespace carries none of the three.
+  What was painted is indexed by 32-point and 512-point cells, so a page of many paths is not
+  compared path by path with every run; many large paints in the cells a run's glyphs lie in are
+  still each looked at.
+- **`invisible-render-mode` narrows for mode 7**: a run set in `Tr 7` carries it only where
+  nothing is painted, after `ET`, through the clip it sets and over its glyphs, so a heading
+  filled with a shading is not hidden and a clip nothing paints through still is.
+- **Operands, never contrast.** Grey at 0.99 on white, a colour in `rg` over the same in `g`,
+  and transparency are not flagged; `low-contrast-not-detected` stays on every profile and says
+  so. OpenDataLoader's filters are not matched: they render the page and test a contrast ratio
+  (off by default), drop line art as background, and call a box at most 1 high with a font of 5
+  or less tiny.
+- **`markdown --drop-hidden` and `html --drop-hidden`** (`ProjectionOptions::drop_flagged`) leave
+  out every run carrying any finding, as though the page had not drawn it: the block around it
+  goes on and a table cell keeps its other runs. A scan's text layer stays — a run whose
+  findings are `invisible-render-mode` (with `tiny-text` or not), inside a placed image on a page
+  its images together cover half of or more; a scan drawn as an inline image, or under half its
+  page, is not one. A run whose one finding is `off-page` goes only where its measured box is
+  known and misses the visible box: one whose box crosses the media box's edge has none and stays,
+  so text wholly off the media box stays too. Counted
+  once under `flagged-text-not-projected-v1`; coverage balances. MCP and the SDKs do not offer it
+  yet.
+
+Measured: default Markdown and HTML text byte for byte what it was on ParseBench (with and without
+OCR), opendataloader-bench's 200 PDFs, the gate and the made-up sets. On ParseBench the new
+findings flag 1,075 runs in 42 documents as `fill-matches-background` and 41 runs in 13 as
+`tiny-text`; `hidden-layer` fires on none; opendataloader-bench and the gate carry none of the
+three. Default `extract` retires within 1% of the instructions it did on pages of 100,000 strokes
+or fills. Three rounds of review with made-up PDFs, rendered with Ghostscript, found no visible
+text left out in the cases the limits above do not name.
+
 ### On request, a line opening with a list marker is a list item on an untagged PDF (decision #138)
 
 The owner approved lists on untagged PDFs behind a flag. **Off by default, and off is byte for

@@ -3077,6 +3077,11 @@ pub(crate) const OVERPRINTED_RUN_DROPPED: &str = "overprinted-run-dropped-v1";
 /// and the representation keeps every run. Only with the option, so no default artifact has it.
 pub(crate) const PAGE_FURNITURE_NOT_PROJECTED: &str = "page-furniture-not-projected-v1";
 
+/// Runs left out because the caller asked for flagged text to go (decision #139,
+/// [`ProjectionOptions::drop_flagged`]): runs carrying any [`crate::TextFinding`]. Counted as
+/// [`PAGE_FURNITURE_NOT_PROJECTED`] is, and only with the option.
+pub(crate) const FLAGGED_TEXT_NOT_PROJECTED: &str = "flagged-text-not-projected-v1";
+
 /// What a projection leaves out beyond its rule, on its caller's request (decision #134).
 ///
 /// **Off by default, and off is [`to_markdown`] and [`crate::to_html`] byte for byte.** No option
@@ -3118,6 +3123,125 @@ pub struct ProjectionOptions {
     /// body size) read as items; the roman `ii.` to `iv.` are no markers; and `- 2. x`, written as
     /// a tagged item is, renders as a bullet holding an ordered list. See [`marker_items`].
     pub infer_lists: bool,
+    /// Leave out every text run the reader flagged with a [`crate::TextFinding`] (decision #139):
+    /// drawn invisible, off the visible page, under a point, in a layer switched off, or filled in
+    /// the colour beneath it — what a reader of the page does not see. **A scan's text layer
+    /// stays**: a run whose findings are `invisible-render-mode`, with `tiny-text` or not, and
+    /// whose origin a placed image holds (`runs_inside`, decision #97) on a page its images
+    /// together cover half of or more, is the words of the picture under it. **An off-page run
+    /// goes only where its measured box is known and misses the visible box**; one extract gives no
+    /// box — any whose box crosses the media box's edge — stays. A run goes as though the page had not drawn it: the block around it goes
+    /// on, and a table cell keeps its other runs. Counted as `flagged-text-not-projected-v1`. See
+    /// [`flagged_runs`].
+    pub drop_flagged: bool,
+}
+
+/// The runs [`ProjectionOptions::drop_flagged`] leaves out: every text run carrying a finding,
+/// but two kinds of run a reader does see.
+///
+/// - **A scan's text layer**: a run whose findings are `invisible-render-mode`, and
+///   `tiny-text` with it or not, whose origin lies in a placed image (`runs_inside`, decision #97)
+///   on a page where the images together cover half the page or more — one picture, or strips.
+/// - **A run that may show**: a run whose one finding is `off-page` — its origin is off the
+///   visible box — unless its measured box is known and misses that box. Extract gives no box to
+///   a run whose box crosses the media box's edge, so such a run stays, whether one glyph or every
+///   glyph lies off the page.
+pub(crate) fn flagged_runs(repr: &DocumentRepresentation) -> std::collections::BTreeSet<&str> {
+    let payload = repr.payload();
+    type Ink = (i64, i64, i64, i64);
+    let pages: std::collections::BTreeMap<u32, (Ink, &crate::NodeId)> = payload
+        .pages
+        .iter()
+        .map(|p| {
+            let seen = p.visible.map_or((0, 0, p.width, p.height), |v| {
+                (v.x0(), v.y0(), v.x1(), v.y1())
+            });
+            (p.index, (seen, &p.id))
+        })
+        .collect();
+    // Each page's placed images, cut to the page, and the runs they hold.
+    let mut placed: std::collections::BTreeMap<u32, (Vec<Ink>, Vec<&str>)> = Default::default();
+    for n in &payload.nodes {
+        if let (crate::NodeAttributes::Image(a), crate::NativeLocator::PdfImage(at)) =
+            (&n.attributes, &n.native_locator)
+        {
+            if let (Some(r), Some(((x0, y0, x1, y1), _))) = (at.rect.painted(), pages.get(&at.page))
+            {
+                let entry = placed.entry(at.page).or_default();
+                entry.0.push((
+                    r.x0().max(*x0),
+                    r.y0().max(*y0),
+                    r.x1().min(*x1),
+                    r.y1().min(*y1),
+                ));
+                entry.1.extend(a.runs_inside.iter().map(|id| id.as_str()));
+            }
+        }
+    }
+    let scanned: std::collections::BTreeSet<&str> = placed
+        .into_iter()
+        .filter(|(page, (rects, _))| {
+            pages.get(page).is_some_and(|((x0, y0, x1, y1), _)| {
+                2 * union_area(rects) >= (x1 - x0).max(0) * (y1 - y0).max(0)
+            })
+        })
+        .flat_map(|(_, (_, runs))| runs)
+        .collect();
+    let seen_of: std::collections::BTreeMap<&crate::NodeId, Ink> =
+        pages.values().map(|(seen, id)| (*id, *seen)).collect();
+    payload
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(i, n)| {
+            use crate::TextFinding::{InvisibleRenderMode, OffPage, TinyText};
+            text_run_attributes(n).is_some_and(|a| match a.findings[..] {
+                [] => false,
+                [InvisibleRenderMode] | [InvisibleRenderMode, TinyText] => {
+                    !scanned.contains(n.id.as_str())
+                }
+                [OffPage] => measured_box(repr, *i)
+                    .zip(seen_of.get(&n.parent))
+                    .is_some_and(|((a0, b0, a1, b1), (x0, y0, x1, y1))| {
+                        !(a0 < *x1 && *x0 < a1 && b0 < *y1 && *y0 < b1)
+                    }),
+                _ => true,
+            })
+        })
+        .map(|(_, n)| n.id.as_str())
+        .collect()
+}
+
+/// The area the rectangles `(x0, y0, x1, y1)` cover together, overlaps once: column by column
+/// between the x edges, the y spans each column holds merged.
+fn union_area(rects: &[(i64, i64, i64, i64)]) -> i64 {
+    let mut xs: Vec<i64> = rects.iter().flat_map(|r| [r.0, r.2]).collect();
+    xs.sort_unstable();
+    xs.dedup();
+    xs.windows(2)
+        .map(|w| {
+            let mut spans: Vec<(i64, i64)> = rects
+                .iter()
+                .filter(|r| r.0 <= w[0] && w[1] <= r.2 && r.1 < r.3)
+                .map(|r| (r.1, r.3))
+                .collect();
+            spans.sort_unstable();
+            let (mut total, mut reach) = (0, i64::MIN);
+            for (lo, hi) in spans {
+                total += (hi - lo.max(reach)).max(0);
+                reach = reach.max(hi);
+            }
+            total * (w[1] - w[0])
+        })
+        .sum()
+}
+
+/// Takes the runs `left` names out of every planned cell (decision #139), so the projection meets
+/// each as a run no table owns and leaves it out there. A cell of nothing else is written empty.
+pub(crate) fn leave_cells(plans: &mut [TablePlan<'_>], left: &std::collections::BTreeSet<&str>) {
+    for slot in plans.iter_mut().flat_map(|p| p.slots.iter_mut()) {
+        slot.retain(|n| !left.contains(n.id.as_str()));
+    }
 }
 
 /// The runs [`ProjectionOptions::drop_furniture`] leaves out: each furniture line whose text
@@ -3940,7 +4064,14 @@ pub fn to_markdown_with(
     } else {
         Default::default()
     };
-    let plans = plan_tables(payload, &mut erasures, &office);
+    let mut plans = plan_tables(payload, &mut erasures, &office);
+    // Decision #139: flagged runs leave their cells, so no table writes them.
+    let flagged = if options.drop_flagged {
+        flagged_runs(repr)
+    } else {
+        Default::default()
+    };
+    leave_cells(&mut plans, &flagged);
     // Which table, if any, owns each run. A run in this map is emitted **inside** its table and
     // nowhere else; that is decision 1 of v1.1-S2, and it is the difference between a projection
     // that moves characters and one that duplicates them.
@@ -4039,6 +4170,15 @@ pub fn to_markdown_with(
                     last = Some(Block::Standalone);
                 }
             }
+            continue;
+        }
+
+        // Decision #139: flagged text left out on request, as though the page had not drawn it.
+        // The open block stands, as it does for a copy left out below.
+        if flagged.contains(node.id.as_str()) {
+            let b = buckets.entry(FLAGGED_TEXT_NOT_PROJECTED).or_insert((0, 0));
+            b.0 += node.text.chars().count();
+            b.1 += 1;
             continue;
         }
 
@@ -4175,8 +4315,10 @@ pub fn to_markdown_with(
         // block, so `hyphen_tail` can close the word up. Joining it into the block above instead
         // would strand the tail and re-open `nonescr` from the other side.
         let next = payload.nodes.get(i + 1);
-        let next = next
-            .filter(|n| !overprinted.contains(n.id.as_str()) && !furniture.contains(n.id.as_str()));
+        let next = next.filter(|n| {
+            let id = n.id.as_str();
+            !overprinted.contains(id) && !furniture.contains(id) && !flagged.contains(id)
+        });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = group_key(node);
         let mut across: Option<SequenceJoin> = None;
@@ -4515,9 +4657,10 @@ pub fn to_markdown_with(
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let markdown = e.markdown;
 
+    let left_out: std::collections::BTreeSet<&str> = furniture.union(&flagged).copied().collect();
     let coverage = census(
         payload,
-        &furniture,
+        &left_out,
         in_representation,
         emitted_chars,
         buckets,
@@ -10846,7 +10989,144 @@ pub(crate) mod tests {
     const DROP_FURNITURE: ProjectionOptions = ProjectionOptions {
         drop_furniture: true,
         infer_lists: false,
+        drop_flagged: false,
     };
+
+    const DROP_FLAGGED: ProjectionOptions = ProjectionOptions {
+        drop_furniture: false,
+        infer_lists: false,
+        drop_flagged: true,
+    };
+
+    /// `repr` with the runs at `at` carrying a finding, resealed.
+    pub(crate) fn flagged_at(
+        repr: &DocumentRepresentation,
+        at: &[usize],
+    ) -> DocumentRepresentation {
+        resealed(
+            repr,
+            |nodes| {
+                for &i in at {
+                    if let NodeAttributes::TextRun(a) = &mut nodes[i].attributes {
+                        a.findings = vec![crate::TextFinding::FillMatchesBackground];
+                    }
+                }
+            },
+            &[],
+        )
+    }
+
+    /// **Flagged text goes on request, and is counted** (decision #139): a run carrying a finding
+    /// is left out as though the page had not drawn it, so the block around it goes on, and the
+    /// default is `to_markdown` byte for byte.
+    #[test]
+    fn flagged_text_is_left_out_on_request_and_counted() {
+        let repr = flagged_at(
+            &repr_of_placed(&[
+                ("Pay ", tagged_at(1), 7200, 7200, Some(1600), None),
+                ("IGNORE ", tagged_at(1), 8800, 7200, Some(2800), None),
+                ("now", tagged_at(1), 11600, 7200, Some(1200), None),
+                ("Next", None, 7200, 9600, Some(1600), None),
+            ]),
+            &[1],
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(artifact_with(&repr, ProjectionOptions::default()), plain);
+        assert_eq!(plain.markdown, "Pay IGNORE now\n\nNext\n");
+        assert_eq!(bucket(&plain, FLAGGED_TEXT_NOT_PROJECTED), None);
+
+        let a = artifact_with(&repr, DROP_FLAGGED);
+        assert_eq!(a.markdown, "Pay now\n\nNext\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, FLAGGED_TEXT_NOT_PROJECTED), Some((7, 1)));
+        assert_eq!(
+            a.coverage.source_chars_emitted + "IGNORE".len(),
+            plain.coverage.source_chars_emitted,
+            "nothing else moved"
+        );
+    }
+
+    /// **A flagged run leaves its table cell**, which keeps its other runs; a cell of nothing else
+    /// is written empty, and the run is counted once.
+    #[test]
+    fn flagged_text_leaves_its_table_cell() {
+        let repr = flagged_at(
+            &repr_with_table(
+                &["Name", "Q1", "Alpha", "10", "secret", "hidden"],
+                2,
+                3,
+                &[
+                    cell(0, 0, &[0]),
+                    cell(0, 1, &[1]),
+                    cell(0, 2, &[5]),
+                    cell(1, 0, &[2]),
+                    cell(1, 1, &[3, 4]),
+                ],
+            ),
+            &[4, 5],
+        );
+        let a = artifact_with(&repr, DROP_FLAGGED);
+        assert_eq!(
+            a.markdown,
+            "| Name | Q1 |  |\n| --- | --- | --- |\n| Alpha | 10 |  |\n"
+        );
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, FLAGGED_TEXT_NOT_PROJECTED), Some((12, 2)));
+    }
+
+    /// **A word broken before flagged text left out is not closed up with it**.
+    #[test]
+    fn a_word_is_not_closed_up_with_flagged_text_left_out() {
+        let repr = flagged_at(
+            &paged_repr(
+                &[
+                    ("Rates may be recalcu-", 1, None),
+                    ("Confidential", 1, None),
+                    ("Body two", 2, None),
+                ],
+                false,
+            ),
+            &[1],
+        );
+        let a = artifact_with(&repr, DROP_FLAGGED);
+        assert_eq!(a.markdown, "Rates may be recalcu-\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, FLAGGED_TEXT_NOT_PROJECTED), Some((12, 1)));
+    }
+
+    /// **A flagged run left out is counted whole, in one bucket**, its U+0000 and whitespace with
+    /// it, and not again as furniture where it is that too.
+    #[test]
+    fn flagged_text_left_out_is_counted_once_whatever_it_holds() {
+        use crate::Furniture::Footer;
+        let repr = flagged_at(
+            &paged_repr(
+                &[
+                    ("Con\0fidential  ", 1, Some(Footer)),
+                    ("Body  one", 1, None),
+                    ("Con\0fidential  ", 2, Some(Footer)),
+                ],
+                false,
+            ),
+            &[0, 2],
+        );
+        let a = artifact_with(&repr, DROP_FLAGGED);
+        assert_eq!(a.markdown, "Body one\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, FLAGGED_TEXT_NOT_PROJECTED), Some((30, 2)));
+        assert_eq!(bucket(&a, NULL_CHARACTERS_NOT_PROJECTED), None);
+        assert_eq!(bucket(&a, "whitespace-collapsed-v1"), Some((1, 1)));
+        let both = ProjectionOptions {
+            drop_furniture: true,
+            drop_flagged: true,
+            ..ProjectionOptions::default()
+        };
+        let b = artifact_with(&repr, both);
+        assert_eq!(b.markdown, "Body one\n");
+        assert!(b.coverage.balances());
+        assert_eq!(bucket(&b, PAGE_FURNITURE_NOT_PROJECTED), Some((30, 2)));
+        assert_eq!(bucket(&b, FLAGGED_TEXT_NOT_PROJECTED), None);
+    }
 
     /// The `(chars, nodes)` a dropped bucket counts, or `None` where the artifact has none.
     fn bucket(a: &MarkdownArtifact, code: &str) -> Option<(usize, usize)> {
@@ -11209,6 +11489,7 @@ pub(crate) mod tests {
     pub(crate) const INFER_LISTS: ProjectionOptions = ProjectionOptions {
         drop_furniture: false,
         infer_lists: true,
+        drop_flagged: false,
     };
 
     /// **A unit opening with a marker is a list item, on request, and counted** (decision #138):

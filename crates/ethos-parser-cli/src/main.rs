@@ -445,6 +445,9 @@ struct HtmlArgs {
     /// `markdown --infer-lists` does.
     #[arg(long)]
     infer_lists: bool,
+    /// Leave out text the reader flagged as hidden, counted, as `markdown --drop-hidden` does.
+    #[arg(long)]
+    drop_hidden: bool,
 }
 
 #[derive(clap::Args)]
@@ -501,6 +504,16 @@ struct MarkdownArgs {
     /// (decision #138).
     #[arg(long)]
     infer_lists: bool,
+    /// Leave out every run the reader flagged with a finding: drawn invisible (`Tr 3`, or `Tr 7`
+    /// with nothing painted through its clip), off the visible page, under a point, in a layer the
+    /// document switches off, or filled in the colour painted beneath it. A scan's text layer
+    /// stays — invisible text inside placed images covering half its page or more together — and
+    /// an off-page line goes only where its box is known and misses the visible page (a line
+    /// crossing the media box's edge has none, and stays). Counted under the
+    /// census bucket `flagged-text-not-projected-v1`; the representation keeps every run and its
+    /// findings (decision #139).
+    #[arg(long)]
+    drop_hidden: bool,
 }
 
 #[derive(clap::Args)]
@@ -1215,7 +1228,7 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.markdown_rule,
-        projection_options(args.drop_furniture, args.infer_lists),
+        projection_options(args.drop_furniture, args.infer_lists, args.drop_hidden),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
@@ -1271,14 +1284,17 @@ fn run_elements(args: ElementsArgs) -> ExitCode {
     ExitCode::from(PROJECTED as u8)
 }
 
-/// The projection options a `markdown` or `html` command line asks for (decisions #134, #138).
+/// The projection options a `markdown` or `html` command line asks for (decisions #134, #138,
+/// #139).
 fn projection_options(
     drop_furniture: bool,
     infer_lists: bool,
+    drop_hidden: bool,
 ) -> ethos_parser_core::ProjectionOptions {
     let mut options = ethos_parser_core::ProjectionOptions::default();
     options.drop_furniture = drop_furniture;
     options.infer_lists = infer_lists;
+    options.drop_flagged = drop_hidden;
     options
 }
 
@@ -1352,7 +1368,7 @@ fn run_html(args: HtmlArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.html_rule,
-        projection_options(args.drop_furniture, args.infer_lists),
+        projection_options(args.drop_furniture, args.infer_lists, args.drop_hidden),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),

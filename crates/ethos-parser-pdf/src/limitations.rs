@@ -777,8 +777,9 @@ pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
 pub fn text_finding(code: &str, count: u32) -> Limitation {
     let detail = match code {
         ethos_parser_core::codes::INVISIBLE_RENDER_MODE_TEXT => format!(
-            "{count} text run(s) were drawn in an INVISIBLE rendering mode — `Tr 3` or `Tr 7`, \
-             which fill nothing and stroke nothing (PDF 32000-1 Table 106). Every one of them is \
+            "{count} text run(s) were drawn in an INVISIBLE rendering mode — `Tr 3`, or `Tr 7` \
+             with nothing painted through the clip it sets — which fill nothing and stroke \
+             nothing (PDF 32000-1 Table 106). Every one of them is \
              in this artifact, with its text and its origin, and NONE was removed: text that is \
              invisible to a human reader is still text a machine reads, and deleting it would \
              make a document that hides an instruction indistinguishable from one that says \
@@ -796,6 +797,38 @@ pub fn text_finding(code: &str, count: u32) -> Limitation {
              a reader cannot see is still content a machine reads. Ordinary causes exist — \
              printer's marks, a trimmed bleed area, an editing remnant — and this profile does \
              not distinguish them from deliberate concealment, because the geometry does not."
+        ),
+        ethos_parser_core::codes::TINY_TEXT => format!(
+            "{count} text run(s) were drawn with a rendered em UNDER ONE POINT — the vertical scale \
+             of the text rendering matrix, the `Tf` size carried through the text matrix and the \
+             CTM — and none was removed: text too small to read is still text a machine reads. \
+             Fine print a magnifier shows is flagged as well as text shrunk out of sight; this \
+             profile reports the size, not whether anyone could read it. A Type 3 font whose \
+             `/FontMatrix` is not the 1/1000 default is not measured."
+        ),
+        ethos_parser_core::codes::HIDDEN_LAYER_TEXT => format!(
+            "{count} text run(s) lie in OPTIONAL CONTENT the document's default configuration \
+             switches off — a `BDC /OC` sequence, or a form XObject whose `/OC`, names a group \
+             `/OCProperties /D` lists `/OFF`, or does not list `/ON` under `/BaseState /OFF` — so a \
+             viewer opening the file does not show them, and none was removed. A layer a reader \
+             can switch on, a watermark set aside for printing and a hidden instruction look the \
+             same here; `/AS` auto-state, usage and intents are not read."
+        ),
+        ethos_parser_core::codes::FILL_MATCHES_BACKGROUND_TEXT => format!(
+            "{count} text run(s) are FILLED IN THE COLOUR BENEATH THEM — the same device colour, \
+             operand for operand, as the last rectangle a fill painted under the whole run, or \
+             exactly white where nothing was painted beneath it — and none was removed. A comparison of \
+             operands and never of contrast: faint text is not flagged, colours in different \
+             spaces are not converted, transparency is not read — a fill painted under a `gs` \
+             is not compared — and neither text over an image, a shading, a stroke or any other \
+             shape, nor under a text clip, nor text the page clips away, draws under a `gs` \
+             that may blend or mask it, draws with no known advance or in a Type 3 font is \
+             compared; a glyph painted as a box is not read as one."
+        ),
+        ethos_parser_core::codes::OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED => format!(
+            "{count} text run(s) lie in optional content an `/OCMD` membership dictionary \
+             governs, which this profile does not evaluate: whether a viewer shows them is not \
+             known, so they carry no `hidden-layer` finding, and every one is in this artifact."
         ),
         other => format!("{count} run(s) carry the `{other}` observation."),
     };

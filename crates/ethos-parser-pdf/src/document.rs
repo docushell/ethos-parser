@@ -74,6 +74,9 @@ pub struct Document {
     /// The first object the file writes as a stream and `lopdf` read as its bare dictionary, if
     /// any (tracker I19). Only the writers refuse it: a rewrite would copy the dictionary alone.
     lost_stream: Option<lopdf::ObjectId>,
+    /// The catalog's default optional-content configuration (decision #139), read the first time
+    /// a page asks and once for the document.
+    layers: std::sync::OnceLock<crate::layers::OptionalContent>,
 }
 
 impl core::fmt::Debug for Document {
@@ -234,6 +237,7 @@ impl Document {
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
             tounicode: crate::cmap::ToUnicodeCache::default(),
             lost_stream,
+            layers: std::sync::OnceLock::new(),
         })
     }
 
@@ -360,6 +364,12 @@ impl Document {
     /// The underlying parsed document, for stage implementations in this crate.
     pub(crate) fn inner(&self) -> &lopdf::Document {
         &self.inner
+    }
+
+    /// The catalog's default optional-content configuration (decision #139).
+    pub(crate) fn layers(&self) -> &crate::layers::OptionalContent {
+        self.layers
+            .get_or_init(|| crate::layers::OptionalContent::read(&self.inner))
     }
 }
 

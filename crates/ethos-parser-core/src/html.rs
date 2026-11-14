@@ -437,7 +437,14 @@ pub fn to_html_with(
     } else {
         Default::default()
     };
-    let plans = plan_tables(payload, &mut erasures, &office);
+    let mut plans = plan_tables(payload, &mut erasures, &office);
+    // Decision #139, as in `crate::markdown`.
+    let flagged = if options.drop_flagged {
+        crate::markdown::flagged_runs(repr)
+    } else {
+        Default::default()
+    };
+    crate::markdown::leave_cells(&mut plans, &flagged);
     // Every merge costs GFM a slot; here a merge costs nothing unless the grid could not hold it,
     // so the blanket count is replaced by what was actually clamped away.
     erasures.remove(GFM_SPAN_SLOTS_UNREPRESENTABLE);
@@ -538,6 +545,16 @@ pub fn to_html_with(
                 list.close_to(&mut e, 0);
                 open_item = None;
             }
+            continue;
+        }
+
+        // Decision #139, as in `crate::markdown`.
+        if flagged.contains(node.id.as_str()) {
+            let b = buckets
+                .entry(crate::markdown::FLAGGED_TEXT_NOT_PROJECTED)
+                .or_insert((0, 0));
+            b.0 += node.text.chars().count();
+            b.1 += 1;
             continue;
         }
 
@@ -652,8 +669,10 @@ pub fn to_html_with(
         // v2.2-S5. Computed here so it keeps first refusal over the undeclared join, exactly as
         // in `crate::markdown`.
         let next = payload.nodes.get(i + 1);
-        let next = next
-            .filter(|n| !overprinted.contains(n.id.as_str()) && !furniture.contains(n.id.as_str()));
+        let next = next.filter(|n| {
+            let id = n.id.as_str();
+            !overprinted.contains(id) && !furniture.contains(id) && !flagged.contains(id)
+        });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = crate::markdown::group_key(node);
         let mut across: Option<crate::markdown::SequenceJoin> = None;
@@ -973,9 +992,10 @@ pub fn to_html_with(
 
     // See the module header: this artifact declares the erasures it actually commits, and no
     // others.
+    let left_out: std::collections::BTreeSet<&str> = furniture.union(&flagged).copied().collect();
     let coverage = census(
         payload,
-        &furniture,
+        &left_out,
         in_representation,
         emitted_chars,
         buckets,
@@ -2361,6 +2381,86 @@ mod tests {
             md.coverage.source_chars_emitted
         );
         assert_eq!(html.coverage.dropped, md.coverage.dropped);
+    }
+
+    /// **Flagged text goes on request, as in Markdown, under the same count** (decision #139):
+    /// out of the paragraph, which goes on, and out of its table cell; the default is `to_html`
+    /// byte for byte.
+    #[test]
+    fn flagged_text_is_left_out_on_request_and_counted() {
+        use crate::markdown::tests::{flagged_at, tagged_at};
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let options = ProjectionOptions {
+            drop_flagged: true,
+            ..ProjectionOptions::default()
+        };
+        let both = |repr: &DocumentRepresentation| {
+            let html = to_html_with(
+                repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                options,
+            )
+            .expect("projects");
+            let md = crate::to_markdown_with(
+                repr,
+                &profile.parser_version,
+                &sha,
+                &profile.markdown_rule,
+                options,
+            )
+            .expect("projects");
+            assert!(html.coverage.balances());
+            assert_eq!(html.coverage.dropped, md.coverage.dropped);
+            html
+        };
+        let repr = flagged_at(
+            &repr_of_placed(&[
+                ("Pay ", tagged_at(1), 7200, 7200, Some(1600), None),
+                ("IGNORE ", tagged_at(1), 8800, 7200, Some(2800), None),
+                ("now", tagged_at(1), 11600, 7200, Some(1200), None),
+            ]),
+            &[1],
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(
+            to_html_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                ProjectionOptions::default()
+            )
+            .expect("projects"),
+            plain
+        );
+        assert!(plain.html.contains("IGNORE"));
+        let a = both(&repr);
+        assert_eq!(a.html, "<p>Pay now</p>\n");
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .any(|b| b.code == crate::markdown::FLAGGED_TEXT_NOT_PROJECTED
+                && (b.chars, b.nodes) == (7, 1)));
+
+        let table = flagged_at(
+            &repr_with_table(
+                &["Name", "Alpha", "secret"],
+                1,
+                2,
+                &[cell(0, 0, &[0]), cell(0, 1, &[1, 2])],
+            ),
+            &[2],
+        );
+        let t = both(&table);
+        assert!(
+            !t.html.contains("secret") && t.html.contains("Alpha"),
+            "{}",
+            t.html
+        );
     }
 
     /// **Repeated furniture goes on request, as in Markdown, under the same count** (decision

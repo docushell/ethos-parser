@@ -315,6 +315,25 @@ fn type3_page(
     descent: i64,
     charproc: &str,
 ) -> Vec<u8> {
+    type3_page_drawing(
+        "BT /F1 10 Tf 50 50 Td (abcde) Tj ET",
+        font_matrix,
+        widths,
+        ascent,
+        descent,
+        charproc,
+    )
+}
+
+/// [`type3_page`] drawing `content` instead.
+fn type3_page_drawing(
+    content: &str,
+    font_matrix: &str,
+    widths: &str,
+    ascent: i64,
+    descent: i64,
+    charproc: &str,
+) -> Vec<u8> {
     let stream = |data: &str| format!("<< /Length {} >>\nstream\n{data}\nendstream", data.len());
     let objects: Vec<Vec<u8>> = vec![
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
@@ -322,7 +341,7 @@ fn type3_page(
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] \
            /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
             .to_vec(),
-        stream("BT /F1 10 Tf 50 50 Td (abcde) Tj ET").into_bytes(),
+        stream(content).into_bytes(),
         format!(
             "<< /Type /Font /Subtype /Type3 /FontBBox [0 {descent} {widths} {ascent}] \
              /FontMatrix [{font_matrix}] /CharProcs << /a 7 0 R >> /Encoding << /Type /Encoding \
@@ -5905,6 +5924,392 @@ fn off_page_text_is_flagged_against_the_visible_box() {
         .expect("counted as well as flagged");
     assert_eq!(l.scope, ethos_parser_core::LimitationScope::Document);
     assert!(l.detail.contains("none was removed"));
+}
+
+/// One 300 x 400 page of 10-point Helvetica drawing `stream`, its catalog declaring two
+/// optional-content groups — 6 0 R switched off by `/D`, 7 0 R left on — and its `/Properties`
+/// naming them `/Off` and `/On`, and `/Both` an `/OCMD` over the two. `catalog_d` replaces the
+/// default configuration, and `form` is the stream of a form XObject the page names `/Fm`, whose
+/// dictionary also holds `form_dict` — its `/BBox`, its `/OC`. The page names a one-pixel image
+/// `/Im`, and `/F2` a font that states no widths.
+fn layered_page(catalog_d: &str, form_dict: &str, form: &str, stream: &str) -> ExtractArtifact {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let stream_object = |dict: &str, body: &str| {
+        format!(
+            "<< {dict} /Length {} >>\nstream\n{body}\nendstream",
+            body.len()
+        )
+        .into_bytes()
+    };
+    let objects: Vec<Vec<u8>> = vec![
+        format!(
+            "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [6 0 R 7 0 R] /D {catalog_d} >> >>"
+        )
+        .into_bytes(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R \
+          /F2 11 0 R >> /Properties << /Off 6 0 R /On 7 0 R /Both 8 0 R >> /XObject << /Fm 9 0 R \
+          /Im 10 0 R >> /ExtGState << /Blend << /BM /Difference >> /Plain << /CA 1 /ca 1 >> >> >> \
+          /Contents 4 0 R >>"
+            .to_vec(),
+        stream_object("", stream),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+        b"<< /Type /OCG /Name (Hidden layer) >>".to_vec(),
+        b"<< /Type /OCG /Name (Shown layer) >>".to_vec(),
+        b"<< /Type /OCMD /OCGs [6 0 R 7 0 R] /P /AnyOn >>".to_vec(),
+        stream_object(
+            &format!(
+                "/Type /XObject /Subtype /Form {form_dict} /Resources << /Font \
+                 << /F1 5 0 R >> /Properties << /Off 7 0 R /On 6 0 R >> >>"
+            ),
+            form,
+        ),
+        stream_object(
+            "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+             /BitsPerComponent 8",
+            "0",
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /NoWidthsGiven >>".to_vec(),
+    ];
+    let profile = Profile::default();
+    let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+    ethos_parser_pdf::extract(&d, &profile).expect("extracts")
+}
+
+/// Each run's text beside its findings, in reading order.
+fn findings_of(a: &ExtractArtifact) -> Vec<(String, Vec<ethos_parser_core::TextFinding>)> {
+    runs(a)
+        .iter()
+        .map(|r| (r.text.clone(), r.findings.clone()))
+        .collect()
+}
+
+/// How many runs `a` counts under `code`, or `None` where it declares none.
+fn counted(a: &ExtractArtifact, code: &str) -> Option<String> {
+    a.assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == code)
+        .map(|l| l.detail.split(' ').next().unwrap_or_default().to_owned())
+}
+
+/// **Text a reader of the page does not see is flagged and kept** (decision #139): a run under a
+/// point, a run in a layer the document switches off, and a run filled in the colour beneath it —
+/// white on the bare page, grey on a grey box — beside the two findings v1-S6 shipped. White on a
+/// black box, a layer left on, and a black run beside them carry nothing; a run in a membership
+/// dictionary is counted, not flagged. Every run is in the artifact.
+#[test]
+fn hidden_text_is_flagged_and_never_removed() {
+    use ethos_parser_core::TextFinding::{
+        FillMatchesBackground, HiddenLayer, InvisibleRenderMode, OffPage, TinyText,
+    };
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "BT /F1 10 Tf 1 0 0 1 20 380 Tm (Visible line) Tj ET \
+         q /GS0 gs 0 g 150 375 140 20 re f Q BT /F1 10 Tf 1 0 0 1 160 380 Tm (Behind a gs) Tj ET \
+         q 1 g BT /F1 10 Tf 1 0 0 1 160 360 Tm ( ) Tj ET Q \
+         q BT 3 Tr /F1 10 Tf 1 0 0 1 20 360 Tm (Render mode three) Tj ET Q \
+         BT /F1 0.5 Tf 1 0 0 1 20 340 Tm (Half point text) Tj ET \
+         BT /F1 1 Tf 10 0 0 0.9 20 330 Tm (Squashed flat) Tj ET \
+         /OC /Off BDC BT /F1 10 Tf 1 0 0 1 20 320 Tm (Layer switched off) Tj ET EMC \
+         /OC /On BDC BT /F1 10 Tf 1 0 0 1 20 300 Tm (Layer switched on) Tj ET EMC \
+         /OC /Both BDC BT /F1 10 Tf 1 0 0 1 20 280 Tm (Membership dictionary) Tj ET EMC \
+         q 1 g BT /F1 10 Tf 1 0 0 1 20 260 Tm (White on white) Tj ET Q \
+         q 1 g 0 G 2 Tr BT /F1 10 Tf 1 0 0 1 120 260 Tm (Outlined) Tj ET Q \
+         q 0.5 g 10 230 200 20 re f BT /F1 10 Tf 1 0 0 1 20 235 Tm (Grey on grey) Tj ET Q \
+         q 0 g 10 200 200 20 re f 1 1 1 rg BT /F1 10 Tf 1 0 0 1 20 205 Tm (White on black) Tj ET Q \
+         q 0.5 0.5 0.5 rg 10 170 200 20 re f 0.5 g BT /F1 10 Tf 1 0 0 1 20 175 Tm (Grey in two \
+         spaces) Tj ET Q \
+         q 0.5 g 10 140 60 20 re f BT /F1 10 Tf 1 0 0 1 20 145 Tm (Half on a grey box) Tj ET Q \
+         q /CS0 cs 1 scn BT /F1 10 Tf 1 0 0 1 20 125 Tm (Spot colour) Tj ET Q \
+         q 0 g 10 100 200 20 re 12 102 196 16 re f* BT /F1 10 Tf 1 0 0 1 20 105 Tm (Inside a \
+         frame) Tj ET Q \
+         q 200 0 0 20 10 75 cm BI /W 1 /H 1 /CS /G /BPC 8 ID 0 EI Q \
+         q 1 g BT /F1 10 Tf 1 0 0 1 20 80 Tm (Over a picture) Tj ET Q \
+         q 0 G 20 w 10 55 m 210 55 l S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 52 Tm (On a wide stroke) \
+         Tj ET Q \
+         q 10 15 190 20 re W n 0 g 10 15 280 20 re f Q \
+         BT /F1 10 Tf 1 0 0 1 210 20 Tm (Beside a clip) Tj ET \
+         q 10 10 50 10 re W n 1 g BT /F1 10 Tf 1 0 0 1 230 120 Tm (Clipped away) Tj ET Q \
+         BT /F1 10 Tf 1 0 0 1 20 500 Tm (Above the page) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("Visible line", &[]),
+        want("Behind a gs", &[]),
+        want(" ", &[]),
+        want("Render mode three", &[InvisibleRenderMode]),
+        want("Half point text", &[TinyText]),
+        want("Squashed flat", &[TinyText]),
+        want("Layer switched off", &[HiddenLayer]),
+        want("Layer switched on", &[]),
+        want("Membership dictionary", &[]),
+        want("White on white", &[FillMatchesBackground]),
+        want("Outlined", &[]),
+        want("Grey on grey", &[FillMatchesBackground]),
+        want("White on black", &[]),
+        want("Grey in two spaces", &[]),
+        want("Half on a grey box", &[]),
+        want("Spot colour", &[]),
+        want("Inside a frame", &[]),
+        want("Over a picture", &[]),
+        want("On a wide stroke", &[]),
+        want("Beside a clip", &[]),
+        want("Clipped away", &[]),
+        want("Above the page", &[OffPage]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+
+    for (code, n) in [
+        (ethos_parser_core::codes::TINY_TEXT, "2"),
+        (ethos_parser_core::codes::HIDDEN_LAYER_TEXT, "1"),
+        (ethos_parser_core::codes::FILL_MATCHES_BACKGROUND_TEXT, "2"),
+        (
+            ethos_parser_core::codes::OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED,
+            "1",
+        ),
+    ] {
+        assert_eq!(counted(&a, code).as_deref(), Some(n), "{code}");
+    }
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::FILL_MATCHES_BACKGROUND_TEXT)
+        .expect("counted");
+    assert_eq!(l.scope, ethos_parser_core::LimitationScope::Document);
+    assert!(l.detail.contains("none was removed"), "{}", l.detail);
+}
+
+/// **A run is compared only with paint this reader recorded in full** (decision #139, review of
+/// 2026-11-14): a shading, an image drawn by `Do`, an XObject that does not resolve, a stroke of
+/// any shape, paint in a layer switched off, paint a form's `/BBox` clips, and a fill under a clip
+/// that is not one rectangle each leave nothing flagged; white set by `cs /DeviceRGB` then `sc`
+/// is device white, a parent's paint is beneath a form's text, near white is not white, a
+/// stroked frame leaves its inside compared, paint under a membership dictionary is not compared,
+/// a `BDC /OC` with an inline property list is not read, and text set in mode 7 is invisible only
+/// where nothing is painted through its clip — which a form's ends with the form.
+#[test]
+fn hidden_text_is_measured_against_paint_recorded_in_full() {
+    use ethos_parser_core::TextFinding::{FillMatchesBackground, InvisibleRenderMode};
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 50]",
+        "0 0 0.5 rg BT /F1 10 Tf 1 0 0 1 160 35 Tm (Navy in a form) Tj ET 0 g 0 0 300 400 re f \
+         BT 7 Tr /F1 10 Tf 1 0 0 1 20 40 Tm (Form clip) Tj ET",
+        "q 10 375 280 18 re W n /Sh0 sh Q q 1 g BT /F1 10 Tf 1 0 0 1 20 380 Tm (Over a shading) Tj \
+         ET Q \
+         q 280 0 0 18 10 350 cm /Im Do Q q 1 g BT /F1 10 Tf 1 0 0 1 20 355 Tm (Over an image) Tj ET Q \
+         q 280 0 0 18 10 325 cm /Lost Do Q q 1 g BT /F1 10 Tf 1 0 0 1 20 330 Tm (Over a lost one) Tj \
+         ET Q \
+         q /DeviceRGB cs 1 1 1 sc BT /F1 10 Tf 1 0 0 1 20 305 Tm (White by cs) Tj ET Q \
+         q 0.99 g BT /F1 10 Tf 1 0 0 1 20 285 Tm (Almost white) Tj ET Q \
+         /OC /Both BDC q 0 g 150 280 140 15 re f Q EMC BT /F1 10 Tf 1 0 0 1 160 285 Tm (Under a \
+         set) Tj ET \
+         q 0 G 1 w 150 255 140 20 re S Q q 1 g BT /F1 10 Tf 1 0 0 1 160 262 Tm (In a frame) Tj ET Q \
+         /OC << /Type /OCG /Name (Inline) >> BDC BT /F1 10 Tf 1 0 0 1 20 265 Tm (Inline layer) Tj ET \
+         EMC \
+         q 0 G 15 w 10 236 280 12 re S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 240 Tm (On a stroked box) Tj \
+         ET Q \
+         q 0 G 15 w 10 215 m 290 218 l S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 213 Tm (On a slope) Tj ET Q \
+         q 0 G 15 w [40 1] 0 d 10 192 m 290 192 l S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 189 Tm (On a \
+         dash) Tj ET Q \
+         q 0 G 15 w 10 165 m 100 172 200 172 290 165 c S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 165 Tm (On \
+         a curve) Tj ET Q \
+         /OC /Off BDC q 0 g 10 135 280 18 re f Q EMC BT /F1 10 Tf 1 0 0 1 20 140 Tm (Over a hidden \
+         box) Tj ET \
+         q 200 115 m 200 125 210 130 220 130 c 230 130 240 125 240 115 c 240 105 230 100 220 100 c \
+         210 100 200 105 200 115 c W n 0 g 10 100 280 30 re f Q \
+         BT /F1 10 Tf 1 0 0 1 20 110 Tm (Outside a round clip) Tj ET \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 80 Tm (Clip title) Tj ET /Sh0 sh Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 160 80 Tm (Clip only) Tj ET Q \
+         q 0 0 0.5 rg 150 30 140 20 re f Q /Fm Do \
+         BT /F1 10 Tf 1 0 0 1 20 60 Tm (Outside the form box) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("Over a shading", &[]),
+        want("Over an image", &[]),
+        want("Over a lost one", &[]),
+        want("White by cs", &[FillMatchesBackground]),
+        want("Almost white", &[]),
+        want("Under a set", &[]),
+        want("In a frame", &[FillMatchesBackground]),
+        want("Inline layer", &[]),
+        want("On a stroked box", &[]),
+        want("On a slope", &[]),
+        want("On a dash", &[]),
+        want("On a curve", &[]),
+        want("Over a hidden box", &[]),
+        want("Outside a round clip", &[]),
+        want("Clip title", &[]),
+        want("Clip only", &[InvisibleRenderMode]),
+        want("Navy in a form", &[FillMatchesBackground]),
+        want("Form clip", &[InvisibleRenderMode]),
+        want("Outside the form box", &[]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **What a second review found** (decision #139, 2026-11-14): text set as a clip (`Tr 4` to
+/// `7`) leaves the paint after it of no known shape, so body text over a page-size fill clipped to
+/// a logo is not flagged; a rule thinner than the glyphs is not their background; a mode-7 run is
+/// shown only by paint drawn after the clip takes effect at `ET` and touching its glyphs; text
+/// painted through such a clip shows it; and text under a `gs` that blends, masks, sets an alpha
+/// or is not resolved is not compared, where a plain `gs` leaves it compared.
+#[test]
+fn hidden_text_after_text_clips_rules_and_blends() {
+    use ethos_parser_core::TextFinding::{FillMatchesBackground, InvisibleRenderMode};
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "0 g 10 303 280 0.8 re f BT /F1 10 Tf 1 0 0 1 20 300 Tm (Rule through text) Tj ET \
+         0 g 10 282.5 280 2 re f BT /F1 10 Tf 1 0 0 1 20 280 Tm (Struck text) Tj ET \
+         q BT /F1 10 Tf 1 0 0 1 20 260 Tm 7 Tr (IGNORE THIS) Tj 0 Tr ( ) Tj ET Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 240 Tm (FAR AWAY) Tj ET 0 0 1 rg 200 200 50 20 re f Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 220 Tm (Clipped word) Tj ET \
+         BT 0 Tr /F1 10 Tf 1 0 0 1 20 220 Tm (Painted over it) Tj ET Q \
+         q /Blend gs 1 g BT /F1 10 Tf 1 0 0 1 20 180 Tm (Blended white) Tj ET Q \
+         q /Plain gs 1 g BT /F1 10 Tf 1 0 0 1 20 160 Tm (Plain white) Tj ET Q \
+         q /Missing gs 1 g BT /F1 10 Tf 1 0 0 1 20 140 Tm (Unknown state white) Tj ET Q \
+         q 0 0 0.5 rg 60 115 230 20 re f Q q 1 g BT /F2 14 Tf 1 0 0 1 55 120 Tm (No widths) Tj ET Q \
+         q BT 7 Tr /F1 20 Tf 1 0 0 1 20 100 Tm (LOGO) Tj ET 0 g 0 0 300 400 re f Q \
+         BT /F1 10 Tf 1 0 0 1 20 80 Tm (Body under a logo) Tj ET \
+         q BT 4 Tr /F1 20 Tf 1 0 0 1 20 50 Tm (LOGO4) Tj ET 0 0 0.5 rg 0 0 300 400 re f Q \
+         0 0 0.5 rg BT /F1 10 Tf 1 0 0 1 20 30 Tm (Navy body) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("Rule through text", &[]),
+        want("Struck text", &[]),
+        want("IGNORE THIS", &[InvisibleRenderMode]),
+        want(" ", &[]),
+        want("FAR AWAY", &[InvisibleRenderMode]),
+        want("Clipped word", &[]),
+        want("Painted over it", &[]),
+        want("Blended white", &[]),
+        want("Plain white", &[FillMatchesBackground]),
+        want("Unknown state white", &[]),
+        want("LOGO", &[]),
+        want("Body under a logo", &[]),
+        want("LOGO4", &[]),
+        want("No widths", &[]),
+        want("Navy body", &[]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **A Type 3 font's em is measured only at the default `/FontMatrix`** (decision #139): drawn at
+/// half a point it is tiny text there, and under a matrix of a hundredth nothing says how tall its
+/// em is drawn, so it carries no finding.
+#[test]
+fn a_type3_em_is_measured_only_at_the_default_font_matrix() {
+    let profile = Profile::default();
+    let findings = |matrix: &str, width: &str| {
+        let pdf = type3_page(
+            matrix,
+            width,
+            700,
+            -200,
+            "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+        );
+        // `10` and `.5` are as long, so no offset moves.
+        let text = String::from_utf8_lossy(&pdf).replace("/F1 10 Tf", "/F1 .5 Tf");
+        let d = Document::open_bytes(text.as_bytes(), &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+        runs(&a)[0].findings.clone()
+    };
+    assert_eq!(
+        findings("0.001 0 0 0.001 0 0", "500"),
+        vec![ethos_parser_core::TextFinding::TinyText]
+    );
+    assert_eq!(findings("0.01 0 0 0.01 0 0", "50"), Vec::new());
+}
+
+/// **A Type 3 font's text is not compared with what lies beneath it** (decision #139, review of
+/// 2026-11-14): its glyph procedures paint in colours and to heights of their own, so white text
+/// in one on a bare page carries no `fill-matches-background`.
+#[test]
+fn type3_text_is_not_compared_with_its_background() {
+    let profile = Profile::default();
+    let pdf = type3_page_drawing(
+        "1 g BT /F1 10 Tf 50 50 Td (abcde) Tj ET",
+        "0.001 0 0 0.001 0 0",
+        "500",
+        700,
+        -200,
+        "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+    );
+    let d = Document::open_bytes(&pdf, &profile).expect("opens");
+    let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+    assert_eq!(runs(&a)[0].findings, Vec::new());
+}
+
+/// **What a layer is switched off by** (decision #139): `/BaseState /OFF` hides every group `/ON`
+/// does not name; a form XObject whose `/OC` is off hides what it draws, and a `BDC /OC` inside a
+/// form names the form's own `/Properties`; a document whose catalog declares no default
+/// configuration hides nothing.
+#[test]
+fn a_layer_is_off_where_the_default_configuration_says_so() {
+    use ethos_parser_core::TextFinding::HiddenLayer;
+    let page = "/OC /Off BDC BT /F1 10 Tf 1 0 0 1 20 320 Tm (Named off) Tj ET EMC \
+                /OC /On BDC BT /F1 10 Tf 1 0 0 1 20 300 Tm (Named on) Tj ET EMC \
+                /Fm Do";
+    let form = "BT /F1 10 Tf 1 0 0 1 20 200 Tm (Form text) Tj ET \
+                /OC /Off BDC BT /F1 10 Tf 1 0 0 1 20 180 Tm (Form names on) Tj ET EMC \
+                /OC /On BDC BT /F1 10 Tf 1 0 0 1 20 160 Tm (Form names off) Tj ET EMC";
+    const BBOX: &str = "/BBox [0 0 300 400]";
+    const OC_OFF: &str = "/BBox [0 0 300 400] /OC 6 0 R";
+    let hidden = |a: &ExtractArtifact| -> Vec<String> {
+        let mut out: Vec<String> = findings_of(a)
+            .into_iter()
+            .filter(|(_, f)| f.contains(&HiddenLayer))
+            .map(|(t, _)| t)
+            .collect();
+        out.sort();
+        out
+    };
+    assert_eq!(
+        hidden(&layered_page("<< /OFF [6 0 R] >>", BBOX, form, page)),
+        vec!["Form names off", "Named off"],
+        "a form's `BDC /OC` names its own `/Properties`, where `/On` is the group switched off"
+    );
+    assert_eq!(
+        hidden(&layered_page(
+            "<< /BaseState /OFF /ON [6 0 R] >>",
+            BBOX,
+            form,
+            page
+        )),
+        vec!["Form names on", "Named on"],
+        "under `/BaseState /OFF` only what `/ON` names is shown"
+    );
+    assert_eq!(
+        hidden(&layered_page("<< /OFF [6 0 R] >>", OC_OFF, form, page)),
+        vec!["Form names off", "Form names on", "Form text", "Named off"],
+        "a form whose own `/OC` is off hides everything it draws"
+    );
+    assert_eq!(
+        hidden(&layered_page("<< >>", OC_OFF, form, page)),
+        Vec::<String>::new(),
+        "a configuration that switches nothing off hides nothing"
+    );
 }
 
 /// **The overlay is deterministic, and it does not touch what it draws on** (v1-S6).

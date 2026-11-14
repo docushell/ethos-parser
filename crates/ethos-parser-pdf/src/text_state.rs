@@ -127,6 +127,27 @@ pub struct GraphicsState {
     pub ctm: Matrix,
     /// The colour the next fill paints in.
     pub fill: Fill,
+    /// Whether [`Self::fill`] was set in a device colour space — by `g`, `rg` or `k`, or `sc` or
+    /// `scn` after `cs` named `/DeviceGray`, `/DeviceRGB` or `/DeviceCMYK` — where its operands
+    /// mean one colour whatever the document (decision #139). `true` to begin with: DeviceGray.
+    pub fill_device: bool,
+    /// Whether a `gs` set a graphics-state parameter dictionary this reader does not resolve —
+    /// whose `/ca` may make a fill transparent, or its `/BM` blend it — since the state was last
+    /// saved (decision #139). A fill painted under one has no colour this reader compares.
+    pub ext_gstate: bool,
+    /// Whether a clip path of a shape other than one rectangle was set since the state was last
+    /// saved (decision #139): [`Self::clip`] then holds less than it should, so a fill painted
+    /// under it has no colour this reader compares.
+    pub clip_unknown: bool,
+    /// Whether a `gs` set a graphics state that may change a fill's colour as painted — a blend
+    /// mode, a soft mask, a fill alpha under one — or that this reader did not resolve, since the
+    /// state was last saved (decision #139). Text drawn under one is not compared with what lies
+    /// beneath it.
+    pub text_blends: bool,
+    /// The box a form's `/BBox` clips what it draws to, carried through its `/Matrix` and the CTM
+    /// — every enclosing form's, intersected — or `None` outside every form (decision #139). Read
+    /// only where what was painted is recorded.
+    pub form_clip: Option<crate::content::PathRect>,
     /// The colour the next stroke paints in (`point-labels-v1`), set and compared as
     /// [`Self::fill`] is: a line chart's series are told apart by it.
     pub stroke: Fill,
@@ -147,6 +168,11 @@ impl Default for GraphicsState {
         Self {
             ctm: Matrix::IDENTITY,
             fill: Fill::BLACK,
+            fill_device: true,
+            ext_gstate: false,
+            clip_unknown: false,
+            text_blends: false,
+            form_clip: None,
             stroke: Fill::BLACK,
             line_width: 1.0,
             line_cap: 0,
@@ -214,6 +240,17 @@ impl Fill {
         match self.count {
             1 | 3 => used.iter().all(|&c| c >= 970),
             4 => used.iter().all(|&c| c <= 30),
+            _ => false,
+        }
+    }
+
+    /// Whether this is white exactly (decision #139): gray or RGB components of one, or CMYK of
+    /// nought, as the operands are stored, to a thousandth. No near colour is white here.
+    pub fn is_exactly_white(self) -> bool {
+        let used = &self.components[..usize::from(self.count)];
+        match self.count {
+            1 | 3 => used.iter().all(|&c| c == 1000),
+            4 => used.iter().all(|&c| c == 0),
             _ => false,
         }
     }
