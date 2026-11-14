@@ -2,8 +2,9 @@
 # to this workspace's own lockfile. `cargo deny --manifest-path assist/Cargo.toml check` reads this
 # file, from the manifest's directory; the root's `cargo deny check` never sees these crates.
 #
-# Exceptions require an ADR before merge. The network surface the assist lane needs is one: it is
-# argued in its own ADR with the transport, and is not granted here in advance.
+# Exceptions require an ADR before merge. The assist lane's network surface has one:
+# docs/37-ASSIST-TRANSPORT.md. It is the system `curl`, run as a subprocess, and no crate, so the
+# network bans below stay whole.
 
 [graph]
 all-features = false
@@ -36,7 +37,8 @@ confidence-threshold = 0.93
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# The root's list, copied whole. Nothing in this step reaches the network.
+# The root's list, copied whole: the transport is the system `curl`, a process, never a crate
+# (docs/37-ASSIST-TRANSPORT.md).
 deny = [
     { crate = "reqwest", reason = "no network without its ADR" },
     { crate = "hyper", reason = "no network without its ADR" },

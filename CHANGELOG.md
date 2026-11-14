@@ -32,6 +32,36 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### The assist binary asks a model server, through the system `curl` (decision #144)
+
+`ethos-parser-assist` gains `ask` and `check`. Requests go through the system `curl`, run as a
+subprocess, so no HTTP crate enters any lockfile ([`docs/37-ASSIST-TRANSPORT.md`](docs/37-ASSIST-TRANSPORT.md)).
+**The engine is unchanged**: no root crate, lockfile or output moves, and nothing spawns `ask` yet.
+
+- `ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF` renders each page asked and sends it to
+  `SERVER/v1/chat/completions` as decision #123 asked it. It writes the replies to FILE, the file
+  `extract --assist-answers` reads, as canonical JSON with no address, key or timing, so the same
+  replies give the same bytes. FILE is replaced after each page, so a stopped run resumes: replies
+  are kept, and errors are asked again. Without MODEL, the one model `GET /v1/models` lists is used.
+- `ethos-parser-assist check SERVER [MODEL]` asks for a committed test page of made-up content and
+  says whether the server's replies are read as `lightonocr-3-grounding-v1`: exit 0 ready,
+  1 `reply-format-not-read`, 2 unreachable. It warns when the model id is a path.
+- The API key is read from `ETHOS_PARSER_ASSIST_KEY` only, and reaches curl on its stdin, never in
+  argv, curl's environment, on disk or in any output.
+- The page reaches curl on a pipe, so no file holds it, even when a run is killed. `ask` and
+  `check` are therefore Unix-only for now; elsewhere they are refused `curl-not-run`.
+- A server on loopback is never reached through a proxy, whatever the proxy variables say. Any
+  other server is reached as the user's proxy settings say. curl follows no redirect, reads
+  SERVER as no glob, and takes a reply of 64 MiB at most.
+- Failures are named: `server-unreachable` (exit 4), `curl-not-found`, `curl-not-run`, `timeout`,
+  `http N`, `reply-unreadable`, `reply-too-large`, `curl-exit-N`, `curl-killed`,
+  `body-not-written`, and `reply-capped`, where a reply cut at `max_tokens` is kept with
+  `finish_reason: "length"`.
+- `docs/37-ASSIST-TRANSPORT.md` scopes the exception to the no-network rule to this binary's
+  subprocess `curl`; both `deny.toml` files keep every network ban. `assist/README.md` gives the
+  setup: the Mac (MLX) steps Phase 4a ran, and Linux (vLLM) steps not yet run here.
+- Tested, not yet measured on a server: 30 tests against a fake server on 127.0.0.1 (request bytes, the key in neither argv nor curl's environment, proxy variables bypassed for loopback, no redirect followed, globs off, a 64 MiB reply cap, every page error, resume, two runs identical); a fresh security review's findings are fixed. `ask` and `check` need `/dev/fd` (macOS, Linux); elsewhere they are refused `curl-not-run`.
+
 ### The assist lane's binary, `ethos-parser-assist`, renders pages (decision #143)
 
 A new binary, built in its own workspace, `assist/`, on the recognizer's toolchain (1.98.0) with

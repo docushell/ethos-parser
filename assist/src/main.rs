@@ -15,9 +15,14 @@
 //! `ethos-parser-assist`: the assist lane's own process (`assist/README.md`).
 //!
 //! ```text
-//! ethos-parser-assist identity                  this build's identity, one JSON line
-//! ethos-parser-assist render PDF PAGE OUT.png   page PAGE (from 1) as a PNG; prints `dpi width height`
+//! ethos-parser-assist identity                         this build's identity, one JSON line
+//! ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF   pages PAGES asked; replies to FILE
+//! ethos-parser-assist check SERVER [MODEL]             is SERVER ready for the lane?
+//! ethos-parser-assist render PDF PAGE OUT.png          page PAGE (from 1) as a PNG; prints `dpi width height`
 //! ```
+//!
+//! `ask` and `check` reach SERVER through the system `curl` and nothing else
+//! (`docs/37-ASSIST-TRANSPORT.md`).
 //!
 //! A page is rendered with hayro by decision #123's rule, which rendered it with Ghostscript: dpi =
 //! min(400, floor(sqrt(5e6 / inches))), the inches from the page's size in whole points; pixel
@@ -25,6 +30,13 @@
 //! with Lanczos. hayro renders the CropBox, intersected with the MediaBox and rotated. White
 //! background, written as an RGB PNG.
 
+mod ask;
+mod check;
+mod digest;
+mod json;
+mod transport;
+
+use std::path::Path;
 use std::process::ExitCode;
 
 use hayro::hayro_interpret::InterpreterSettings;
@@ -62,9 +74,20 @@ fn page_size(w: f32, h: f32) -> Option<(u32, f32, u16, u16)> {
     Some((dpi as u32, scale, px(w)?, px(h)?))
 }
 
-/// Page `number` (from 1) of the PDF `data`, by the page rule: its dpi and its pixels.
-fn render_page(data: Vec<u8>, number: usize) -> Result<(u32, RgbImage), String> {
-    let pdf = Pdf::new(data).map_err(|e| format!("not read as a PDF: {e:?}"))?;
+/// A page drawn by the page rule.
+pub struct Rendered {
+    pub dpi: u32,
+    /// The rendered box's width and height in centipoints: the CropBox, intersected with the
+    /// MediaBox and rotated, as hayro draws it.
+    pub points: [i64; 2],
+    pub width: u32,
+    pub height: u32,
+    /// The image, as `render` writes it and `ask` sends it.
+    pub png: Vec<u8>,
+}
+
+/// Page `number` (from 1) of `pdf`, by the page rule.
+fn render_page(pdf: &Pdf, number: usize) -> Result<Rendered, String> {
     let pages = pdf.pages();
     let page = number
         .checked_sub(1)
@@ -101,8 +124,21 @@ fn render_page(data: Vec<u8>, number: usize) -> Result<(u32, RgbImage), String> 
         let (sw, sh) = ((f64::from(pw) * s) as u32, (f64::from(ph) * s) as u32);
         img = imageops::resize(&img, sw, sh, imageops::FilterType::Lanczos3);
     }
-    Ok((dpi, img))
+    let mut png = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut png), ImageFormat::Png)
+        .map_err(|e| format!("page {number}: {e}"))?;
+    let centi = |v: f32| (f64::from(v) * 100.0).round() as i64;
+    Ok(Rendered {
+        dpi,
+        points: [centi(w), centi(h)],
+        width: img.width(),
+        height: img.height(),
+        png,
+    })
 }
+
+const USAGE: &str = "usage: ethos-parser-assist identity | ask SERVER FILE PAGES [MODEL] <PDF \
+                     | check SERVER [MODEL] | render PDF PAGE OUT.png";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -112,20 +148,32 @@ fn main() -> ExitCode {
             println!("{}", identity());
             Ok(())
         }
+        ["ask", server, file, pages, model @ ..] if model.len() <= 1 => {
+            return match ask::ask(server, Path::new(file), pages, model.first().copied()) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(stop) => {
+                    eprintln!("ethos-parser-assist: {}", stop.message);
+                    ExitCode::from(stop.code)
+                }
+            };
+        }
+        ["check", server, model @ ..] if model.len() <= 1 => {
+            return ExitCode::from(check::check(server, model.first().copied()));
+        }
         ["render", pdf, page, out] => match page.parse::<usize>() {
             Ok(number) => std::fs::read(pdf)
                 .map_err(|e| format!("{pdf}: {e}"))
-                .and_then(|data| render_page(data, number))
-                .and_then(|(dpi, img)| {
-                    img.save_with_format(out, ImageFormat::Png)
-                        .map_err(|e| format!("{out}: {e}"))?;
-                    println!("{dpi} {} {}", img.width(), img.height());
+                .and_then(|data| Pdf::new(data).map_err(|e| format!("not read as a PDF: {e:?}")))
+                .and_then(|doc| render_page(&doc, number))
+                .and_then(|page| {
+                    std::fs::write(out, &page.png).map_err(|e| format!("{out}: {e}"))?;
+                    println!("{} {} {}", page.dpi, page.width, page.height);
                     Ok(())
                 }),
             Err(_) => Err(format!("PAGE is a page number from 1, not `{page}`")),
         },
         _ => {
-            eprintln!("usage: ethos-parser-assist identity | render PDF PAGE OUT.png");
+            eprintln!("{USAGE}");
             return ExitCode::from(2);
         }
     };

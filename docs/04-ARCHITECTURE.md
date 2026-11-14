@@ -179,7 +179,7 @@ test-time dependency, and its absence fails the test loudly — it never degrade
 | **Font metrics** | `skrifa` over the embedded font program — not `ttf-parser`, which the v0 scope named: RUSTSEC-2026-0192 records it unmaintained, and `skrifa` is its maintained successor, pinned to 0.39 because 0.44 needs Rust 1.89 and this workspace pins 1.88 | For measured ink boxes, with a descriptor fallback and typed absence beyond that |
 | **PDFium** | Not present. If ever, caller-provided and hash-pinned under an explicit ADR | Never a build-time download |
 | **AGPL, anywhere** | **Forbidden**, enforced by `cargo deny` | Decision #14 |
-| **Network crates** | **Forbidden** | Nothing in the happy path reaches the network |
+| **Network crates** | **Forbidden**, in every lockfile. One exception, scoped to one binary: `ethos-parser-assist` runs the system `curl` as a subprocess, and links no HTTP crate ([`37`](37-ASSIST-TRANSPORT.md), decision #144) | Nothing in the happy path reaches the network; the assist lane is opt-in, in a process of its own |
 
 **Why another parser is reference-only rather than a dependency**, since this gets re-litigated: the
 parts worth wrapping are exactly the parts that would have to be un-wrapped. In the surveyed
