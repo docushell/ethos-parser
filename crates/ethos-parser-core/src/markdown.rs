@@ -145,7 +145,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
-/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -290,7 +290,11 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// #130's: a DOCX paragraph's runs are one block, joined with the tab, line break or space the
 /// paragraph holds between them or with nothing ([`paragraph_seam`]), and a tab or a line break
 /// inside a run is kept ([`projected_text`]), where `-v13` wrote each run as a block and either as
-/// a space. A PDF projects byte for byte as before.
+/// a space. A PDF projects byte for byte as before. And so is decision #131's: on an untagged page a
+/// run set as a superscript or a subscript, and the run after one, goes on along the line of the
+/// run before it with nothing between them, or one space where the page drew one
+/// ([`script_continues`]), where `-v13` wrote a line break either side of a mark inside a line,
+/// and emphasis stays open where only the script changes between two runs with nothing between.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -399,7 +403,9 @@ pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 /// line here too, where it keeps its line break but joins the label's block
 /// ([`label_line_continues`]): the block boundary is what the unit erased. So are decision #81's
 /// bold line its column wrapped and decision #85's tagged bold line read on to the one above
-/// ([`wrapped_labels`]): the same reading of the wrap, on a page whose tree leaves no units.
+/// ([`wrapped_labels`]): the same reading of the wrap, on a page whose tree leaves no units. And
+/// decision #131's mark kept on its line, with no break or one space ([`script_continues`]), where
+/// decision #109 wrote a line break.
 pub const LAYOUT_UNIT_LINE_JOINS: &str = "layout-unit-line-joins-v1";
 
 /// A heading's section number or marker joined to the title it opens, across the gap the page set
@@ -1437,6 +1443,51 @@ pub(crate) fn body_line_continues(prev: &crate::Node, node: &crate::Node) -> boo
         && unit(prev).is_some()
         && unit(prev) == unit(node)
         && on_different_lines(prev, node)
+}
+
+/// Whether `node` goes on along `prev`'s line across a raised or lowered mark (decision #131),
+/// `Some(true)` with one space and `Some(false)` with none: either run set as a superscript or a
+/// subscript, the two of one block [`body_line_continues`] breaks between, and `node` drawn after
+/// `prev` — starting right of it, set back over its reach ([`ink_reach`]) by no more than one of its
+/// glyphs or, where `prev` has no measure to cap its advance by, past the whole of its advance — on
+/// a baseline less than two of the larger run's median glyphs from `prev`'s: about an em
+/// ([`FontMeasure::word_gap`] reads a median glyph as half of one), where `scripts.rs` sets a script
+/// within half its line's em of it. Measured from the glyphs the page draws, since `font_size` is
+/// the `Tf` operand, which a page that scales its text by the matrix sets at 1; and two glyphs, not
+/// one, since a median glyph runs under half an em: of the 2,277 such pairs a mark makes in the 236
+/// benchmark documents this join first moved, 312 lie more than one glyph off and none two. A mark
+/// sits off its line's baseline, so the line break written there was never on the page. **A known limit**: a column of vertical text, whose glyphs the script
+/// rule may read as marks, sets each glyph within a glyph of the one above, and one set just right
+/// of it joins. The space goes in where the page drew one: in either run's text,
+/// or a gap that [`ink_contiguous`] reads as a word gap. Called by both projections.
+pub(crate) fn script_continues(
+    prev: &crate::Node,
+    node: &crate::Node,
+    pitch: &PitchReference,
+) -> Option<bool> {
+    let script = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.script.is_some());
+    let (Some(a), Some(b)) = (
+        prev.native_locator.run_locator(),
+        node.native_locator.run_locator(),
+    ) else {
+        return None;
+    };
+    let glyph = |n: &crate::Node| {
+        text_run_attributes(n)
+            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .map_or(0, |m| m.pitch)
+    };
+    let along = b.origin_x > a.origin_x
+        && (a.origin_y - b.origin_y).abs() < 2 * glyph(prev).max(glyph(node))
+        && match ink_reach(prev, pitch) {
+            Some((reach, measure)) => b.origin_x - reach >= -measure.pitch,
+            None => a.advance.is_some_and(|w| b.origin_x >= a.origin_x + w),
+        };
+    ((script(prev) || script(node)) && along && body_line_continues(prev, node)).then(|| {
+        prev.reading_text().ends_with(char::is_whitespace)
+            || node.reading_text().starts_with(char::is_whitespace)
+            || !ink_contiguous(prev, node, pitch)
+    })
 }
 
 /// Whether `node` continues, on a line of its own, the label `prev` belongs to (decision #65): both
@@ -3039,6 +3090,20 @@ impl Emit {
             self.flush_held();
             return;
         }
+        // Decision #131: where only the script changes, with nothing held between, the emphasis
+        // stays open and only the script's element closes and opens: `*U<sub>t</sub>*`, where
+        // closing it wrote `*U**<sub>t</sub>*`, which CommonMark reads with its asterisks as text.
+        let open = self.emphasis.open;
+        if self.emphasis.held.is_empty() && (style.bold, style.italic) == (open.bold, open.italic) {
+            let script = |script| Style {
+                script,
+                ..Style::default()
+            };
+            self.write_syntax(&script(open.script).markers(markup).1);
+            self.write_syntax(&script(style.script).markers(markup).0);
+            self.emphasis.open = style;
+            return;
+        }
         self.close_emphasis();
         self.flush_held();
         self.write_syntax(&style.markers(markup).0);
@@ -3658,6 +3723,11 @@ pub fn to_markdown(
             Some((seam, BLOCK_ELEMENT_RUN_JOINS))
         } else if open_prev.is_some_and(|prev| unit_continues(prev, node, &wrapped)) {
             Some((" ", LAYOUT_UNIT_LINE_JOINS))
+        } else if let Some(space) = open_prev.and_then(|prev| script_continues(prev, node, &pitch))
+        {
+            // Decision #131: a mark stays on its line.
+            let separator = if space || pending_space { " " } else { "" };
+            Some((separator, LAYOUT_UNIT_LINE_JOINS))
         } else if open_prev
             .is_some_and(|prev| label_line_continues(prev, node) || body_line_continues(prev, node))
         {
@@ -6997,6 +7067,252 @@ pub(crate) mod tests {
         ]));
         assert_eq!(a.markdown, "develop-\n\nment\n");
         assert!(a.coverage.balances());
+    }
+
+    /// Runs of one layout unit, each `(text, x, y)` at 200 units a character, with `scripts` set.
+    pub(crate) fn unit_with_scripts(
+        runs: &[(&'static str, i64, i64)],
+        scripts: &[(usize, crate::Script)],
+    ) -> DocumentRepresentation {
+        let specs: Vec<LineSpec<'static>> = runs
+            .iter()
+            .map(|&(t, x, y)| (t, None, x, y, Some(200 * t.chars().count() as i64), None))
+            .collect();
+        let units = vec![Some(1); specs.len()];
+        with_scripts(with_units(repr_of_placed(&specs), &units), scripts)
+    }
+
+    /// **A raised or lowered mark stays on its line** (decision #131): the run before it and the
+    /// run after it go on along the line with no break, and with one space where the page drew
+    /// one — in a run's text, or a gap a word gap wide. A line that a mark closes, or that opens on
+    /// one, still breaks, and the join is counted as the line break it replaces was.
+    #[test]
+    fn a_mark_set_on_a_line_stays_on_it() {
+        use crate::Script::{Subscript, Superscript};
+        let md = |runs: &[(&'static str, i64, i64)], scripts: &[(usize, crate::Script)]| {
+            artifact_of(unit_with_scripts(runs, scripts))
+        };
+        let a = md(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8350),
+                (" was revised", 11400, 8600),
+                ("Next line", 7200, 10000),
+            ],
+            &[(1, Superscript)],
+        );
+        assert_eq!(
+            a.markdown,
+            "The rate of interest<sup>1</sup> was revised\nNext line\n"
+        );
+        assert!(a.coverage.balances());
+        let joins = a
+            .coverage
+            .structural_erasures
+            .iter()
+            .find(|e| e.code == LAYOUT_UNIT_LINE_JOINS)
+            .map_or(0, |e| e.count);
+        assert_eq!(joins, 3);
+
+        // A gap a word gap wide is a space the page drew.
+        let a = md(
+            &[("interest", 7200, 8600), ("1", 9400, 8450)],
+            &[(1, Superscript)],
+        );
+        assert_eq!(a.markdown, "interest <sup>1</sup>\n");
+
+        // A mark closing a line, and a subscript inside a word.
+        let a = md(
+            &[
+                ("notification.", 7200, 8600),
+                ("1", 9800, 8450),
+                ("H", 7200, 10000),
+                ("2", 7400, 10100),
+                ("O", 7600, 10000),
+            ],
+            &[(1, Superscript), (3, Subscript)],
+        );
+        assert_eq!(a.markdown, "notification.<sup>1</sup>\nH<sub>2</sub>O\n");
+
+        // A mark opening a line, flush with the line above or set in from it.
+        let a = md(
+            &[
+                ("one.", 7200, 8600),
+                ("2", 7200, 9850),
+                ("Second", 7400, 10000),
+                ("continuation flush left", 7200, 11400),
+                ("3", 7400, 12250),
+                ("Third", 7600, 12400),
+            ],
+            &[(1, Superscript), (4, Superscript)],
+        );
+        assert_eq!(
+            a.markdown,
+            "one.\n<sup>2</sup>Second\ncontinuation flush left\n<sup>3</sup>Third\n"
+        );
+
+        // A mark with no reach to read: the next line still opens left of it. And a space drawn
+        // as a run of its own, however narrow, is a space.
+        let of = |specs: &[LineSpec<'static>], mark: usize| {
+            let units = vec![Some(1); specs.len()];
+            let repr = with_units(repr_of_placed(specs), &units);
+            artifact_of(with_scripts(repr, &[(mark, Superscript)])).markdown
+        };
+        assert_eq!(
+            of(
+                &[
+                    ("notification.", None, 7200, 8600, Some(2600), None),
+                    ("1", None, 9800, 8450, None, None),
+                    ("issued", None, 7200, 10000, Some(1200), None),
+                ],
+                1
+            ),
+            "notification.<sup>1</sup>\nissued\n"
+        );
+        assert_eq!(
+            of(
+                &[
+                    ("x", None, 7200, 8600, Some(200), None),
+                    (" ", None, 7400, 8600, Some(0), None),
+                    ("2", None, 7400, 8450, Some(200), None),
+                ],
+                2
+            ),
+            "x <sup>2</sup>\n"
+        );
+        assert_eq!(
+            of(
+                &[
+                    ("x ", None, 7200, 8600, Some(400), None),
+                    ("2", None, 7600, 8450, Some(200), None),
+                ],
+                1
+            ),
+            "x <sup>2</sup>\n"
+        );
+
+        // A mark in a unit of its own, as a footnote's below the text, keeps its block.
+        let specs: [LineSpec<'static>; 2] = [
+            ("1", None, 7200, 70800, Some(200), None),
+            ("Notification", None, 7400, 70900, Some(2400), None),
+        ];
+        let repr = with_units(repr_of_placed(&specs), &[Some(1), Some(2)]);
+        assert_eq!(
+            artifact_of(with_scripts(repr, &[(0, Superscript)])).markdown,
+            "<sup>1</sup>\n\nNotification\n"
+        );
+
+        // A line set at a size of its own has no measure to read its reach by: a mark opening the
+        // next line, set right of where it starts and within a glyph of its baseline, is drawn
+        // over it, not after it.
+        let sized = |repr: DocumentRepresentation, at: usize, size: i64| {
+            let mut payload = repr.payload().clone();
+            if let NodeAttributes::TextRun(a) = &mut payload.nodes[at].attributes {
+                a.font_size = size;
+            }
+            artifact_of(DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap())
+        };
+        let repr = unit_with_scripts(
+            &[
+                ("A line set at a size of its own", 7200, 8600),
+                ("2", 7600, 8750),
+                ("Line opening", 7800, 8900),
+            ],
+            &[(1, Superscript)],
+        );
+        assert_eq!(
+            sized(repr, 0, 2500).markdown,
+            "A line set at a size of its own\n<sup>2</sup>Line opening\n"
+        );
+        // A mark at a size of its own goes on to a run drawn past the whole of its advance.
+        let repr = unit_with_scripts(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8450),
+                (" was revised", 11400, 8600),
+            ],
+            &[(1, Superscript)],
+        );
+        assert_eq!(
+            sized(repr, 1, 1400).markdown,
+            "The rate of interest<sup>1</sup> was revised\n"
+        );
+        // A page that sets `Tf` 1 and its size in the text matrix: the em is the glyphs' own.
+        let repr = unit_with_scripts(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8450),
+                (" was revised", 11400, 8600),
+            ],
+            &[(1, Superscript)],
+        );
+        let mut payload = repr.payload().clone();
+        for node in &mut payload.nodes {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.font_size = 100;
+            }
+        }
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        assert_eq!(
+            artifact_of(repr).markdown,
+            "The rate of interest<sup>1</sup> was revised\n"
+        );
+
+        // A mark within a glyph of a line's baseline, drawn back over its ink, is not after it.
+        assert_eq!(
+            md(
+                &[("continuation flush left", 7200, 8600), ("3", 7400, 8750)],
+                &[(1, Superscript)]
+            )
+            .markdown,
+            "continuation flush left\n<sup>3</sup>\n"
+        );
+        // A glyph set below another and just right of it is two glyphs or more off its line.
+        assert_eq!(
+            md(&[("H", 7200, 8600), ("2", 7400, 9800)], &[(1, Subscript)]).markdown,
+            "H\n<sub>2</sub>\n"
+        );
+        // An index set under a power, at its x, is drawn over it, not after it.
+        assert_eq!(
+            md(
+                &[("S", 7200, 8600), ("n", 7400, 8500), ("i", 7400, 8650)],
+                &[(1, Superscript), (2, Subscript)]
+            )
+            .markdown,
+            "S<sup>n</sup>\n<sub>i</sub>\n"
+        );
+    }
+
+    /// **Emphasis stays open where only the script changes** (decision #131): an italic letter
+    /// and its italic index, drawn together, are one span, `*U<sub>t</sub>*`; closing and opening
+    /// it wrote `*U**<sub>t</sub>*`, which CommonMark reads with the asterisks as text. Where a
+    /// space comes between, each run keeps a span of its own.
+    #[test]
+    fn emphasis_stays_open_where_only_the_script_changes() {
+        let a = artifact_of(italic_index());
+        assert_eq!(a.markdown, "The state *U<sub>t</sub>* at time\n");
+        assert!(a.coverage.balances());
+        let spaced = with_styles(
+            with_scripts(
+                line_of_words(&["U", " ", "t"]),
+                &[(2, crate::Script::Subscript)],
+            ),
+            &[],
+            &[0, 2],
+        );
+        assert_eq!(artifact_of(spaced).markdown, "*U* *<sub>t</sub>*\n");
+    }
+
+    /// `The state ` then an italic `U` with its italic index `t` drawn against it, in one unit.
+    pub(crate) fn italic_index() -> DocumentRepresentation {
+        let runs = [
+            ("The state ", 7200, 8600),
+            ("U", 9200, 8600),
+            ("t", 9400, 8700),
+            (" at time", 9600, 8600),
+        ];
+        let repr = unit_with_scripts(&runs, &[(2, crate::Script::Subscript)]);
+        with_styles(repr, &[], &[1, 2])
     }
 
     /// **A heading is not joined to a plain line of its unit** (decision #109): a mark set beside a

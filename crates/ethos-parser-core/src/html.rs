@@ -177,7 +177,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids move together, for the reason
 /// `-v5` gives. And decision #128's, folded in: two list bodies the file numbers are two `<li>`s,
 /// and one body's join counts as the element's, as in Markdown. And decision #130's: a DOCX
-/// paragraph's runs are one `<p>`, keeping the tabs and line breaks it holds, as in Markdown.
+/// paragraph's runs are one `<p>`, keeping the tabs and line breaks it holds, as in Markdown. And
+/// decision #131's: a raised or lowered mark stays on its line, as in Markdown.
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -678,6 +679,12 @@ pub fn to_html(
             .is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
         {
             Some((" ", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
+        } else if let Some(space) =
+            open_prev.and_then(|prev| crate::markdown::script_continues(prev, node, &pitch))
+        {
+            // Decision #131, as in `crate::markdown`.
+            let separator = if space || pending_space { " " } else { "" };
+            Some((separator, crate::markdown::LAYOUT_UNIT_LINE_JOINS))
         } else if open_prev.is_some_and(|prev| {
             crate::markdown::label_line_continues(prev, node)
                 || crate::markdown::body_line_continues(prev, node)
@@ -1064,6 +1071,30 @@ mod tests {
             artifact_of(heading).html,
             "<h1>Annual Report</h1>\n<p>Body</p>\n"
         );
+    }
+
+    /// **A raised or lowered mark stays on its line** (decision #131), as in Markdown.
+    #[test]
+    fn a_mark_set_on_a_line_stays_on_it() {
+        use crate::Script::Superscript;
+        let a = artifact_of(crate::markdown::tests::unit_with_scripts(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8450),
+                (" was revised", 11400, 8600),
+                ("Next line", 7200, 10000),
+            ],
+            &[(1, Superscript)],
+        ));
+        assert_eq!(
+            a.html,
+            "<p>The rate of interest<sup>1</sup> was revised\nNext line</p>\n"
+        );
+        assert!(a.coverage.balances());
+
+        // Emphasis stays open where only the script changes, as in Markdown.
+        let a = artifact_of(crate::markdown::tests::italic_index());
+        assert_eq!(a.html, "<p>The state <em>U<sub>t</sub></em> at time</p>\n");
     }
 
     /// **A word its line broke closes up inside the `<p>`** (decision #109), as in Markdown.

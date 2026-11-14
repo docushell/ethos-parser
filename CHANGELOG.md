@@ -32,6 +32,30 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A raised or lowered mark stays on its line (decision #131)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet.
+
+- **No line break around a mark inside a line.** On a page that declares no structure, Markdown
+  and HTML wrote a line break before and after every superscript and subscript, since a mark sits
+  off its line's baseline and the two runs read as two lines of one layout unit:
+  `The rate of interest` / `<sup>1</sup>` / `was revised`, and `notification.` / `<sup>1</sup>`.
+  A mark and the run before it, and the run after it, now go on along the line with nothing
+  between them, or one space where the page drew one — in either run's text, or a gap a word gap
+  wide. A run on the next line still opens a line, so a line that a mark closes or opens on keeps
+  its break: a run starting left of the run before it, or at its x, set back over its ink by more
+  than a glyph — or, where that run's size has no measure, starting before its advance ends — or on
+  a baseline two median glyphs or more from it, about an em where `scripts.rs` sets a script
+  within half its line's em, measured from the glyphs the page draws rather than `font_size`, the
+  `Tf` operand a page that scales its text by the matrix sets at 1. Counted as `layout-unit-line-joins-v1`, as
+  the line break it replaces was. **Known limit**: in a column of vertical text whose glyphs the
+  script rule reads as marks, a glyph set just right of the one above joins it.
+- **Emphasis stays open where only the script changes.** An italic letter and its italic index
+  drawn together wrote `*U**<sub>t</sub>*`, which CommonMark reads with its asterisks as text; with
+  nothing between the two runs the span now stays open and only the script's element closes and
+  opens, `*U<sub>t</sub>*`, and in HTML `<em>U<sub>t</sub></em>`.
+- ParseBench content 0.6754 -> 0.6752 engine-only and 0.7550 -> 0.7548 with `--ocr` (2 pages up, 12 down; the owner accepted it on 2026-11-14: the scorer strips tags, so `Taha<sup>1</sup>` reads as one word where its answer key writes `Taha 1`), formatting, tables, charts and grounding unchanged on every page; opendataloader-bench NID 0.8916 -> 0.8918 and MHS 0.5902 -> 0.5903 (15 and 10 documents up, none down).
+
 ### A DOCX paragraph is one block, keeping its tabs and line breaks (decision #130)
 
 Rule ids `docx-wt-verbatim-v4` and `docx-document-order-v3`, so the DOCX profile's
