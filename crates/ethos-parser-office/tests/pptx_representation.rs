@@ -259,7 +259,13 @@ fn the_artifact_declares_its_own_profile_and_its_own_media_type() {
         );
     }
     assert!(!Profile::pptx_v0().capabilities.measured_ink_boxes);
-    assert!(!Profile::pptx_v0().capabilities.tables);
+    // Decision #135: a slide's `<a:tbl>` is a table, read by the rule `table_detection.office`
+    // names.
+    assert!(Profile::pptx_v0().capabilities.tables);
+    assert_eq!(
+        Profile::pptx_v0().table_detection.office.as_deref(),
+        Some(ethos_parser_core::TABLE_DETECTION_PPTX_TBL_V1)
+    );
 }
 
 /// v2-S3 decided `coordinate_system` stays inert on page-less profiles. S4 adds a third and does
@@ -336,23 +342,31 @@ fn parts_and_shapes_this_slice_does_not_read_are_declared_with_counts() {
         .find(|l| l.code == ethos_parser_core::assurance::codes::OFFICE_PARTS_NOT_READ)
         .expect("notes, a layout and a master are three unread parts");
 
-    // Matched on the exact count phrase, not on a digit and a word: `v2-S4 reads slide shape
-    // text only` contains both a `2` and `shape`, so a looser assertion passes even when the
-    // branch producing the count is deleted. Mutation-checked both ways.
+    // Matched on the exact count phrase, not on a digit and a word, so a looser assertion cannot
+    // pass when the branch producing the count is deleted. Mutation-checked both ways.
     assert!(
         limitation.detail.contains("3 part(s)"),
         "the part count is in the message: {}",
         limitation.detail
     );
+    // Decision #135: the fixture's table is read now, so the slide-number field is the one shape
+    // left unread.
     assert!(
-        limitation.detail.contains("2 shape(s)"),
+        limitation.detail.contains("1 shape(s)"),
         "and so is the shape count — deleting that branch must fail this: {}",
         limitation.detail
+    );
+    assert!(
+        sealed
+            .payload()
+            .nodes
+            .iter()
+            .any(|n| n.text == "A table cell nobody read."),
+        "the fixture's table cell is read since decision #135, its name notwithstanding"
     );
 
     for absent in [
         "A speaker note nobody read.",
-        "A table cell nobody read.",
         "Confidential",
         "Click to edit",
     ] {
@@ -370,7 +384,8 @@ fn parts_and_shapes_this_slice_does_not_read_are_declared_with_counts() {
 }
 
 /// The other half of the guard: a deck with **no** unread parts but an unread shape still
-/// declares. Authored inline because no realistic fixture has a table and nothing else.
+/// declares. Authored inline because no realistic fixture has a chart and nothing else. A chart
+/// frame stays unread since decision #135, which reads a frame's table.
 #[test]
 fn an_unread_shape_alone_is_enough_to_declare() {
     const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -391,7 +406,7 @@ fn an_unread_shape_alone_is_enough_to_declare() {
             "ppt/slides/slide1.xml",
             r#"<p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree>
                  <p:sp><p:nvSpPr><p:cNvPr id="2" name="T"/></p:nvSpPr><p:txBody><a:p><a:r><a:t>read</a:t></a:r></a:p></p:txBody></p:sp>
-                 <p:graphicFrame><a:tbl><a:tc><a:txBody><a:p><a:r><a:t>unread</a:t></a:r></a:p></a:txBody></a:tc></a:tbl></p:graphicFrame>
+                 <p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="3" name="Chart 2"/></p:nvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="c" r:id="rId2"/></a:graphicData></a:graphic></p:graphicFrame>
                </p:spTree></p:cSld></p:sld>"#,
         ),
     ]);
@@ -599,4 +614,270 @@ fn crc32(data: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+// -------------------------------------------------------------------------------------------
+// Decision #135: a slide's `<a:tbl>` is a table
+// -------------------------------------------------------------------------------------------
+
+/// A one-slide deck whose spTree is `body`.
+fn deck(body: &str) -> Vec<u8> {
+    const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    build_zip(&[
+        (
+            "ppt/presentation.xml",
+            &format!(
+                r#"<p:presentation xmlns:p="p" xmlns:r="{R}"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>"#
+            ),
+        ),
+        (
+            "ppt/_rels/presentation.xml.rels",
+            &format!(
+                r#"<Relationships><Relationship Id="rId1" Type="{R}/slide" Target="slides/slide1.xml"/></Relationships>"#
+            ),
+        ),
+        (
+            "ppt/slides/slide1.xml",
+            &format!(
+                r#"<p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree>{body}</p:spTree></p:cSld></p:sld>"#
+            ),
+        ),
+    ])
+}
+
+fn tc(attributes: &str, text: &str) -> String {
+    let body = if text.is_empty() {
+        "<a:p/>".to_string()
+    } else {
+        format!("<a:p><a:r><a:t>{text}</a:t></a:r></a:p>")
+    };
+    format!("<a:tc{attributes}><a:txBody>{body}</a:txBody></a:tc>")
+}
+
+/// A title shape, then a frame holding a 3 x 3 table: a heading cell spanning three columns, a
+/// cell spanning two rows, and an empty cell.
+fn results_deck() -> Vec<u8> {
+    let frame = format!(
+        r#"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Table 3"/></p:nvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol/><a:gridCol/><a:gridCol/></a:tblGrid><a:tr>{}{}{}</a:tr><a:tr>{}{}{}</a:tr><a:tr>{}{}{}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>"#,
+        tc(r#" gridSpan="3""#, "Results"),
+        tc(r#" hMerge="1""#, ""),
+        tc(r#" hMerge="1""#, ""),
+        tc(r#" rowSpan="2""#, "Q1"),
+        tc("", "212"),
+        tc("", ""),
+        tc(r#" vMerge="1""#, ""),
+        tc("", "248"),
+        "<a:tc><a:txBody><a:p><a:r><a:t>up</a:t></a:r><a:r><a:t> 17%</a:t></a:r></a:p></a:txBody></a:tc>",
+    );
+    deck(&format!(
+        r#"<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title 1"/></p:nvSpPr><p:txBody><a:p><a:r><a:t>Q2 results</a:t></a:r></a:p></p:txBody></p:sp>{frame}"#
+    ))
+}
+
+/// **A slide table is one table, its cells at the rows and columns the slide states.** A cell
+/// holds its runs; a merge's covered cells open no slot; a cell's run is addressed by frame, row
+/// and column. The failure this catches: a table counted as unread, a covered cell given a slot,
+/// or a cell's run addressed as a shape's.
+#[test]
+fn a_slide_table_is_one_table_at_the_rows_and_columns_it_states() {
+    let sealed = ethos_parser_office::read(&results_deck()).expect("reads");
+    let payload = sealed.payload();
+    assert_eq!(payload.tables.len(), 1);
+    let table = &payload.tables[0];
+    assert_eq!(
+        table.detection_rule,
+        ethos_parser_core::TABLE_DETECTION_PPTX_TBL_V1
+    );
+    assert_eq!(
+        table.derivation,
+        ethos_parser_core::DerivationClass::Extracted
+    );
+    assert_eq!((table.rows, table.columns), (3, 3));
+    let spans: Vec<_> = table
+        .cells
+        .iter()
+        .map(|c| {
+            (
+                c.position.row,
+                c.position.column,
+                c.position.rowspan,
+                c.position.colspan,
+                c.text.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        vec![
+            (0, 0, 1, 3, "Results"),
+            (1, 0, 2, 1, "Q1"),
+            (1, 1, 1, 1, "212"),
+            (1, 2, 1, 1, ""),
+            (2, 1, 1, 1, "248"),
+            (2, 2, 1, 1, "up 17%"),
+        ]
+    );
+    let up = &table.cells[5];
+    assert_eq!(up.node_ids.len(), 2, "a cell holds each run read in it");
+
+    // The title shape is shape 1; the table's runs are frame 1, by row and column.
+    let at: Vec<_> = locators(&sealed)
+        .into_iter()
+        .map(|l| (l.shape, l.row, l.column, l.paragraph, l.run))
+        .collect();
+    assert_eq!(
+        at,
+        vec![
+            (1, None, None, 1, 1),
+            (1, Some(1), Some(1), 1, 1),
+            (1, Some(2), Some(1), 1, 1),
+            (1, Some(2), Some(2), 1, 1),
+            (1, Some(3), Some(2), 1, 1),
+            (1, Some(3), Some(3), 1, 1),
+            (1, Some(3), Some(3), 1, 2),
+        ]
+    );
+    let run = payload
+        .nodes
+        .iter()
+        .find(|n| n.text == "212")
+        .expect("a cell's run is a node");
+    match &run.attributes {
+        NodeAttributes::OfficeSlideRun(a) => {
+            assert_eq!((a.shape_id, a.shape_name.as_str()), (4, "Table 3"))
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(!payload
+        .assurance
+        .limitations
+        .iter()
+        .any(|l| l.code == ethos_parser_core::assurance::codes::OFFICE_PARTS_NOT_READ));
+}
+
+/// **The Markdown is the grid**, after the title, and the census balances.
+#[test]
+fn a_slide_table_projects_as_a_grid() {
+    let sealed = ethos_parser_office::read(&results_deck()).expect("reads");
+    let profile = Profile::default();
+    let md = ethos_parser_core::to_markdown(
+        &sealed,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects");
+    assert_eq!(
+        md.markdown,
+        "Q2 results\n\n| Results |  |  |\n| --- | --- | --- |\n| Q1 | 212 |  |\n|  | 248 | up 17% |\n"
+    );
+    assert!(md.coverage.balances());
+}
+
+/// **A locator for a cell's run round-trips, and a shape's run has no row or column on the wire.**
+#[test]
+fn a_cell_run_locator_carries_row_and_column_and_a_shape_run_does_not() {
+    let sealed = ethos_parser_office::read(&results_deck()).expect("reads");
+    let wire = serde_json::to_value(sealed.payload()).expect("json");
+    let nodes = wire["nodes"].as_array().expect("nodes");
+    assert_eq!(
+        nodes[0]["native_locator"]["pptx"],
+        serde_json::json!({"part": "ppt/slides/slide1.xml", "shape": 1, "paragraph": 1, "run": 1})
+    );
+    assert_eq!(
+        nodes[2]["native_locator"]["pptx"],
+        serde_json::json!({"part": "ppt/slides/slide1.xml", "shape": 1, "paragraph": 1, "run": 1, "row": 2, "column": 1})
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// Decision #135, after review: spans inside the grid, covered cells, a cell's paragraphs
+// -------------------------------------------------------------------------------------------
+
+fn frame(id: u32, rows: &str) -> String {
+    format!(
+        r#"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="{id}" name="Table {id}"/></p:nvGraphicFramePr><a:graphic><a:graphicData><a:tbl>{rows}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"#
+    )
+}
+
+/// **A span reaches no further than the grid the table states.** Ten one-cell tables each
+/// spanning 999 x 1,000 were ten million slots from a 921-byte deck.
+#[test]
+fn a_span_reaches_no_further_than_the_stated_grid() {
+    let body: String = (1..=10)
+        .map(|i| {
+            frame(
+                i,
+                &format!(
+                    "<a:tr>{}</a:tr>",
+                    tc(r#" rowSpan="999" gridSpan="1000""#, "A")
+                ),
+            )
+        })
+        .collect();
+    let sealed = ethos_parser_office::read(&deck(&body)).expect("reads");
+    let tables = &sealed.payload().tables;
+    assert_eq!(tables.len(), 10);
+    for t in tables {
+        assert_eq!((t.rows, t.columns), (1, 1));
+        let p = &t.cells[0].position;
+        assert_eq!((p.rowspan, p.colspan), (1, 1));
+    }
+}
+
+/// **A cell under a span takes no slot, and a covered cell's text is kept and counted.** `B`
+/// follows a `gridSpan="2"` with no `hMerge`; `ghost` is marked `hMerge`. Both stay nodes.
+#[test]
+fn a_covered_cell_takes_no_slot_and_its_text_is_counted() {
+    let body = frame(
+        4,
+        &format!(
+            "<a:tr>{}{}</a:tr><a:tr>{}{}</a:tr>",
+            tc(r#" gridSpan="2""#, "A"),
+            tc("", "B"),
+            tc("", "C"),
+            tc(r#" hMerge="1""#, "ghost"),
+        ),
+    );
+    let sealed = ethos_parser_office::read(&deck(&body)).expect("reads");
+    let t = &sealed.payload().tables[0];
+    let cells: Vec<_> = t
+        .cells
+        .iter()
+        .map(|c| {
+            (
+                c.position.row,
+                c.position.column,
+                c.position.colspan,
+                c.text.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(cells, vec![(0, 0, 2, "A"), (1, 0, 1, "C")]);
+    for text in ["B", "ghost"] {
+        assert!(
+            sealed.payload().nodes.iter().any(|n| n.text == text),
+            "{text}"
+        );
+    }
+    let l = sealed
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::OFFICE_COVERED_CELLS_NOT_PLACED)
+        .expect("declared");
+    assert!(l.detail.starts_with("2 cell(s)"), "{}", l.detail);
+}
+
+/// **A cell's paragraphs are joined as the projections join them**: `Revenue FY2026`, not
+/// `RevenueFY2026`.
+#[test]
+fn a_cells_paragraphs_join_with_a_space() {
+    let body = frame(
+        4,
+        "<a:tr><a:tc><a:txBody><a:p><a:r><a:t>Revenue</a:t></a:r></a:p><a:p><a:r><a:t>FY2026</a:t></a:r></a:p></a:txBody></a:tc></a:tr>",
+    );
+    let sealed = ethos_parser_office::read(&deck(&body)).expect("reads");
+    assert_eq!(sealed.payload().tables[0].cells[0].text, "Revenue FY2026");
 }

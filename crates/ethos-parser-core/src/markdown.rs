@@ -4270,6 +4270,9 @@ pub(crate) struct TablePlan<'a> {
     pub(crate) spans_clamped: usize,
     pub(crate) rows: usize,
     pub(crate) columns: usize,
+    /// The worksheet name the table's cells are addressed under, written as a heading over it
+    /// (decision #135). `None` for every table whose cells are not workbook cells.
+    pub(crate) caption: Option<&'a str>,
 }
 
 /// What one slot of a planned grid is (v1.1-S4).
@@ -4314,6 +4317,7 @@ pub(crate) fn plan_tables<'a>(
                 spans_clamped: 0,
                 rows,
                 columns,
+                caption: None,
             });
             continue;
         }
@@ -4424,6 +4428,21 @@ pub(crate) fn plan_tables<'a>(
         // representation says the document declared one. Once per table — see the constant.
         *erasures.entry(GFM_ROW_ZERO_SEPARATOR).or_insert(0) += 1;
 
+        // **A worksheet's table is headed by its sheet's name** (decision #135). The name is the
+        // file's (`<sheet name>`), and every cell node already carries it in its locator, so the
+        // heading quotes the record rather than inventing a label. It is `syntax`: no node's text
+        // holds it, so it cannot be `source` (law 3), and making it a node would cite one name from
+        // `xl/workbook.xml` that the record already states once per cell.
+        let caption =
+            table
+                .cells
+                .iter()
+                .flat_map(|cell| &cell.node_ids)
+                .find_map(|id| match &by_id.get(id.as_str())?.native_locator {
+                    crate::NativeLocator::Xlsx(l) => Some(l.sheet.as_str()),
+                    _ => None,
+                });
+
         plans.push(TablePlan {
             projected: true,
             slots,
@@ -4431,6 +4450,7 @@ pub(crate) fn plan_tables<'a>(
             spans_clamped,
             rows,
             columns,
+            caption,
         });
     }
 
@@ -4474,6 +4494,11 @@ pub(crate) fn cell_runs_abut(
 }
 
 fn emit_table(e: &mut Emit, plan: &TablePlan, pitch: &PitchReference, stretches: &Stretches<'_>) {
+    if let Some(name) = plan.caption.map(normalize).filter(|n| !n.is_empty()) {
+        e.syntax("# ");
+        e.syntax(&name);
+        e.syntax("\n\n");
+    }
     e.table(true);
     for row in 0..plan.rows {
         if row > 0 {

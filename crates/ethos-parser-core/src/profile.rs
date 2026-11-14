@@ -1298,6 +1298,42 @@ pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 /// Decision #105, folded in likewise: a slice, a mark or a run the page clips away is not read.
 pub const TABLE_DETECTION_PIES_V1: &str = "slice-labels-v1";
 
+/// The rule that reads each worksheet of an XLSX workbook as one table (decision #135).
+///
+/// **Not a detector.** A worksheet states its grid: every `<c r="B12">` names its row and column,
+/// and `<mergeCells>` names each merged range. The table spans the rows and columns the sheet's
+/// text-bearing cells (and the merges they open) reach, from the first to the last of each; a
+/// cell's slot is its own address less that origin, and its node keeps the address itself. So the
+/// table is `Extracted`, carries no geometry, and its locator cross-check is `NotApplicable`, as a
+/// tagged table's is. A text cell inside another's merged range opens no slot; its node stays, and
+/// it is counted (`office-covered-cells-not-placed`). A sheet whose span would take the workbook's
+/// tables past [`OFFICE_TABLE_MAX_SLOTS`] slots between them gets no table and is counted; its
+/// cells are still nodes.
+pub const TABLE_DETECTION_XLSX_SHEETS_V1: &str = "xlsx-sheet-table-v1";
+
+/// The rule that reads each `<a:tbl>` of a PPTX slide as one table (decision #135).
+///
+/// A slide's table states its grid: `<a:tr>` rows of `<a:tc>` cells, one cell per grid column,
+/// `gridSpan` and `rowSpan` on the cell a merge opens and `hMerge`/`vMerge` on the cells it covers.
+/// The grid is as many rows as `<a:tr>` and as many columns as the widest row's `<a:tc>`, and a
+/// span reaches no further. A cell marked covered, or lying under an earlier cell's span, opens no
+/// slot; its runs stay nodes, counted when they hold text. A cell's runs are its text joined by
+/// one space where neither holds whitespace at the seam, as both projections write them; a cell
+/// before any `<a:tr>` is passed over and counted. `Extracted`, no geometry, cross-check
+/// `NotApplicable`, for [`TABLE_DETECTION_XLSX_SHEETS_V1`]'s reasons. A table that would take the
+/// deck's tables past [`OFFICE_TABLE_MAX_SLOTS`] slots between them is not one, and is counted.
+pub const TABLE_DETECTION_PPTX_TBL_V1: &str = "pptx-tbl-v1";
+
+/// The most slots, rows times columns, one office document's tables may span **between them**
+/// (decision #135).
+///
+/// The projections lay a table out slot by slot, so a sheet holding one cell at `A1` and one at
+/// `XFD1048576` would ask for seventeen billion of them, and twenty sheets of a million each a
+/// file of a few kilobytes would turn into gigabytes. One budget per document, spent in order: a
+/// table that would pass what is left is not built and is counted. A million is the cell ceiling
+/// a workbook is held to.
+pub const OFFICE_TABLE_MAX_SLOTS: u64 = 1_000_000;
+
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
 /// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
@@ -1991,6 +2027,17 @@ pub struct TableDetection {
     /// See [`TABLE_DETECTION_PIES_V1`]. An eighth field for the reason there were seven: its
     /// evidence — filled slices, their colours, and the labels set at them — is its own.
     pub pies: String,
+    /// Version id of the rule that reads a table an office file states itself — each worksheet of a
+    /// workbook ([`TABLE_DETECTION_XLSX_SHEETS_V1`]), each `<a:tbl>` of a slide
+    /// ([`TABLE_DETECTION_PPTX_TBL_V1`]) — or absent where none runs (decision #135).
+    ///
+    /// **The one optional key here, and why absent is honest for it.** Every other key is refused
+    /// when missing, because a default would claim a rule ran. Absent here claims the opposite —
+    /// that no office table rule ran — which is true of every profile written before this key and
+    /// of every PDF and DOCX profile now, so their bytes and hashes do not move. An unknown key is
+    /// still refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub office: Option<String>,
 }
 
 impl Default for TableDetection {
@@ -2005,6 +2052,7 @@ impl Default for TableDetection {
             charts: TABLE_DETECTION_CHARTS_V3.to_string(),
             lines: TABLE_DETECTION_LINES_V1.to_string(),
             pies: TABLE_DETECTION_PIES_V1.to_string(),
+            office: None,
         }
     }
 }
@@ -2300,6 +2348,39 @@ pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1"
 /// names, decoded once (review 2026-09-26 N15), and line ends are normalised as XML 1.0 §2.11
 /// requires (N37).
 pub const XLSX_TEXT_CODE_RULE_V3: &str = "xlsx-stored-value-verbatim-v3";
+
+/// Decision #135's XLSX text rule: v3, and a number cell shows the value its number format
+/// displays, with the stored value kept beside it.
+///
+/// A cell whose type is a number (`t="n"` or none), with a stored or cached `<v>`, takes the format
+/// its style names (`<c s>` → `cellXfs` → `numFmtId` → `<numFmts>` or the built-in table). What is
+/// rendered, from the code alone:
+///
+/// - **Numbers**: `0`, `#`, `.`, a `,` between digit placeholders, `%`, literal text in quotes,
+///   after `\`, as `[$₹-4009]`, or one of `$-+/():!^&'~{}<>= `; `_x` as one space; up to four `;`
+///   sections, and `[>=100000]`-style conditions on positive values. A comma between digit
+///   placeholders groups by threes, except the Indian pattern (`#,##,##0` and longer: three, then
+///   twos), which groups as the code writes it — as Excel shows it on an Indian locale; elsewhere
+///   Excel groups by its locale. The value is first rounded to fifteen significant digits, as
+///   Excel displays a double (`0.22499999999999998` under `0.00` is `0.23`), then half away from
+///   zero on its decimal digits — never through a float.
+/// - **Dates and times**: `y`, `yy`, `yyyy`, `m` to `mmmmm`, `d` to `dddd`, `h`, `hh`, `m`/`mm` as
+///   minutes beside `h` or `s`, `s`, `ss`, `AM/PM`, with English month and day names, on Excel's
+///   1900 date system (serial 60 is 29 February 1900, the day Excel counts and the calendar does
+///   not) or 1904 where `workbookPr date1904` says so. Seconds round half up only where the code
+///   shows a time, so a date alone never becomes the next day. `AM/PM` is written in capitals in
+///   any case it is coded. **Built-in 14 and 22 are written `yyyy-mm-dd` and `yyyy-mm-dd h:mm`, an
+///   order this build chose**: Excel shows them in the reader's own short-date order and the file
+///   states none, so each such cell is counted under `office-locale-dates-written-iso`.
+/// - Built-ins 1–4, 9, 10, 14–22, 37–40, 45 are the codes ECMA-376 §18.8.30 states; `General` and
+///   `@` show the stored value as it is.
+///
+/// **Anything else is the stored value, counted** under
+/// [`crate::assurance::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED`]: a scientific, fraction or
+/// elapsed-time code, a fill, a locale (`[$-F800]`, or a non-English LCID with month or day names),
+/// a built-in id the standard leaves to the locale, a condition on a negative value, a code longer
+/// than Excel's 255 characters. A string, boolean, error or `t="d"` cell shows what it stores.
+pub const XLSX_TEXT_CODE_RULE_V4: &str = "xlsx-number-format-v1";
 
 /// v2-S4's PPTX reading order: slides in the order `ppt/presentation.xml` lists them, shapes and
 /// runs in the order each slide part lists them.
@@ -3018,6 +3099,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V3.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3049,15 +3131,14 @@ impl Profile {
     /// would claim a comparability it does not have — the same argument that separated
     /// `docx_v0` from [`Self::default`] at S2, applied one format further along.
     ///
-    /// # `tables: false`, on a format made of grids
+    /// # `tables: true`, since decision #135
     ///
-    /// The load-bearing declaration on this profile, and it is not modesty. `capabilities.tables`
-    /// means *this run emitted this engine's table IR* — [`crate::tables::TableRecord`], with
-    /// cell slots, spans and a locator cross-check. v2-S3 emits **cells**: one node per `<c>`,
-    /// addressed by sheet, row and column. A workbook is obviously tabular and that is exactly
-    /// why the claim has to stay false — a consumer reading `tables: true` would go looking for
-    /// `TableRecord`s and find none, and the PDF table detectors that produce them never ran here
-    /// and must not be pointed at a workbook.
+    /// `capabilities.tables` means *this run emitted this engine's table IR* —
+    /// [`crate::tables::TableRecord`], with cell slots, spans and a locator cross-check. v2-S3
+    /// emitted cells alone and declared `false`, and said why: no rule produced a `TableRecord`.
+    /// [`TABLE_DETECTION_XLSX_SHEETS_V1`] now does, one per worksheet, from the addresses and merges
+    /// the sheet states — no PDF detector is pointed at a workbook — so the claim is true and
+    /// `table_detection.office` names the rule. The cells are still one node each.
     ///
     /// `measured_ink_boxes: false` is the other one, for the reason it is false on `docx_v0`: a
     /// cell has no ink box until something lays the sheet out, and `check_structure` refuses a
@@ -3075,7 +3156,7 @@ impl Profile {
             capabilities: Capabilities {
                 spans: true,
                 char_offsets: false,
-                tables: false,
+                tables: true,
                 outlines: false,
                 figures: false,
                 measured_ink_boxes: false,
@@ -3098,6 +3179,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: Some(TABLE_DETECTION_XLSX_SHEETS_V1.into()),
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3115,7 +3197,7 @@ impl Profile {
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: XLSX_TEXT_CODE_RULE_V3.to_string(),
+            text_code_rule: XLSX_TEXT_CODE_RULE_V4.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -3139,6 +3221,9 @@ impl Profile {
     /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other two
     /// page-less profiles do; `Profile::docx_v0`'s doc comment is the decision and the evidence,
     /// and v2-S4 did not reopen it.
+    ///
+    /// `tables: true` since decision #135: a slide's `<a:tbl>` is a grid the deck states, read by
+    /// [`TABLE_DETECTION_PPTX_TBL_V1`] into a `TableRecord`, as [`Self::xlsx_v0`]'s sheets are.
     pub fn pptx_v0() -> Self {
         Self {
             backend: BackendIdentity {
@@ -3149,7 +3234,7 @@ impl Profile {
             capabilities: Capabilities {
                 spans: true,
                 char_offsets: false,
-                tables: false,
+                tables: true,
                 outlines: false,
                 figures: false,
                 measured_ink_boxes: false,
@@ -3172,6 +3257,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: Some(TABLE_DETECTION_PPTX_TBL_V1.into()),
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3250,6 +3336,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3315,6 +3402,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3386,6 +3474,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3456,6 +3545,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3529,6 +3619,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3710,19 +3801,26 @@ mod tests {
                 html,
             })
         );
-        assert_eq!(
-            keys(&wire["table_detection"]),
-            declared!(&profile.table_detection => TableDetection {
-                ruled,
-                unruled,
-                stroke_ruled,
-                tagged,
-                tracks,
-                charts,
-                lines,
-                pies,
-            })
-        );
+        // Decision #135: `office` is written only where an office table rule runs. This PDF
+        // profile runs none, so its wire has every other key; a workbook's has `office` as well.
+        let mut table_keys = declared!(&profile.table_detection => TableDetection {
+            ruled,
+            unruled,
+            stroke_ruled,
+            tagged,
+            tracks,
+            charts,
+            lines,
+            pies,
+            office,
+        });
+        assert!(profile.table_detection.office.is_none());
+        table_keys.remove("office");
+        assert_eq!(keys(&wire["table_detection"]), table_keys);
+        let xlsx: serde_json::Value =
+            serde_json::from_slice(&Profile::xlsx_v0().canonical_bytes().expect("canonical"))
+                .expect("JSON");
+        assert!(keys(&xlsx["table_detection"]).contains("office"));
         assert_eq!(
             keys(&wire["verifier"]["identity"]),
             declared!(&profile.verifier => VerifierPin::Pinned { version, sha256 })
@@ -3868,6 +3966,7 @@ mod tests {
                     charts: _,
                     lines: _,
                     pies: _,
+                    office: _,
                 },
             struct_tree_rule: _,
             outline_rule: _,
@@ -3943,6 +4042,13 @@ mod tests {
             (
                 "table_detection.pies",
                 Box::new(|p: &mut Profile| p.table_detection.pies = "other-pies-v9".into()),
+            ),
+            (
+                // Decision #135. Whether a workbook's sheets or a slide's tables become tables.
+                "table_detection.office",
+                Box::new(|p: &mut Profile| {
+                    p.table_detection.office = Some("other-office-v9".into())
+                }),
             ),
             (
                 // v1-S4. Which form and annotation nodes exist at all.
@@ -4172,12 +4278,13 @@ mod tests {
         // #54, which added `right_to_left_rule` the same way. Forty-six since decision #66, which
         // added `table_detection.lines` the same way, and forty-seven since decision #90, which
         // added `table_detection.pies` the same way. Forty-eight since decision #120, which added
-        // `recognizer` the same way.
+        // `recognizer` the same way, and forty-nine since decision #135, which added
+        // `table_detection.office` the same way.
         assert_eq!(
             mutations.len(),
-            48,
-            "{} single-field mutation(s); forty-eight is the number at decision #120, which added \
-             `recognizer` with its mutation",
+            49,
+            "{} single-field mutation(s); forty-nine is the number at decision #135, which added \
+             `table_detection.office` with its mutation",
             mutations.len()
         );
 

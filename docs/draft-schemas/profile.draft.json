@@ -251,6 +251,10 @@
         "pies": {
           "type": "string",
           "description": "Version id of the rule that reads the numbers a pie prints at its slices back as its table (decision #90). `slice-labels-v1`. A slice is a filled path of curves whose every point but one lies one distance from that one, its centre; slices about one centre, of one radius, turning a full circle between them are a pie. Each number goes to the pie whose rim it stands nearest, within its radius, and is no slice's where it stands over the centre; a pie takes as many as it has slices, nearest its rim first and all of one kind, and matches them to its slices in their order round the centre, at the one turn that sets each within a quarter turn of its slice and all nearest; a slice clearly larger never carries a smaller number. Pies side by side sharing a colour are one table: a row per slice, named by the label beside a legend swatch of its colour or by the lines set over its number, and a column per pie, named by the label in its hole or the line just over it. A value is never read off a slice's size. Runs after `point-labels-v1`, on runs no other rule's table holds, only on a document that declares no author structure. Office profiles name it `not-run-for-this-format`."
+        },
+        "office": {
+          "type": "string",
+          "description": "Decision #135. Version id of the rule that reads a table an office file states itself: `xlsx-sheet-table-v1`, each worksheet of a workbook as one table at the addresses its cells state, or `pptx-tbl-v1`, each <a:tbl> of a slide. The one optional key here: absent means no office table rule ran, which is true of every PDF and DOCX profile and of every profile written before it."
         }
       }
     },

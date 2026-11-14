@@ -288,6 +288,7 @@ fn an_xlsx_representation_is_refused_by_project() {
         attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
             value_type: CellValueType::Number,
             text_source: CellTextSource::StoredValue,
+            stored_value: None,
         }),
     };
     let geometry = NodeGeometry {
@@ -335,6 +336,8 @@ fn a_pptx_representation_is_refused_by_project() {
             shape: 1,
             paragraph: 1,
             run: 1,
+            row: None,
+            column: None,
         }),
         structural_locator: None,
         derivation: DerivationClass::Extracted,

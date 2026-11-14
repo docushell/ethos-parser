@@ -32,6 +32,66 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A workbook's sheets and a slide's tables are tables, and a number shows as its format displays it (decision #135)
+
+Rule ids `xlsx-sheet-table-v1`, `pptx-tbl-v1` and `xlsx-number-format-v1` (was
+`xlsx-stored-value-verbatim-v3`); the XLSX and PPTX `profile_sha256` move. PDF and DOCX output is
+byte for byte what it was, profiles included.
+
+- **Each worksheet is one table.** Its cells sit at the addresses the sheet states, counted from
+  the first row and column any of them holds, and a `<mergeCells>` range spans the cell it opens.
+  `tables[]` holds one record per sheet with text: `extracted`, no geometry, the locator
+  cross-check `not_applicable`, `detection_rule` `xlsx-sheet-table-v1`, its `page` the sheet's
+  part id. Every cell is still one node, addressed `{part, sheet, row, column}` as before.
+- **Each `<a:tbl>` on a slide is one table**, read from `<a:tr>` and `<a:tc>`, `gridSpan` and
+  `rowSpan`, a span reaching no further than the rows and columns the table states. Its runs are
+  nodes now, where the frame was counted under `office-parts-not-read`; a frame holding a chart,
+  SmartArt or an object still is, and so is a cell before any `<a:tr>`. A cell's record text is
+  its runs joined by one space where neither holds whitespace at the seam, as the projections
+  write them (`Revenue FY2026`).
+- **A cell under a merge takes no slot**: one the file marks `hMerge`/`vMerge`, or whose slot an
+  earlier cell's span or a sheet's `<mergeCells>` range covers. Its text stays in its node,
+  projected after the table, and is counted under `office-covered-cells-not-placed`, new.
+- **`PptxLocator` gains `row` and `column`**, optional and written only for a run in a table cell:
+  the 1-based `<a:tr>` and `<a:tc>`. With them, `shape` is the 1-based position of the
+  `<p:graphicFrame>` among the part's graphic frames, and `paragraph` and `run` count within the
+  cell. Every address a deck had before keeps its spelling; a reader that denies unknown fields
+  refuses a cell's run rather than reading a frame's position as a shape's.
+- **A number cell shows as its number format displays it**, and keeps what it stores:
+  `OfficeCellAttributes.stored_value`, optional, holds the `<v>` wherever `text` is the formatted
+  value, and `derivation` stays `extracted` (the format is the workbook's own statement). Dates
+  (built-ins 14–22 and `y`/`m`/`d`/`h`/`s`/`AM/PM` codes, English month and day names, the 1900
+  system with its 29 February 1900 and the 1904 system), digit placeholders, grouping at the widths
+  the code writes (`#,##,##0.00` is lakh grouping), `%`, literal text and `[$₹-4009]`, up to four
+  sections and `[>=100000]` conditions on positive values. The value is first rounded to fifteen
+  significant digits, as Excel displays a double (`0.22499999999999998` under `0.00` is `0.23`),
+  then half away from zero on its decimal digits. A comma between digit placeholders groups by
+  threes, except the Indian pattern (`#,##,##0`), written as the code writes it, as Excel shows it
+  on an Indian locale. Seconds round up only where the code shows a time, so a date alone is never
+  the next day. Built-in 14 and 22, which Excel shows in the reader's short-date order, are written
+  `yyyy-mm-dd` and `yyyy-mm-dd h:mm`, an order this build chose, counted under
+  `office-locale-dates-written-iso`, new.
+- **Anything else is the stored value, counted** under `office-number-formats-not-rendered`, new:
+  a scientific, fraction or elapsed-time code, a fill, a locale's own format, a non-English LCID
+  with month or day names, a built-in the standard leaves to the locale, a condition on a negative
+  value. A styles part that is missing, broken or names a format id that is no number refuses
+  nothing: styled numbers show what they store, counted. A conditional format's `<numFmt>` (in
+  `<dxfs>`) styles no cell. A string, boolean or error cell shows what it stores, as before.
+- **Markdown and HTML** write a worksheet's table under its sheet's name: `# Ledger`, `<h1>`. The
+  name is quoted from the locator every cell carries and is `syntax`, so a quote of it does not
+  invert; no node is added for it. Folded into `markdown-blocks-v14` and `html-blocks-v14`, which
+  no release carries.
+- **`capabilities.tables` is true** for both profiles, `table_detection` gains the optional key
+  `office` (written only where an office rule runs, so a PDF or DOCX profile is unchanged), and a
+  table-reading profile that measures no ink does not declare `undrawn-table-edges-not-supplied`,
+  whose rules read drawn ink. **One slot budget per document**: the tables of one workbook or deck
+  span a million slots between them; one that would pass what is left is not built and is counted
+  under `office-tables-not-built`, new; its cells stay nodes.
+- **Measured** on `docs/measurements/financial-en` (XLSX column): table rows 0 -> 74 of 74, exact
+  74 of 74, amounts verbatim 3 -> 82 of 82, dates 0 -> 20 of 20, `₹` beside its amount 0 -> 7 of 7,
+  totals 0 -> 15 of 15, cell text 171 -> 292 of 292; DOCX and PDF unchanged on every check.
+  PDF and DOCX output byte-identical on the gate, the engine fixtures and the review probes, so ParseBench and opendataloader-bench do not move.
+
 ### Repeated running heads and folios can be left out of Markdown and HTML, counted (decision #134)
 
 No rule id and no `profile_sha256` moves: the default output is byte for byte what it was.

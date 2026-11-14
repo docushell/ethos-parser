@@ -522,7 +522,12 @@ pub struct PptxLocator {
     /// Resolved through `ppt/_rels/presentation.xml.rels` — not `slide{n}.xml` guessed from the
     /// slide's position in `<p:sldIdLst>`.
     pub part: String,
-    /// 1-based position of the `<p:sp>` within this part, in its own document order.
+    /// 1-based position of the `<p:sp>` within this part, in its own document order — **or, where
+    /// [`Self::row`] and [`Self::column`] are present, of the `<p:graphicFrame>` among the part's
+    /// graphic frames** (decision #135). The two counts are separate, so a frame does not move a
+    /// shape's address; read `shape` with `row` to know which one it is. A separate `frame` field
+    /// would still leave `shape` required and meaningless on a cell's run, so the one field counts
+    /// what holds the run.
     ///
     /// **Shapes nest.** A `<p:sp>` inside a `<p:grpSp>` group is a shape and is counted as one,
     /// because it is one — groups appeared on essentially every slide of every real deck this was
@@ -532,6 +537,22 @@ pub struct PptxLocator {
     pub paragraph: u32,
     /// 1-based position of the `<a:r>` within that paragraph.
     pub run: u32,
+    /// For a run in a table cell (decision #135): 1-based position of the `<a:tr>` within its
+    /// `<a:tbl>`. Absent for a run in a `<p:sp>`.
+    ///
+    /// **Present with [`Self::column`], and then `shape` counts frames.** A table sits in a
+    /// `<p:graphicFrame>`, not a `<p:sp>`, so a cell's run has no `<p:sp>` position; its `shape` is
+    /// the 1-based position of the `<p:graphicFrame>` among the part's graphic frames, and
+    /// `paragraph` and `run` count within the cell's `<a:txBody>`. Two optional fields rather than
+    /// a second locator: every address a deck had before keeps its spelling, and a reader built
+    /// before them refuses the new keys (`deny_unknown_fields`) rather than reading a frame's
+    /// position as a shape's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<u32>,
+    /// For a run in a table cell: 1-based position of the `<a:tc>` within its `<a:tr>`, which is
+    /// its grid column — a cell a merge covers still holds its place. See [`Self::row`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
 }
 
 /// A paragraph's address inside an OpenDocument text part (v2-S5).
@@ -1912,16 +1933,24 @@ pub enum OdfBlockKind {
 /// and a text cell that stores its own string is `InlineString` + [`CellTextSource::StoredValue`]
 /// — the pair is not two spellings of one fact.
 ///
-/// **Nothing here is a rendering.** A cell's displayed form comes from a number format in
-/// `xl/styles.xml` — `42` shown as `$42.00` or as `1970-02-11` — and this reader does not read
-/// styles, does not apply them, and does not carry a formatted string the file did not store.
+/// **A number shows as its format displays it, and keeps what it stores** (decision #135). A
+/// cell's displayed form comes from a number format in `xl/styles.xml` — `46339` shown as
+/// `2026-11-13`, `116000` as `₹1,16,000.00` — and since `xlsx-number-format-v1` the node's `text` is
+/// that form wherever the rule renders the cell's format, with the value `<v>` holds in
+/// [`Self::stored_value`]. Both are the file's: the format is a statement the workbook makes about
+/// how its value reads. Where the rule does not render the format, `text` is the stored value and
+/// the cell is counted under `office-number-formats-not-rendered`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OfficeCellAttributes {
     /// What the cell's `t` attribute says its stored value is.
     pub value_type: CellValueType,
-    /// Where this node's `text` came from.
+    /// Where the value behind this node's `text` came from.
     pub text_source: CellTextSource,
+    /// The value the cell stores, present exactly when `text` is that value as its number format
+    /// displays it (decision #135). Absent when `text` is the stored value itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stored_value: Option<String>,
 }
 
 /// What a `<c>`'s `t` attribute declares its stored value to be (v2-S3).
@@ -3697,6 +3726,7 @@ mod tests {
                     attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
                         value_type: CellValueType::Number,
                         text_source: CellTextSource::StoredValue,
+                        stored_value: None,
                     }),
                 });
             }
@@ -3740,6 +3770,7 @@ mod tests {
             attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
                 value_type: CellValueType::Number,
                 text_source: CellTextSource::StoredValue,
+                stored_value: None,
             }),
         };
         let geometry = vec![geom(

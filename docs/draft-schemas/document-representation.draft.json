@@ -201,7 +201,9 @@
             "part": { "type": "string", "examples": ["ppt/slides/slide1.xml"] },
             "shape": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <p:sp> within the part." },
             "paragraph": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <a:p> within that shape's <p:txBody>." },
-            "run": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <a:r> within that paragraph." }
+            "run": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <a:r> within that paragraph." },
+            "row": { "type": "integer", "minimum": 1, "$comment": "Decision #135. A run in a table cell only: 1-based position of the <a:tr> within its <a:tbl>. With `row` and `column`, `shape` is the 1-based position of the <p:graphicFrame> among the part's graphic frames, and `paragraph` and `run` count within the cell. Absent for a run in a <p:sp>." },
+            "column": { "type": "integer", "minimum": 1, "$comment": "Decision #135. A run in a table cell only: 1-based position of the <a:tc> within its <a:tr>, its grid column." }
           }
         },
         "odt": {
@@ -500,7 +502,8 @@
           "required": ["value_type", "text_source"],
           "properties": {
             "value_type": { "enum": ["number", "shared_string", "inline_string", "formula_string", "boolean", "error", "date"], "$comment": "XLSX: the type the cell's t attribute states." },
-            "text_source": { "enum": ["stored_value", "cached_formula_result", "formula_source"], "$comment": "Where the node's text came from: the stored value, the cached result of a formula, or the formula itself." }
+            "text_source": { "enum": ["stored_value", "cached_formula_result", "formula_source"], "$comment": "Where the node's text came from: the stored value, the cached result of a formula, or the formula itself." },
+            "stored_value": { "type": "string", "$comment": "Decision #135. The value the cell stores, present exactly when the node's text is that value as its number format displays it (`2026-11-13` for 46339). Absent when the text is the stored value itself." }
           }
         },
         "office_slide_run": {
@@ -661,13 +664,13 @@
       "required": ["id", "page", "geometry", "rows", "columns", "cells", "derivation", "detection_rule", "locator_check"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "page": { "type": "string", "$comment": "The id of the page record the table was found on." },
+        "page": { "type": "string", "$comment": "The id of the page record the table was found on, or, for a page-less document, the part id its cells' nodes are parented by (decision #135)." },
         "geometry": { "$ref": "urn:ethos-parser:draft-schema:geometry:0" },
         "rows": { "type": "integer", "minimum": 0 },
         "columns": { "type": "integer", "minimum": 0 },
         "cells": { "type": "array", "items": { "$ref": "#/$defs/table_cell_record" } },
         "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "`computed` for a grid this engine reconstructed from ink or alignment, `extracted` for one the structure tree declares." },
-        "detection_rule": { "type": "string", "examples": ["ruled-rects-v8", "unruled-align-v1", "stroke-ruled-v2", "tagged-tables-v1", "whitespace-tracks-v16", "bar-labels-v3", "point-labels-v1", "slice-labels-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
+        "detection_rule": { "type": "string", "examples": ["ruled-rects-v8", "unruled-align-v1", "stroke-ruled-v2", "tagged-tables-v1", "whitespace-tracks-v16", "bar-labels-v3", "point-labels-v1", "slice-labels-v1", "xlsx-sheet-table-v1", "pptx-tbl-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
         "locator_check": {
           "$ref": "#/$defs/locator_check",
           "$comment": "The structural and geometric cross-check of the cells against the grid."

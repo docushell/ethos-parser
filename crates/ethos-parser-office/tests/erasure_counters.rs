@@ -34,7 +34,7 @@ fn src_dir() -> PathBuf {
 /// `other_kinds` was the one that mattered — it was still on a plain `+=` in two files, because
 /// v2-S9.1's own search was for names ending `_not_read` and it does not end that way.
 /// [`the_counter_list_is_complete`] now derives the list from the source instead of trusting it.
-const ERASURE_COUNTERS: [&str; 11] = [
+const ERASURE_COUNTERS: [&str; 16] = [
     "regions_not_read",
     "foreign_text_not_read",
     "shapes_not_read",
@@ -46,6 +46,16 @@ const ERASURE_COUNTERS: [&str; 11] = [
     "spine_items_not_read",
     "undecodable_bytes",
     "other_kinds",
+    // Decision #135. The number cells whose format is not rendered, and the stated tables past the
+    // slot ceiling: the counts `office-number-formats-not-rendered` and `office-tables-not-built`
+    // name.
+    "formats_not_rendered",
+    "tables_not_built",
+    // And the dates written in an order this build chose, and the covered cells holding text: the
+    // counts `office-locale-dates-written-iso` and `office-covered-cells-not-placed` name.
+    "dates_written_iso",
+    "cells_covered",
+    "covered_text",
 ];
 
 /// Every `.rs` file in `ethos-parser-office/src`, read from the directory.

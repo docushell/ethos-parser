@@ -226,6 +226,12 @@ const CORE: &[&str] = &[
     "CellTextSource",
     "XLSX_READING_ORDER_RULE_V1",
     "XLSX_TEXT_CODE_RULE_V3",
+    // Decision #135. A worksheet's and a slide's tables, a number cell's format, and the slot
+    // ceiling both readers hold a stated table to.
+    "XLSX_TEXT_CODE_RULE_V4",
+    "TABLE_DETECTION_XLSX_SHEETS_V1",
+    "TABLE_DETECTION_PPTX_TBL_V1",
+    "OFFICE_TABLE_MAX_SLOTS",
     // v2-S4. The third format's address and its facts. A slide run is neither a cell nor a
     // `<w:r>`: it has a shape, and DrawingML has no `xml:space` to record.
     "PptxLocator",

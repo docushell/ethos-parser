@@ -97,6 +97,7 @@
 
 pub mod docx;
 pub mod epub;
+mod numfmt;
 pub mod odp;
 pub mod ods;
 pub mod odt;
@@ -274,6 +275,171 @@ const EPUB_CLAIM: &str = "mimetype = application/epub+zip";
 /// What separates an ODF package from the other users of the same container rule — an `.epub`
 /// declares `application/epub+zip` in the same first, stored `mimetype` entry.
 const ODF_MEDIA_TYPE_PREFIX: &str = "application/vnd.oasis.opendocument.";
+
+/// One cell of a table an office file states, before it has an id (decision #135): its slot,
+/// zero-based in the table, the span the file states, the nodes it holds, and whether the file
+/// says a merge from another cell covers it (`hMerge`, `vMerge`).
+struct StatedCell {
+    row: u64,
+    column: u64,
+    rowspan: u64,
+    colspan: u64,
+    covered: bool,
+    nodes: Vec<ethos_parser_core::NodeId>,
+    text: String,
+}
+
+/// What [`stated_table`] made of a grid: the table, or none past the document's slot budget, and
+/// how many cells holding text a merge covers.
+struct Stated {
+    table: Option<ethos_parser_core::TableRecord>,
+    covered: u32,
+}
+
+/// A table an office file states — a worksheet, a slide's `<a:tbl>` — as this engine's table IR
+/// (decision #135).
+///
+/// The grid is the file's, so the table is `Extracted`; nothing measured it, so it and its cells
+/// carry no box, and the geometric-vs-structural cross-check has nothing to compare and is
+/// `NotApplicable`, as a tagged table's is. `part` stands where a PDF table names its page: the
+/// part id its nodes are parented by, since a page-less document has no page to name.
+///
+/// **One slot budget per document.** `slots` is what is left of
+/// [`ethos_parser_core::OFFICE_TABLE_MAX_SLOTS`] for this document's tables; a grid that would
+/// pass it is not built, and the caller counts it.
+///
+/// **A slot holds one cell.** A span reaches no further than the grid; a cell the file marks
+/// covered, or whose slot an earlier cell's span covers, opens no slot. Its runs stay nodes,
+/// projected as blocks of their own after the table, and it is counted in [`Stated::covered`]
+/// when it holds text — Excel and PowerPoint show the merge, not the covered text.
+fn stated_table(
+    alloc: &mut IdAllocator,
+    part: &ethos_parser_core::NodeId,
+    slots: &mut u64,
+    (rows, columns): (u64, u64),
+    cells: Vec<StatedCell>,
+    rule: &str,
+) -> Result<Stated, EngineError> {
+    let area = rows.saturating_mul(columns);
+    if rows == 0 || columns == 0 || area > *slots {
+        return Ok(Stated {
+            table: None,
+            covered: 0,
+        });
+    }
+    *slots -= area;
+    // Every number here is under the slot ceiling, so each fits a `u32` and a `usize`.
+    let narrow = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
+    let at = |row: u64, column: u64| (row * columns + column) as usize;
+    let mut taken = vec![false; area as usize];
+    let mut placed = Vec::with_capacity(cells.len());
+    let mut covered_text = 0u32;
+    for mut cell in cells {
+        let inside = cell.row < rows && cell.column < columns;
+        if !inside || cell.covered || taken[at(cell.row, cell.column)] {
+            if !cell.nodes.is_empty() {
+                covered_text = declare(covered_text, 1);
+            }
+            continue;
+        }
+        cell.rowspan = cell.rowspan.clamp(1, rows - cell.row);
+        cell.colspan = cell.colspan.clamp(1, columns - cell.column);
+        for r in cell.row..cell.row + cell.rowspan {
+            for c in cell.column..cell.column + cell.colspan {
+                taken[at(r, c)] = true;
+            }
+        }
+        placed.push(cell);
+    }
+    let id = alloc.next(IdKind::Table)?;
+    let absent = GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind);
+    let mut records = Vec::with_capacity(placed.len());
+    for cell in placed {
+        records.push(ethos_parser_core::TableCellRecord {
+            id: alloc.next(IdKind::Element)?,
+            position: ethos_parser_core::TableCellPosition {
+                row: narrow(cell.row),
+                column: narrow(cell.column),
+                rowspan: narrow(cell.rowspan),
+                colspan: narrow(cell.colspan),
+                table_id: id.clone(),
+            },
+            geometry: absent,
+            text: cell.text,
+            node_ids: cell.nodes,
+        });
+    }
+    let table = ethos_parser_core::TableRecord {
+        id,
+        page: part.clone(),
+        geometry: absent,
+        rows: narrow(rows),
+        columns: narrow(columns),
+        cells: records,
+        derivation: DerivationClass::Extracted,
+        detection_rule: rule.to_string(),
+        locator_check: ethos_parser_core::LocatorCheck {
+            check_id: ethos_parser_core::LOCATOR_CHECK_V1.to_string(),
+            check_version: "1".to_string(),
+            outcome: ethos_parser_core::CheckStatus::NotApplicable {
+                reason: "an office table carries no geometry, so the geometric-vs-structural \
+                         cross-check has nothing to compare against the grid the file states"
+                    .to_string(),
+            },
+        },
+        tagged_check: None,
+    };
+    Ok(Stated {
+        table: Some(table),
+        covered: covered_text,
+    })
+}
+
+/// A cell's text as both projections write its runs: one space between two runs unless either
+/// holds whitespace at the seam (decision #135). A cell's paragraphs are runs too, so
+/// `Revenue` over `FY2026` is `Revenue FY2026`.
+fn cell_text<'a>(runs: impl IntoIterator<Item = &'a str>) -> String {
+    let mut text = String::new();
+    for run in runs {
+        if !text.is_empty()
+            && !text.ends_with(char::is_whitespace)
+            && !run.starts_with(char::is_whitespace)
+        {
+            text.push(' ');
+        }
+        text.push_str(run);
+    }
+    text
+}
+
+/// The limitations a document's stated tables owe: tables past the slot budget, and cells holding
+/// text that a merge covers.
+fn table_limitations(not_built: u32, covered: u32, what: &str) -> Vec<Limitation> {
+    let mut out = Vec::new();
+    if not_built > 0 {
+        out.push(Limitation::document(
+            ethos_parser_core::assurance::codes::OFFICE_TABLES_NOT_BUILT,
+            format!(
+                "{not_built} {what} would take this document's tables past {} slots, rows \
+                 times columns, between them, so no table record was emitted for them. Their \
+                 cells are still nodes, each projected as a block of its own",
+                ethos_parser_core::OFFICE_TABLE_MAX_SLOTS
+            ),
+        ));
+    }
+    if covered > 0 {
+        out.push(Limitation::document(
+            ethos_parser_core::assurance::codes::OFFICE_COVERED_CELLS_NOT_PLACED,
+            format!(
+                "{covered} cell(s) holding text lie under another cell's merge, or are marked \
+                 covered by one, so they take no slot of their table: the application shows the \
+                 merge, not their text. Their text is still in nodes, projected as blocks of \
+                 their own after the table"
+            ),
+        ));
+    }
+    out
+}
 
 /// Whether these bytes are an OOXML word-processing document, **read from the bytes**.
 ///
@@ -762,6 +928,21 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         None => Vec::new(),
     };
 
+    // Decision #135: the number formats and the date system the workbook states. **A styles part
+    // that will not read refuses nothing**: the cells were read before formats were, so a missing,
+    // oversized or broken one leaves every styled number showing what it stores, counted.
+    let mut styles_unread = None;
+    let mut formats = match xlsx::styles_part(&rels, names) {
+        Some(part_name) => zip::read_entry(bytes, &part_name)
+            .and_then(|part| xlsx::read_number_formats(&part, &part_name))
+            .unwrap_or_else(|e| {
+                styles_unread = Some(format!("`{part_name}` ({e})"));
+                xlsx::NumberFormats::default()
+            }),
+        None => xlsx::NumberFormats::default(),
+    };
+    formats.date1904 = xlsx::date1904(&workbook)?;
+
     let profile = Profile::xlsx_v0();
     let profile_sha256 = profile
         .profile_sha256()
@@ -773,15 +954,32 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 
     let mut nodes = Vec::new();
     let mut geometry = Vec::new();
+    let mut tables = Vec::new();
+    let mut formats_not_rendered = 0u32;
+    let mut dates_written_iso = 0u32;
+    let mut tables_not_built = 0u32;
+    let mut cells_covered = 0u32;
+    // One slot budget for every sheet's table, as one cell budget holds every sheet's cells.
+    let mut slots = ethos_parser_core::OFFICE_TABLE_MAX_SLOTS;
     // One budget for every sheet: a per-sheet one would multiply by the number of sheets.
     let mut budget = CellBudget::new("this workbook");
     for sheet in &sheets {
         let part = zip::read_entry(bytes, &sheet.part)?;
         let address = sheet.name.len() + sheet.part.len();
-        let cells = xlsx::read_cells_within(&part, &sheet.part, &shared, &mut budget, address)?;
+        let (cells, merges) =
+            xlsx::read_cells_within(&part, &sheet.part, &shared, &formats, &mut budget, address)?;
+        formats_not_rendered = declare(
+            formats_not_rendered,
+            declared_len(cells.iter().filter(|c| c.format_not_rendered).count()),
+        );
+        dates_written_iso = declare(
+            dates_written_iso,
+            declared_len(cells.iter().filter(|c| c.iso_date).count()),
+        );
 
         // One sheet, one part id — minted per sheet so the bijection holds in both directions.
         let part_id = alloc.next(IdKind::Part)?;
+        let first_node = nodes.len();
         for (index, cell) in cells.iter().enumerate() {
             let id = alloc.next(IdKind::Span)?;
             geometry.push(NodeGeometry {
@@ -813,8 +1011,62 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
                     value_type: cell.value_type,
                     text_source: cell.text_source,
+                    stored_value: cell.stored_value.clone(),
                 }),
             });
+        }
+
+        // **The sheet as one table** (decision #135): each cell at its own address, less the
+        // first row and column any of the sheet's cells holds, spanning the merge it opens.
+        // Keyed by the cell a merge opens, the first stated where a sheet states two.
+        let mut opened: std::collections::BTreeMap<(u32, u64), &xlsx::Merge> = Default::default();
+        for m in &merges {
+            opened.entry((m.first_row, m.first_column)).or_insert(m);
+        }
+        let span = |cell: &xlsx::Cell| {
+            opened
+                .get(&(cell.row, xlsx::column_index(&cell.column)))
+                .map_or((1, 1), |m| {
+                    (
+                        u64::from(m.last_row - m.first_row) + 1,
+                        m.last_column - m.first_column + 1,
+                    )
+                })
+        };
+        let top = cells.iter().map(|c| u64::from(c.row)).min();
+        let left = cells.iter().map(|c| xlsx::column_index(&c.column)).min();
+        if let (Some(top), Some(left)) = (top, left) {
+            let mut stated = Vec::with_capacity(cells.len());
+            let (mut rows, mut columns) = (0u64, 0u64);
+            for (cell, node) in cells.iter().zip(&nodes[first_node..]) {
+                let (rowspan, colspan) = span(cell);
+                let row = u64::from(cell.row) - top;
+                let column = xlsx::column_index(&cell.column) - left;
+                rows = rows.max(row.saturating_add(rowspan));
+                columns = columns.max(column.saturating_add(colspan));
+                stated.push(StatedCell {
+                    row,
+                    column,
+                    rowspan,
+                    colspan,
+                    covered: false,
+                    nodes: vec![node.id.clone()],
+                    text: node.text.clone(),
+                });
+            }
+            let made = stated_table(
+                &mut alloc,
+                &part_id,
+                &mut slots,
+                (rows, columns),
+                stated,
+                ethos_parser_core::TABLE_DETECTION_XLSX_SHEETS_V1,
+            )?;
+            cells_covered = declare(cells_covered, made.covered);
+            match made.table {
+                Some(table) => tables.push(table),
+                None => tables_not_built = declare(tables_not_built, 1),
+            }
         }
     }
 
@@ -852,6 +1104,44 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
             detail,
         ));
     }
+
+    // Decision #135: a number whose format this build does not render shows what it stores.
+    if formats_not_rendered > 0 {
+        let cause = match &styles_unread {
+            Some(part) => {
+                format!("the styles part {part} could not be read, so no cell's format is known")
+            }
+            None => "a scientific, fraction or elapsed-time code, a fill, a locale's own format, \
+                     or a built-in the standard leaves to the locale"
+                .to_string(),
+        };
+        limitations.push(Limitation::document(
+            ethos_parser_core::assurance::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED,
+            format!(
+                "{formats_not_rendered} number cell(s) carry a number format this build does not \
+                 render — {cause} — so their text is the value they store rather than the one \
+                 the workbook displays. `{}` lists what is rendered",
+                ethos_parser_core::XLSX_TEXT_CODE_RULE_V4
+            ),
+        ));
+    }
+    // Decision #135: a date the file leaves to the reader's locale, in an order this build chose.
+    if dates_written_iso > 0 {
+        limitations.push(Limitation::document(
+            ethos_parser_core::assurance::codes::OFFICE_LOCALE_DATES_WRITTEN_ISO,
+            format!(
+                "{dates_written_iso} date cell(s) carry built-in number format 14 or 22, which \
+                 Excel shows in the reader's own short-date order; the file states no order, so \
+                 this build writes them `yyyy-mm-dd` (ISO 8601), an order it chose. The stored \
+                 serial is kept as `stored_value`"
+            ),
+        ));
+    }
+    limitations.extend(table_limitations(
+        tables_not_built,
+        cells_covered,
+        "worksheet(s)",
+    ));
 
     // **v2-S11: the second bucket, and why it is a second one.** The message above says its parts
     // "carry text". An embedded asset carries none, so it cannot be counted there without making
@@ -895,10 +1185,9 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // printer, so there is nothing here to declare and the vector stays empty.
         pages: Vec::new(),
         nodes,
-        // **Not a table, on the format made of grids.** `tables` here means this engine's table
-        // IR, produced by the PDF detectors from ruled and unruled evidence. Those never ran;
-        // this artifact carries cells, and `Profile::xlsx_v0` declares `tables: false` to say so.
-        tables: Vec::new(),
+        // **One table per worksheet** (decision #135), read from the addresses the sheet states.
+        // No PDF detector ran; `table_detection.office` names the rule that did.
+        tables,
         // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),
@@ -1823,8 +2112,13 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 
     let mut nodes = Vec::new();
     let mut geometry = Vec::new();
+    let mut tables = Vec::new();
     let mut shapes_not_read = 0u32;
     let mut alternatives_not_read = 0u32;
+    let mut tables_not_built = 0u32;
+    let mut cells_covered = 0u32;
+    // One slot budget for every slide's tables.
+    let mut slots = ethos_parser_core::OFFICE_TABLE_MAX_SLOTS;
 
     for slide in &slides {
         let part = zip::read_entry(bytes, slide)?;
@@ -1836,6 +2130,7 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 
         // One slide, one part id — minted per slide so the bijection holds in both directions.
         let part_id = alloc.next(IdKind::Part)?;
+        let first_node = nodes.len();
         for (index, run) in content.runs.iter().enumerate() {
             let id = alloc.next(IdKind::Span)?;
             geometry.push(NodeGeometry {
@@ -1858,6 +2153,8 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     shape: run.shape,
                     paragraph: run.paragraph,
                     run: run.run,
+                    row: run.row,
+                    column: run.column,
                 }),
                 structural_locator: None,
                 derivation: DerivationClass::Extracted,
@@ -1866,6 +2163,49 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     shape_name: run.shape_name.clone(),
                 }),
             });
+        }
+
+        // **Each `<a:tbl>` as one table** (decision #135), as many rows as it states `<a:tr>` and
+        // as many columns as its widest row states `<a:tc>`: a cell holds the runs read in it,
+        // and a span reaches no further than that grid.
+        let mut held: std::collections::BTreeMap<(u32, u32, u32), Vec<&Node>> = Default::default();
+        for (run, node) in content.runs.iter().zip(&nodes[first_node..]) {
+            if let (Some(row), Some(column)) = (run.row, run.column) {
+                held.entry((run.shape, row, column)).or_default().push(node);
+            }
+        }
+        // An `<a:tbl>` with no `<a:tc>` states no cell, so there is no table to emit and nothing
+        // left out.
+        for table in content.tables.iter().filter(|t| !t.cells.is_empty()) {
+            let mut stated = Vec::with_capacity(table.cells.len());
+            for cell in &table.cells {
+                let held = held
+                    .get(&(table.frame, cell.row, cell.column))
+                    .map_or(&[][..], Vec::as_slice);
+                stated.push(StatedCell {
+                    // Both 1-based, from a `<a:tr>` and a `<a:tc>` the reader counted.
+                    row: u64::from(cell.row.saturating_sub(1)),
+                    column: u64::from(cell.column.saturating_sub(1)),
+                    rowspan: u64::from(cell.rowspan),
+                    colspan: u64::from(cell.colspan),
+                    covered: cell.covered,
+                    nodes: held.iter().map(|n| n.id.clone()).collect(),
+                    text: cell_text(held.iter().map(|n| n.text.as_str())),
+                });
+            }
+            let made = stated_table(
+                &mut alloc,
+                &part_id,
+                &mut slots,
+                (u64::from(table.rows), u64::from(table.columns)),
+                stated,
+                ethos_parser_core::TABLE_DETECTION_PPTX_TBL_V1,
+            )?;
+            cells_covered = declare(cells_covered, made.covered);
+            match made.table {
+                Some(t) => tables.push(t),
+                None => tables_not_built = declare(tables_not_built, 1),
+            }
         }
     }
 
@@ -1895,8 +2235,9 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         if shapes_not_read > 0 {
             detail.push_str(&format!(
                 "{shapes_not_read} shape(s) on the slides that were read hold text this slice \
-                 does not read — a table or chart in a `<p:graphicFrame>`, or an `<a:fld>` whose \
-                 text is a cached slide number rather than something the deck states. "
+                 does not read — a chart, SmartArt or embedded object in a `<p:graphicFrame>`, a \
+                 table cell outside any row, or an `<a:fld>` whose text is a cached slide number \
+                 rather than something the deck states. "
             ));
         }
         if alternatives_not_read > 0 {
@@ -1908,14 +2249,19 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
             ));
         }
         detail.push_str(
-            "v2-S4 reads slide shape text only, and a phrase absent from this artifact may still \
-             be present in the presentation",
+            "this reader reads slide shape and table text only, and a phrase absent from this \
+             artifact may still be present in the presentation",
         );
         limitations.push(Limitation::document(
             ethos_parser_core::assurance::codes::OFFICE_PARTS_NOT_READ,
             detail,
         ));
     }
+    limitations.extend(table_limitations(
+        tables_not_built,
+        cells_covered,
+        "slide table(s)",
+    ));
 
     // **v2-S11: the second bucket, and why it is a second one.** The message above says its parts
     // "carry text". An embedded asset carries none, so it cannot be counted there without making
@@ -1959,7 +2305,8 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // numbers from becoming page numbers on the wire.
         pages: Vec::new(),
         nodes,
-        tables: Vec::new(),
+        // One table per `<a:tbl>` (decision #135), read from the grid the slide states.
+        tables,
         // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
         // profile does not look; an empty array on its own would read as "looked, found none".
         outlines: Vec::new(),

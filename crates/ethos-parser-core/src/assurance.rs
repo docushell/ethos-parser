@@ -103,6 +103,24 @@ pub mod codes {
     /// already count **every** entry the reader did not consume, media included, and their prose
     /// already says so. This code exists because the three OOXML readers ask the narrower question.
     pub const OFFICE_EMBEDDED_PARTS_NOT_READ: &str = "office-embedded-parts-not-read";
+    /// Spreadsheet number cells whose number format this build does not render (decision #135).
+    ///
+    /// The cell's text is its stored value — `46339`, not the date it shows — and the count says
+    /// how many cells read that way. [`crate::XLSX_TEXT_CODE_RULE_V4`] lists the codes rendered.
+    pub const OFFICE_NUMBER_FORMATS_NOT_RENDERED: &str = "office-number-formats-not-rendered";
+    /// Office tables a file states and this build does not emit as a table (decision #135): those
+    /// that would take one document's tables past [`crate::OFFICE_TABLE_MAX_SLOTS`] slots between
+    /// them. Their cells are still nodes, projected one block each, and the count says how many
+    /// tables read that way.
+    pub const OFFICE_TABLES_NOT_BUILT: &str = "office-tables-not-built";
+    /// Office table cells holding text that a merge covers, so they take no slot (decision
+    /// #135): a cell inside another's merged range, or one marked `hMerge`/`vMerge`. The
+    /// application shows the merge; the text stays in nodes, projected after the table.
+    pub const OFFICE_COVERED_CELLS_NOT_PLACED: &str = "office-covered-cells-not-placed";
+    /// Spreadsheet dates under built-in number format 14 or 22, which Excel shows in the reader's
+    /// own short-date order, written `yyyy-mm-dd` by this build: an order it chose, not one the
+    /// file states (decision #135).
+    pub const OFFICE_LOCALE_DATES_WRITTEN_ISO: &str = "office-locale-dates-written-iso";
     /// A table edge the document never drew is **not supplied**, so a grid can come back short.
     ///
     /// The leftover after v1-S8, and the third code to hold this position. Each replaced its
@@ -706,7 +724,7 @@ impl Capabilities {
                  profile emits images; a drawing made of paths has no record at all.",
             ));
         }
-        if tables {
+        if tables && measured_ink_boxes {
             // **A limitation partnering a TRUE capability**, and not the only one. This said
             // "every other arm here declares what a `false` capability does not do" until
             // v2-S13.5, and that stopped being true at **v1-S5**, three slices before this
@@ -742,7 +760,11 @@ impl Capabilities {
                  is not emitted. And curves are never flattened into \
                  ruling lines, so a grid drawn with Béziers is missed rather than approximated.",
             ));
-        } else {
+        } else if !tables {
+            // Decision #135: `tables` with no measured ink reaches neither arm. That is a page-less
+            // profile reading the grid its file states (an XLSX sheet, a PPTX `<a:tbl>`); no rule
+            // the arm above describes runs there — each reads drawn ink — so its scope is not
+            // this profile's to declare, and it did look, so it owes no absence either.
             out.push(Limitation::profile(
                 codes::TABLES_NOT_EXTRACTED,
                 "No table is detected, reconstructed, or emitted. Ruling lines may still be \

@@ -960,6 +960,12 @@ fn emit_table(
     pitch: &crate::markdown::PitchReference,
     stretches: &crate::markdown::Stretches<'_>,
 ) {
+    // Decision #135: a worksheet's name heads its table, as in the Markdown projection.
+    if let Some(name) = plan.caption.map(normalize).filter(|n| !n.is_empty()) {
+        e.syntax("<h1>");
+        e.syntax(&escape(&name));
+        e.syntax("</h1>\n");
+    }
     e.table(true);
     let header = header_rows(plan);
     e.syntax("<table>\n");
