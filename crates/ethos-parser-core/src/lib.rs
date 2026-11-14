@@ -72,6 +72,7 @@ pub mod assurance;
 pub mod c14n;
 pub mod derivation;
 pub mod diagnostics;
+pub mod elements;
 pub mod error;
 pub mod figures;
 pub mod geom;
@@ -94,6 +95,10 @@ pub use assurance::{
 pub use c14n::{c14n_bytes, sha256_hex, sha256_hex_bytes, C14nError};
 pub use derivation::{DerivationClass, GeometryAbsence, GeometryPresence};
 pub use diagnostics::{Diagnostics, DiagnosticsRun, HostInfo, Stage, DIAGNOSTICS_VERSION};
+pub use elements::{
+    to_elements, Element, ElementCell, ElementLabel, ElementPage, ElementTable, Elements,
+    OmissionReason, Omitted, ELEMENTS_ARTIFACT_TYPE, ELEMENTS_RULE_V1, ELEMENTS_SCHEMA_VERSION,
+};
 pub use error::EngineError;
 pub use figures::FigureRecord;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};

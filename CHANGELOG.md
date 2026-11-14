@@ -32,6 +32,31 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### One element view for consumers: `ethos-parser elements` (decision #137)
+
+New artifact `ethos.parser.elements.v0`, rule `elements-units-v1`, draft schema
+[`elements.draft.json`](docs/draft-schemas/elements.draft.json). Every other output is byte for byte
+what it was, `profile_sha256` included: the rule id travels on the artifact, not the profile.
+
+- **`elements <representation>` or `elements --source <file>`** writes a document's items as one
+  flat list: each with `label` (`text`, `section-header` with its `level`, `page-header`,
+  `page-footer`, `table` with its cells, `picture`), `page`, `bbox` in centipoints from the page's
+  top-left, `text`, and the `node_ids` it covers, in page order and reading order. A page-less
+  source (DOCX, XLSX, …) has no pages and no boxes; a DOCX paragraph is one element and a
+  workbook's sheet a named `table`.
+- **Nothing is dropped silently.** Every node is in one element or under `omitted` with its reason
+  (`no-measured-box`, `whitespace-only`, `form-field`, `annotation`, `image-not-painted`,
+  `figure-not-measured`), and one line on stderr counts them.
+- **No rule of its own.** It began as ParseBench's adapter view: `ground`'s blocks joined by
+  `layout_unit`, labels from page furniture, then a tagged role path, then an inferred heading;
+  tables and figures as the record states them. It departs where the adapter was wrong for a
+  consumer: a DOCX paragraph is one element, the label tier is `text`, the role path is read after
+  the `/RoleMap`, and a table with no box is one element. On all 456 ParseBench layout PDFs
+  `extract` reads, 26,721 of the adapter's 28,717 items are equal in page, label, box and text; the
+  other 1,996 are label-tier lines. No existing output changes: `elements` is a new subcommand.
+- Library: `ethos_parser_core::to_elements` and its types (`docs/PUBLIC-API.md`). No MCP tool and
+  no SDK function yet.
+
 ### A DOCX's headings, list items, tables, headers, footers and footnotes are read as declared (decision #136)
 
 Folded into `docx-document-order-v3` and `docx-wt-verbatim-v4` (decision #130's, which no release

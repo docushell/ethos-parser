@@ -489,6 +489,21 @@ const CORE: &[&str] = &[
     "LOCATE_RULE_V1",
     "LOCATE_MAX_QUOTE_BYTES",
     "LOCATE_MAX_OCCURRENCES",
+    // Decision #137. The element view, its artifact and its rule id, which the artifact carries
+    // rather than the profile.
+    "elements",
+    "to_elements",
+    "Elements",
+    "Element",
+    "ElementLabel",
+    "ElementPage",
+    "ElementTable",
+    "ElementCell",
+    "Omitted",
+    "OmissionReason",
+    "ELEMENTS_ARTIFACT_TYPE",
+    "ELEMENTS_SCHEMA_VERSION",
+    "ELEMENTS_RULE_V1",
 ];
 
 /// `ethos-parser-pdf` — narrowed at M7. The parsing machinery is `pub(crate)`; only `exit` and

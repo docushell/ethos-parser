@@ -1,0 +1,348 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-parser:draft-schema:elements:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: North Star decision #137. Written from crates/ethos-parser-core/src/elements.rs; if the two disagree, the Rust is the implementation. Guarded by contract_invariants.rs::the_elements_schema_pins_the_version_and_rule_the_code_emits and walked against every fixture's artifact by draft_schemas.rs.",
+  "title": "ethos.parser.elements.v0",
+  "description": "A document's items, one flat list, each with its page, its box, its text, the representation nodes it covers and a label the record states. A PROJECTION of the representation, not the record: it reads no rule of its own about what a piece of text is. A text unit is a block of the reading-order cut (the element ethos.grounding.v1 cites), consecutive blocks sharing a page and a layout_unit joined into one, and a DOCX paragraph's runs one unit (decision #130); a label is a run's page furniture, else its tagged role path after the document's RoleMap read innermost first, else its inferred heading at levels 1-6, else `text`; a table is every table record, with its box where the record measured one; a picture is a painted image placement or a measured figure region, with the text of each unit holding a run the record names inside it. Nothing is dropped silently: every node is in exactly one place, a text unit's or a table's `node_ids`, a picture's own image node, or `omitted`. It began as the view ParseBench's adapter (`ethos_bench.py` `_layout`) built and departs from it in four places, each a consumer's need: a DOCX paragraph is one element where the adapter had one per run; the label tier (level 7) is `text`, as both projections write it, where the adapter said heading; a role path is read after the RoleMap, as Markdown reads it, where the adapter read the raw path; and a table with no box is one `table` element without `bbox`, where the adapter dropped it and kept its runs as one element each. No verdict, no score: every label is one a record field states, every box one the record measured or the union of such boxes, every node id a copy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_type",
+    "schema_version",
+    "parser_version",
+    "profile_sha256",
+    "source_sha256",
+    "representation_sha256",
+    "elements_rule",
+    "coordinate_system",
+    "pages",
+    "elements",
+    "omitted"
+  ],
+  "properties": {
+    "artifact_type": {
+      "const": "ethos.parser.elements.v0"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "parser_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The engine build that projected this."
+    },
+    "profile_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "The RECORD's own profile, copied from the representation's identity: the profile it was read under (a DOCX, XLSX or OCR record has its own). It names the reader rules the grouping and labels follow — reading order, layout units, furniture, headings, figures — so a change to one of them moves it. It does not cover `elements_rule`, which travels below instead, so adding this view moved no other artifact's digest."
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the original source bytes, carried through from the representation."
+    },
+    "representation_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the representation the elements were built from: the binding that makes every `node_ids` entry resolvable. It does NOT cover geometry, which sits outside the representation's fingerprint by design (docs/01-CONTRACT.md §4), so it binds no `bbox` here."
+    },
+    "elements_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "This projection's own rule: how it groups, labels and orders. A change to any of those is a new id, never a flag on this one; a change to a reader rule it reads moves `profile_sha256` instead.",
+      "examples": [
+        "elements-units-v1"
+      ]
+    },
+    "coordinate_system": {
+      "$ref": "urn:ethos-parser:draft-schema:coordinate-system:0",
+      "description": "The representation's own: integer centipoints, origin at the page's top-left, y growing down. Every `bbox` here is in it, in the frame of the page's media box (`width` × `height`)."
+    },
+    "pages": {
+      "type": "array",
+      "description": "The pages the representation declares, in its order. Empty for a source with no pages (office formats), whose elements carry no `page` and no `bbox`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The page's 1-based position in the document, in the page tree's order — physical, not a printed page label (`/PageLabels`). What an element's `page` names."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Page width in integer centipoints, after rotation."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Page height in integer centipoints, after rotation."
+          },
+          "visible": {
+            "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect",
+            "description": "The box a viewer shows (decision #62), where it is narrower than the page. A consumer drawing the page shows this box alone and places every `bbox` on its picture by it. Absent where the page shows the whole of its media box."
+          }
+        }
+      }
+    },
+    "elements": {
+      "type": "array",
+      "description": "Every element, in page order, and on a page in the representation's reading order: each sits at the first node it covers, and one covering none comes last on its page. Elements may overlap in one place only: a picture's `node_ids` and text repeat runs that are elements of their own.",
+      "items": {
+        "$ref": "#/$defs/element"
+      }
+    },
+    "omitted": {
+      "type": "array",
+      "description": "What no element carries, one entry per reason that occurred, in the order the enum lists them; empty when nothing was left out. The nodes stay in the representation. `ethos-parser elements` also writes one line on stderr naming each reason and its count whenever this is not empty.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason",
+          "count",
+          "node_ids"
+        ],
+        "properties": {
+          "reason": {
+            "enum": [
+              "no-measured-box",
+              "whitespace-only",
+              "form-field",
+              "annotation",
+              "image-not-painted",
+              "figure-not-measured"
+            ],
+            "description": "`no-measured-box`: text runs on a page none of whose block has a measured box, as `ground` omits them. `whitespace-only`: a DOCX paragraph holding nothing but whitespace. `form-field`: a form field's value, which no content stream draws. `annotation`: an annotation's text, markup over the page. `image-not-painted`: an image whose placement is not an axis-aligned rectangle the record states. `figure-not-measured`: a figure region with no measured box; a region is no node, so `count` counts regions and `node_ids` is empty."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many: nodes, or figure regions for `figure-not-measured`."
+          },
+          "node_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The nodes, in reading order."
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "text",
+        "node_ids"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^e[1-9][0-9]*$",
+          "description": "`e1`, `e2`, … in this artifact's order. Stable for one representation and one rule; not a representation node id."
+        },
+        "label": {
+          "enum": [
+            "text",
+            "section-header",
+            "page-header",
+            "page-footer",
+            "table",
+            "picture"
+          ],
+          "description": "The first label the record states. `page-header` and `page-footer`: a run's page `furniture` (decision #41), read before anything else, so a running head the heading rule also read stays the page's header. `section-header`: a tagged `H` or `H1`–`H6` innermost on a run's role path after the document's `/RoleMap` (`standard_role_path`, as Markdown reads it), or a run the reader inferred a heading from its type at levels 1-6 (decision #29). The label tier, level 7 — a bold line at the head of its text (decision #47) — is `text`, as both projections write it. A role path whose innermost known role is `Title`, `LI`, `LBody`, `Lbl` or `Caption` settles the element as `text`: this view has no title, list or caption label, and reads none from a font size or a bullet (docs/06-STEAL-REFUSE.md P14). A tagged `Table` role labels nothing. `table`: a table record. `picture`: a painted image placement or a figure region (decision #46). `text`: anything else."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The `index` of its page: its 1-based position in the document. Absent for a source with no pages."
+        },
+        "bbox": {
+          "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect",
+          "description": "`[x0, y0, x1, y1]` in `coordinate_system`. A text unit's is the union of its runs' measured boxes; a table's and a cell's the record's measured box; a painted image's the rectangle its placement painted; a figure's its measured region. On a page every element has one except a table whose record has none (a tagged table's grid); a source with no pages has none at all."
+        },
+        "text": {
+          "type": "string",
+          "description": "A text unit's blocks joined by one space, and a DOCX paragraph's runs as both projections write them, its tabs and line breaks kept; a table's cell texts joined by one space; a picture's text is that of each unit holding a run the record names inside it, joined by one space (decision #97), and may be empty."
+        },
+        "node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The representation nodes it covers, copied from the record: a text unit's runs in reading order, a run with no box of its own included; a table's cells' nodes, cell by cell; a painted image's own node, then the runs the record names inside it; a figure region's runs inside. How a consumer binds an element back to the record: each id is a node of the representation named by `representation_sha256`."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "A `section-header`'s level: the tagged `H1`–`H6` (`H` is 1), or the reader's inferred level, 1 where it states none. Absent on every other label."
+        },
+        "table": {
+          "$ref": "#/$defs/table",
+          "description": "The table record's grid. Present on every `table` element, and only there."
+        }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "rows",
+        "columns",
+        "cells"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The table record's id in the representation."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A worksheet's name, as its cells' locators state it (decision #135). Absent on any other table."
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cells": {
+          "type": "array",
+          "description": "The record's cells, in its order. A merged cell is one entry at its top-left slot.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "row",
+              "column",
+              "rowspan",
+              "colspan",
+              "text",
+              "node_ids"
+            ],
+            "properties": {
+              "row": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Zero-indexed row."
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Zero-indexed column."
+              },
+              "rowspan": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Rows it spans; 1 means not merged."
+              },
+              "colspan": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Columns it spans; 1 means not merged."
+              },
+              "bbox": {
+                "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect",
+                "description": "The cell's measured box. Absent where the record has none."
+              },
+              "text": {
+                "type": "string",
+                "description": "The cell's text, as the record holds it."
+              },
+              "node_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "The nodes the record places in this cell."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "artifact_type": "ethos.parser.elements.v0",
+      "coordinate_system": {
+        "origin": "top-left",
+        "unit": "centipoint"
+      },
+      "elements": [
+        {
+          "bbox": [
+            4000,
+            1277,
+            18400,
+            3497
+          ],
+          "id": "e1",
+          "label": "section-header",
+          "level": 1,
+          "node_ids": [
+            "s1"
+          ],
+          "page": 1,
+          "text": "Display line"
+        },
+        {
+          "bbox": [
+            4000,
+            5138,
+            20200,
+            11848
+          ],
+          "id": "e2",
+          "label": "text",
+          "node_ids": [
+            "s2",
+            "s3",
+            "s4",
+            "s5",
+            "s6"
+          ],
+          "page": 1,
+          "text": "The first line of body text runs on to a second line and a third and a fourth before a fifth line closes the paragraph"
+        }
+      ],
+      "elements_rule": "elements-units-v1",
+      "omitted": [],
+      "pages": [
+        {
+          "height": 20000,
+          "index": 1,
+          "width": 30000
+        }
+      ],
+      "parser_version": "0.66.0-dev.1",
+      "profile_sha256": "sha256:a516f5d896552f4d9bccefb1620a4f0fbc48dcdc943c005218b9b747fad831ff",
+      "representation_sha256": "sha256:2d3274e6732f898972e3f12c052180396a43f9f9c7eafa9697db1d9b543810fc",
+      "schema_version": "0.1.0",
+      "source_sha256": "sha256:63dacd4e68465fb9fa955a67357fff611c53127849acfc118a346f623edf27c1"
+    }
+  ]
+}

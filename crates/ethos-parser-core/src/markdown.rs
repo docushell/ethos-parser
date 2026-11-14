@@ -2188,9 +2188,19 @@ fn opens_block_syntax(text: &str) -> bool {
 
 /// Decision #130. The `<w:p>` a DOCX run belongs to, as its part and paragraph; `None` for any
 /// other address.
-fn docx_paragraph(node: &crate::Node) -> Option<(&str, u32)> {
+pub(crate) fn docx_paragraph(node: &crate::Node) -> Option<(&str, u32)> {
     match &node.native_locator {
         crate::NativeLocator::Docx(d) => Some((d.part.as_str(), d.paragraph)),
+        _ => None,
+    }
+}
+
+/// Decision #135. The worksheet a workbook cell's node is addressed under, as its locator states
+/// it; `None` for any other node. The Markdown and HTML heading over a sheet's table and the
+/// element view's table `name` both read it here.
+pub(crate) fn sheet_name(node: &crate::Node) -> Option<&str> {
+    match &node.native_locator {
+        crate::NativeLocator::Xlsx(l) => Some(l.sheet.as_str()),
         _ => None,
     }
 }
@@ -4634,15 +4644,11 @@ pub(crate) fn plan_tables<'a>(
         // heading quotes the record rather than inventing a label. It is `syntax`: no node's text
         // holds it, so it cannot be `source` (law 3), and making it a node would cite one name from
         // `xl/workbook.xml` that the record already states once per cell.
-        let caption =
-            table
-                .cells
-                .iter()
-                .flat_map(|cell| &cell.node_ids)
-                .find_map(|id| match &by_id.get(id.as_str())?.native_locator {
-                    crate::NativeLocator::Xlsx(l) => Some(l.sheet.as_str()),
-                    _ => None,
-                });
+        let caption = table
+            .cells
+            .iter()
+            .flat_map(|cell| &cell.node_ids)
+            .find_map(|id| sheet_name(by_id.get(id.as_str())?));
 
         plans.push(TablePlan {
             projected: true,
@@ -4935,7 +4941,7 @@ pub(crate) mod tests {
     // The projection
     // ---------------------------------------------------------------------------------------
 
-    fn payload(nodes: Vec<Node>, pages: Vec<PageRecord>) -> RepresentationPayload {
+    pub(crate) fn payload(nodes: Vec<Node>, pages: Vec<PageRecord>) -> RepresentationPayload {
         payload_with_tables(nodes, pages, Vec::new())
     }
 
@@ -4991,7 +4997,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn text_node(
+    pub(crate) fn text_node(
         alloc: &mut IdAllocator,
         parent: &NodeId,
         ordinal: u32,

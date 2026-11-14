@@ -1226,3 +1226,96 @@ fn the_locations_schema_pins_the_version_and_rule_the_code_emits() {
         "the schema states a ceiling the code does not enforce, or the reverse"
     );
 }
+
+/// The elements draft schema pins the shape version, the rule and the labels the code emits
+/// (decision #137), added with the schema as `docs/draft-schemas/README.md` asks.
+#[test]
+fn the_elements_schema_pins_the_version_and_rule_the_code_emits() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("docs/draft-schemas/elements.draft.json");
+    let schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display())),
+    )
+    .expect("the draft schema is valid JSON");
+
+    assert_eq!(
+        schema["properties"]["schema_version"]["const"].as_str(),
+        Some(ethos_parser_core::ELEMENTS_SCHEMA_VERSION),
+        "elements.draft.json pins a schema_version the code no longer emits"
+    );
+    assert_eq!(
+        schema["properties"]["artifact_type"]["const"].as_str(),
+        Some(ethos_parser_core::ELEMENTS_ARTIFACT_TYPE)
+    );
+    let examples = schema["properties"]["elements_rule"]["examples"]
+        .as_array()
+        .expect("elements_rule carries examples");
+    assert!(
+        examples.contains(&ethos_parser_core::ELEMENTS_RULE_V1.into()),
+        "elements.draft.json's `elements_rule` examples do not name the rule this build emits"
+    );
+
+    // Every label the code can write, and no other, spelled as it writes them. The match fails to
+    // compile when a label is added, so the list cannot fall behind the enum.
+    use ethos_parser_core::ElementLabel::*;
+    let labels = [Text, SectionHeader, PageHeader, PageFooter, Table, Picture];
+    for label in labels {
+        match label {
+            Text | SectionHeader | PageHeader | PageFooter | Table | Picture => {}
+        }
+    }
+    let written: Vec<serde_json::Value> = labels
+        .iter()
+        .map(|l| serde_json::to_value(l).unwrap())
+        .collect();
+    assert_eq!(
+        schema["$defs"]["element"]["properties"]["label"]["enum"]
+            .as_array()
+            .expect("the labels are an enum"),
+        &written
+    );
+
+    // And every omission reason, in the order the artifact lists them.
+    use ethos_parser_core::OmissionReason::*;
+    let reasons = [
+        NoMeasuredBox,
+        WhitespaceOnly,
+        FormField,
+        Annotation,
+        ImageNotPainted,
+        FigureNotMeasured,
+    ];
+    for reason in reasons {
+        match reason {
+            NoMeasuredBox | WhitespaceOnly | FormField | Annotation | ImageNotPainted
+            | FigureNotMeasured => {}
+        }
+    }
+    let written: Vec<serde_json::Value> = reasons
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect();
+    assert_eq!(
+        schema["properties"]["omitted"]["items"]["properties"]["reason"]["enum"]
+            .as_array()
+            .expect("the reasons are an enum"),
+        &written
+    );
+    assert!(reasons.windows(2).all(|w| w[0] < w[1]), "listed in order");
+
+    let example = schema["examples"]
+        .as_array()
+        .and_then(|a| a.first())
+        .expect("the schema carries a worked example");
+    assert_eq!(
+        example["elements_rule"].as_str(),
+        Some(ethos_parser_core::ELEMENTS_RULE_V1)
+    );
+    assert_eq!(
+        example["schema_version"].as_str(),
+        Some(ethos_parser_core::ELEMENTS_SCHEMA_VERSION)
+    );
+}

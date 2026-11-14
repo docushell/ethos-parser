@@ -16,7 +16,7 @@ ethos-parser/
 │   ├── ethos-parser-pdf/         # lopdf: classify, text runs, font metrics, encoding tables
 │   ├── ethos-parser-office/      # eight office formats
 │   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1, plus the validator
-│   └── ethos-parser-cli/         # eleven subcommands; tests/oracle.rs lives here
+│   └── ethos-parser-cli/         # twelve subcommands; tests/oracle.rs lives here
 ├── ocr/                    # ethos-parser-ocr, the recognizer `--ocr` runs: its own workspace and toolchain
 ├── vendor/README.md        # what is carried, and what deliberately is not
 ├── fixtures/               # a manifest referencing four corpus roots
@@ -79,7 +79,7 @@ v1-S6, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `tag` at auto
 `crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
 
 **The CLI is a thin shell over the library**, so the two cannot diverge. Every subcommand is a
-library call plus argument parsing plus an exit-code mapping — and that rule binds all eleven, not
+library call plus argument parsing plus an exit-code mapping — and that rule binds all twelve, not
 just the four below.
 
 | Command | Input | Output | Exit codes |

@@ -14,12 +14,12 @@
 
 //! `ethos-parser` — the ethos-parser command line.
 //!
-//! **Four subcommands at v0. Eleven now**, and this paragraph said four until v2-S13.5, nine until
-//! auto-tagging S2 and ten until `locate`. The v0 four are `classify`, `extract`, `ground` and
-//! `grounding-check`; `verify` arrived at v0.1, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at
-//! v1.2-S1, `overlay` with the image work, `tag` — the writer of
-//! `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging S2, and `locate` — the query of
-//! `docs/26-LOCATE-SCOPE.md` — at v2.3. The `Command` enum below is the list that cannot go stale, and
+//! **Four subcommands at v0. Twelve now**, and this paragraph said four until v2-S13.5, nine until
+//! auto-tagging S2, ten until `locate` and eleven until `elements`. The v0 four are `classify`,
+//! `extract`, `ground` and `grounding-check`; `verify` arrived at v0.1, `markdown` at v1.1-S1,
+//! `html` at v1.1-S4, `mcp` at v1.2-S1, `overlay` with the image work, `tag` — the writer of
+//! `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging S2, `locate` — the query of
+//! `docs/26-LOCATE-SCOPE.md` — at v2.3, and `elements` with decision #137. The `Command` enum below is the list that cannot go stale, and
 //! `crates/ethos-parser-core/src/verifier.rs` said *"the other eight subcommands"* from v0.1 until
 //! auto-tagging S2 moved it with this paragraph — two files in one workspace disagreeing about a
 //! number a reader can count is exactly what `docs/04-ARCHITECTURE.md` §2 repaired at v2-S13.3 and
@@ -167,6 +167,27 @@ enum Command {
     /// overloading 1 would make a caller's `&&` chain mean two different things depending on
     /// which subcommand ran.
     Locate(LocateArgs),
+
+    /// Project a `DocumentRepresentation v0` into `ethos.parser.elements.v0` (decision #137).
+    ///
+    /// **One flat list of the document's items**, each with its page, its box, its text, the node
+    /// ids it covers and a label the record states: `text`, `section-header`, `page-header`,
+    /// `page-footer`, `table` (with its grid) or `picture`. No label is inferred here: a heading is
+    /// a tagged one or one the reader inferred from its type, as Markdown writes it with `#`; a
+    /// header or footer is the reader's page furniture; there is no list or caption label. A DOCX
+    /// paragraph is one element. Boxes are integer centipoints from the top-left of the page; a
+    /// source with no pages has neither pages nor boxes.
+    ///
+    /// **Nothing is dropped silently**: a node no element carries — a run with no measured box, a
+    /// form field's value, an annotation — is listed under `omitted` with its reason, and one line
+    /// on stderr counts them.
+    ///
+    /// Takes a representation, or `--source FILE` to read a document and project it in one process,
+    /// as `markdown --source` does. stdout is canonical JSON.
+    ///
+    /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
+    /// its declared digest.
+    Elements(ElementsArgs),
 
     /// Serve the engine over MCP on stdin/stdout (v1.2-S1).
     ///
@@ -349,6 +370,18 @@ struct LocateArgs {
     /// `ethos.grounding.v1` admits. A larger file is refused by name.
     #[arg(long, value_name = "FILE")]
     quote_file: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct ElementsArgs {
+    /// A `DocumentRepresentation v0` JSON file, as `ethos-parser extract` emits.
+    #[arg(required_unless_present = "source", conflicts_with = "source")]
+    path: Option<PathBuf>,
+
+    /// A source document — PDF or office — to extract and project in one process. The artifact is
+    /// byte-identical to `extract` piped into this subcommand.
+    #[arg(long, value_name = "FILE")]
+    source: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -587,6 +620,14 @@ fn main() -> ExitCode {
         Command::Locate(args) => {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_locate(args))
+        }
+        Command::Elements(args) => {
+            let path = args
+                .path
+                .clone()
+                .or_else(|| args.source.clone())
+                .unwrap_or_default();
+            timed(Stage::Ground, diag, &path, || run_elements(args))
         }
         // Not `timed`: a server has no one input path and no one stage, and inventing a
         // diagnostics row for the whole session would put a duration on a pipe.
@@ -1172,6 +1213,47 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         },
         Err(e) => fail(&e),
     }
+}
+
+/// Read a representation, or a source, and project its elements (decision #137). Thin, as
+/// `run_markdown` is: the projection is `ethos_parser_core::to_elements`.
+fn run_elements(args: ElementsArgs) -> ExitCode {
+    let repr = match representation_to_project(args.path.as_deref(), args.source.as_deref(), false)
+    {
+        Ok(r) => r,
+        Err(e) => return fail(&e),
+    };
+    hint_ocr(&repr, OCR_ON_RECORD);
+    let artifact = match ethos_parser_core::to_elements(&repr, &Profile::default().parser_version) {
+        Ok(a) => a,
+        Err(e) => return fail(&e),
+    };
+    if let Err(e) = artifact
+        .to_canonical_bytes()
+        .and_then(|out| write_stdout(&out, true))
+    {
+        return fail(&e);
+    }
+    // On stderr, as `ground`'s omission note is: stdout is the artifact, whose `omitted` names them.
+    if !artifact.omitted.is_empty() {
+        let nodes: usize = artifact.omitted.iter().map(|o| o.node_ids.len()).sum();
+        let reasons: Vec<String> = artifact
+            .omitted
+            .iter()
+            .map(|o| {
+                let reason = serde_json::to_value(o.reason).unwrap_or_default();
+                format!("{} {}", reason.as_str().unwrap_or_default(), o.count)
+            })
+            .collect();
+        let _ = writeln!(
+            std::io::stderr(),
+            "engine: {nodes} of {} node(s) omitted from the elements ({}). They remain in the \
+             representation; the artifact's `omitted` names each one.",
+            repr.payload().nodes.len(),
+            reasons.join(", "),
+        );
+    }
+    ExitCode::from(PROJECTED as u8)
 }
 
 /// The projection options a `markdown` or `html` command line asks for (decision #134).

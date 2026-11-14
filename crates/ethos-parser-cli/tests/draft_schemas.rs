@@ -424,7 +424,7 @@ impl ethos_parser_pdf::Recognize for Reads {
     }
 }
 
-/// The three projections of `repr`, each where the engine produces one.
+/// The projections of `repr`, each where the engine produces one.
 fn project(
     name: &str,
     repr: &DocumentRepresentation,
@@ -439,6 +439,9 @@ fn project(
     if let Ok(html) = ethos_parser_core::to_html(repr, v, sha, &profile.html_rule) {
         out.push((name.into(), "html", as_json!(html)));
     }
+    let elements = ethos_parser_core::to_elements(repr, v)
+        .unwrap_or_else(|e| panic!("{name}: every record projects to elements: {e}"));
+    out.push((name.into(), "elements", as_json!(elements)));
     // A word the record holds, so an occurrence is walked and not only an empty answer.
     let payload = as_json!(repr);
     let quote = payload["representation"]["nodes"]
@@ -492,6 +495,7 @@ fn every_artifact_the_engine_emits_is_described_by_its_draft() {
         "markdown",
         "html",
         "locations",
+        "elements",
         "error-taxonomy",
     ] {
         assert!(

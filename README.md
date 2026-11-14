@@ -168,6 +168,7 @@ ethos-parser ground repr.json > grounding.json
 | `overlay` | An annotated copy of the PDF showing what was found — and what has no box | 0 / 2 |
 | `tag` | A copy of an untagged PDF with a structure tree written over it from the block cut — one `/Div` per block, marked as computed, so `extract` reads it back as this engine's own. Fills absence only: a PDF that already has a tree is refused ([`docs/23-AUTO-TAGGING-SCOPE.md`](docs/23-AUTO-TAGGING-SCOPE.md)) | 0 / 2 |
 | `locate` | Where a string lies in a representation — every occurrence, as node ids, character offsets and the record's own boxes. Never whether anything is true: a string that occurs nowhere is an empty answer, and there is no exit 1 ([`docs/26-LOCATE-SCOPE.md`](docs/26-LOCATE-SCOPE.md)) | 0 / 2 |
+| `elements` | The document's items as one list — text, section headers, page headers and footers, tables with their cells, pictures — each with its page, box, text and the node ids it covers, labelled only from what the record states; what no element carries is listed under `omitted` with its reason. Takes a representation, or `--source <FILE>` like `markdown` | 0 / 2 |
 | `mcp` | Serve `extract`, `ground`, `node_get`, `locate` and `markdown` to an agent over stdio | 0 / 2 |
 
 Exit codes always mean the same thing: **0** it worked, **1** it ran and the answer is no, **2** it
