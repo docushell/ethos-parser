@@ -145,7 +145,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
-/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -280,7 +280,13 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// CommonMark reads as a block of its own ([`opens_block_syntax`]). Any other span — italic, a
 /// script — now closes at the line's end and opens again on the next: `*a*` and `*b*` on two
 /// lines where `-v13` wrote `*a b*`. An untagged page projects byte for byte what `-v13`
-/// projected. Both ids move.
+/// projected. Both ids move. And so is decision #128's, folded in: a list body run whose element
+/// the file numbers, after a body another number holds, opens the next item ([`ListRole`]), where
+/// `-v13` joined every body run at one depth into one item. A body set no lower than the open
+/// run's line goes on from a marker drawn in the `/LI` itself, as from its `/Lbl`, and where it
+/// reads on — opening lowercase with no label of its own ([`list_role_at`]) — as a column break
+/// carries a bullet into a new `/LBody`. A join inside one numbered element counts as
+/// [`BLOCK_ELEMENT_RUN_JOINS`], no longer as [`GFM_LIST_ITEM_RUN_JOINS`]' guess.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -343,8 +349,12 @@ pub const GFM_TABLE_NOT_PROJECTED: &str = "gfm-table-not-projected-v1";
 ///
 /// PDF 32000 pairs one `/Lbl` with one `/LBody`, so a body run directly after its label is the
 /// **same item** by the standard and is not counted. A second body run is different: the role
-/// path of two sibling `/LI`s is identical, so nothing in the representation distinguishes "the
-/// rest of this item" from "the next item". This projection joins, and says how often.
+/// path of two sibling `/LI`s is identical. Where the file numbers both runs' elements, one
+/// number is one item, counted under [`BLOCK_ELEMENT_RUN_JOINS`], and two are two items
+/// (decision #128); where it leaves either unnumbered, nothing in the representation distinguishes
+/// "the rest of this item" from "the next item". This projection joins those, and two numbered
+/// elements where a body set no lower than the open run's line follows a marker drawn in the
+/// `/LI` itself or reads on ([`ListRole::continues`]), and says how often.
 pub const GFM_LIST_ITEM_RUN_JOINS: &str = "gfm-list-item-run-joins-v1";
 
 /// Runs joined into one block because the document put them in one marked-content sequence
@@ -414,7 +424,9 @@ pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
 /// style and at every line, as Word's export does, wrote each piece as a block of its own. Along a
 /// line a space goes in only where the page drew one; onto the element's next line, a line break,
 /// or one space where [`element_next_line`] says (decision #126). The licence is the element, not
-/// the sequence, so it is counted apart from [`MCID_RUN_JOINS`].
+/// the sequence, so it is counted apart from [`MCID_RUN_JOINS`]. A list item's runs one numbered
+/// element holds count here too, in a sequence or across them, where they would have counted as
+/// [`GFM_LIST_ITEM_RUN_JOINS`]' guess (decision #128); the list path joins them as it did.
 pub const BLOCK_ELEMENT_RUN_JOINS: &str = "block-element-run-joins-v1";
 
 /// A block the document declared a **heading** whose depth this engine did not resolve, projected
@@ -1050,9 +1062,10 @@ pub(crate) fn list_role(node: &crate::Node) -> Option<ListRole> {
         return None;
     };
     let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
-    let label = match path.last()?.as_str() {
-        "Lbl" => true,
-        "LBody" | "LI" => false,
+    let (label, item) = match path.last()?.as_str() {
+        "Lbl" => (true, false),
+        "LBody" => (false, false),
+        "LI" => (false, true),
         _ => return None,
     };
     // Nesting comes from nested `/L`, which is how PDF spells a sub-list. Depth 0 is the
@@ -1061,7 +1074,59 @@ pub(crate) fn list_role(node: &crate::Node) -> Option<ListRole> {
     Some(ListRole {
         depth: lists.checked_sub(1)?,
         label,
+        item,
+        reads_on: false,
+        at: node
+            .native_locator
+            .run_locator()
+            .map(|l| (l.page, l.origin_y)),
+        pitch: None,
+        element: t.block_element,
     })
+}
+
+/// [`list_role`] for `nodes[i]`, with its font's glyph pitch and whether its element's text reads on
+/// ([`reads_on`]), read across the runs the element holds from here up to the first space: a
+/// producer that draws a glyph at a time writes `ii.` as `i`, `i`, `.` (decision #128).
+pub(crate) fn list_role_at(
+    nodes: &[crate::Node],
+    i: usize,
+    pitch: &PitchReference,
+) -> Option<ListRole> {
+    let node = nodes.get(i)?;
+    let role = list_role(node)?;
+    let mut text = String::new();
+    for node in nodes[i..].iter().take(8) {
+        if list_role(node).map(|r| r.element) != Some(role.element) {
+            break;
+        }
+        text.push_str(node.reading_text());
+        if text.trim_start().contains(char::is_whitespace) {
+            break;
+        }
+    }
+    Some(ListRole {
+        reads_on: reads_on(&text),
+        pitch: text_run_attributes(node)
+            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .map(|m| m.pitch),
+        ..role
+    })
+}
+
+/// Whether a list run's `text` reads on from the item before (decision #128): it opens lowercase,
+/// as a tagged line its column wrapped does ([`opens_lowercase`]), with no label of its own — a
+/// letter or a roman numeral closed by `.` or `)` as [`is_label_head`] reads one, spaced or not,
+/// or Word's second-level bullet `o`.
+fn reads_on(text: &str) -> bool {
+    let head = text.split_whitespace().next().unwrap_or_default();
+    let label = head.find(['.', ')']).map(|end| &head[..=end]);
+    opens_lowercase(text) && head != "o" && !label.is_some_and(is_label_head)
+}
+
+/// Whether `text` opens lowercase: the rest of a sentence, not the start of one.
+fn opens_lowercase(text: &str) -> bool {
+    text.trim_start().starts_with(char::is_lowercase)
 }
 
 /// A run's position in a tagged list.
@@ -1071,6 +1136,59 @@ pub(crate) struct ListRole {
     pub(crate) depth: usize,
     /// Whether this run is the item's `/Lbl` — the marker the document itself drew.
     pub(crate) label: bool,
+    /// Whether this run sits in the `/LI` itself, under no `/Lbl` or `/LBody` — a marker a
+    /// producer drew there, as Chromium does.
+    pub(crate) item: bool,
+    /// Whether the run's element reads on from the item before, where [`list_role_at`] read it.
+    pub(crate) reads_on: bool,
+    /// The run's page and baseline, where its locator has them.
+    pub(crate) at: Option<(u32, i64)>,
+    /// The glyph pitch of the run's font, where [`list_role_at`] measured it.
+    pub(crate) pitch: Option<i64>,
+    /// The `/Lbl`, `/LBody` or `/LI` holding the run, where the file numbers it (decision #84).
+    pub(crate) element: Option<crate::PdfObjectNumber>,
+}
+
+impl ListRole {
+    /// Whether this run goes on in `open`, the item the previous run was in: a run at its depth
+    /// that is no `/Lbl`, after that item's `/Lbl`, in the same element, or where the file leaves
+    /// either unnumbered; or a body set nowhere below the open run, after a marker drawn in the
+    /// `/LI` itself or reading on ([`reads_on`]) where a column break carried a bullet into a new
+    /// `/LBody`. Two numbered bodies are otherwise two items (decision #128).
+    pub(crate) fn continues(self, open: Option<ListRole>) -> bool {
+        open.is_some_and(|open| {
+            !self.label
+                && open.depth == self.depth
+                && (open.label
+                    || self.element.is_none()
+                    || open.element.is_none()
+                    || self.element == open.element
+                    || (!self.item && !self.below(open) && (open.item || self.reads_on)))
+        })
+    }
+
+    /// Whether this run sits on a lower line than `open`'s on one page: its baseline further down
+    /// the top-left system than [`same_line`]'s tolerance of the open run's font allows.
+    fn below(self, open: ListRole) -> bool {
+        matches!((self.at, open.at), (Some((page, y)), Some((open_page, open_y)))
+            if page == open_page
+                && y > open_y
+                && !open.pitch.is_some_and(|pitch| on_one_baseline(y, open_y, pitch)))
+    }
+
+    /// The census code a join into `open` counts under, where [`Self::continues`] says it joins:
+    /// none after the item's own `/Lbl`, which PDF 32000 pairs with its body;
+    /// [`BLOCK_ELEMENT_RUN_JOINS`] inside one numbered element; and otherwise
+    /// [`GFM_LIST_ITEM_RUN_JOINS`], the guess.
+    pub(crate) fn join_code(self, open: ListRole) -> Option<&'static str> {
+        if open.label {
+            None
+        } else if self.element.is_some() && self.element == open.element {
+            Some(BLOCK_ELEMENT_RUN_JOINS)
+        } else {
+            Some(GFM_LIST_ITEM_RUN_JOINS)
+        }
+    }
 }
 
 /// The next run, when this one ends in a line-break hyphen and that run finishes the word.
@@ -1617,9 +1735,7 @@ pub(crate) fn wrapped_labels(repr: &DocumentRepresentation) -> std::collections:
         let word =
             i64::try_from(text.chars().take_while(|c| !c.is_whitespace()).count()).unwrap_or(0);
         let first_word = (1 + word) * (rb.2 - rb.0) / chars.max(1);
-        let lowercase = a.unit.is_none()
-            && a.tagged.is_some()
-            && b.text.trim_start().starts_with(char::is_lowercase);
+        let lowercase = a.unit.is_none() && a.tagged.is_some() && opens_lowercase(&b.text);
         if lowercase || heads.is_some_and(|edge| ra.2 <= edge + height && ra.2 + first_word > edge)
         {
             out.insert(b.first);
@@ -1988,8 +2104,13 @@ pub(crate) fn same_line(line: LineKey, node: &crate::Node, measure: FontMeasure)
         k.page == line.page
             && k.region == line.region
             && k.artifact == line.artifact
-            && 10 * (k.baseline - line.baseline).abs() <= measure.pitch
+            && on_one_baseline(k.baseline, line.baseline, measure.pitch)
     })
+}
+
+/// Whether two baselines are one line's: within a tenth of the font's median glyph, `pitch`.
+fn on_one_baseline(a: i64, b: i64, pitch: i64) -> bool {
+    10 * (a - b).abs() <= pitch
 }
 
 pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
@@ -3098,8 +3219,8 @@ pub fn to_markdown(
 
     let mut emitted_tables = vec![false; plans.len()];
     let mut last: Option<Block> = None;
-    // The list item currently open, and whether the previous run in it was the item's own `/Lbl`.
-    let mut open_item: Option<(usize, bool)> = None;
+    // The list item currently open: the previous run's place in it, its own `/Lbl` or not.
+    let mut open_item: Option<ListRole> = None;
     // Set when the previous node's hyphen join already emitted this one's text, as the tail of a
     // joined word. Its characters still count toward `in_representation` — they are in the record
     // whether or not this pass reaches them separately — so the flag is read after that.
@@ -3219,13 +3340,12 @@ pub fn to_markdown(
             continue;
         }
 
-        if let Some(role) = list_role(node) {
-            let continues = !role.label && open_item.map(|(d, _)| d) == Some(role.depth);
-            if continues {
+        if let Some(role) = list_role_at(&payload.nodes, i, &pitch) {
+            if role.continues(open_item) {
                 // A second run inside an item the tree did not itself close. Joined here, and
-                // counted there — see `GFM_LIST_ITEM_RUN_JOINS`.
-                if !matches!(open_item, Some((_, true))) {
-                    *erasures.entry(GFM_LIST_ITEM_RUN_JOINS).or_insert(0) += 1;
+                // counted where `ListRole::join_code` says.
+                if let Some(code) = open_item.and_then(|open| role.join_code(open)) {
+                    *erasures.entry(code).or_insert(0) += 1;
                 }
                 // `-v12`: no space between two fragments of one word, as in a table cell.
                 let abuts = i
@@ -3251,7 +3371,7 @@ pub fn to_markdown(
                 e.syntax("- ");
             }
             e.source(&text, node.id.as_str());
-            open_item = Some((role.depth, role.label));
+            open_item = Some(role);
             last = Some(Block::ListItem(role.depth));
             // The list path has its own join and its own census code; a prose block never
             // continues into or out of one.
@@ -5743,6 +5863,165 @@ pub(crate) mod tests {
             ("One", Some(&["Document", "L", "LI", "LBody"])),
         ]));
         assert_eq!(erasure(&paired, GFM_LIST_ITEM_RUN_JOINS), 0);
+    }
+
+    /// **Two bodies the file numbers are two items** (decision #128): sibling `/LI`s share one
+    /// role path, and each `/LBody` its own object number. One body's runs stay one item, counted
+    /// as the element's join rather than a guess, and a body still joins its own `/Lbl`.
+    #[test]
+    fn two_numbered_list_bodies_are_two_items() {
+        let path = &["Document", "L", "LI", "LBody"];
+        let body = |mcid, element| tagged_in(mcid, path, Some(element));
+        let label = |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "Lbl"], Some(element));
+        let a = project_lines(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("• Second", body(8, 2796), 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(a.markdown, "- • First\n- • Second\n");
+        assert_eq!(erasure(&a, GFM_LIST_ITEM_RUN_JOINS), 0);
+
+        let one = project_lines(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("continued", body(5, 2795), 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(one.markdown, "- • First continued\n");
+        assert_eq!(erasure(&one, GFM_LIST_ITEM_RUN_JOINS), 0);
+        assert_eq!(erasure(&one, BLOCK_ELEMENT_RUN_JOINS), 1);
+
+        // A body the file does not number stays the guess.
+        let bare = tagged_in(5, path, None);
+        let unnumbered = project_lines(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("continued", bare, 7200, 5800, Some(1600), None),
+        ]);
+        assert_eq!(unnumbered.markdown, "- • First continued\n");
+        assert_eq!(erasure(&unnumbered, GFM_LIST_ITEM_RUN_JOINS), 1);
+        assert_eq!(erasure(&unnumbered, BLOCK_ELEMENT_RUN_JOINS), 0);
+
+        let labelled = project_lines(&[
+            ("1.", label(3, 2794), 7200, 7200, Some(400), None),
+            ("First", body(4, 2795), 7800, 7200, Some(1000), None),
+            ("2.", label(5, 2796), 7200, 5800, Some(400), None),
+            ("Second", body(6, 2797), 7800, 5800, Some(1200), None),
+        ]);
+        assert_eq!(labelled.markdown, "- 1. First\n- 2. Second\n");
+    }
+
+    /// **A body that reads on goes on in the open item** (decision #128): a bullet a column break
+    /// carried to the top of the next column, which a producer tagged as a new `/LBody`. Reading on
+    /// is opening lowercase with no label of its own — `b)`, `ii.` drawn a glyph at a time, Word's
+    /// `o` — set nowhere below the open run. Counted as the guess. Anything else is the next item:
+    /// a body opening with a capital, a bullet, a number or a symbol font's bullet, wherever it is
+    /// set, and a lowercase one on the next line down.
+    #[test]
+    fn a_body_that_reads_on_goes_on_in_the_open_item() {
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let top = |first: &'static str, second: &'static str| {
+            project_lines(&[
+                (first, body(4, 95), 7200, 7200, Some(4000), None),
+                (second, body(9, 100), 30000, 2000, Some(3000), None),
+            ])
+        };
+        let a = top("\u{F02A} Observations made from", "a viewing platform.");
+        assert_eq!(
+            a.markdown,
+            "- \u{F02A} Observations made from a viewing platform.\n"
+        );
+        assert_eq!(erasure(&a, GFM_LIST_ITEM_RUN_JOINS), 1);
+        assert_eq!(erasure(&a, BLOCK_ELEMENT_RUN_JOINS), 0);
+
+        for second in [
+            "Harvesters shared",
+            "\u{F02A} harvesters shared",
+            "• harvesters",
+            "o added examples",
+            "2. second",
+            "b) second",
+            "[26] second",
+        ] {
+            assert_eq!(
+                top("\u{F02A} First", second).markdown,
+                format!("- \u{F02A} First\n- {second}\n"),
+                "{second:?}"
+            );
+        }
+
+        // A label drawn a glyph at a time is a label still.
+        let glyphs = project_lines(&[
+            ("i. First", body(4, 95), 7200, 7200, Some(1600), None),
+            ("i", body(9, 100), 30000, 2000, Some(200), None),
+            ("i.", body(9, 100), 30200, 2000, Some(300), None),
+            ("second", body(9, 100), 31000, 2000, Some(1400), None),
+        ]);
+        assert_eq!(glyphs.markdown, "- i. First\n- ii. second\n");
+
+        // On one baseline, a body opening with a capital is an item of its own.
+        let beside = project_lines(&[
+            ("First", body(4, 95), 7200, 7200, Some(2000), None),
+            ("Second", body(9, 100), 30000, 7200, Some(2400), None),
+        ]);
+        assert_eq!(beside.markdown, "- First\n- Second\n");
+
+        // Stepping down the page, numbered or reading on, each body is an item of its own.
+        for (first, second) in [("1. alpha", "2. beta"), ("first item", "second item")] {
+            let down = project_lines(&[
+                (first, body(4, 95), 7200, 7200, Some(2000), None),
+                (second, body(9, 100), 7200, 8600, Some(2400), None),
+            ]);
+            assert_eq!(down.markdown, format!("- {first}\n- {second}\n"));
+        }
+    }
+
+    /// **A marker drawn in the `/LI` itself goes on into its body on its line**, as an `/Lbl` does
+    /// (decision #128): `/LI`, `/Lbl` and `/LBody` each have a number of their own. Counted as the
+    /// guess, since nothing pairs the two the way PDF 32000 pairs a label with its body. A body on
+    /// the next line down is the next item.
+    #[test]
+    fn a_marker_drawn_in_the_item_goes_on_into_its_body() {
+        let item = |mcid, element| tagged_in(mcid, &["Document", "L", "LI"], Some(element));
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let a = project_lines(&[
+            ("•", item(3, 2794), 7200, 7200, Some(400), None),
+            ("First", body(4, 2795), 7800, 7200, Some(1000), None),
+            ("•", item(5, 2796), 7200, 5800, Some(400), None),
+            ("Second", body(6, 2797), 7800, 5800, Some(1200), None),
+        ]);
+        assert_eq!(a.markdown, "- • First\n- • Second\n");
+        assert_eq!(erasure(&a, GFM_LIST_ITEM_RUN_JOINS), 2);
+
+        // A baseline a few centipoints off is one line still, as `same_line` reads one.
+        let skewed = project_lines(&[
+            ("•", item(3, 2794), 7200, 7200, Some(400), None),
+            ("First", body(4, 2795), 7800, 7210, Some(1000), None),
+        ]);
+        assert_eq!(skewed.markdown, "- • First\n");
+
+        // A whole item drawn in the `/LI`, and the next item's body on the next line down.
+        let next = project_lines(&[
+            (
+                "3. Approval of Minutes",
+                item(3, 32),
+                7200,
+                25180,
+                Some(9000),
+                None,
+            ),
+            ("4.", body(4, 38), 7200, 28051, Some(800), None),
+            (
+                "Financial Report",
+                body(5, 38),
+                8400,
+                28051,
+                Some(7000),
+                None,
+            ),
+        ]);
+        assert_eq!(
+            next.markdown,
+            "- 3. Approval of Minutes\n- 4. Financial Report\n"
+        );
     }
 
     /// A run outside the list closes it, and the next block is separated by a blank line.

@@ -82,7 +82,7 @@
 //! # What is reused rather than rewritten
 //!
 //! Everything that decides *what* to emit: [`crate::markdown::normalize`], `heading_level`,
-//! `list_role`, `dropped_code`, `hyphen_tail` and `plan_tables`. A second copy of the hyphen
+//! `list_role_at`, `dropped_code`, `hyphen_tail` and `plan_tables`. A second copy of the hyphen
 //! predicate would be a second rule that could drift from the first, and only one of them would
 //! have the corpus test that found `nonescr`.
 //!
@@ -101,9 +101,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::markdown::{
-    census, dropped_code, heading_level, hyphen_tail, list_role, normalize, plan_tables, AnchorMap,
-    Coverage, Emit, FontMeasure, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS,
-    GFM_ROW_ZERO_SEPARATOR, GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
+    census, dropped_code, heading_level, hyphen_tail, list_role_at, normalize, plan_tables,
+    AnchorMap, Coverage, Emit, FontMeasure, SlotRole, TablePlan, GFM_ROW_ZERO_SEPARATOR,
+    GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
 };
 use crate::{sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError, Sha256Hex};
 
@@ -175,7 +175,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `-v14`: decision #126's tagged element's next line on a line of its own inside its `<p>`, with
 /// the same exceptions and the same spans closed at the line's end, as
 /// `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids move together, for the reason
-/// `-v5` gives.
+/// `-v5` gives. And decision #128's, folded in: two list bodies the file numbers are two `<li>`s,
+/// and one body's join counts as the element's, as in Markdown.
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -423,11 +424,12 @@ pub fn to_html(
 
     let mut emitted_tables = vec![false; plans.len()];
     let mut list = ListState::default();
-    // The list item the previous run belonged to, and whether that run was the item's own `/Lbl`.
-    // Tracked exactly as the Markdown projection tracks it, because the question it answers —
-    // "is this run the rest of an item or the start of the next one?" — is about the TREE, and
-    // both projections have to give it the same answer or they describe different documents.
-    let mut open_item: Option<(usize, bool)> = None;
+    // The list item the previous run belonged to: its place in it, its own `/Lbl` or not, and the
+    // element holding it (decision #128). Tracked exactly as the Markdown projection tracks it,
+    // because the question it answers — "is this run the rest of an item or the start of the next
+    // one?" — is about the TREE, and both projections have to give it the same answer or they
+    // describe different documents.
+    let mut open_item: Option<crate::markdown::ListRole> = None;
     let mut joined_tail = false;
 
     // v2.2-S1. The open block's closing tag, deferred.
@@ -533,24 +535,25 @@ pub fn to_html(
             continue;
         }
 
-        if let Some(role) = list_role(node) {
+        if let Some(role) = list_role_at(&payload.nodes, i, &pitch) {
             flush_block(&mut e, &mut open_block);
             open_group = None;
             open_prev = None;
             pending_space = false;
             open_line = None;
             line_ink = None;
-            let continues = !role.label && open_item.map(|(d, _)| d) == Some(role.depth);
-            if continues {
+            if role.continues(open_item) {
                 // A second body run inside an item the tree did not itself close. **This
                 // projection commits the same erasure the Markdown one does**, so it declares it
-                // under the same code — see `GFM_LIST_ITEM_RUN_JOINS`, whose `gfm-` prefix is
-                // historical rather than descriptive: two sibling `/LI`s have identical role
-                // paths, so nothing in the representation distinguishes them, and every
-                // projection has to guess. HTML guessing differently would make the two artifacts
-                // disagree about how many items the document has.
-                if !matches!(open_item, Some((_, true))) {
-                    *erasures.entry(GFM_LIST_ITEM_RUN_JOINS).or_insert(0) += 1;
+                // under the same code, which `ListRole::join_code` picks for both — see
+                // `crate::markdown::GFM_LIST_ITEM_RUN_JOINS`, whose `gfm-` prefix is historical
+                // rather than descriptive: two sibling `/LI`s have identical role paths, so where
+                // the file leaves a body unnumbered nothing in the representation distinguishes
+                // them, and every projection has to guess (decision #128). HTML guessing
+                // differently would make the two artifacts disagree about how many items the
+                // document has.
+                if let Some(code) = open_item.and_then(|open| role.join_code(open)) {
+                    *erasures.entry(code).or_insert(0) += 1;
                 }
                 // `-v12`: no space between two fragments of one word, as in a table cell.
                 let abuts = i
@@ -566,7 +569,7 @@ pub fn to_html(
                 list.open_item(&mut e, role.depth);
             }
             escaped_source(&mut e, &text, node.id.as_str());
-            open_item = Some((role.depth, role.label));
+            open_item = Some(role);
             continue;
         }
 
@@ -1949,6 +1952,65 @@ mod tests {
                 .any(|e| e.code.starts_with("gfm-") && e.code.contains("span")),
             "and no TABLE erasure, because `<td rowspan>` commits none"
         );
+    }
+
+    /// **Two bodies the file numbers are two `<li>`s** (decision #128), as they are two items in
+    /// Markdown; one body's runs stay one, counted as the element's join.
+    #[test]
+    fn two_numbered_list_bodies_are_two_items() {
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let a = artifact_of(repr_of_placed(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("continued", body(5, 2795), 7200, 5800, Some(1600), None),
+            ("• Second", body(8, 2796), 7200, 4400, Some(1600), None),
+        ]));
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>• First continued</li>\n<li>• Second</li>\n</ul>\n"
+        );
+        assert_tiles(&a);
+        // The join one body holds is the element's, as in Markdown, not the guess.
+        let count = |code: &str| {
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map_or(0, |e| e.count)
+        };
+        assert_eq!(count(crate::markdown::GFM_LIST_ITEM_RUN_JOINS), 0);
+        assert_eq!(count(crate::markdown::BLOCK_ELEMENT_RUN_JOINS), 1);
+    }
+
+    /// **A body that reads on at the top of the next column stays in its `<li>`** (decision #128),
+    /// as it does in Markdown.
+    #[test]
+    fn a_body_that_reads_on_stays_in_its_item() {
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let a = artifact_of(repr_of_placed(&[
+            (
+                "• Observations made from",
+                body(4, 95),
+                7200,
+                7200,
+                Some(4000),
+                None,
+            ),
+            (
+                "a viewing platform.",
+                body(9, 100),
+                30000,
+                2000,
+                Some(3000),
+                None,
+            ),
+        ]));
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>• Observations made from a viewing platform.</li>\n</ul>\n"
+        );
+        assert_tiles(&a);
     }
 
     /// **The tags balance and nest, on every depth sequence the tree can produce.**

@@ -5390,7 +5390,8 @@ mod tests {
              comparable with one that does not by accident. Nothing else.\n\n\
              Moved for decision #126, `sha256:8c2f8672…` -> `sha256:57d4edd8…`: `markdown_rule` \
              `markdown-blocks-v13` -> `-v14` and `html_rule` `html-blocks-v13` -> `-v14`, for a \
-             tagged element's next line kept on a line of its own. Nothing else."
+             tagged element's next line kept on a line of its own, and decision #128's two list \
+             bodies the file numbers as two items, folded in. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),

@@ -786,7 +786,7 @@ FIXTURES = {
     # Four things are proved here and nowhere else:
     #   /Lbl 0 + /LBody 1              an item whose own marker text the document drew
     #   a nested /L under /LBody       depth, from nested `/L` rather than from indentation
-    #   /LBody with /K [7 8]           TWO runs in one item, which is the join S2 counts
+    #   /LBody with /K [7 8]           TWO runs in one numbered item, the element's join (#128)
     #   an unmarked closing run        a non-list run ends the list rather than joining it
     "tagged-list-items": (
         "BT /F1 12 Tf "

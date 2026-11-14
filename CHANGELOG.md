@@ -46,6 +46,28 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   `x86_64-apple-darwin` pair then matches the arm64 fingerprint byte for byte. The engine's output
   is unchanged.
 
+### Each tagged list item stays its own item (decision #128)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet, so no rule
+id and no `profile_sha256` moves.
+
+- **Two list bodies the file numbers are two items.** Both projections joined every body run at
+  one depth into the open item, since two sibling `/LI`s share one role path, so NIST SP 800-218's
+  four Executive Summary bullets, each its own `/LBody`, read as one item. Each body's object
+  number, which the reader carries since decision #84, now tells them apart.
+- A body still joins its own `/Lbl`, and one body's runs stay one item across its lines. A body
+  set no lower than the open run's line joins it after a marker drawn in the `/LI` itself, as
+  Chromium draws a bullet, and where it **reads on**: it opens lowercase with no label of its own
+  (`b)`, `ii.` read across the glyphs it is drawn in, Word's `o`), as a column break carries a
+  bullet to the top of the next column in a new `/LBody`. A body on the next line down, or one
+  opening with a capital, a bullet or a number, is an item of its own.
+- **The census counts only the guesses as guesses.** A join inside one numbered element now counts
+  under `block-element-run-joins-v1`, as a paragraph's does; `gfm-list-item-run-joins-v1` counts a
+  join where the file leaves either run's element unnumbered, and the two joins above. On the
+  gate's NIST SP 800-218 every one of its list joins was inside one body. An untagged page
+  projects byte for byte as before.
+- ParseBench content 0.6753 -> 0.6754 engine-only and 0.7549 -> 0.7550 with `--ocr` on top of decision #126 (10 pages up, 1 down by 0.0004: a bullet continued at a column's top), formatting, tables, charts and grounding unchanged on every page; opendataloader-bench byte for byte, none of its documents tagged; NIST SP 800-218's list items 24 -> 55.
+
 ### Columns of prose are no table, and a header set flush left heads figures set flush right (decision #127)
 
 Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no

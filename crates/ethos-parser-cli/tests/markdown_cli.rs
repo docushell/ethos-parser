@@ -529,17 +529,23 @@ fn lists_come_from_the_tree_and_nowhere_else() {
          indents, the two-run body joins, and the unmarked run ends the list"
     );
 
-    let joins = a["coverage"]["structural_erasures"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["code"] == "gfm-list-item-run-joins-v1")
-        .and_then(|e| e["count"].as_u64())
-        .unwrap_or(0);
+    let count = |code: &str| {
+        a["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == code)
+            .and_then(|e| e["count"].as_u64())
+            .unwrap_or(0)
+    };
     assert_eq!(
-        joins, 1,
-        "one item's body is two marked runs, and nothing in a role path distinguishes that from \
-         two sibling items — so the join is made and counted"
+        (
+            count("gfm-list-item-run-joins-v1"),
+            count("block-element-run-joins-v1")
+        ),
+        (0, 1),
+        "one item's body is two marked runs in one numbered `/LBody`, so the join is the \
+         element's and no guess (decision #128)"
     );
 
     // **The dangerous-looking case, and it is in the conformance corpus.**
