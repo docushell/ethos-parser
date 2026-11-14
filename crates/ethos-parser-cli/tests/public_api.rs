@@ -460,6 +460,10 @@ const CORE: &[&str] = &[
     "sort_ids",
     "to_html",
     "to_markdown",
+    // Decision #134: the projections with an option, and the option.
+    "to_html_with",
+    "to_markdown_with",
+    "ProjectionOptions",
     "tables",
     "verifier",
     // v2.3, D1 S1. `locate`'s query, its artifact, and the two ceilings it borrows from

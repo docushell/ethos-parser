@@ -156,6 +156,7 @@
                   "whitespace-collapsed-v1",
                   "hyphenation-rejoin-dropped-v1",
                   "overprinted-run-dropped-v1",
+                  "page-furniture-not-projected-v1",
                   "null-characters-not-projected-v1"
                 ]
               },

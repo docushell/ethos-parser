@@ -341,6 +341,152 @@ fn a_form_field_value_is_a_named_bucket_rather_than_body_text() {
     assert!(b["chars"].as_u64().unwrap() > 0);
 }
 
+/// The running head [`running_furniture_pdf`] sets on each of its three pages.
+const RUNNING_HEAD: &str = "Acme Ltd - Quarterly Report Q2 FY27";
+
+/// Three pages of 9-point Helvetica, each with [`RUNNING_HEAD`] at its top edge, one body line
+/// and `Page n of 3` at its foot: the reader flags the head and the folio as furniture.
+///
+/// Built in-test rather than committed as a fixture, as `oracle.rs` builds its one-line PDF: no
+/// engine fixture has more than two pages of running furniture, and no manifest hash moves for it.
+fn running_furniture_pdf() -> Vec<u8> {
+    let pages = 3;
+    let widths = vec!["500"; 224].join(" ");
+    let kids: Vec<String> = (0..pages).map(|i| format!("{} 0 R", 3 + 2 * i)).collect();
+    let mut objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {pages} >>",
+            kids.join(" ")
+        )
+        .into_bytes(),
+    ];
+    let font = 3 + 2 * pages;
+    for i in 0..pages {
+        let n = i + 1;
+        let stream = format!(
+            "BT /F1 9 Tf 1 0 0 1 36 380 Tm ({RUNNING_HEAD}) Tj ET \
+             BT /F1 9 Tf 1 0 0 1 36 300 Tm (Body text of page {n}.) Tj ET \
+             BT /F1 9 Tf 1 0 0 1 36 15 Tm (Page {n} of {pages}) Tj ET"
+        );
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << \
+                 /F1 {font} 0 R >> >> /Contents {} 0 R >>",
+                4 + 2 * i
+            )
+            .into_bytes(),
+        );
+        objects.push(
+            format!(
+                "<< /Length {} >>\nstream\n{stream}\nendstream",
+                stream.len()
+            )
+            .into_bytes(),
+        );
+    }
+    objects.push(
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    );
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        out.extend_from_slice(o);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref = out.len();
+    out.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    out
+}
+
+/// **`--drop-furniture` leaves out a running head and a folio repeated on every page, and counts
+/// them** (decision #134). The record and `--source` give one artifact, `html` leaves out the same
+/// runs under the same count, and without the flag the head is on every page.
+#[test]
+fn drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them() {
+    let dir = scratch("drop-furniture");
+    let pdf = dir.join("running.pdf");
+    std::fs::write(&pdf, running_furniture_pdf()).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+    assert_eq!(
+        plain["markdown"]
+            .as_str()
+            .unwrap()
+            .matches(RUNNING_HEAD)
+            .count(),
+        3
+    );
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let dropped = run(&["markdown", "--drop-furniture", repr]);
+    assert_eq!(
+        dropped,
+        run(&["markdown", "--drop-furniture", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&dropped).expect("canonical JSON");
+    assert_eq!(
+        a["markdown"],
+        "Body text of page 1.\n\nBody text of page 2.\n\nBody text of page 3.\n"
+    );
+    let coverage = &a["coverage"];
+    let bucket = coverage["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "page-furniture-not-projected-v1")
+        .expect("what went is counted");
+    let head = RUNNING_HEAD.len() as u64;
+    assert_eq!(
+        (bucket["chars"].as_u64(), bucket["nodes"].as_u64()),
+        (Some(3 * head + 3 * "Page 1 of 3".len() as u64), Some(6))
+    );
+    assert_eq!(
+        coverage["source_chars_emitted"].as_u64().unwrap()
+            + coverage["source_chars_dropped"].as_u64().unwrap(),
+        coverage["source_chars_in_representation"].as_u64().unwrap()
+    );
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--drop-furniture", repr])).unwrap();
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        !html.contains(RUNNING_HEAD) && !html.contains("Page "),
+        "{html}"
+    );
+    assert_eq!(h["coverage"]["dropped"], coverage["dropped"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Double-run byte identity — standing rule 6.
 #[test]
 fn two_runs_are_byte_identical() {
@@ -377,7 +523,12 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         flags.iter().all(|f| matches!(
             *f,
-            "--help" | "--version" | "--diagnostics" | "--source" | "--ocr"
+            "--help"
+                | "--version"
+                | "--diagnostics"
+                | "--source"
+                | "--ocr"
+                | "--drop-furniture"
         )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
@@ -409,6 +560,18 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         ocr_help.contains("byte-identical"),
         "--ocr must document the equality that admits it: {ocr_help:?}"
+    );
+    // **`--drop-furniture` is admitted on other evidence** (decision #134): it leaves text out,
+    // which law 1 does not forbid and A14 does unless it is counted. The map still tiles every
+    // byte it writes, and what it leaves out is counted under its own code, which
+    // [`drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them`] asserts.
+    let furniture_help = options
+        .split("--drop-furniture")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        furniture_help.contains("page-furniture-not-projected-v1"),
+        "--drop-furniture must name the count that admits it: {furniture_help:?}"
     );
 
     // And the artifact itself always carries both halves.

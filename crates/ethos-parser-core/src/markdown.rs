@@ -2739,6 +2739,136 @@ pub(crate) const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-
 /// the representation, which keeps every copy the page drew, and are not in this text.
 pub(crate) const OVERPRINTED_RUN_DROPPED: &str = "overprinted-run-dropped-v1";
 
+/// Runs left out because the caller asked for repeated page furniture to go (decision #134,
+/// [`ProjectionOptions::drop_furniture`]): a running head, a folio. Counted as a node of a kind
+/// the projection drops is counted — every character of its text, U+0000 and whitespace with it —
+/// and the representation keeps every run. Only with the option, so no default artifact has it.
+pub(crate) const PAGE_FURNITURE_NOT_PROJECTED: &str = "page-furniture-not-projected-v1";
+
+/// What a projection leaves out beyond its rule, on its caller's request (decision #134).
+///
+/// **Off by default, and off is [`to_markdown`] and [`crate::to_html`] byte for byte.** No option
+/// moves a rule id. What one leaves out is counted under a code of its own, so an artifact shows
+/// where the option acted; where it found nothing to leave out, the artifact is the default one,
+/// byte for byte, and either call reproduces it.
+///
+/// **Non-exhaustive**, so a later option is no breaking change: a caller outside this crate starts
+/// from `ProjectionOptions::default()` and sets the fields it wants.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ProjectionOptions {
+    /// Leave out page furniture that repeats: a line of runs the reader flagged as a header or a
+    /// footer ([`crate::TextRunAttributes::furniture`], on a page with no author structure), or
+    /// marked `/Artifact` by a tagged page, whose text another page's furniture repeats on the
+    /// same side of it and across the same place — whitespace aside and each run of digits read
+    /// as one, so `Page 9 of 12` and `Page 10 of 12` repeat. A line goes whole or stays whole.
+    /// A running head and a folio go; a title set apart on one page stays, and so does a cover's
+    /// year at its foot where the folios stand elsewhere. **Known limits**: a numbered title at
+    /// the head of each chapter's first page, `Chapter 1`, `Chapter 2`, reads as a running head and
+    /// goes; a year set where the folios stand goes with them; a folio in roman numerals, `ii`,
+    /// `iii`, is not read as a number, so repeats only where its text does. An `/Artifact` may be
+    /// a watermark or a background's text, and one repeated so goes too. The block around a line
+    /// left out ends there, and the list around it, as the furniture's own block ended them.
+    /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`].
+    pub drop_furniture: bool,
+}
+
+/// The runs [`ProjectionOptions::drop_furniture`] leaves out: each furniture line whose text
+/// another page repeats, on the same side of it and across the same place.
+///
+/// **A line, never a run**: a page's consecutive furniture runs on one baseline, so a running
+/// head set a run per word, or per letter, goes whole or stays whole, and a title set apart on
+/// one page keeps every word another page's furniture shares. Its text is compared without its
+/// whitespace and with each run of digits read as one digit. Its side is the half of its page the
+/// middle of its measured box lies in — for a flagged line the side its band names — and its
+/// place the span across the page that box covers, which must overlap the other line's. A line
+/// with no text, or no measured box, is not compared, so a space a page drew as an `/Artifact`
+/// still joins what lies either side of it; and a table's run is left to its cell, as
+/// [`overprinted_runs`] leaves it.
+pub(crate) fn repeated_furniture<'a>(
+    repr: &'a DocumentRepresentation,
+    owner: &std::collections::BTreeMap<&str, usize>,
+) -> std::collections::BTreeSet<&'a str> {
+    type Ink = (i64, i64, i64, i64);
+    let payload = repr.payload();
+    // Each line: its runs, its page, its text as compared, and its box.
+    let mut lines: Vec<(Vec<&str>, &crate::NodeId, String, Option<Ink>)> = Vec::new();
+    let mut prev: Option<&crate::Node> = None;
+    for (i, n) in payload.nodes.iter().enumerate() {
+        let furniture = (text_run_attributes(n).is_some_and(|a| a.furniture.is_some())
+            || is_page_artifact(n))
+            && !owner.contains_key(n.id.as_str());
+        if !furniture {
+            prev = None;
+            continue;
+        }
+        if !prev.is_some_and(|p| p.parent == n.parent && !on_different_lines(p, n)) {
+            lines.push((Vec::new(), &n.parent, String::new(), None));
+        }
+        prev = Some(n);
+        let (ids, _, key, ink) = lines.last_mut().expect("a line is open");
+        ids.push(n.id.as_str());
+        for c in n.text.chars().filter(|c| !c.is_whitespace()) {
+            let c = if c.is_numeric() { '0' } else { c };
+            if !(c == '0' && key.ends_with('0')) {
+                key.push(c);
+            }
+        }
+        if let Some((x0, y0, x1, y1)) = measured_box(repr, i) {
+            *ink = Some(ink.map_or((x0, y0, x1, y1), |(a, b, c, d)| {
+                (a.min(x0), b.min(y0), c.max(x1), d.max(y1))
+            }));
+        }
+    }
+
+    // By text and side, each line's span across, its page, and where it stands in `lines`.
+    let height: std::collections::BTreeMap<&crate::NodeId, i64> =
+        payload.pages.iter().map(|p| (&p.id, p.height)).collect();
+    type Span<'p> = (i64, i64, &'p crate::NodeId, usize);
+    let mut groups: std::collections::BTreeMap<(&str, bool), Vec<Span<'_>>> = Default::default();
+    for (k, (_, page, key, ink)) in lines.iter().enumerate() {
+        if let (false, Some((x0, y0, x1, y1)), Some(h)) = (key.is_empty(), ink, height.get(page)) {
+            let top = y0 + y1 < *h;
+            groups
+                .entry((key, top))
+                .or_default()
+                .push((*x0, *x1, page, k));
+        }
+    }
+    // A line repeats where a line of another page starts before it ends and ends after it starts.
+    // Sorted by start, the lines starting before one ends are a prefix, so each prefix keeps the
+    // furthest end, its page, and the furthest end on any other page.
+    let mut repeated = vec![false; lines.len()];
+    for group in groups.values_mut() {
+        group.sort_unstable_by_key(|&(x0, ..)| x0);
+        let mut reach: (Option<(i64, &crate::NodeId)>, i64) = (None, i64::MIN);
+        let mut prefix = vec![reach];
+        for &(_, x1, page, _) in group.iter() {
+            reach = match reach {
+                (None, other) => (Some((x1, page)), other),
+                (Some((end, p)), other) if p == page => (Some((end.max(x1), p)), other),
+                (Some((end, _)), _) if x1 > end => (Some((x1, page)), end),
+                (best, other) => (best, other.max(x1)),
+            };
+            prefix.push(reach);
+        }
+        for &(x0, x1, page, k) in group.iter() {
+            let (best, other) = prefix[group.partition_point(|&(start, ..)| start <= x1)];
+            let end = match best {
+                Some((end, p)) if p != page => end,
+                _ => other,
+            };
+            repeated[k] |= end >= x0;
+        }
+    }
+    lines
+        .into_iter()
+        .zip(repeated)
+        .filter(|(_, r)| *r)
+        .flat_map(|((ids, ..), _)| ids)
+        .collect()
+}
+
 /// U+0000 in node text, which neither projection writes (review 2026-09-26 N40).
 ///
 /// **Neither format can carry it.** CommonMark replaces it with U+FFFD, and an HTML parser drops
@@ -3353,7 +3483,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
 ///    `structural_locator: pdf_artifact`, and checklist O21/O22 is explicit that a reader deleting
 ///    running heads has silently edited the document. The flag stays in the representation and a
-///    consumer that wants them gone drops them itself, knowing it did.
+///    consumer that wants them gone drops them itself, knowing it did — or asks
+///    [`to_markdown_with`] to, which counts what it left out (decision #134).
 /// 2. **A heading when the tree says so**, `#` through `######` — or `#` where the reader read a
 ///    line as a heading from its type (decision #29); a paragraph otherwise.
 /// 3. **A GFM table** for every table on the representation, at the position of the first run one
@@ -3405,6 +3536,29 @@ pub fn to_markdown(
     parser_version: &str,
     profile_sha256: &Sha256Hex,
     markdown_rule: &str,
+) -> Result<MarkdownArtifact, EngineError> {
+    to_markdown_with(
+        repr,
+        parser_version,
+        profile_sha256,
+        markdown_rule,
+        ProjectionOptions::default(),
+    )
+}
+
+/// [`to_markdown`], leaving out what `options` asks to, counted (decision #134). Rule 1 stands
+/// for a caller who does not ask: page furniture goes only on request, and the census says how
+/// much went.
+///
+/// # Errors
+///
+/// As [`to_markdown`].
+pub fn to_markdown_with(
+    repr: &DocumentRepresentation,
+    parser_version: &str,
+    profile_sha256: &Sha256Hex,
+    markdown_rule: &str,
+    options: ProjectionOptions,
 ) -> Result<MarkdownArtifact, EngineError> {
     let payload = repr.payload();
 
@@ -3464,6 +3618,11 @@ pub fn to_markdown(
     let stretches = read_stretches(&payload.nodes, &pitch);
     let wrapped = wrapped_labels(repr);
     let overprinted = overprinted_runs(&payload.nodes, &owner, &pitch);
+    let furniture = if options.drop_furniture {
+        repeated_furniture(repr, &owner)
+    } else {
+        Default::default()
+    };
     let mut open_line: Option<LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -3475,7 +3634,13 @@ pub fn to_markdown(
             continue;
         }
 
-        if let Some(code) = dropped_code(node.kind) {
+        // Decision #134: furniture left out on request goes as a node of a dropped kind goes.
+        let dropped = dropped_code(node.kind).or_else(|| {
+            furniture
+                .contains(node.id.as_str())
+                .then_some(PAGE_FURNITURE_NOT_PROJECTED)
+        });
+        if let Some(code) = dropped {
             let b = buckets.entry(code).or_insert((0, 0));
             b.0 += node.text.chars().count();
             b.1 += 1;
@@ -3486,6 +3651,14 @@ pub fn to_markdown(
             pending_space = false;
             open_line = None;
             line_ink = None;
+            // Decision #134: and the list item, and the separator, as the furniture's own block
+            // ended them, so the blocks either side are the default's with that block cut out.
+            if code == PAGE_FURNITURE_NOT_PROJECTED {
+                open_item = None;
+                if last.is_some() {
+                    last = Some(Block::Standalone);
+                }
+            }
             continue;
         }
 
@@ -3612,7 +3785,8 @@ pub fn to_markdown(
         // block, so `hyphen_tail` can close the word up. Joining it into the block above instead
         // would strand the tail and re-open `nonescr` from the other side.
         let next = payload.nodes.get(i + 1);
-        let next = next.filter(|n| !overprinted.contains(n.id.as_str()));
+        let next = next
+            .filter(|n| !overprinted.contains(n.id.as_str()) && !furniture.contains(n.id.as_str()));
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = group_key(node);
         let mut across: Option<SequenceJoin> = None;
@@ -3919,7 +4093,14 @@ pub fn to_markdown(
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let markdown = e.markdown;
 
-    let coverage = census(payload, in_representation, emitted_chars, buckets, erasures);
+    let coverage = census(
+        payload,
+        &furniture,
+        in_representation,
+        emitted_chars,
+        buckets,
+        erasures,
+    );
 
     let artifact = MarkdownArtifact {
         identity: ArtifactIdentity {
@@ -3962,8 +4143,12 @@ pub fn to_markdown(
 /// limit of GFM. See `crate::html`'s module documentation for the table. Copying a code onto an
 /// artifact that does not commit the erasure would disclose nothing; dropping one it does commit
 /// would be worse.
+///
+/// `left_out` names the runs an option left out whole (decision #134), which are counted in their
+/// own bucket as a node of a dropped kind is, and so, like one, nowhere else.
 pub(crate) fn census(
     payload: &crate::representation::RepresentationPayload,
+    left_out: &std::collections::BTreeSet<&str>,
     in_representation: usize,
     emitted_chars: usize,
     mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)>,
@@ -3983,10 +4168,12 @@ pub(crate) fn census(
     //
     // U+0000 first, so the residue below is whitespace alone. No writer emits it (`writable`), and
     // every projected run's text is written once, so the record says how many were removed.
+    let projected =
+        |n: &&crate::Node| dropped_code(n.kind).is_none() && !left_out.contains(n.id.as_str());
     let (nulls, nodes) = payload
         .nodes
         .iter()
-        .filter(|n| dropped_code(n.kind).is_none())
+        .filter(projected)
         .map(|n| n.text.matches('\0').count())
         .filter(|&count| count > 0)
         .fold((0, 0), |(chars, nodes), count| (chars + count, nodes + 1));
@@ -4000,8 +4187,7 @@ pub(crate) fn census(
             .nodes
             .iter()
             .filter(|n| {
-                dropped_code(n.kind).is_none()
-                    && normalize(&n.text).chars().count() != n.text.chars().count()
+                projected(n) && normalize(&n.text).chars().count() != n.text.chars().count()
             })
             .count();
         buckets.insert("whitespace-collapsed-v1", (collapsed, nodes));
@@ -10031,5 +10217,391 @@ pub(crate) mod tests {
             .map(|b| b.text)
             .collect();
         assert_eq!(blocks, vec!["Yar", "row"]);
+    }
+
+    /// Lines over pages, each `(text, page, furniture)`, as [`repr_of_lines`] places them, each
+    /// measured from x 7200, 500 a character wide: a header in its page's top tenth, a footer in its
+    /// bottom tenth, a body line between. With `artifact`, a furniture line is marked `/Artifact`,
+    /// as a tagged page marks it, and not flagged.
+    pub(crate) fn paged_repr(
+        lines: &[(&str, u32, Option<crate::Furniture>)],
+        artifact: bool,
+    ) -> DocumentRepresentation {
+        let texts: Vec<&str> = lines.iter().map(|l| l.0).collect();
+        let one_page = repr_of_lines(&texts);
+        let (mut nodes, mut pages) = (
+            one_page.payload().nodes.clone(),
+            one_page.payload().pages.clone(),
+        );
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        alloc.next(IdKind::Page).unwrap();
+        let last = lines.iter().map(|l| l.1).max().unwrap_or(1);
+        for index in 2..=last {
+            pages.push(PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index,
+                ..pages[0].clone()
+            });
+        }
+        let mut ordinal = vec![0u32; last as usize + 1];
+        for (node, &(_, page, furniture)) in nodes.iter_mut().zip(lines) {
+            node.parent = pages[page as usize - 1].id.clone();
+            ordinal[page as usize] += 1;
+            node.ordinal = ordinal[page as usize];
+            if let NativeLocator::Pdf(at) = &mut node.native_locator {
+                at.page = page;
+            }
+            if artifact && furniture.is_some() {
+                node.structural_locator = Some(StructuralLocator::PdfArtifact(
+                    crate::representation::PdfArtifactLocator { mcid: None },
+                ));
+            } else if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.furniture = furniture;
+            }
+        }
+        let geometry = nodes
+            .iter()
+            .zip(lines)
+            .map(|(n, &(text, _, furniture))| {
+                let y = match furniture {
+                    Some(crate::Furniture::Header) => 300,
+                    Some(crate::Furniture::Footer) => 13800,
+                    None => 7000,
+                };
+                let x1 = 7200 + 500 * (text.chars().count() as i64).max(1);
+                NodeGeometry {
+                    node: n.id.clone(),
+                    presence: GeometryPresence::Measured(QRect::new(7200, y, x1, y + 300).unwrap()),
+                }
+            })
+            .collect();
+        DocumentRepresentation::seal(payload(nodes, pages), geometry).unwrap()
+    }
+
+    /// `repr` with its nodes edited by `edit`, and the run at each index of `spans` measured
+    /// across that span, resealed.
+    pub(crate) fn resealed(
+        repr: &DocumentRepresentation,
+        edit: impl FnOnce(&mut [Node]),
+        spans: &[(usize, i64, i64)],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        edit(&mut payload.nodes);
+        let mut geometry = repr.geometry().to_vec();
+        for &(k, x0, x1) in spans {
+            if let GeometryPresence::Measured(r) = geometry[k].presence {
+                geometry[k].presence =
+                    GeometryPresence::Measured(QRect::new(x0, r.y0(), x1, r.y1()).unwrap());
+            }
+        }
+        DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    /// The runs at `indices` set on one baseline, the first's.
+    fn on_one_line(nodes: &mut [Node], indices: &[usize]) {
+        let y = nodes[indices[0]]
+            .native_locator
+            .run_locator()
+            .unwrap()
+            .origin_y;
+        for &k in indices {
+            if let NativeLocator::Pdf(at) = &mut nodes[k].native_locator {
+                at.origin_y = y;
+            }
+        }
+    }
+
+    fn artifact_with(
+        repr: &DocumentRepresentation,
+        options: ProjectionOptions,
+    ) -> MarkdownArtifact {
+        let profile = Profile::default();
+        to_markdown_with(
+            repr,
+            &profile.parser_version,
+            &profile.profile_sha256().unwrap(),
+            &profile.markdown_rule,
+            options,
+        )
+        .expect("projects")
+    }
+
+    const DROP_FURNITURE: ProjectionOptions = ProjectionOptions {
+        drop_furniture: true,
+    };
+
+    /// The `(chars, nodes)` a dropped bucket counts, or `None` where the artifact has none.
+    fn bucket(a: &MarkdownArtifact, code: &str) -> Option<(usize, usize)> {
+        a.coverage
+            .dropped
+            .iter()
+            .find(|b| b.code == code)
+            .map(|b| (b.chars, b.nodes))
+    }
+
+    /// **A running head and a folio go, on request, and are counted** (decision #134): furniture
+    /// whose text repeats on two pages, a folio's number read as any number. Furniture on one page
+    /// stays, and the default is `to_markdown` byte for byte.
+    #[test]
+    fn repeated_furniture_is_left_out_on_request_and_counted() {
+        use crate::Furniture::{Footer, Header};
+        let head = "Acme Ltd - Quarterly Report Q2 FY27";
+        let repr = paged_repr(
+            &[
+                (head, 1, Some(Header)),
+                ("Overview", 1, Some(Header)),
+                ("Body one", 1, None),
+                ("Page 9 of 12", 1, Some(Footer)),
+                (head, 2, Some(Header)),
+                ("Body two", 2, None),
+                ("Page 10 of 12", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(artifact_with(&repr, ProjectionOptions::default()), plain);
+        assert_eq!(plain.markdown.matches(head).count(), 2);
+        assert_eq!(bucket(&plain, PAGE_FURNITURE_NOT_PROJECTED), None);
+
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Overview\n\nBody one\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(a.markdown_rule, plain.markdown_rule);
+        let dropped = 2 * head.chars().count() + "Page 9 of 12".len() + "Page 10 of 12".len();
+        assert_eq!(dropped, 95);
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((dropped, 4)));
+        assert_eq!(
+            a.coverage.source_chars_emitted + dropped,
+            plain.coverage.source_chars_emitted,
+            "nothing else moved"
+        );
+    }
+
+    /// **On a tagged page an `/Artifact` repeated on two pages is furniture too**, on request.
+    #[test]
+    fn a_repeated_artifact_is_left_out_on_request() {
+        use crate::Furniture::Header;
+        let head = "Acme Ltd - Quarterly Report Q2 FY27";
+        let repr = paged_repr(
+            &[
+                (head, 1, Some(Header)),
+                ("Body one", 1, None),
+                (head, 2, Some(Header)),
+                ("Body two", 2, None),
+            ],
+            true,
+        );
+        assert_eq!(artifact_of(repr.clone()).markdown.matches(head).count(), 2);
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Body one\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((70, 2)));
+    }
+
+    /// **A run left out is counted whole, in one bucket**: its U+0000 and its whitespace with it,
+    /// and not again under `null-characters-not-projected-v1` or `whitespace-collapsed-v1`.
+    #[test]
+    fn furniture_left_out_is_counted_once_whatever_it_holds() {
+        use crate::Furniture::Footer;
+        let repr = paged_repr(
+            &[
+                ("Con\0fidential  ", 1, Some(Footer)),
+                ("Body  one", 1, None),
+                ("Con\0fidential  ", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Body one\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((30, 2)));
+        assert_eq!(bucket(&a, NULL_CHARACTERS_NOT_PROJECTED), None);
+        assert_eq!(bucket(&a, "whitespace-collapsed-v1"), Some((1, 1)));
+    }
+
+    /// **A word broken before furniture left out is not closed up with it**: the footer is no
+    /// longer the run after the head.
+    #[test]
+    fn a_word_is_not_closed_up_with_furniture_left_out() {
+        use crate::Furniture::Footer;
+        let repr = paged_repr(
+            &[
+                ("Rates may be recalcu-", 1, None),
+                ("Confidential", 1, Some(Footer)),
+                ("Body two", 2, None),
+                ("Confidential", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "Rates may be recalcu-\n\nBody two\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((24, 2)));
+    }
+
+    /// The runs [`repeated_furniture`] names, by index.
+    fn named(repr: &DocumentRepresentation, owned: &[usize]) -> Vec<usize> {
+        let nodes = &repr.payload().nodes;
+        let owner = owned.iter().map(|&k| (nodes[k].id.as_str(), 0)).collect();
+        let named = repeated_furniture(repr, &owner);
+        (0..nodes.len())
+            .filter(|&k| named.contains(nodes[k].id.as_str()))
+            .collect()
+    }
+
+    /// The runs [`repeated_furniture`] names: furniture on two pages or more, never a table's run,
+    /// never a body run, never one of whitespace alone, and never one whose text differs other
+    /// than in its numbers.
+    #[test]
+    fn furniture_repeats_on_two_pages_by_its_text_with_numbers_read_alike() {
+        use crate::Furniture::{Footer, Header};
+        let repr = paged_repr(
+            &[
+                ("Page 9 of 12", 1, Some(Footer)),
+                ("Page 10 of 12", 2, Some(Footer)),
+                ("Page 10 of 12", 2, None),
+                ("Section A", 1, Some(Header)),
+                ("Section B", 2, Some(Header)),
+                ("Twice here", 1, Some(Header)),
+                ("Twice here", 1, Some(Footer)),
+                ("Ruled", 1, Some(Header)),
+                ("Ruled", 2, Some(Header)),
+                ("  ", 1, Some(Header)),
+                ("  ", 2, Some(Header)),
+            ],
+            false,
+        );
+        assert_eq!(named(&repr, &[8]), vec![0, 1]);
+    }
+
+    /// **A furniture line goes whole or stays whole** (review of decision #134): a page's
+    /// consecutive furniture runs on one baseline are one line, so a title set a run per word on
+    /// one page keeps every word though its words are furniture elsewhere, and a folio set a run per
+    /// character, space and digits apart, repeats as one.
+    #[test]
+    fn a_furniture_line_goes_whole_or_stays_whole() {
+        use crate::Furniture::{Footer, Header};
+        let repr = paged_repr(
+            &[
+                ("Minutes", 1, Some(Header)),
+                ("of", 1, Some(Header)),
+                ("the", 1, Some(Header)),
+                ("Board", 1, Some(Header)),
+                ("Body one", 1, None),
+                ("p", 1, Some(Footer)),
+                (".", 1, Some(Footer)),
+                (" ", 1, Some(Footer)),
+                ("9", 1, Some(Footer)),
+                ("Board", 2, Some(Header)),
+                ("of", 2, Some(Header)),
+                ("Directors", 2, Some(Header)),
+                ("Body two", 2, None),
+                ("p.", 2, Some(Footer)),
+                ("1", 2, Some(Footer)),
+                ("0", 2, Some(Footer)),
+                ("Board", 3, Some(Header)),
+                ("of", 3, Some(Header)),
+                ("Directors", 3, Some(Header)),
+                ("Body three", 3, None),
+            ],
+            false,
+        );
+        let repr = resealed(
+            &repr,
+            |nodes| {
+                for line in [
+                    &[0, 1, 2, 3][..],
+                    &[5, 6, 7, 8],
+                    &[9, 10, 11],
+                    &[13, 14, 15],
+                ] {
+                    on_one_line(nodes, line);
+                }
+                // Page 3's head on the baseline of page 2's folio, which it follows: a line
+                // never runs across a page.
+                on_one_line(nodes, &[13, 14, 15, 16, 17, 18]);
+            },
+            &[],
+        );
+        assert_eq!(
+            named(&repr, &[]),
+            vec![5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18]
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        for word in ["Minutes", "of", "the", "Board"] {
+            assert!(a.markdown.contains(word), "{word} stays: {:?}", a.markdown);
+        }
+        assert!(!a.markdown.contains("Directors") && !a.markdown.contains('p'));
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, PAGE_FURNITURE_NOT_PROJECTED), Some((40, 13)));
+    }
+
+    /// **A repeat stands on the same side of its page and across the same place** (review of
+    /// decision #134): a cover's year at its foot is no folio set at the right of the others, and
+    /// a number at the top is no folio at the foot. A chapter's numbered title at the head of each
+    /// chapter's page reads as a running head, and goes.
+    #[test]
+    fn a_repeat_stands_on_the_same_side_across_the_same_place() {
+        use crate::Furniture::{Footer, Header};
+        let repr = paged_repr(
+            &[
+                ("2024", 1, Some(Footer)),
+                ("Chapter 1", 1, Some(Header)),
+                ("2", 2, Some(Footer)),
+                ("Chapter 2", 2, Some(Header)),
+                ("3", 3, Some(Footer)),
+                ("4", 3, Some(Header)),
+            ],
+            false,
+        );
+        let repr = resealed(
+            &repr,
+            |_| {},
+            &[
+                (0, 3600, 5400),
+                (2, 15000, 15450),
+                (4, 15000, 15450),
+                (5, 15000, 15450),
+            ],
+        );
+        assert_eq!(named(&repr, &[]), vec![1, 2, 3, 4]);
+        // Spans that overlap however they lie: one inside the other, either way round.
+        let inside = resealed(&repr, |_| {}, &[(0, 15100, 15200), (2, 14000, 16000)]);
+        assert_eq!(named(&inside, &[]), vec![0, 1, 2, 3, 4]);
+    }
+
+    /// **A list item does not run on across furniture left out** (review of decision #134): the
+    /// blocks either side of it are the default's, with the furniture's own block cut out.
+    #[test]
+    fn a_list_item_does_not_run_on_across_furniture_left_out() {
+        use crate::Furniture::Header;
+        let body = &["Document", "L", "LI", "LBody"];
+        let repr = resealed(
+            &paged_repr(
+                &[
+                    ("Acme Ltd", 1, Some(Header)),
+                    ("Alpha item", 1, None),
+                    ("Acme Ltd", 2, Some(Header)),
+                    ("carries on", 2, None),
+                ],
+                true,
+            ),
+            |nodes| {
+                nodes[1].structural_locator = tagged_in(1, body, None);
+                nodes[3].structural_locator = tagged_in(2, body, None);
+            },
+            &[],
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(
+            plain.markdown,
+            "Acme Ltd\n\n- Alpha item\n\nAcme Ltd\n\n- carries on\n"
+        );
+        let a = artifact_with(&repr, DROP_FURNITURE);
+        assert_eq!(a.markdown, "- Alpha item\n\n- carries on\n");
+        assert_eq!(
+            erasure(&a, GFM_LIST_ITEM_RUN_JOINS),
+            erasure(&plain, GFM_LIST_ITEM_RUN_JOINS)
+        );
     }
 }

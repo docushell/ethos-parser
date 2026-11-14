@@ -1765,7 +1765,8 @@ pub struct TextRunAttributes {
     ///
     /// **Where, never what was meant**: `Computed` from where the page's lines sit, under the
     /// profile's `furniture_rule`. The run stays in the text, in reading order and in every
-    /// projection; furniture is flagged, never dropped, as an `/Artifact` is. Absent on a
+    /// projection; furniture is flagged, never dropped, as an `/Artifact` is — a projection leaves
+    /// it out only where its caller asks, and counts it (decision #134). Absent on a
     /// document that declares author structure, on every other line, and under every other rule
     /// id.
     #[serde(default, skip_serializing_if = "Option::is_none")]

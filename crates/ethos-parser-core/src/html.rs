@@ -102,8 +102,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::markdown::{
     census, dropped_code, heading_level, hyphen_tail, list_role_at, normalize, plan_tables,
-    AnchorMap, Coverage, Emit, FontMeasure, SlotRole, TablePlan, GFM_ROW_ZERO_SEPARATOR,
-    GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
+    AnchorMap, Coverage, Emit, FontMeasure, ProjectionOptions, SlotRole, TablePlan,
+    GFM_ROW_ZERO_SEPARATOR, GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
 };
 use crate::{sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError, Sha256Hex};
 
@@ -361,7 +361,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 /// # The rule, in full — `html-blocks-v14`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
-///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
+///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22), unless the caller
+///    asks [`to_html_with`] to, as [`crate::to_markdown_with`] counts it (decision #134).
 /// 2. **`<h1>`–`<h6>` when the structure tree says so**, or `<h1>` where the reader read a line as a
 ///    heading from its type (decision #29, `TextRunAttributes::inferred_heading`); `<p>` otherwise.
 ///    Inside a paragraph or a list item, `<strong>` and `<em>` where a run's font declares bold or
@@ -393,6 +394,28 @@ pub fn to_html(
     parser_version: &str,
     profile_sha256: &Sha256Hex,
     html_rule: &str,
+) -> Result<HtmlArtifact, EngineError> {
+    to_html_with(
+        repr,
+        parser_version,
+        profile_sha256,
+        html_rule,
+        ProjectionOptions::default(),
+    )
+}
+
+/// [`to_html`], leaving out what `options` asks to, counted as [`crate::to_markdown_with`] counts
+/// it (decision #134).
+///
+/// # Errors
+///
+/// As [`to_html`].
+pub fn to_html_with(
+    repr: &DocumentRepresentation,
+    parser_version: &str,
+    profile_sha256: &Sha256Hex,
+    html_rule: &str,
+    options: ProjectionOptions,
 ) -> Result<HtmlArtifact, EngineError> {
     let payload = repr.payload();
 
@@ -459,6 +482,11 @@ pub fn to_html(
     let stretches = crate::markdown::read_stretches(&payload.nodes, &pitch);
     let wrapped = crate::markdown::wrapped_labels(repr);
     let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &pitch);
+    let furniture = if options.drop_furniture {
+        crate::markdown::repeated_furniture(repr, &owner)
+    } else {
+        Default::default()
+    };
     let mut open_line: Option<crate::markdown::LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -470,7 +498,13 @@ pub fn to_html(
             continue;
         }
 
-        if let Some(code) = dropped_code(node.kind) {
+        // Decision #134, as in `crate::markdown`.
+        let dropped = dropped_code(node.kind).or_else(|| {
+            furniture
+                .contains(node.id.as_str())
+                .then_some(crate::markdown::PAGE_FURNITURE_NOT_PROJECTED)
+        });
+        if let Some(code) = dropped {
             let b = buckets.entry(code).or_insert((0, 0));
             b.0 += node.text.chars().count();
             b.1 += 1;
@@ -480,6 +514,12 @@ pub fn to_html(
             pending_space = false;
             open_line = None;
             line_ink = None;
+            // Decision #134, as in `crate::markdown`: the list closes, as the furniture's own
+            // paragraph closed it.
+            if code == crate::markdown::PAGE_FURNITURE_NOT_PROJECTED {
+                list.close_to(&mut e, 0);
+                open_item = None;
+            }
             continue;
         }
 
@@ -583,7 +623,8 @@ pub fn to_html(
         // v2.2-S5. Computed here so it keeps first refusal over the undeclared join, exactly as
         // in `crate::markdown`.
         let next = payload.nodes.get(i + 1);
-        let next = next.filter(|n| !overprinted.contains(n.id.as_str()));
+        let next = next
+            .filter(|n| !overprinted.contains(n.id.as_str()) && !furniture.contains(n.id.as_str()));
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = crate::markdown::group_key(node);
         let mut across: Option<crate::markdown::SequenceJoin> = None;
@@ -868,7 +909,14 @@ pub fn to_html(
 
     // See the module header: this artifact declares the erasures it actually commits, and no
     // others.
-    let coverage = census(payload, in_representation, emitted_chars, buckets, erasures);
+    let coverage = census(
+        payload,
+        &furniture,
+        in_representation,
+        emitted_chars,
+        buckets,
+        erasures,
+    );
 
     let artifact = HtmlArtifact {
         identity: ArtifactIdentity {
@@ -2235,5 +2283,112 @@ mod tests {
             md.coverage.source_chars_emitted
         );
         assert_eq!(html.coverage.dropped, md.coverage.dropped);
+    }
+
+    /// **Repeated furniture goes on request, as in Markdown, under the same count** (decision
+    /// #134), and the default is `to_html` byte for byte.
+    #[test]
+    fn repeated_furniture_is_left_out_on_request_and_counted() {
+        use crate::Furniture::{Footer, Header};
+        let head = "Acme Ltd - Quarterly Report Q2 FY27";
+        let repr = crate::markdown::tests::paged_repr(
+            &[
+                (head, 1, Some(Header)),
+                ("Body one", 1, None),
+                ("Page 1 of 2", 1, Some(Footer)),
+                (head, 2, Some(Header)),
+                ("Body two", 2, None),
+                ("Page 2 of 2", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let with = |options| {
+            to_html_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                options,
+            )
+            .expect("projects")
+        };
+        let plain = artifact_of(repr.clone());
+        assert_eq!(with(ProjectionOptions::default()), plain);
+        assert_eq!(plain.html.matches(head).count(), 2);
+
+        let options = ProjectionOptions {
+            drop_furniture: true,
+        };
+        let a = with(options);
+        assert_eq!(a.html, "<p>Body one</p>\n<p>Body two</p>\n");
+        assert!(a.coverage.balances());
+        let md = crate::to_markdown_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.markdown_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(a.coverage.dropped, md.coverage.dropped);
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .any(|b| b.code == crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
+                && (b.chars, b.nodes) == (92, 4)));
+
+        // A word broken before a footer left out is not closed up with it.
+        let repr = crate::markdown::tests::paged_repr(
+            &[
+                ("Rates may be recalcu-", 1, None),
+                ("Confidential", 1, Some(Footer)),
+                ("Body two", 2, None),
+                ("Confidential", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let a = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(a.html, "<p>Rates may be recalcu-</p>\n<p>Body two</p>\n");
+
+        // A list item does not run on across furniture left out: the list closes where the
+        // furniture's paragraph closed it, so the HTML is the default's without that paragraph.
+        let body = &["Document", "L", "LI", "LBody"];
+        let repr = crate::markdown::tests::resealed(
+            &crate::markdown::tests::paged_repr(
+                &[
+                    ("Acme Ltd", 1, Some(Header)),
+                    ("Alpha item", 1, None),
+                    ("Acme Ltd", 2, Some(Header)),
+                    ("carries on", 2, None),
+                ],
+                true,
+            ),
+            |nodes| {
+                nodes[1].structural_locator = tagged_in(1, body, None);
+                nodes[3].structural_locator = tagged_in(2, body, None);
+            },
+            &[],
+        );
+        let plain = artifact_of(repr.clone());
+        let a = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(a.html, plain.html.replace("<p>Acme Ltd</p>\n", ""));
+        assert_eq!(a.html.matches("<ul>").count(), 2);
     }
 }

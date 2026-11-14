@@ -32,6 +32,39 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Repeated running heads and folios can be left out of Markdown and HTML, counted (decision #134)
+
+No rule id and no `profile_sha256` moves: the default output is byte for byte what it was.
+
+- **`markdown --drop-furniture` and `html --drop-furniture`**, on a representation or, for
+  `markdown`, with `--source`. A furniture line — a page's consecutive runs on one baseline the
+  reader flagged as its header or footer, or a tagged page marked `/Artifact` — is left out
+  whole where another page's furniture repeats its text on the same side of the page and across
+  the same place: whitespace aside, each run of digits read as one, so `Page 9 of 12` and
+  `Page 10 of 12` repeat. A line set a run per word, or per letter, goes whole or stays whole,
+  so a title set apart on one page keeps every word. A cover's year at its foot stays where the
+  folios stand elsewhere. An `/Artifact` can be a watermark or a background's text, and one
+  repeated so goes too. The block around a line left out ends there, and so does the list
+  around it, so the blocks either side are the default's with the furniture's own cut out. The
+  representation keeps every run.
+- **Counted as `page-furniture-not-projected-v1`**, a new census bucket, so a consumer
+  validating bucket codes against a closed list must add it. A run left out is counted whole,
+  its whitespace and any U+0000 with it, and nowhere else; the census balances. The bucket
+  appears only where the option left something out, and where it found nothing to leave out the
+  artifact is the default one, so the bucket is the whole record of the option.
+- **Library**: `to_markdown_with` and `to_html_with` take `ProjectionOptions`, non-exhaustive,
+  built from `ProjectionOptions::default()` with `drop_furniture` set; `to_markdown` and
+  `to_html` are those calls with the default. MCP's `markdown` tool and the SDKs do not offer it
+  yet.
+- **Known limits.** A numbered title at the head of each chapter's first page (`Chapter 1`,
+  `Chapter 2`) reads as a running head and goes, and a year set where the folios stand goes with
+  them. A folio in roman numerals (`ii`, `iii`) is not read as a number. Found beside it and left
+  for its own decision: by default a body line ending in a hyphen is closed up with a flagged
+  footer after it (`recalcu-` + `Confidential` reads `recalcuConfidential`), since the hyphen
+  rule refuses a join across an `/Artifact` but does not read the furniture flag; with the
+  option the footer is no longer there to join.
+- Default output byte-identical on ParseBench, opendataloader-bench, the gate documents and the engine fixtures; with the flag, NIST SP 800-207 leaves out its running head and margin line on 56 pages and 50 folios (4,523 runs, 7,421 characters) and its first three pages lose nothing; the IRS forms lose nothing.
+
 ### A narrow band set on its neighbour's rows is read with them (decision #133)
 
 Rule id `gutter-columns-v5`; `profile_sha256` moves.

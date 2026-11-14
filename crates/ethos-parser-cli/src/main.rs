@@ -402,6 +402,10 @@ struct HtmlArgs {
     /// own documentation for why this projects from the record rather than from the other
     /// projection.
     path: PathBuf,
+
+    /// Leave out repeated page furniture, counted, as `markdown --drop-furniture` does.
+    #[arg(long)]
+    drop_furniture: bool,
 }
 
 #[derive(clap::Args)]
@@ -439,6 +443,15 @@ struct MarkdownArgs {
     // `requires = "source"` alone does not refuse `markdown RECORD --ocr`; `conflicts_with` does.
     #[arg(long, requires = "source", conflicts_with = "path")]
     ocr: bool,
+
+    /// Leave out repeated page furniture: a line the reader flagged as a page's header or footer,
+    /// or a tagged page's `/Artifact` — which may be a watermark — whose text another page
+    /// repeats on the same side and across the same place, numbers read alike. A running head
+    /// and a folio go, a whole line at a time; a numbered chapter title at the top of each
+    /// chapter's page goes too. Counted under the census bucket `page-furniture-not-projected-v1`;
+    /// the representation keeps every run (decision #134).
+    #[arg(long)]
+    drop_furniture: bool,
 }
 
 #[derive(clap::Args)]
@@ -1140,11 +1153,12 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         }
     };
 
-    let artifact = match ethos_parser_core::to_markdown(
+    let artifact = match ethos_parser_core::to_markdown_with(
         &repr,
         &profile.parser_version,
         &profile_sha256,
         &profile.markdown_rule,
+        projection_options(args.drop_furniture),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
@@ -1157,6 +1171,13 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         },
         Err(e) => fail(&e),
     }
+}
+
+/// The projection options a `markdown` or `html` command line asks for (decision #134).
+fn projection_options(drop_furniture: bool) -> ethos_parser_core::ProjectionOptions {
+    let mut options = ethos_parser_core::ProjectionOptions::default();
+    options.drop_furniture = drop_furniture;
+    options
 }
 
 /// Serve MCP over stdin/stdout until the stream closes.
@@ -1224,11 +1245,12 @@ fn run_html(args: HtmlArgs) -> ExitCode {
         }
     };
 
-    let artifact = match ethos_parser_core::to_html(
+    let artifact = match ethos_parser_core::to_html_with(
         &repr,
         &profile.parser_version,
         &profile_sha256,
         &profile.html_rule,
+        projection_options(args.drop_furniture),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
