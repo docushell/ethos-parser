@@ -66,7 +66,7 @@ the failure this whole project is arranged to prevent.'
     ;;
 esac
 
-files=$(find crates ocr -path '*/src/*' -name '*.rs' -not -path 'ocr/vendor/*' | sort)
+files=$(find crates ocr assist -path '*/src/*' -name '*.rs' -not -path 'ocr/vendor/*' | sort)
 if [ -z "$files" ]; then
   echo "::error::no crate sources found; the scan would pass vacuously" >&2
   exit 1

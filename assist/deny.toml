@@ -1,0 +1,61 @@
+# cargo-deny policy for `ethos-parser-assist` (assist/README.md), the root's (../deny.toml) applied
+# to this workspace's own lockfile. `cargo deny --manifest-path assist/Cargo.toml check` reads this
+# file, from the manifest's directory; the root's `cargo deny check` never sees these crates.
+#
+# Exceptions require an ADR before merge. The network surface the assist lane needs is one: it is
+# argued in its own ADR with the transport, and is not granted here in advance.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# An allowlist, as the root's: GPL, AGPL, LGPL and anything not named here fail (forced decision
+# #14). Each entry is a licence hayro's graph carries, measured with `cargo deny list`.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    # `alloc-no-stdlib`, `alloc-stdlib` (via `brotli`), the only licence they offer; `moxcms`,
+    # `pic-scale` and `pxfm` offer it beside Apache-2.0.
+    "BSD-3-Clause",
+    # `foldhash`, its only licence; `bytemuck`, `miniz_oxide` and `zune-*` offer it too.
+    "Zlib",
+    # `yoke`, `zerofrom` and their derives, the only licence they offer; `unicode-ident`'s AND.
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+# hayro embeds data that is not a crate and so not in this graph: the Foxit standard-14 fonts
+# from PDFium (BSD-3-Clause), Adobe's CMaps (BSD-3-Clause), a CGATS ICC profile (CC0) and LAB.icc
+# (LCMS2). Their notices are owed with the binary, in NOTICE, when it is released.
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The root's list, copied whole. Nothing in this step reaches the network.
+deny = [
+    { crate = "reqwest", reason = "no network without its ADR" },
+    { crate = "hyper", reason = "no network without its ADR" },
+    { crate = "hyper-util", reason = "no network without its ADR" },
+    { crate = "ureq", reason = "no network without its ADR" },
+    { crate = "curl", reason = "no network without its ADR" },
+    { crate = "curl-sys", reason = "no network without its ADR" },
+    { crate = "isahc", reason = "no network without its ADR" },
+    { crate = "attohttpc", reason = "no network without its ADR" },
+    { crate = "surf", reason = "no network without its ADR" },
+    { crate = "socket2", reason = "socket-bearing" },
+    { crate = "mio", reason = "socket-bearing" },
+    { crate = "tokio", reason = "async runtime implies a network surface" },
+    { crate = "openssl-sys", reason = "TLS stack implies network use" },
+    { crate = "native-tls", reason = "TLS stack implies network use" },
+    { crate = "rustls", reason = "TLS stack implies network use" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

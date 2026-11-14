@@ -157,7 +157,7 @@ elif [ -x ../ethos-oracle/target/release/ethos ]; then
 fi
 
 step=0
-total=10
+total=11
 announce() {
   step=$((step + 1))
   printf '\n\033[1m[%d/%d] %s\033[0m\n' "$step" "$total" "$1"
@@ -184,14 +184,18 @@ cargo build --workspace --locked
 announce 'test'
 cargo test --workspace --locked
 
-announce 'deny'
+announce 'deny — the engine, then the assist binary in its own workspace'
 cargo deny check
+cargo deny --manifest-path assist/Cargo.toml check
 
 announce 'sdk suites — node and python, the version guards that had never run'
 ci/sdk-suites.sh
 
 announce 'ocr — the recognizer, in its own workspace on its own toolchain'
 ci/ocr.sh
+
+announce 'assist — the assist binary, in its own workspace on its own toolchain'
+ci/assist.sh
 
 printf '\n\033[1;32mgate: all %d checks passed.\033[0m\n' "$total"
 printf 'Not run, by design: the oracle build, the toolchain tripwire, v0-fuzz-smoke,\n'

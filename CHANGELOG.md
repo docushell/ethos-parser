@@ -32,6 +32,27 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### The assist lane's binary, `ethos-parser-assist`, renders pages (decision #143)
+
+A new binary, built in its own workspace, `assist/`, on the recognizer's toolchain (1.98.0) with
+its own `Cargo.lock` and `deny.toml`. Nothing calls it yet, and it has no network code. **The
+engine is unchanged**: no root crate, lockfile or output moves.
+
+- `ethos-parser-assist render PDF PAGE OUT.png` draws a page with hayro 0.7.1 by decision #123's
+  rule, `pages-400dpi-5mp-v1`: dpi = min(400, floor(sqrt(5e6 / inches))), pixel sizes rounded as
+  Ghostscript rounds them, a Lanczos shrink past 5e6 pixels, and the CropBox. It prints
+  `dpi width height`.
+- `ethos-parser-assist identity` prints one JSON line: the `renderer` string
+  (`ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1`) and the request format the lane
+  will read.
+- `cargo deny --manifest-path assist/Cargo.toml check` runs in `ci/gate.sh` and CI. It allows
+  Apache-2.0, MIT, BSD-3-Clause, Zlib and Unicode-3.0, and copies the root's network bans.
+  `ci/gate.sh` gains an eleventh step, `ci/assist.sh` (fmt, clippy and the tests in `assist/`, on
+  its pinned toolchain), and CI's `check` job runs it as well. `ci/forbidden-tokens.sh` scans
+  `assist/` too.
+- Measured: page 1 of the 379 ParseBench PDFs Phase 4a sampled renders byte for byte as Phase 4a's
+  renderer drew it, which scored within half a point of Ghostscript's pages on every ParseBench dimension with the reference model (100-page samples); engine output is untouched.
+
 ### A table the next page goes on with is one table (decision #142)
 
 Markdown, HTML and `elements` wrote one table a page, so a table running onto a second page read

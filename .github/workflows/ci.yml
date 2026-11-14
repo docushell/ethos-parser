@@ -220,11 +220,21 @@ jobs:
       - name: deny
         run: cargo deny check
 
+      # The assist binary (assist/README.md): its own workspace, lockfile and deny.toml, which
+      # cargo-deny reads from the manifest's directory. The step above never sees its crates.
+      - name: deny assist
+        run: cargo deny --manifest-path assist/Cargo.toml check
+
       # The recognizer behind `--ocr` (docs/35-OCR-SCOPE.md): its own workspace and its own
       # pinned toolchain, which the script installs and asserts. `ocr-platforms` below runs its
       # fixture test on every supported CPU family; this step keeps it in the gate.
       - name: ocr
         run: ci/ocr.sh
+
+      # The assist binary (assist/README.md): its own workspace on the recognizer's toolchain,
+      # which the script installs and asserts, as ci/ocr.sh does.
+      - name: assist
+        run: ci/assist.sh
 
   # -----------------------------------------------------------------------------------------
   # docs/35-OCR-SCOPE.md §10.1 — the recognizer answers with the same bytes on every platform
