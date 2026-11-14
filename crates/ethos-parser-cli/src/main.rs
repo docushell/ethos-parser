@@ -439,6 +439,12 @@ struct HtmlArgs {
     /// Leave out repeated page furniture, counted, as `markdown --drop-furniture` does.
     #[arg(long)]
     drop_furniture: bool,
+
+    /// On a document that declares no author structure (an untagged PDF), write a list item for
+    /// each layout unit opening with a list marker, two or more in a row, counted, as
+    /// `markdown --infer-lists` does.
+    #[arg(long)]
+    infer_lists: bool,
 }
 
 #[derive(clap::Args)]
@@ -486,6 +492,15 @@ struct MarkdownArgs {
     /// representation keeps every run (decision #134).
     #[arg(long)]
     drop_furniture: bool,
+
+    /// On a document that declares no author structure (an untagged PDF), write a list item for
+    /// each layout unit opening with a list marker — a bullet, or a number or a letter closed by
+    /// `.` or `)` — two or more in a row, with the marker kept as the page drew it after `- `,
+    /// nested by where the marker stands. An inferred heading stays a heading. Inferred, not declared: counted under
+    /// the census code `list-items-inferred-from-markers-v1`, and the representation is unchanged
+    /// (decision #138).
+    #[arg(long)]
+    infer_lists: bool,
 }
 
 #[derive(clap::Args)]
@@ -1200,7 +1215,7 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.markdown_rule,
-        projection_options(args.drop_furniture),
+        projection_options(args.drop_furniture, args.infer_lists),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
@@ -1256,10 +1271,14 @@ fn run_elements(args: ElementsArgs) -> ExitCode {
     ExitCode::from(PROJECTED as u8)
 }
 
-/// The projection options a `markdown` or `html` command line asks for (decision #134).
-fn projection_options(drop_furniture: bool) -> ethos_parser_core::ProjectionOptions {
+/// The projection options a `markdown` or `html` command line asks for (decisions #134, #138).
+fn projection_options(
+    drop_furniture: bool,
+    infer_lists: bool,
+) -> ethos_parser_core::ProjectionOptions {
     let mut options = ethos_parser_core::ProjectionOptions::default();
     options.drop_furniture = drop_furniture;
+    options.infer_lists = infer_lists;
     options
 }
 
@@ -1333,7 +1352,7 @@ fn run_html(args: HtmlArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.html_rule,
-        projection_options(args.drop_furniture),
+        projection_options(args.drop_furniture, args.infer_lists),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),

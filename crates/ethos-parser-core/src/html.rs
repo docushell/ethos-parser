@@ -375,7 +375,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 ///    column group's head and the row dividing it `<th>` (decision #99).
 /// 4. **`<ul>`/`<li>`** for runs the tree places in an `/L`, nested from nested `/L`. The document
 ///    drew no bullet, so the marker here is a tag rather than a `- `; where it drew its own
-///    `/Lbl`, that is source text inside the `<li>`.
+///    `/Lbl`, that is source text inside the `<li>`. On request, a unit opening with a marker too,
+///    as [`crate::to_markdown_with`] reads it (decision #138).
 /// 5. **Every tag, attribute and newline is `syntax`.** There is no indentation — an indent is
 ///    bytes no document drew, and while the map would tile them honestly, they would be `syntax`
 ///    inside a quote a consumer is likely to lift.
@@ -497,6 +498,13 @@ pub fn to_html_with(
     } else {
         Default::default()
     };
+    // Decision #138, as in `crate::markdown`.
+    let items = if options.infer_lists {
+        crate::markdown::marker_items(repr)
+    } else {
+        Default::default()
+    };
+    let mut item_unit: Option<(&crate::NodeId, u32)> = None;
     let mut open_line: Option<crate::markdown::LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -766,11 +774,26 @@ pub fn to_html_with(
         } else {
             None
         };
+        // Decision #138, as in `crate::markdown`: an inferred item holds the rest of its unit.
+        let continues = continues.or_else(|| {
+            let space = pending_space
+                || open_prev.is_some_and(|p| p.reading_text().ends_with(char::is_whitespace))
+                || node.reading_text().starts_with(char::is_whitespace);
+            joining
+                .is_none()
+                .then(|| {
+                    open_prev.and_then(|p| {
+                        crate::markdown::item_continues(item_unit, p, node, space, &pitch)
+                    })
+                })
+                .flatten()
+        });
         if let Some((separator, code)) = continues {
             e.syntax(separator);
             block_text.push_str(separator);
             *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
+            open_group = key;
             // Decision #109, as in `crate::markdown`.
             if let Some((tail, joined)) = ht.filter(|_| {
                 open_prev.is_some_and(|prev| crate::markdown::body_line_continues(prev, node))
@@ -860,7 +883,19 @@ pub fn to_html_with(
         }
 
         flush_block(&mut e, &mut open_block);
-        list.close_to(&mut e, 0);
+        // Decision #138, as in `crate::markdown`: an item, no deeper than one under the open one,
+        // whose `</li>` the list writes.
+        let item = items.get(node.id.as_str()).copied();
+        item_unit = item.and_then(|_| crate::markdown::unit_of(node));
+        match item {
+            Some(depth) => {
+                list.open_item(&mut e, depth.min(list.levels.len()));
+                *erasures
+                    .entry(crate::markdown::LIST_ITEMS_INFERRED_FROM_MARKERS)
+                    .or_insert(0) += 1;
+            }
+            None => list.close_to(&mut e, 0),
+        }
         block_text.clear();
         block_text.push_str(&text);
         open_group = key;
@@ -879,6 +914,7 @@ pub fn to_html_with(
                 e.syntax(&format!("<h{l}>"));
                 e.heading();
             }
+            None if item.is_some() => {}
             None => {
                 e.syntax("<p>");
                 // Kept, not dropped: this projection commits the same flattening at the same
@@ -888,7 +924,7 @@ pub fn to_html_with(
                 }
             }
         }
-        open_block = Some(level);
+        open_block = item.is_none().then_some(level);
 
         // The same join, from the same predicate. See `crate::markdown::hyphen_tail`.
         if let Some((tail, joined)) = ht {
@@ -2362,6 +2398,7 @@ mod tests {
 
         let options = ProjectionOptions {
             drop_furniture: true,
+            ..ProjectionOptions::default()
         };
         let a = with(options);
         assert_eq!(a.html, "<p>Body one</p>\n<p>Body two</p>\n");
@@ -2432,5 +2469,79 @@ mod tests {
         .expect("projects");
         assert_eq!(a.html, plain.html.replace("<p>Acme Ltd</p>\n", ""));
         assert_eq!(a.html.matches("<ul>").count(), 2);
+    }
+
+    /// **A unit opening with a marker is an `<li>`, on request** (decision #138), nested inside
+    /// the open `<li>` where it stands further in, as `crate::markdown` nests it, counted alike.
+    #[test]
+    fn a_unit_opening_with_a_marker_is_an_li_on_request() {
+        use crate::markdown::tests::{unit_lines, INFER_LISTS, MARKER_LINES};
+        let repr = unit_lines(MARKER_LINES);
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let a = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.html,
+            "<p>Terms</p>\n<ul>\n<li>1. Payment is due within 15 days.\nLate payments carry \
+             interest.<ul>\n<li>a. Notices must be in writing.</li>\n</ul>\n</li>\n<li>2. Goods \
+             once sold stay sold.</li>\n</ul>\n<p>Closing words.</p>\n<ul>\n<li>• One year \
+             warranty</li>\n<li>• Installation support</li>\n</ul>\n"
+        );
+        let md = crate::to_markdown_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.markdown_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.coverage.structural_erasures,
+            md.coverage.structural_erasures
+        );
+        assert_eq!(
+            artifact_of(repr.clone()).html,
+            "<p>Terms</p>\n<p>1. Payment is due within 15 days.\nLate payments carry interest.</p>\n\
+             <p>a. Notices must be in writing.</p>\n<p>2. Goods once sold stay sold.</p>\n\
+             <p>Closing words.</p>\n<p>• One year warranty</p>\n<p>• Installation support</p>\n",
+            "off, no list"
+        );
+
+        // No deeper than one under the open `<li>`, and none open after a paragraph.
+        let a = to_html_with(
+            &crate::markdown::tests::columns_repr(),
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>1. First</li>\n</ul>\n<p>rest</p>\n<ul>\n\
+             <li>a. Set in<ul>\n<li>i. Deeper</li>\n</ul>\n</li>\n<li>2. Next column</li>\n</ul>\n"
+        );
+
+        // An item holds the rest of its unit, in whatever sequence.
+        let a = to_html_with(
+            &crate::markdown::tests::sequenced_item_repr(),
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>• Collected via surveys\nand stored.</li>\n<li>• Kept safe.</li>\n</ul>\n\
+             <p>82.65</p>\n"
+        );
     }
 }

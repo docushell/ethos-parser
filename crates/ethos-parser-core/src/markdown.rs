@@ -1136,6 +1136,184 @@ fn xhtml_heading_level(element: &str) -> Option<u8> {
     }
 }
 
+/// Whether `text` opens with a list marker: a bullet, or a number of up to three digits or a
+/// single letter, perhaps opened by `(` and closed by `.` or `)`, and then whitespace.
+///
+/// One pattern for two rules: the PDF reader's layout units start a unit at a line opening with
+/// one (`line-units-v1` onwards), and [`ProjectionOptions::infer_lists`] reads a unit opening with
+/// one as a list item (decision #138). Public for that reader alone, and no supported API
+/// (`docs/PUBLIC-API.md`). **A change here changes both**: it moves where `line-units-v7` cuts a
+/// unit, so it must move that rule id, and `profile_sha256` with it, as well as this projection's.
+#[doc(hidden)]
+pub fn opens_with_marker(text: &str) -> bool {
+    let text = text.trim_start();
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if "•·▪◦‣–—-*".contains(first) {
+        return chars.next().is_some_and(char::is_whitespace);
+    }
+    let text = text.strip_prefix('(').unwrap_or(text);
+    let label: String = text
+        .chars()
+        .take_while(char::is_ascii_alphanumeric)
+        .collect();
+    let numbered = (1..=3).contains(&label.len()) && label.bytes().all(|b| b.is_ascii_digit());
+    let lettered = label.len() == 1 && label.bytes().all(|b| b.is_ascii_alphabetic());
+    let mut rest = text[label.len()..].chars();
+    (numbered || lettered)
+        && matches!(rest.next(), Some('.' | ')'))
+        && rest.next().is_some_and(char::is_whitespace)
+}
+
+/// Whether `text` is a list marker alone ([`opens_with_marker`]'s), with no text after it. Shared
+/// as [`opens_with_marker`] is, and as unsupported: `line-units-v7` reads its hanging indent and
+/// its lead-in from it, so a change here must move that rule id too.
+#[doc(hidden)]
+pub fn lone_marker(text: &str) -> bool {
+    let text = text.trim();
+    !text.contains(char::is_whitespace) && opens_with_marker(&format!("{text} "))
+}
+
+/// List items read from markers on request (decision #138, [`ProjectionOptions::infer_lists`]),
+/// counted once per item both projections write. The code names the rule: `-v1`.
+pub(crate) const LIST_ITEMS_INFERRED_FROM_MARKERS: &str = "list-items-inferred-from-markers-v1";
+
+/// The runs that open a list item where [`ProjectionOptions::infer_lists`] asks for them
+/// (decision #138), each with its depth, zero-based.
+///
+/// **A layout unit opening with a list marker**: the first run of a unit, its text opening with
+/// one ([`opens_with_marker`]) or a marker alone ([`lone_marker`]) that more of its unit follows
+/// set apart from it, as `line-units-v7` keeps a marker with its text. The item holds the rest of
+/// its unit ([`item_continues`]). A unit exists only where the document declares
+/// no author structure, so a tagged document, an office document and a table's runs grow no item.
+/// An inferred heading's unit (`1. Introduction` read from its type) stays a heading, and a run
+/// the reader flagged as furniture (a folio `- 3 -`) is no item. The marker stays the page's text:
+/// the projections write `- ` before it, as before a tagged `/Lbl`.
+///
+/// **A list is two items or more**: only a run of two marker units or more, with no other unit
+/// between them, opens items. A marker line standing alone — an initial (`K. For the first time`),
+/// a numbered line at body size, `(x) in time` — stays a paragraph. The run goes on across a page
+/// or a region; another unit, or a run with no unit, ends it.
+///
+/// **Depth from where the marker stands**: against the items open before it in its page's column
+/// region — deeper by one where its measured box starts more than half its height right of the
+/// innermost one's, the depth of the one it starts within half its height of, and one deeper than
+/// the nearest that starts further left otherwise. A new page or region, and an item set more
+/// than half its height above the one before it — a list going on at the top of the next column —
+/// start the open items afresh. Each projection clamps a depth to one under its open item.
+pub(crate) fn marker_items(
+    repr: &crate::DocumentRepresentation,
+) -> std::collections::BTreeMap<&str, usize> {
+    let nodes = &repr.payload().nodes;
+    let unit = |n: &crate::Node| {
+        text_run_attributes(n)
+            .filter(|a| a.furniture.is_none())
+            .and_then(|a| a.layout_unit.map(|u| (u, a.inferred_heading)))
+    };
+    // Runs of consecutive marker units, each item with its depth: a list is two items or more.
+    let mut runs: Vec<Vec<(&str, usize)>> = vec![Vec::new()];
+    let mut seen = std::collections::BTreeSet::new();
+    // The open items, innermost last: each marker's left edge, top and depth, under its page and
+    // region.
+    let mut open: Vec<(i64, i64, usize)> = Vec::new();
+    let mut place = None;
+    for (i, n) in nodes.iter().enumerate() {
+        if dropped_code(n.kind).is_some() || projected_text(nodes, i).is_empty() {
+            continue;
+        }
+        let Some((u, heading)) = unit(n) else {
+            open.clear();
+            runs.push(Vec::new());
+            continue;
+        };
+        if !seen.insert((&n.parent, u)) {
+            continue;
+        }
+        // A marker alone leads into the next run of its unit where the two stand apart, as
+        // `line-units-v5` reads a space: one drawn between them, or a gap of a tenth of the
+        // marker's height. `82.` set against `65` is a number.
+        let next = (i + 1..nodes.len()).find(|&j| !nodes[j].text.trim().is_empty());
+        let more = next.is_some_and(|j| {
+            let m = &nodes[j];
+            let apart = j > i + 1
+                || n.text.ends_with(char::is_whitespace)
+                || m.text.starts_with(char::is_whitespace)
+                || measured_box(repr, i)
+                    .zip(measured_box(repr, j))
+                    .is_some_and(|(a, b)| 10 * (b.0 - a.2) >= a.3 - a.1);
+            m.parent == n.parent && unit(m).map(|(u, _)| u) == Some(u) && apart
+        });
+        let marker = !heading && (opens_with_marker(&n.text) || (more && lone_marker(&n.text)));
+        let here = (&n.parent, text_run_attributes(n).and_then(|a| a.region));
+        let Some((x0, y0, _, y1)) = marker.then(|| measured_box(repr, i)).flatten() else {
+            open.clear();
+            runs.push(Vec::new());
+            continue;
+        };
+        let half = (y1 - y0) / 2;
+        // A new page or region, or an item set above the last one — a list going on at the top
+        // of the next column the reading order did not divide — starts the open items afresh.
+        if place != Some(here) || open.last().is_some_and(|&(_, top, _)| y0 + half < top) {
+            open.clear();
+            place = Some(here);
+        }
+        while open.last().is_some_and(|&(x, _, _)| x > x0 + half) {
+            open.pop();
+        }
+        let depth = match open.last() {
+            Some(&(x, _, depth)) if x0 - x <= half => {
+                open.pop();
+                depth
+            }
+            Some(&(_, _, depth)) => depth + 1,
+            None => 0,
+        };
+        open.push((x0, y0, depth));
+        runs.last_mut()
+            .expect("a run is open")
+            .push((n.id.as_str(), depth));
+    }
+    runs.into_iter()
+        .filter(|run| run.len() >= 2)
+        .flatten()
+        .collect()
+}
+
+/// The page and layout unit of a run, where it has one: the unit an item [`marker_items`] opens
+/// holds (decision #138).
+pub(crate) fn unit_of(node: &crate::Node) -> Option<(&crate::NodeId, u32)> {
+    text_run_attributes(node)
+        .and_then(|a| a.layout_unit)
+        .map(|u| (&node.parent, u))
+}
+
+/// How `node` goes on in the inferred list item holding `unit` (decision #138), whose last run is
+/// `prev`, where no other join took it: a run of that unit is the item's, since the units rule
+/// read it as one piece of text with the marker. A word processor draws its bullet in a
+/// marked-content sequence of its own, so the item's text was otherwise a block apart and the item
+/// held its marker alone. On a line of its own where it opens one, and along the line with one
+/// space where the page drew one (`space`) or its ink does not run on; counted as the units rule's
+/// joins are. Called by both projections.
+pub(crate) fn item_continues(
+    unit: Option<(&crate::NodeId, u32)>,
+    prev: &crate::Node,
+    node: &crate::Node,
+    space: bool,
+    pitch: &PitchReference,
+) -> Option<(&'static str, &'static str)> {
+    if unit.is_none() || unit_of(node) != unit {
+        None
+    } else if on_different_lines(prev, node) {
+        Some(("\n", LAYOUT_UNIT_LINE_JOINS))
+    } else if !space && ink_contiguous(prev, node, pitch) {
+        Some(("", LAYOUT_UNIT_GAP_JOINS))
+    } else {
+        Some((" ", LAYOUT_UNIT_GAP_JOINS))
+    }
+}
+
 /// Where a run sits in a tagged list, or `None` for anything that is not in one.
 ///
 /// Reads the document's own `/S` types — `L`, `LI`, `Lbl`, `LBody` (PDF 32000 §14.8.4.3) — after
@@ -1150,7 +1328,8 @@ fn xhtml_heading_level(element: &str) -> Option<u8> {
 /// declaration.
 ///
 /// **No bullet glyph, no hanging indent, no font name.** An untagged document grows no list here;
-/// its bullet characters are runs like any other and project as the text they are.
+/// its bullet characters are runs like any other and project as the text they are — unless the
+/// caller asks [`marker_items`] for them, a rule of its own (decision #138).
 ///
 /// **A DOCX `<w:numPr>`** (decision #136) is the second declared source: the paragraph names a
 /// numbering, at a level, and Word renders its marker from `word/numbering.xml` — so the marker is
@@ -2926,6 +3105,19 @@ pub struct ProjectionOptions {
     /// sets them on its pages by declaration, and the record reads each once.
     /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`].
     pub drop_furniture: bool,
+    /// Write a list item for each layout unit opening with a list marker, on a document that
+    /// declares no author structure (decision #138): a bullet, or a number of up to three digits
+    /// or one letter closed by `.` or `)` — `1.`, `a)`, `(3)` — followed by its text. The
+    /// marker stays as the page drew it, after `- `, the item holds the rest of its unit, and the
+    /// depth is read from where it stands against the items open before it. A list is two items
+    /// or more: a marker line with no other next to it stays a paragraph. A marker alone opens
+    /// one only where the run after it stands apart. An inferred heading stays a heading, and
+    /// furniture and a table's runs grow no item. Counted once per item as
+    /// `list-items-inferred-from-markers-v1` in the structural census. **Known limits**:
+    /// consecutive numbered lines the type rule did not read as headings (`1. Introduction` at
+    /// body size) read as items; the roman `ii.` to `iv.` are no markers; and `- 2. x`, written as
+    /// a tagged item is, renders as a bullet holding an ordered list. See [`marker_items`].
+    pub infer_lists: bool,
 }
 
 /// The runs [`ProjectionOptions::drop_furniture`] leaves out: each furniture line whose text
@@ -3663,7 +3855,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    the characters move from linear source to cell source, they are not duplicated and they are
 ///    not dropped.
 /// 4. **A list item** for a run the structure tree places in an `/L`; nothing for a bullet
-///    glyph, a hanging indent or a font name.
+///    glyph, a hanging indent or a font name — unless the caller asks [`to_markdown_with`] to read
+///    a unit opening with a marker as one, counted (decision #138).
 /// 5. **Blank line between blocks**, which is `syntax` — the document drew no such bytes.
 /// 6. **Node text is normalized** by [`normalize`], and a node whose normalization is empty
 ///    contributes no segment at all rather than an empty one. A DOCX run keeps its tabs and line
@@ -3803,6 +3996,13 @@ pub fn to_markdown_with(
     } else {
         Default::default()
     };
+    // Decision #138: the runs that open a list item on request, and the unit of the one open.
+    let items = if options.infer_lists {
+        marker_items(repr)
+    } else {
+        Default::default()
+    };
+    let mut item_unit: Option<(&crate::NodeId, u32)> = None;
     let mut open_line: Option<LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
@@ -4110,11 +4310,23 @@ pub fn to_markdown_with(
         } else {
             None
         };
+        // Decision #138: an inferred item holds the rest of its unit, in whatever sequence.
+        let continues = continues.or_else(|| {
+            let space = pending_space
+                || open_prev.is_some_and(|p| p.reading_text().ends_with(char::is_whitespace))
+                || node.reading_text().starts_with(char::is_whitespace);
+            joining
+                .is_none()
+                .then(|| open_prev.and_then(|p| item_continues(item_unit, p, node, space, &pitch)))
+                .flatten()
+        });
         if let Some((separator, code)) = continues {
             e.syntax(separator);
             block_text.push_str(separator);
             *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
+            // Every other join here holds no sequence; an item's goes on in the run's.
+            open_group = key;
             // Decision #109: a word its line broke closes up inside the block, and the block goes
             // on from the tail.
             if let Some((tail, joined)) =
@@ -4205,7 +4417,27 @@ pub fn to_markdown_with(
                 continue;
             }
             None => {
-                separate(&mut e, &mut last, Block::Standalone);
+                // Decision #138: a unit opening with a marker opens an item, no deeper than one
+                // under the item open before it.
+                let item = items.get(node.id.as_str()).map(|&depth| match last {
+                    Some(Block::ListItem(open)) => depth.min(open + 1),
+                    _ => 0,
+                });
+                separate(
+                    &mut e,
+                    &mut last,
+                    item.map_or(Block::Standalone, Block::ListItem),
+                );
+                item_unit = item.and_then(|_| unit_of(node));
+                if let Some(depth) = item {
+                    for _ in 0..depth {
+                        e.syntax("  ");
+                    }
+                    e.syntax("- ");
+                    *erasures
+                        .entry(LIST_ITEMS_INFERRED_FROM_MARKERS)
+                        .or_insert(0) += 1;
+                }
                 block_text.clear();
                 block_text.push_str(&text);
                 open_group = key;
@@ -10613,6 +10845,7 @@ pub(crate) mod tests {
 
     const DROP_FURNITURE: ProjectionOptions = ProjectionOptions {
         drop_furniture: true,
+        infer_lists: false,
     };
 
     /// The `(chars, nodes)` a dropped bucket counts, or `None` where the artifact has none.
@@ -10888,5 +11121,240 @@ pub(crate) mod tests {
             erasure(&a, GFM_LIST_ITEM_RUN_JOINS),
             erasure(&plain, GFM_LIST_ITEM_RUN_JOINS)
         );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Decision #138 — list items read from markers, on request
+    // ---------------------------------------------------------------------------------------
+
+    /// One page's runs, each `(text, x0, x1, top, unit)` in points: measured from `x0` to `x1`,
+    /// ten points tall from `top`, on a baseline eight below it, in layout unit `unit` — what the
+    /// PDF reader writes for a page of a document that declares no author structure.
+    pub(crate) fn unit_lines(specs: &[(&str, i64, i64, i64, u32)]) -> DocumentRepresentation {
+        let lines: Vec<LineSpec<'_>> = specs
+            .iter()
+            .map(|&(t, x0, x1, top, _)| {
+                (
+                    t,
+                    None,
+                    x0 * 100,
+                    (top + 8) * 100,
+                    Some((x1 - x0) * 100),
+                    None,
+                )
+            })
+            .collect();
+        let units: Vec<Option<u32>> = specs.iter().map(|s| Some(s.4)).collect();
+        let repr = with_units(repr_of_placed(&lines), &units);
+        let mut geometry = repr.geometry().to_vec();
+        for (g, &(_, x0, x1, top, _)) in geometry.iter_mut().zip(specs) {
+            g.presence = GeometryPresence::Measured(
+                QRect::new(x0 * 100, top * 100, x1 * 100, (top + 10) * 100).unwrap(),
+            );
+        }
+        DocumentRepresentation::seal(repr.payload().clone(), geometry).unwrap()
+    }
+
+    /// A numbered list with a lettered item set in under its first, a paragraph, and a bullet:
+    /// each marker a run of its own beside its text, as `p07` draws them.
+    pub(crate) const MARKER_LINES: &[(&str, i64, i64, i64, u32)] = &[
+        ("Terms", 72, 100, 50, 1),
+        ("1.", 72, 80, 80, 2),
+        ("Payment is due within 15 days.", 90, 240, 80, 2),
+        ("Late payments carry interest.", 90, 235, 95, 2),
+        ("a.", 90, 98, 110, 3),
+        ("Notices must be in writing.", 108, 243, 110, 3),
+        ("2.", 71, 79, 125, 4),
+        ("Goods once sold stay sold.", 90, 220, 125, 4),
+        ("Closing words.", 72, 142, 150, 5),
+        ("•", 78, 81, 170, 6),
+        ("One year warranty", 90, 175, 170, 6),
+        ("•", 78, 81, 185, 7),
+        ("Installation support", 90, 180, 185, 7),
+    ];
+
+    /// An item whose next line follows a note, so a block of its own, then an item set in under it
+    /// and one set in under that, and an item in a region the reading order read beside it, set
+    /// lower: two regions of one page.
+    pub(crate) fn columns_repr() -> DocumentRepresentation {
+        let repr = unit_lines(&[
+            ("1.", 72, 80, 50, 1),
+            ("First", 90, 120, 50, 1),
+            ("Note", 200, 220, 50, 1),
+            ("rest", 90, 110, 65, 1),
+            ("a.", 108, 116, 80, 2),
+            ("Set in", 126, 160, 80, 2),
+            ("i.", 126, 130, 95, 3),
+            ("Deeper", 140, 170, 95, 3),
+            ("2.", 320, 328, 110, 4),
+            ("Next column", 338, 400, 110, 4),
+        ]);
+        let mut payload = repr.payload().clone();
+        for (i, node) in payload.nodes.iter_mut().enumerate() {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.region = Some(if i < 8 { 1 } else { 2 });
+            }
+        }
+        payload.nodes[2].kind = NodeKind::Annotation;
+        payload.nodes[2].attributes = NodeAttributes::Annotation(crate::AnnotationAttributes {
+            subtype: "Text".into(),
+            name: None,
+            title: None,
+            flags: Vec::new(),
+            unrecognized_flag_bits: Vec::new(),
+        });
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    pub(crate) const INFER_LISTS: ProjectionOptions = ProjectionOptions {
+        drop_furniture: false,
+        infer_lists: true,
+    };
+
+    /// **A unit opening with a marker is a list item, on request, and counted** (decision #138):
+    /// the marker stays as drawn after `- `, the lettered item set in nests one deeper, the item's
+    /// next line stays in it, and a paragraph ends the list. Off, it is `to_markdown` exactly.
+    #[test]
+    fn a_unit_opening_with_a_marker_is_a_list_item_on_request() {
+        let repr = unit_lines(MARKER_LINES);
+        let plain = artifact_of(repr.clone());
+        assert_eq!(artifact_with(&repr, ProjectionOptions::default()), plain);
+        assert_eq!(erasure(&plain, LIST_ITEMS_INFERRED_FROM_MARKERS), 0);
+
+        let a = artifact_with(&repr, INFER_LISTS);
+        assert_eq!(
+            a.markdown,
+            "Terms\n\n- 1. Payment is due within 15 days.\nLate payments carry interest.\n\
+             \x20 - a. Notices must be in writing.\n- 2. Goods once sold stay sold.\n\n\
+             Closing words.\n\n- • One year warranty\n- • Installation support\n"
+        );
+        assert_eq!(erasure(&a, LIST_ITEMS_INFERRED_FROM_MARKERS), 5);
+        assert_eq!(a.markdown_rule, plain.markdown_rule);
+        assert_eq!(
+            a.coverage.source_chars_emitted, plain.coverage.source_chars_emitted,
+            "the marker is the page's text, and nothing else moved"
+        );
+        a.validate().expect("tiles and balances");
+    }
+
+    /// **What opens no item** (decision #138): an inferred heading opening with a number, a run
+    /// flagged as furniture, a section number, a decimal, a marker alone with nothing after it in
+    /// its unit, and a run with no unit — a tagged or office document's, or a table's. And a marker
+    /// line with no other next to it — an initial (`K. For`), a numbered line at body size — opens
+    /// none: a list is two items or more. Each case stands beside a marker line, which it would
+    /// make a list of two. And an item set further in after no open item is at the top.
+    #[test]
+    fn a_heading_furniture_a_number_and_a_run_with_no_unit_open_no_item() {
+        let repr = unit_lines(&[
+            ("1. Introduction", 72, 150, 50, 1),
+            ("2. Background", 72, 140, 70, 2),
+            ("- 3 -", 72, 90, 90, 3),
+            ("• Next", 72, 110, 110, 4),
+            ("2.3.1 Scope", 72, 130, 130, 5),
+            ("1.5 million came.", 72, 160, 150, 6),
+            ("•", 72, 75, 170, 7),
+            ("• Last", 72, 110, 190, 8),
+            ("Plain words.", 72, 140, 210, 9),
+            ("K. For the first time", 72, 180, 230, 10),
+        ]);
+        let mut payload = repr.payload().clone();
+        for (i, node) in payload.nodes.iter_mut().enumerate() {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.inferred_heading = i == 0;
+                a.furniture = (i == 2).then_some(crate::Furniture::Header);
+            }
+        }
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let a = artifact_with(&repr, INFER_LISTS);
+        assert_eq!(
+            a.markdown,
+            "# 1. Introduction\n\n2. Background\n\n- 3 -\n\n• Next\n\n2.3.1 Scope\n\n\
+             1.5 million came.\n\n•\n\n• Last\n\nPlain words.\n\nK. For the first time\n"
+        );
+        assert_eq!(erasure(&a, LIST_ITEMS_INFERRED_FROM_MARKERS), 0);
+
+        // A column the reading order read apart opens its own list, and an item set in under no
+        // open item is at the top, as one after its item's text a note broke off is.
+        let a = artifact_with(&columns_repr(), INFER_LISTS);
+        assert_eq!(
+            a.markdown,
+            "- 1. First\n\nrest\n\n- a. Set in\n  - i. Deeper\n- 2. Next column\n"
+        );
+
+        let bullet = repr_of(&[("\u{2022} Looks like a bullet", None)]);
+        assert_eq!(
+            artifact_with(&bullet, INFER_LISTS).markdown,
+            "\u{2022} Looks like a bullet\n",
+            "no unit, no item"
+        );
+    }
+
+    /// A bullet drawn in a marked-content sequence of its own, its text in another and its next
+    /// line in a third, as a word processor draws one; then a number set in two runs against each
+    /// other.
+    pub(crate) fn sequenced_item_repr() -> DocumentRepresentation {
+        let repr = unit_lines(&[
+            ("•", 72, 75, 50, 1),
+            ("Collected", 80, 125, 50, 1),
+            (" via surveys", 125, 170, 50, 1),
+            ("and stored.", 80, 125, 65, 1),
+            ("•", 72, 75, 80, 2),
+            ("Kept safe.", 80, 125, 80, 2),
+            ("82.", 72, 80, 105, 3),
+            ("65", 80, 88, 105, 3),
+        ]);
+        let mut payload = repr.payload().clone();
+        for (node, mcid) in payload.nodes.iter_mut().zip([1, 2, 2, 3, 4, 5]) {
+            node.structural_locator = Some(StructuralLocator::PdfMcid(mcid));
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// **An item holds the rest of its unit** (decision #138): the text after a bullet drawn in a
+    /// sequence of its own, and its next line, are the item's, where by default each is a block;
+    /// and a marker alone set against what follows it (`82.` `65`) opens none.
+    #[test]
+    fn an_item_holds_its_unit_and_a_number_set_against_its_digits_is_none() {
+        let repr = sequenced_item_repr();
+        let plain = artifact_of(repr.clone());
+        assert_eq!(
+            plain.markdown,
+            "•\n\nCollected via surveys\n\nand stored.\n\n•\n\nKept safe.\n\n82.65\n"
+        );
+        let a = artifact_with(&repr, INFER_LISTS);
+        assert_eq!(
+            a.markdown,
+            "- • Collected via surveys\nand stored.\n- • Kept safe.\n\n82.65\n"
+        );
+        assert_eq!(erasure(&a, LIST_ITEMS_INFERRED_FROM_MARKERS), 2);
+        assert_eq!(
+            erasure(&a, LAYOUT_UNIT_GAP_JOINS),
+            erasure(&plain, LAYOUT_UNIT_GAP_JOINS) + 2
+        );
+        assert_eq!(
+            erasure(&a, LAYOUT_UNIT_LINE_JOINS),
+            erasure(&plain, LAYOUT_UNIT_LINE_JOINS) + 1
+        );
+        assert_eq!(
+            erasure(&a, MCID_RUN_JOINS),
+            1,
+            "the item goes on in its text's sequence, whose own join holds"
+        );
+        a.validate().expect("tiles and balances");
+    }
+
+    /// **A list going on at the top of the next column keeps its depth** (decision #138): an item
+    /// set above the one open before it starts the open items afresh, where the reading order
+    /// divided no region, so the next column's bullets are not nested under the last one's.
+    #[test]
+    fn a_list_wrapping_into_the_next_column_stays_at_its_depth() {
+        let repr = unit_lines(&[
+            ("• Alpha", 108, 160, 700, 1),
+            ("• Beta", 108, 160, 715, 2),
+            ("• Gamma", 342, 400, 80, 3),
+            ("• Delta", 342, 400, 95, 4),
+        ]);
+        let a = artifact_with(&repr, INFER_LISTS);
+        assert_eq!(a.markdown, "- • Alpha\n- • Beta\n- • Gamma\n- • Delta\n");
     }
 }

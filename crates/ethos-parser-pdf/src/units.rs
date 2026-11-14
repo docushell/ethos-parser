@@ -114,6 +114,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
+// Decision #138: one marker pattern for this rule and the projections' list inference.
+use ethos_parser_core::markdown::{lone_marker, opens_with_marker};
+
 use crate::nodes::PageExtract;
 
 /// A box: `x0, y0, x1, y1`, top-left system, centipoints.
@@ -553,36 +556,6 @@ pub(crate) fn opens_with_word(first: &str, pieces: usize) -> bool {
     let first = first.trim();
     first.chars().next().is_some_and(char::is_alphanumeric)
         && !(pieces > 1 && first.chars().count() == 1)
-}
-
-/// Whether `text` opens with a list marker: a bullet, or a number of up to three digits or a
-/// single letter, perhaps opened by `(` and closed by `.` or `)`, and then whitespace.
-pub(crate) fn opens_with_marker(text: &str) -> bool {
-    let text = text.trim_start();
-    let mut chars = text.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if "•·▪◦‣–—-*".contains(first) {
-        return chars.next().is_some_and(char::is_whitespace);
-    }
-    let text = text.strip_prefix('(').unwrap_or(text);
-    let label: String = text
-        .chars()
-        .take_while(char::is_ascii_alphanumeric)
-        .collect();
-    let numbered = (1..=3).contains(&label.len()) && label.bytes().all(|b| b.is_ascii_digit());
-    let lettered = label.len() == 1 && label.bytes().all(|b| b.is_ascii_alphabetic());
-    let mut rest = text[label.len()..].chars();
-    (numbered || lettered)
-        && matches!(rest.next(), Some('.' | ')'))
-        && rest.next().is_some_and(char::is_whitespace)
-}
-
-/// Whether `text` is a list marker alone ([`opens_with_marker`]'s), with no text after it.
-fn lone_marker(text: &str) -> bool {
-    let text = text.trim();
-    !text.contains(char::is_whitespace) && opens_with_marker(&format!("{text} "))
 }
 
 /// Whether a piece reading `text` leads into the piece after it on its line (`line-units-v7`): a

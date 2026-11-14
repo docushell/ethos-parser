@@ -351,6 +351,22 @@ const RUNNING_HEAD: &str = "Acme Ltd - Quarterly Report Q2 FY27";
 /// engine fixture has more than two pages of running furniture, and no manifest hash moves for it.
 fn running_furniture_pdf() -> Vec<u8> {
     let pages = 3;
+    let streams: Vec<String> = (1..=pages)
+        .map(|n| {
+            format!(
+                "BT /F1 9 Tf 1 0 0 1 36 380 Tm ({RUNNING_HEAD}) Tj ET \
+                 BT /F1 9 Tf 1 0 0 1 36 300 Tm (Body text of page {n}.) Tj ET \
+                 BT /F1 9 Tf 1 0 0 1 36 15 Tm (Page {n} of {pages}) Tj ET"
+            )
+        })
+        .collect();
+    pdf_of_pages(&streams)
+}
+
+/// A PDF of 300 by 400 point pages, one per content stream in `streams`, each drawing with `/F1`:
+/// Helvetica, every glyph 500 units wide.
+fn pdf_of_pages(streams: &[String]) -> Vec<u8> {
+    let pages = streams.len();
     let widths = vec!["500"; 224].join(" ");
     let kids: Vec<String> = (0..pages).map(|i| format!("{} 0 R", 3 + 2 * i)).collect();
     let mut objects: Vec<Vec<u8>> = vec![
@@ -362,13 +378,7 @@ fn running_furniture_pdf() -> Vec<u8> {
         .into_bytes(),
     ];
     let font = 3 + 2 * pages;
-    for i in 0..pages {
-        let n = i + 1;
-        let stream = format!(
-            "BT /F1 9 Tf 1 0 0 1 36 380 Tm ({RUNNING_HEAD}) Tj ET \
-             BT /F1 9 Tf 1 0 0 1 36 300 Tm (Body text of page {n}.) Tj ET \
-             BT /F1 9 Tf 1 0 0 1 36 15 Tm (Page {n} of {pages}) Tj ET"
-        );
+    for (i, stream) in streams.iter().enumerate() {
         objects.push(
             format!(
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << \
@@ -487,6 +497,87 @@ fn drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **`--infer-lists` writes a list item for each line opening with a marker on an untagged page,
+/// and counts them** (decision #138): the marker stays as drawn after `- `, a lettered item set in
+/// further nests under the numbered one, and a section number (`2.3.1`) and a decimal (`1.5`)
+/// open none. Without the flag the Markdown is the default one; the record path and `--source`
+/// give one artifact, and `html` writes the same items under the same count.
+#[test]
+fn infer_lists_writes_marker_lines_as_items_and_counts_them() {
+    let dir = scratch("infer-lists");
+    let pdf = dir.join("list.pdf");
+    let line =
+        |x: u32, y: u32, text: &str| format!("BT /F1 10 Tf 1 0 0 1 {x} {y} Tm ({text}) Tj ET ");
+    let stream = [
+        line(36, 300, "1."),
+        line(54, 300, "Payment is due within 15 days."),
+        line(54, 285, "a."),
+        line(72, 285, "Notices must be in writing."),
+        line(36, 270, "2."),
+        line(54, 270, "Goods once sold stay sold."),
+        line(36, 240, "2.3.1 Scope of the terms"),
+        line(36, 210, "1.5 million units were sold."),
+    ]
+    .concat();
+    std::fs::write(&pdf, pdf_of_pages(&[stream])).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let listed = run(&["markdown", "--infer-lists", repr]);
+    assert_eq!(
+        listed,
+        run(&["markdown", "--infer-lists", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&listed).expect("canonical JSON");
+    assert_eq!(
+        a["markdown"],
+        "- 1. Payment is due within 15 days.\n  - a. Notices must be in writing.\n\
+         - 2. Goods once sold stay sold.\n\n2.3.1 Scope of the terms\n\n\
+         1.5 million units were sold.\n"
+    );
+    assert_eq!(
+        plain["markdown"],
+        "1. Payment is due within 15 days.\n\na. Notices must be in writing.\n\n\
+         2. Goods once sold stay sold.\n\n2.3.1 Scope of the terms\n\n\
+         1.5 million units were sold.\n",
+        "no item without the flag"
+    );
+    let inferred = |artifact: &Value| {
+        artifact["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == "list-items-inferred-from-markers-v1")
+            .and_then(|e| e["count"].as_u64())
+    };
+    assert_eq!(inferred(&a), Some(3));
+    assert_eq!(inferred(&plain), None);
+    assert_eq!(a["markdown_rule"], plain["markdown_rule"]);
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--infer-lists", repr])).unwrap();
+    assert_eq!(
+        h["html"],
+        "<ul>\n<li>1. Payment is due within 15 days.<ul>\n<li>a. Notices must be in writing.\
+         </li>\n</ul>\n</li>\n<li>2. Goods once sold stay sold.</li>\n</ul>\n\
+         <p>2.3.1 Scope of the terms</p>\n<p>1.5 million units were sold.</p>\n"
+    );
+    assert_eq!(inferred(&h), Some(3));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Double-run byte identity — standing rule 6.
 #[test]
 fn two_runs_are_byte_identical() {
@@ -529,6 +620,7 @@ fn no_cli_path_emits_markdown_without_its_map() {
                 | "--source"
                 | "--ocr"
                 | "--drop-furniture"
+                | "--infer-lists"
         )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
@@ -572,6 +664,17 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         furniture_help.contains("page-furniture-not-projected-v1"),
         "--drop-furniture must name the count that admits it: {furniture_help:?}"
+    );
+    // **`--infer-lists` likewise** (decision #138): it writes `- ` before a line the page drew,
+    // all `syntax`, so the map tiles every byte, and each item it infers is counted, which
+    // [`infer_lists_writes_marker_lines_as_items_and_counts_them`] asserts.
+    let lists_help = options
+        .split("--infer-lists")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        lists_help.contains("list-items-inferred-from-markers-v1"),
+        "--infer-lists must name the count that admits it: {lists_help:?}"
     );
 
     // And the artifact itself always carries both halves.

@@ -32,6 +32,37 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### On request, a line opening with a list marker is a list item on an untagged PDF (decision #138)
+
+The owner approved lists on untagged PDFs behind a flag. **Off by default, and off is byte for
+byte the output before it**; no rule id and no `profile_sha256` moves.
+
+- `markdown --infer-lists` and `html --infer-lists`, and the library's `ProjectionOptions`
+  field `infer_lists` (`to_markdown_with`, `to_html_with`). On a document that declares no author
+  structure, a layout unit opening with a list marker — a bullet, or a number of up to three
+  digits or one letter closed by `.` or `)`, the units rule's own pattern, now shared — projects as
+  a list item: `- ` and the marker as the page drew it, or an `<li>`, holding the rest of its
+  unit even where a word processor drew the bullet in a marked-content sequence of its own. Its
+  depth comes from where the marker stands against the items open before it, no more than one
+  under the open item, and a list going on at the top of the next column starts again at the top.
+  A marker run alone opens an item only where the next run stands apart from it, so a number
+  drawn as `82.` and `65` is none. **A list is two items or more**: a marker line with no other
+  next to it (an initial, `K. For the first time`; `(x) in time`) stays a paragraph.
+- Inferred, never declared: the representation is unchanged and carries no list. Each item is
+  counted under `list-items-inferred-from-markers-v1` in the structural census. An inferred
+  heading stays a heading; furniture, a table's runs, a tagged list and an office document's
+  numbering are untouched. MCP and the SDKs do not offer it yet.
+- Known limits: consecutive numbered lines at body size (`1. Introduction`, `2. Methods`), a unit
+  opening `- ` or an initial next to a real item, and rows of an undetected table opening `1.` read
+  as items; a decimal (`1.5`) and a section number (`2.3.1`) do not, nor do the roman `ii.`
+  through `iv.` (a marker is one letter, so `i.` and `v.` open items and the rest do not). An item
+  is written `- 2. x`, as a tagged one is, which CommonMark renders as a bullet holding an ordered
+  list starting at 2.
+- **NID does not measure list correctness**: it falls with the flag even where every item is
+  right, since the item syntax adds characters the ground truth may not hold (`- 1. x` against
+  `1. x`).
+- Measured: Default output byte-identical on opendataloader-bench and the gate. With the flag, 35 of opendataloader-bench's 200 documents gain 226 items; NID 0.8918 -> 0.8917, MHS 0.5903 unchanged at four places, overall 0.8005 unchanged at four places: a correct list still costs NID where the answer key writes `1. x` and the projection writes `- 1. x`..
+
 ### One element view for consumers: `ethos-parser elements` (decision #137)
 
 New artifact `ethos.parser.elements.v0`, rule `elements-units-v1`, draft schema
