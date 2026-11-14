@@ -178,7 +178,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `-v5` gives. And decision #128's, folded in: two list bodies the file numbers are two `<li>`s,
 /// and one body's join counts as the element's, as in Markdown. And decision #130's: a DOCX
 /// paragraph's runs are one `<p>`, keeping the tabs and line breaks it holds, as in Markdown. And
-/// decision #131's: a raised or lowered mark stays on its line, as in Markdown.
+/// decision #131's: a raised or lowered mark stays on its line, as in Markdown. And decision
+/// #136's: a DOCX heading, list item and table as the file declares them, and a layout table as
+/// its blocks, as in Markdown.
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -428,7 +430,13 @@ pub fn to_html_with(
         std::collections::BTreeMap::new();
     let mut in_representation = 0usize;
 
-    let plans = plan_tables(payload, &mut erasures);
+    // Decision #136, as in `crate::markdown`.
+    let office = if options.drop_furniture {
+        crate::markdown::office_furniture(payload)
+    } else {
+        Default::default()
+    };
+    let plans = plan_tables(payload, &mut erasures, &office);
     // Every merge costs GFM a slot; here a merge costs nothing unless the grid could not hold it,
     // so the blanket count is replaced by what was actually clamped away.
     erasures.remove(GFM_SPAN_SLOTS_UNREPRESENTABLE);
@@ -483,7 +491,9 @@ pub fn to_html_with(
     let wrapped = crate::markdown::wrapped_labels(repr);
     let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &pitch);
     let furniture = if options.drop_furniture {
-        crate::markdown::repeated_furniture(repr, &owner)
+        let mut furniture = crate::markdown::repeated_furniture(repr, &owner);
+        furniture.extend(office);
+        furniture
     } else {
         Default::default()
     };
@@ -578,13 +588,24 @@ pub fn to_html_with(
         }
 
         if let Some(role) = list_role_at(&payload.nodes, i, &pitch) {
+            // Decision #136, as in `crate::markdown`: a DOCX list paragraph's runs are one item.
+            let seam = open_item
+                .and(open_prev)
+                .and_then(|prev| crate::markdown::paragraph_seam(&payload.nodes, i, prev));
+            let role = crate::markdown::docx_item(node, role, open_item, open_prev, seam.is_some());
+            let docx = matches!(node.native_locator, crate::NativeLocator::Docx(_));
             flush_block(&mut e, &mut open_block);
             open_group = None;
-            open_prev = None;
+            open_prev = docx.then_some(node);
             pending_space = false;
             open_line = None;
             line_ink = None;
-            if role.continues(open_item) {
+            if let Some(seam) = seam {
+                e.syntax(seam);
+                *erasures
+                    .entry(crate::markdown::BLOCK_ELEMENT_RUN_JOINS)
+                    .or_insert(0) += 1;
+            } else if !docx && role.continues(open_item) {
                 // A second body run inside an item the tree did not itself close. **This
                 // projection commits the same erasure the Markdown one does**, so it declares it
                 // under the same code, which `ListRole::join_code` picks for both — see

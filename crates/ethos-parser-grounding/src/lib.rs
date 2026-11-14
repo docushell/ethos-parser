@@ -1498,6 +1498,7 @@ mod schema_limit_tests {
                 derivation: DerivationClass::Extracted,
                 attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
                     space_preserved: false,
+                    ..Default::default()
                 }),
             })
             .collect();

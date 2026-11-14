@@ -218,7 +218,7 @@
         "lines",
         "pies"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42, seven since decision #66 and eight since decision #90: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42, seven since decision #66, eight since decision #90 and an optional ninth, `office`, since decision #135: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -254,7 +254,7 @@
         },
         "office": {
           "type": "string",
-          "description": "Decision #135. Version id of the rule that reads a table an office file states itself: `xlsx-sheet-table-v1`, each worksheet of a workbook as one table at the addresses its cells state, or `pptx-tbl-v1`, each <a:tbl> of a slide. The one optional key here: absent means no office table rule ran, which is true of every PDF and DOCX profile and of every profile written before it."
+          "description": "Decision #135. Version id of the rule that reads a table an office file states itself: `xlsx-sheet-table-v1`, each worksheet of a workbook as one table at the addresses its cells state, or `pptx-tbl-v1`, each <a:tbl> of a slide; and since decision #136 `docx-tbl-v1`, each <w:tbl> of a Word document as the file states it — a row per <w:tr>, a cell per <w:tc>, columns counted on the table's grid from <w:gridBefore> and each cell's <w:gridSpan>, a <w:vMerge> continuing the cell above extending that cell down a row, a nested table its own, its `page` the part. Each office profile that reads tables names its own; all spend one slot budget per document. The one optional key here: absent means no office table rule ran, which is true of every PDF profile and of every profile written before it."
         }
       }
     },

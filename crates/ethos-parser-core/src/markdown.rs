@@ -145,7 +145,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
-/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131); a DOCX heading, list item and table as the file declares them, a heading's line break one space and a list paragraph's runs one item, and a layout table — a cell of two paragraphs or more, or a nested table — written as its blocks in document order, counted as `layout-table-as-blocks-v1` (decision #136) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -352,6 +352,70 @@ pub const GFM_CELL_NOT_PLACED: &str = "gfm-cell-not-placed-v1";
 /// table. Counted rather than asserted because the alternative to a count here is a panic on a
 /// record this engine did not write.
 pub const GFM_TABLE_NOT_PROJECTED: &str = "gfm-table-not-projected-v1";
+
+/// A DOCX table written as the blocks it holds rather than as a grid (decision #136): a layout
+/// table, which [`layout_tables`] names. Its runs project in document order, a paragraph a block,
+/// a heading or a list item as outside a table, a table nested in it where it stands; the
+/// representation keeps its `tables[]` record, since the file states a table. Counted once per
+/// table, as [`GFM_TABLE_NOT_PROJECTED`] is.
+pub(crate) const LAYOUT_TABLE_AS_BLOCKS: &str = "layout-table-as-blocks-v1";
+
+/// Decision #136. The DOCX tables, by index in `tables[]`, that are **layout tables**: a cell holds
+/// two paragraphs or more with text, or the table holds another — a DOCX table whose first run
+/// lies between this one's first and last, in the same part. A Word resume laid out as a table
+/// holds a name, a contact line, its headings and its jobs as paragraphs of a few cells, and a
+/// grid cell is one line; a table nested in a cell, written as a grid of its own after the outer
+/// one, left its heading behind. **Known limit**: a table nested in the last cell, after every run
+/// of the outer table, is not seen to be nested.
+pub(crate) fn layout_tables(
+    payload: &crate::representation::RepresentationPayload,
+) -> std::collections::BTreeSet<usize> {
+    let at: std::collections::BTreeMap<&str, usize> = payload
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.id.as_str(), i))
+        .collect();
+    // Each DOCX table's runs, as indices in reading order: first and last.
+    let spans: Vec<(usize, usize, usize)> = payload
+        .tables
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.detection_rule == crate::TABLE_DETECTION_DOCX_V1)
+        .filter_map(|(t, table)| {
+            let runs = table
+                .cells
+                .iter()
+                .flat_map(|c| &c.node_ids)
+                .filter_map(|id| at.get(id.as_str()).copied());
+            let first = runs.clone().min()?;
+            Some((first, runs.max()?, t))
+        })
+        .collect();
+    let mut firsts: Vec<usize> = spans.iter().map(|&(first, ..)| first).collect();
+    firsts.sort_unstable();
+    spans
+        .iter()
+        .filter(|&&(first, last, t)| {
+            let holds = firsts
+                .get(firsts.partition_point(|&f| f <= first))
+                .is_some_and(|&f| f < last);
+            holds
+                || payload.tables[t].cells.iter().any(|c| {
+                    let mut paragraphs = c
+                        .node_ids
+                        .iter()
+                        .filter_map(|id| at.get(id.as_str()).map(|&i| &payload.nodes[i]))
+                        .filter(|n| !n.text.trim().is_empty())
+                        .filter_map(docx_paragraph);
+                    paragraphs
+                        .next()
+                        .is_some_and(|first| paragraphs.any(|p| p != first))
+                })
+        })
+        .map(|&(.., t)| t)
+        .collect()
+}
 
 /// Runs appended to a list item that was already open, joined on a guess the tree did not make.
 ///
@@ -933,17 +997,20 @@ pub fn normalize(s: &str) -> String {
 /// `crate::OfficeOdfCellAttributes` has nowhere to put it. A level there would be a qualifier
 /// outliving the thing it qualifies, so ODS carries neither.
 ///
-/// **DOCX.** Earlier still: the reader keeps no `<w:pStyle>`, so no heading reaches the wire at all
-/// and this function cannot see one to project. Two things stand in the way. The first is the
-/// reader's: `docx.rs` sees self-closing elements in its `Event::Empty` arm, but keeps neither
-/// `<w:pStyle/>` nor `<w:outlineLvl/>`, which are always self-closing. The second is the
-/// honesty question — `w:val="Heading1"` is a **styleId**, an author-chosen token, while the
-/// built-in name ECMA-376 fixes lives in `<w:name>` inside `word/styles.xml`. Mapping the id to a
-/// level without opening that part is matching a convention rather than reading a declaration, so
-/// DOCX is a reader slice of its own and not a match arm here.
+/// **DOCX**, since decision #136, is a fifth source and a declared one: the level
+/// `crate::OfficeRunAttributes::heading_level` carries, which the reader read off the paragraph's
+/// own `<w:outlineLvl>` or its style's in `word/styles.xml` — `w:val="Heading1"` is a **styleId**,
+/// an author-chosen token, and is never read as a level without the style that defines it. A level
+/// past six projects as a paragraph, counted as an ODF one is.
 pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     if let crate::NodeAttributes::EpubBlock(e) = &node.attributes {
         return xhtml_heading_level(&e.element);
+    }
+    if let crate::NodeAttributes::OfficeRun(a) = &node.attributes {
+        return a
+            .heading_level
+            .filter(|l| (1..=6).contains(l))
+            .and_then(|l| u8::try_from(l).ok());
     }
     if let Some((block, level)) = odf_block(node) {
         return odf_heading_level(block, level);
@@ -1033,6 +1100,13 @@ fn odf_block(node: &crate::Node) -> Option<(crate::OdfBlockKind, Option<u32>)> {
 /// Three ways to return `None`, and only the first is a non-event: the block is not a heading; the
 /// block is a heading that projected at its own depth; the node is not ODF at all.
 pub(crate) fn odf_heading_erasure(node: &crate::Node) -> Option<&'static str> {
+    // Decision #136: a DOCX paragraph declares a level or none, so only a level past six is one.
+    if let crate::NodeAttributes::OfficeRun(a) = &node.attributes {
+        return a
+            .heading_level
+            .is_some_and(|l| l > 6)
+            .then_some(HEADING_LEVEL_UNREPRESENTABLE);
+    }
     let (block, level) = odf_block(node)?;
     if !matches!(block, crate::OdfBlockKind::Heading) || odf_heading_level(block, level).is_some() {
         return None;
@@ -1077,7 +1151,28 @@ fn xhtml_heading_level(element: &str) -> Option<u8> {
 ///
 /// **No bullet glyph, no hanging indent, no font name.** An untagged document grows no list here;
 /// its bullet characters are runs like any other and project as the text they are.
+///
+/// **A DOCX `<w:numPr>`** (decision #136) is the second declared source: the paragraph names a
+/// numbering, at a level, and Word renders its marker from `word/numbering.xml` — so the marker is
+/// no byte of the record, and the item projects `- ` as every item here does.
 pub(crate) fn list_role(node: &crate::Node) -> Option<ListRole> {
+    // Decision #136: a DOCX paragraph's declared numbering, at its `<w:ilvl>`, unless it is a
+    // heading too; a heading's numbering is the heading's. Its runs join as one paragraph's do,
+    // `paragraph_seam`'s rule, so the role names no element.
+    if let crate::NodeAttributes::OfficeRun(a) = &node.attributes {
+        return a
+            .list_level
+            .filter(|_| a.heading_level.is_none())
+            .map(|level| ListRole {
+                depth: level as usize,
+                label: false,
+                item: false,
+                reads_on: false,
+                at: None,
+                pitch: None,
+                element: None,
+            });
+    }
     let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() else {
         return None;
     };
@@ -1132,6 +1227,32 @@ pub(crate) fn list_role_at(
             .map(|m| m.pitch),
         ..role
     })
+}
+
+/// Decision #136 (review). A DOCX list run's role as both projections write it: the open item's,
+/// where the run goes on in it (`seam`); at the top with no item open; with one open, whose last
+/// run is `prev`, at its depth where the two `<w:ilvl>` agree, one level under it where this one is
+/// deeper, and at the shallower of the two depths where it is shallower. A list starting at level
+/// two, or jumping from level one to four, read `    - item` — an indented code block — or lazy
+/// text, and in HTML a `<ul>` holding only `<ul>`s. Every other run's role is its own.
+pub(crate) fn docx_item(
+    node: &crate::Node,
+    role: ListRole,
+    open: Option<ListRole>,
+    prev: Option<&crate::Node>,
+    seam: bool,
+) -> ListRole {
+    if docx_paragraph(node).is_none() {
+        return role;
+    }
+    let depth = match (open, prev.and_then(list_role).map(|r| r.depth)) {
+        (Some(open), _) if seam => return open,
+        (Some(open), Some(level)) if role.depth == level => open.depth,
+        (Some(open), Some(level)) if role.depth > level => open.depth + 1,
+        (Some(open), _) => role.depth.min(open.depth),
+        (None, _) => 0,
+    };
+    ListRole { depth, ..role }
 }
 
 /// Whether a list run's `text` reads on from the item before (decision #128): it opens lowercase,
@@ -2163,7 +2284,9 @@ pub(crate) fn projected_text(nodes: &[crate::Node], i: usize) -> String {
             .take()
             .and_then(|start| stretch(&trimmed[start..at], preserved))
         {
-            let block = gap == '\n' && opens_line(nodes, i, &trimmed[at..]);
+            // Decision #136: and in a heading, which an ATX heading keeps on one line.
+            let block = gap == '\n'
+                && (heading_level(node).is_some() || opens_line(nodes, i, &trimmed[at..]));
             out.push(if block { ' ' } else { gap });
         }
         out.push(ch);
@@ -2206,7 +2329,7 @@ pub(crate) fn paragraph_seam(
     .reduce(wider);
     Some(match gap {
         None => "",
-        Some('\n') if opens_line(nodes, i, after) => " ",
+        Some('\n') if heading_level(node).is_some() || opens_line(nodes, i, after) => " ",
         Some('\n') => "\n",
         Some('\t') => "\t",
         Some(_) => " ",
@@ -2789,6 +2912,8 @@ pub struct ProjectionOptions {
     /// `iii`, is not read as a number, so repeats only where its text does. An `/Artifact` may be
     /// a watermark or a background's text, and one repeated so goes too. The block around a line
     /// left out ends there, and the list around it, as the furniture's own block ended them.
+    /// Since decision #136, a Word document's header and footer parts go too, whole: a section
+    /// sets them on its pages by declaration, and the record reads each once.
     /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`].
     pub drop_furniture: bool,
 }
@@ -2804,7 +2929,7 @@ pub struct ProjectionOptions {
 /// place the span across the page that box covers, which must overlap the other line's. A line
 /// with no text, or no measured box, is not compared, so a space a page drew as an `/Artifact`
 /// still joins what lies either side of it; and a table's run is left to its cell, as
-/// [`overprinted_runs`] leaves it.
+/// [`overprinted_runs`] leaves it. A Word header or footer part's runs are [`office_furniture`]'s.
 pub(crate) fn repeated_furniture<'a>(
     repr: &'a DocumentRepresentation,
     owner: &std::collections::BTreeMap<&str, usize>,
@@ -2886,6 +3011,22 @@ pub(crate) fn repeated_furniture<'a>(
         .zip(repeated)
         .filter(|(_, r)| *r)
         .flat_map(|((ids, ..), _)| ids)
+        .collect()
+}
+
+/// Decision #136. The runs of a Word header or footer part, which its section sets on its pages by
+/// declaration and the record reads once: [`ProjectionOptions::drop_furniture`] leaves them out
+/// whole, and a table they make up with them ([`plan_tables`]).
+pub(crate) fn office_furniture(
+    payload: &crate::representation::RepresentationPayload,
+) -> std::collections::BTreeSet<&str> {
+    payload
+        .nodes
+        .iter()
+        .filter(|n| {
+            matches!(&n.attributes, crate::NodeAttributes::OfficeRun(a) if a.furniture.is_some())
+        })
+        .map(|n| n.id.as_str())
         .collect()
 }
 
@@ -3589,7 +3730,14 @@ pub fn to_markdown_with(
         std::collections::BTreeMap::new();
     let mut in_representation = 0usize;
 
-    let plans = plan_tables(payload, &mut erasures);
+    // Decision #136: a Word header's or footer's runs, on request, before the tables are planned,
+    // so a table they make up goes with them.
+    let office = if options.drop_furniture {
+        office_furniture(payload)
+    } else {
+        Default::default()
+    };
+    let plans = plan_tables(payload, &mut erasures, &office);
     // Which table, if any, owns each run. A run in this map is emitted **inside** its table and
     // nowhere else; that is decision 1 of v1.1-S2, and it is the difference between a projection
     // that moves characters and one that duplicates them.
@@ -3639,7 +3787,9 @@ pub fn to_markdown_with(
     let wrapped = wrapped_labels(repr);
     let overprinted = overprinted_runs(&payload.nodes, &owner, &pitch);
     let furniture = if options.drop_furniture {
-        repeated_furniture(repr, &owner)
+        let mut furniture = repeated_furniture(repr, &owner);
+        furniture.extend(office);
+        furniture
     } else {
         Default::default()
     };
@@ -3745,7 +3895,16 @@ pub fn to_markdown_with(
         }
 
         if let Some(role) = list_role_at(&payload.nodes, i, &pitch) {
-            if role.continues(open_item) {
+            // Decision #136: a DOCX list paragraph's next run goes on in its item, with what the
+            // paragraph holds between, as `paragraph_seam` joins any paragraph's runs.
+            let seam = open_item
+                .and(open_prev)
+                .and_then(|prev| paragraph_seam(&payload.nodes, i, prev));
+            let role = docx_item(node, role, open_item, open_prev, seam.is_some());
+            if let Some(seam) = seam {
+                e.syntax(seam);
+                *erasures.entry(BLOCK_ELEMENT_RUN_JOINS).or_insert(0) += 1;
+            } else if docx_paragraph(node).is_none() && role.continues(open_item) {
                 // A second run inside an item the tree did not itself close. Joined here, and
                 // counted where `ListRole::join_code` says.
                 if let Some(code) = open_item.and_then(|open| role.join_code(open)) {
@@ -3778,9 +3937,10 @@ pub fn to_markdown_with(
             open_item = Some(role);
             last = Some(Block::ListItem(role.depth));
             // The list path has its own join and its own census code; a prose block never
-            // continues into or out of one.
+            // continues into or out of one. Decision #136: a DOCX run is kept as the item's last,
+            // for its paragraph's next run; `paragraph_seam` joins nothing outside its paragraph.
             open_group = None;
-            open_prev = None;
+            open_prev = docx_paragraph(node).is_some().then_some(node);
             pending_space = false;
             open_line = None;
             line_ink = None;
@@ -4293,9 +4453,17 @@ pub(crate) enum SlotRole {
 /// Runs are claimed here rather than during emission so that **claiming and emitting cannot
 /// disagree**: the linear pass skips exactly the runs some slot will print, because it is reading
 /// the same list this built.
+///
+/// Decision #136: a table whose every run is in `left_out` — a Word header's letterhead table, with
+/// page furniture left out — is no grid and counts nothing here, and its runs go as `left_out`'s
+/// do; and a DOCX table no run is in is no grid either, counted as one with no rows is, since with
+/// no run it has no place in reading order but the end. A DOCX layout table ([`layout_tables`]) is
+/// no grid either: its runs project as the blocks they are, in document order, counted under
+/// [`LAYOUT_TABLE_AS_BLOCKS`].
 pub(crate) fn plan_tables<'a>(
     payload: &'a crate::representation::RepresentationPayload,
     erasures: &mut std::collections::BTreeMap<&'static str, usize>,
+    left_out: &std::collections::BTreeSet<&str>,
 ) -> Vec<TablePlan<'a>> {
     let by_id: std::collections::BTreeMap<&str, &crate::Node> =
         payload.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
@@ -4303,10 +4471,43 @@ pub(crate) fn plan_tables<'a>(
     // detectors overlapped, and the first one still keeps it.
     let mut claimed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     let mut plans = Vec::with_capacity(payload.tables.len());
+    let layout = layout_tables(payload);
 
-    for table in &payload.tables {
+    for (t, table) in payload.tables.iter().enumerate() {
         let (rows, columns) = (table.rows as usize, table.columns as usize);
-        if rows == 0 || columns == 0 {
+        let mut ids = table
+            .cells
+            .iter()
+            .flat_map(|c| c.node_ids.iter())
+            .peekable();
+        let empty = ids.peek().is_none();
+        if !empty && ids.all(|id| left_out.contains(id.as_str())) {
+            plans.push(TablePlan {
+                projected: false,
+                slots: Vec::new(),
+                roles: Vec::new(),
+                spans_clamped: 0,
+                rows,
+                columns,
+                caption: None,
+            });
+            continue;
+        }
+        let docx = table.detection_rule == crate::TABLE_DETECTION_DOCX_V1;
+        if layout.contains(&t) {
+            *erasures.entry(LAYOUT_TABLE_AS_BLOCKS).or_insert(0) += 1;
+            plans.push(TablePlan {
+                projected: false,
+                slots: Vec::new(),
+                roles: Vec::new(),
+                spans_clamped: 0,
+                rows,
+                columns,
+                caption: None,
+            });
+            continue;
+        }
+        if rows == 0 || columns == 0 || (docx && empty) {
             // No grid to draw. The cells' runs are left unclaimed, so they project as paragraphs
             // and no character is lost — only the (empty) grid is.
             *erasures.entry(GFM_TABLE_NOT_PROJECTED).or_insert(0) += 1;
@@ -4479,6 +4680,13 @@ pub(crate) fn cell_runs_abut(
         return together
             && !prev.reading_text().ends_with(char::is_whitespace)
             && !node.reading_text().starts_with(char::is_whitespace);
+    }
+    // Decision #136: two runs of one DOCX paragraph abut where neither holds whitespace at the
+    // seam, as `paragraph_seam` joins them outside a table.
+    if docx_paragraph(prev).is_some() {
+        return docx_paragraph(prev) == docx_paragraph(node)
+            && !prev.text.ends_with(char::is_whitespace)
+            && !node.text.starts_with(char::is_whitespace);
     }
     let (Some(x), Some(y)) = (
         prev.native_locator.run_locator(),

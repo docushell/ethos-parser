@@ -274,6 +274,7 @@ fn a_page_less_element_past_a_string_limit_is_omitted() {
         derivation: DerivationClass::Extracted,
         attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
             space_preserved: false,
+            ..Default::default()
         }),
     };
     let doc = || "word/document.xml".to_string();
@@ -409,6 +410,7 @@ fn a_page_less_locator_at_the_limit_is_kept_and_one_past_it_is_omitted() {
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
                 space_preserved: false,
+                ..Default::default()
             }),
         });
     }

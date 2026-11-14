@@ -1823,10 +1823,16 @@ pub struct TextRunAttributes {
 
 /// An office run's facts: what OOXML states about a `<w:r>` and nothing else (v2-S2).
 ///
-/// Deliberately one field. Everything else a run could carry — a style id, bold, a language — is
-/// in `word/styles.xml` or a `<w:rPr>` this slice does not read, and a field that is always
-/// `false` because nobody populated it is worse than no field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One field until decision #136, which added three the file states about the run's paragraph and
+/// part: a heading level, a list level and furniture. Everything else a run could carry — bold, a
+/// language — is in a `<w:rPr>` this reader does not read, and a field that is always `false`
+/// because nobody populated it is worse than no field. Each new field is absent where the file
+/// states nothing, so a run that is neither heading, list item nor header serializes as before.
+///
+/// **A level is no outline**, the argument [`OfficeParagraphAttributes::outline_level`] makes:
+/// each is the paragraph's statement about itself, so [`Node::structural_locator`] stays `None`
+/// and `capabilities.structural_locators` stays false.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OfficeRunAttributes {
     /// Whether the `<w:t>` carried `xml:space="preserve"`.
@@ -1837,6 +1843,30 @@ pub struct OfficeRunAttributes {
     /// whether this run's spaces are the document's or the parser's. Recorded rather than
     /// resolved: this reader takes the text verbatim either way and says which case it was.
     pub space_preserved: bool,
+    /// The heading level the run's paragraph declares, one-based (decision #136): its own
+    /// `<w:outlineLvl w:val>` plus one, or else its style's, through `word/styles.xml` and the
+    /// style's `<w:basedOn>` chain, or the built-in style name `heading N` such a style carries.
+    ///
+    /// **A declaration, never a font size**: `w:val="Heading1"` alone is a styleId, an
+    /// author-chosen token, and is read only through the style it names. Absent where nothing
+    /// declares a level, and where `<w:outlineLvl w:val="9"/>` states body text. OOXML's levels
+    /// run to nine; a level past the six both projections have projects as a paragraph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading_level: Option<u32>,
+    /// The `<w:ilvl>` of the numbering the run's paragraph declares, zero-based (decision #136):
+    /// its own `<w:numPr>`, or its style's. Absent where neither names a numbering, and where
+    /// `<w:numId w:val="0"/>` removes one.
+    ///
+    /// **The level, never the number.** Word renders `1.` or `a)` from `word/numbering.xml`, and
+    /// no byte of the paragraph holds it, so no projection writes one: every item is a bullet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_level: Option<u32>,
+    /// Which page edge the run's part is set at (decision #136): a run of a header part a
+    /// `<w:headerReference>` names, or of a footer part a `<w:footerReference>` names. Read off
+    /// the reference, never off where anything lies, since nothing here is laid out. Absent on a
+    /// run of the body or the footnotes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub furniture: Option<Furniture>,
 }
 
 /// A slide run's facts: what PresentationML states about the shape holding it (v2-S4).
@@ -3553,6 +3583,7 @@ mod tests {
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
                 space_preserved: false,
+                ..Default::default()
             }),
         }
     }
@@ -3893,7 +3924,12 @@ mod tests {
             !docx.capabilities.measured_ink_boxes,
             "a DOCX has no ink box"
         );
-        assert!(!docx.capabilities.tables, "v2-S2 reads no tables");
+        assert!(
+            docx.capabilities.tables
+                && docx.table_detection.office.as_deref() == Some(crate::TABLE_DETECTION_DOCX_V1)
+                && docx.table_detection.ruled == crate::NOT_RUN,
+            "a `<w:tbl>` is read as the file states it, and no PDF table rule runs (decision #136)"
+        );
         assert!(
             docx.capabilities.spans,
             "a run is a span, and that is the claim this reader makes"

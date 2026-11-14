@@ -233,6 +233,7 @@ fn a_page_less_representation_is_refused_by_project() {
         derivation: DerivationClass::Extracted,
         attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
             space_preserved: false,
+            ..Default::default()
         }),
     };
     let geometry = NodeGeometry {

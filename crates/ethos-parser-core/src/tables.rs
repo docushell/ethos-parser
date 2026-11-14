@@ -286,8 +286,10 @@ pub struct TableCellRecord {
     /// cell they are the runs the structure tree binds under it by `(page, mcid)` (v2-S24). Either
     /// way it is real runs concatenated, never re-decoded and never placed.
     ///
-    /// **Never a novel string.** A cell enclosing no run carries an empty one, because that is
-    /// what the document put there — `docs/history/09-V1-MILESTONES.md` S1's fabrication-0 criterion.
+    /// **Never a novel string** — but for one separator: a DOCX cell's paragraphs are joined by one
+    /// space where neither side holds whitespace (decision #136), so two
+    /// lines of a cell are not welded into one word. A cell enclosing no run carries an empty one,
+    /// because that is what the document put there — `docs/history/09-V1-MILESTONES.md` S1's fabrication-0 criterion.
     pub text: String,
     /// The nodes [`Self::text`] is the concatenation of, in reading order (v1.1-S2).
     ///
@@ -318,7 +320,9 @@ pub struct TableCellRecord {
 pub struct TableRecord {
     /// Stable id.
     pub id: NodeId,
-    /// The page this table is on.
+    /// The page this table is on — or, for a page-less format, the part it was read from: a DOCX
+    /// `<w:tbl>`'s is the part id its runs are parented by (decision #136), never a page invented
+    /// for it.
     pub page: NodeId,
     /// Its bounding box, in the artifact's declared coordinate system — or a typed reason there is
     /// none.
@@ -368,7 +372,12 @@ pub struct TableRecord {
     /// | `unruled-align-v1` | placed text in columns | inferred it | `Computed` |
     /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells | `Computed` |
     /// | `tagged-tables-v1` | tagged the grid in its tree | read the tags | the element's own |
+    /// | `xlsx-sheet-table-v1` | wrote a worksheet's cells | read their addresses and merges | `Extracted` |
+    /// | `pptx-tbl-v1` | wrote a slide's `<a:tbl>` | read its rows, cells and spans | `Extracted` |
+    /// | `docx-tbl-v1` | wrote a `<w:tbl>` | read its rows, cells and merges | `Extracted` |
     ///
+    /// The three office rules (decisions #135 and #136) are page-less formats': their tables and
+    /// cells carry no box, typed absent as an office run's is, and their `page` is the part.
     /// `derivation` is `Computed` for the first three — all inferences over Extracted ink — and
     /// for the fourth it is the class the `/Table` element states: `Extracted` for an author's
     /// tags, the document's own statement rather than an inference, and `Computed` where the

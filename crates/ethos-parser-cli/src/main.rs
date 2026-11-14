@@ -448,8 +448,9 @@ struct MarkdownArgs {
     /// or a tagged page's `/Artifact` — which may be a watermark — whose text another page
     /// repeats on the same side and across the same place, numbers read alike. A running head
     /// and a folio go, a whole line at a time; a numbered chapter title at the top of each
-    /// chapter's page goes too. Counted under the census bucket `page-furniture-not-projected-v1`;
-    /// the representation keeps every run (decision #134).
+    /// chapter's page goes too. A Word document's header and footer parts go whole, their tables
+    /// with them (decision #136) — so a resume whose name sits only in its page header loses it. Counted under the census bucket `page-furniture-not-projected-v1`; the
+    /// representation keeps every run (decision #134).
     #[arg(long)]
     drop_furniture: bool,
 }

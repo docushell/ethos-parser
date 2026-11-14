@@ -110,8 +110,8 @@ pub mod zip;
 
 use ethos_parser_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
-    EpubBlockAttributes, EpubLocator, GeometryAbsence, GeometryPresence, IdAllocator, IdKind,
-    Limitation, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind,
+    EpubBlockAttributes, EpubLocator, Furniture, GeometryAbsence, GeometryPresence, IdAllocator,
+    IdKind, Limitation, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind,
     OdfCellTextSource, OdpLocator, OdsLocator, OdtLocator, OfficeCellAttributes,
     OfficeOdfCellAttributes, OfficeOdfShapeAttributes, OfficeParagraphAttributes,
     OfficeRunAttributes, OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity,
@@ -718,16 +718,116 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     }
 }
 
+/// A DOCX cell's text (decision #136): its runs' text concatenated, with one space where two of
+/// its paragraphs meet and neither holds whitespace at the seam, so `Line one` and `Line two` do
+/// not weld into `Line oneLine two` — but two runs of one paragraph are joined as they stand, so
+/// a word Word cut into runs stays one word, where [`cell_text`] spaces every run.
+fn docx_cell_text(runs: &[docx::Run], cell: &[usize]) -> String {
+    let mut text = String::new();
+    let mut prev: Option<&docx::Run> = None;
+    for run in cell.iter().map(|&i| &runs[i]) {
+        if prev.is_some_and(|p| {
+            p.paragraph != run.paragraph
+                && !p.text.ends_with(char::is_whitespace)
+                && !run.text.starts_with(char::is_whitespace)
+        }) {
+            text.push(' ');
+        }
+        text.push_str(&run.text);
+        prev = Some(run);
+    }
+    text
+}
+
+/// The relationship part of `word/document.xml`, which names its styles, headers, footers and
+/// footnotes (decision #136).
+const DOCX_RELS_PART: &str = "word/_rels/document.xml.rels";
+
+/// The parts a DOCX is read from, in reading order, each with the page edge it is set at
+/// (decision #136): each header a `<w:headerReference>` names, once, in the order first named;
+/// the body; each footer likewise; the footnotes part. A part is bound by relationship, never by
+/// its conventional name, and one the package does not hold is passed over. A `first` header or
+/// footer is read only where its section states `<w:titlePg/>`, and an `even` one only where
+/// `even_and_odd` (`<w:evenAndOddHeaders/>`), since Word shows neither otherwise (review); a part
+/// passed over so is counted as not read.
+fn docx_parts(
+    main: &docx::MainPart,
+    rels: &[opc::Relationship],
+    names: &[String],
+    even_and_odd: bool,
+) -> Vec<(String, Option<Furniture>)> {
+    let target = |id: Option<&str>, kind: &str| {
+        rels.iter()
+            .find(|r| {
+                id.is_none_or(|id| r.id == id)
+                    && !r.external
+                    && r.kind.ends_with(&format!("/{kind}"))
+            })
+            .map(|r| opc::resolve_target(&r.target, "word"))
+            .filter(|part| names.contains(part))
+    };
+    let mut parts: Vec<(String, Option<Furniture>)> = Vec::new();
+    let mut add = |part: Option<String>, edge: Option<Furniture>| {
+        if let Some(part) = part.filter(|p| !parts.iter().any(|(q, _)| q == p)) {
+            parts.push((part, edge));
+        }
+    };
+    let shown = |footer: bool| {
+        main.references.iter().filter(move |r| {
+            r.footer == footer
+                && match r.kind.as_str() {
+                    "first" => r.title_page,
+                    "even" => even_and_odd,
+                    _ => true,
+                }
+        })
+    };
+    for r in shown(false) {
+        add(target(Some(&r.id), "header"), Some(Furniture::Header));
+    }
+    add(Some(docx::MAIN_PART.to_string()), None);
+    for r in shown(true) {
+        add(target(Some(&r.id), "footer"), Some(Furniture::Footer));
+    }
+    add(target(None, "footnotes"), None);
+    parts
+}
+
+/// The part a relationship of `kind` names from `word/document.xml`, if the package holds it.
+fn docx_related(rels: &[opc::Relationship], kind: &str, names: &[String]) -> Option<String> {
+    rels.iter()
+        .find(|r| !r.external && r.kind.ends_with(&format!("/{kind}")))
+        .map(|r| opc::resolve_target(&r.target, "word"))
+        .filter(|part| names.contains(part))
+}
+
 fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
     // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
     // entries of one name were read as the first, with nothing declared.
     zip::refuse_duplicate_names(names, "ooxml package", "package")?;
-    let part = zip::read_entry(bytes, docx::MAIN_PART)?;
-    let docx::MainPart {
-        runs,
-        alternatives_not_read,
-        moves_not_read,
-    } = docx::read_runs(&part)?;
+    let mut main = docx::read_runs(&zip::read_entry(bytes, docx::MAIN_PART)?)?;
+
+    // Decision #136: the styles, headers, footers and footnotes the body's relationships name.
+    // A package with no relationship part names none of them, and reads its body alone.
+    let rels = if names.iter().any(|n| n == DOCX_RELS_PART) {
+        opc::read_relationships(&zip::read_entry(bytes, DOCX_RELS_PART)?, DOCX_RELS_PART)?
+    } else {
+        Vec::new()
+    };
+    // A styles, settings, header, footer or footnotes part that will not read is counted as not
+    // read, and the rest of the document is read (review), as it was before any of them was.
+    let styles_part = docx_related(&rels, "styles", names);
+    let styles = styles_part
+        .as_ref()
+        .and_then(|part| docx::read_styles(&zip::read_entry(bytes, part).ok()?, part).ok());
+    let styles_unread = styles_part.filter(|_| styles.is_none());
+    let styles = styles.unwrap_or_default();
+    let even_and_odd = docx_related(&rels, "settings", names)
+        .and_then(|part| {
+            docx::even_and_odd_headers(&zip::read_entry(bytes, &part).ok()?, &part).ok()
+        })
+        .unwrap_or(false);
+    let parts = docx_parts(&main, &rels, names, even_and_odd);
 
     let profile = Profile::docx_v0();
     let profile_sha256 = profile
@@ -738,43 +838,97 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         })?;
     let mut alloc = IdAllocator::new(profile_sha256.clone());
 
-    // **One part, one part id.** Every node names `word/document.xml` in its own locator, and
-    // `check_structure` checks the two agree in both directions.
-    let part_id = alloc.next(IdKind::Part)?;
-
-    let mut nodes = Vec::with_capacity(runs.len());
-    let mut geometry = Vec::with_capacity(runs.len());
-    for (index, run) in runs.iter().enumerate() {
-        let id = alloc.next(IdKind::Span)?;
-        geometry.push(NodeGeometry {
-            node: id.clone(),
-            // **Not `NotReportedByReader`.** That one means the reader tried to measure and could
-            // not, and counts toward a declared capability gap. A DOCX run has no ink box by
-            // construction — there is nothing to measure until something lays the document out,
-            // and laying it out is the invented pagination §3 refuses.
-            presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
-        });
-        nodes.push(Node {
-            id,
-            kind: NodeKind::TextRun,
-            parent: part_id.clone(),
-            // Ordinals are contiguous within the part, in the part's document order — which is
-            // the reading order OOXML itself states.
-            ordinal: index as u32 + 1,
-            text: run.text.clone(),
-            native_locator: NativeLocator::Docx(DocxLocator {
-                part: docx::MAIN_PART.to_string(),
-                paragraph: run.paragraph,
-                run: run.run,
-            }),
-            // The style tree is not read, so no structural address is claimed. Absent rather than
-            // invented, as everywhere else.
-            structural_locator: None,
-            derivation: DerivationClass::Extracted,
-            attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
-                space_preserved: run.space_preserved,
-            }),
-        });
+    let mut nodes = Vec::new();
+    let mut geometry = Vec::new();
+    let mut tables = Vec::new();
+    let mut alternatives_not_read = 0u32;
+    let mut moves_not_read = 0u32;
+    let mut tables_not_built = 0u32;
+    let mut cells_covered = 0u32;
+    let mut slots = ethos_parser_core::OFFICE_TABLE_MAX_SLOTS;
+    let mut read_parts: Vec<&str> = Vec::new();
+    for (part_name, furniture) in &parts {
+        let read = if part_name == docx::MAIN_PART {
+            std::mem::take(&mut main)
+        } else {
+            match zip::read_entry(bytes, part_name).and_then(|p| docx::read_part(&p, part_name)) {
+                Ok(read) => read,
+                Err(_) => continue,
+            }
+        };
+        read_parts.push(part_name);
+        alternatives_not_read = declare(alternatives_not_read, read.alternatives_not_read);
+        moves_not_read = declare(moves_not_read, read.moves_not_read);
+        // **One part, one part id.** Every node names its part in its own locator, and
+        // `check_structure` checks the two agree in both directions.
+        let part_id = alloc.next(IdKind::Part)?;
+        let mut run_ids = Vec::with_capacity(read.runs.len());
+        for (index, run) in read.runs.iter().enumerate() {
+            let id = alloc.next(IdKind::Span)?;
+            run_ids.push(id.clone());
+            geometry.push(NodeGeometry {
+                node: id.clone(),
+                // **Not `NotReportedByReader`.** That one means the reader tried to measure and could
+                // not, and counts toward a declared capability gap. A DOCX run has no ink box by
+                // construction — there is nothing to measure until something lays the document out,
+                // and laying it out is the invented pagination §3 refuses.
+                presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            });
+            nodes.push(Node {
+                id,
+                kind: NodeKind::TextRun,
+                parent: part_id.clone(),
+                // Ordinals are contiguous within the part, in the part's document order — which is
+                // the reading order OOXML itself states.
+                ordinal: index as u32 + 1,
+                text: run.text.clone(),
+                native_locator: NativeLocator::Docx(DocxLocator {
+                    part: part_name.clone(),
+                    paragraph: run.paragraph,
+                    run: run.run,
+                }),
+                // A level is the paragraph's statement about itself, not a place in a tree, so no
+                // structural address is claimed. Absent rather than invented, as everywhere else.
+                structural_locator: None,
+                derivation: DerivationClass::Extracted,
+                attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
+                    space_preserved: run.space_preserved,
+                    heading_level: styles.heading_level(&run.paragraph_properties),
+                    list_level: styles.list_level(&run.paragraph_properties),
+                    furniture: *furniture,
+                }),
+            });
+        }
+        // Decision #136, `docx-tbl-v1`: each `<w:tbl>` the part holds, as it states its grid, under
+        // the document's one slot budget (decision #135's `stated_table`).
+        for table in &read.tables {
+            let cells = table
+                .cells
+                .iter()
+                .map(|cell| StatedCell {
+                    row: cell.row.into(),
+                    column: cell.column.into(),
+                    rowspan: cell.rowspan.into(),
+                    colspan: cell.colspan.into(),
+                    covered: false,
+                    nodes: cell.runs.iter().map(|&i| run_ids[i].clone()).collect(),
+                    text: docx_cell_text(&read.runs, &cell.runs),
+                })
+                .collect();
+            let made = stated_table(
+                &mut alloc,
+                &part_id,
+                &mut slots,
+                (table.rows.into(), table.columns.into()),
+                cells,
+                ethos_parser_core::TABLE_DETECTION_DOCX_V1,
+            )?;
+            cells_covered = declare(cells_covered, made.covered);
+            match made.table {
+                Some(table) => tables.push(table),
+                None => tables_not_built = declare(tables_not_built, 1),
+            }
+        }
     }
 
     // **Declared only when there is something to declare about.** `check_geometry_matches_its_
@@ -790,13 +944,27 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
              box until something lays it out, and this engine does not",
         ));
     }
-    let unread = docx::unread_text_parts(names);
-    if unread > 0 || alternatives_not_read > 0 || moves_not_read > 0 {
+    // A header, footer or footnotes part read above is no erasure; one nothing references, one
+    // Word does not show, or one that will not read is.
+    let unread_names: Vec<String> = names
+        .iter()
+        .filter(|n| !read_parts.contains(&n.as_str()))
+        .cloned()
+        .collect();
+    let unread = docx::unread_text_parts(&unread_names);
+    if unread > 0 || alternatives_not_read > 0 || moves_not_read > 0 || styles_unread.is_some() {
         let mut detail = String::new();
+        if let Some(part) = &styles_unread {
+            detail.push_str(&format!(
+                "the styles part `{part}` would not read, so no heading or list level a style \
+                 declares was read. "
+            ));
+        }
         if unread > 0 {
             detail.push_str(&format!(
-                "{unread} part(s) of this package carry text and were not read — headers, \
-                 footers, footnotes, endnotes or comments. "
+                "{unread} part(s) of this package carry text and were not read — endnotes, \
+                 comments, or headers, footers or footnotes the document does not reference, \
+                 Word does not show, or that would not read. "
             ));
         }
         if moves_not_read > 0 {
@@ -817,8 +985,8 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
             ));
         }
         detail.push_str(&format!(
-            "v2-S2 reads `{}` only, and a phrase absent from this artifact may still be present \
-             in the document",
+            "this reader reads `{}` and the headers, footers and footnotes it references, and a \
+             phrase absent from this artifact may still be present in the document",
             docx::MAIN_PART
         ));
         limitations.push(Limitation::document(
@@ -831,6 +999,12 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     // "carry text". An embedded asset carries none, so it cannot be counted there without making
     // that sentence false about every package it fires on. Two counts, two claims, both true —
     // and A14 asks how much *per kind*, which one number cannot answer for two kinds.
+    limitations.extend(table_limitations(
+        tables_not_built,
+        cells_covered,
+        "table(s)",
+    ));
+
     let embedded = docx::unread_embedded_parts(names);
     if embedded > 0 {
         limitations.push(Limitation::document(
@@ -870,7 +1044,8 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // pagination this version exists to refuse.
         pages: Vec::new(),
         nodes,
-        tables: Vec::new(),
+        // Decision #136: each `<w:tbl>`, as `docx-tbl-v1` reads it.
+        tables,
         // No pages, so nothing was authorized and nothing has a page state. The coverage summary
         // reconciles zero against zero, which is what a document with no pages honestly is.
         // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this

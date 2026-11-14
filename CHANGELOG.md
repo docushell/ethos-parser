@@ -32,6 +32,71 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A DOCX's headings, list items, tables, headers, footers and footnotes are read as declared (decision #136)
+
+Folded into `docx-document-order-v3` and `docx-wt-verbatim-v4` (decision #130's, which no release
+carries yet) and into `markdown-blocks-v14` and `html-blocks-v14`. The DOCX profile names a new
+table rule, `docx-tbl-v1`, under the optional `table_detection.office` key decision #135 added,
+and turns `capabilities.tables` on, so its `profile_sha256` moves; PDF profiles still omit the
+key, so theirs do not, and no PDF artifact moves.
+
+- **Headings, where the file declares a level.** A paragraph's own `<w:outlineLvl>`, or its
+  style's in `word/styles.xml` through the `<w:basedOn>` chain, or a built-in style name
+  `heading N`, gives the run's `office_run` attributes a `heading_level`, projected as
+  `#`..`######` and `<h1>`..`<h6>`. A styleId alone (`Heading1`) is never read as a level, `Title`
+  declares none, and a level past six projects as a paragraph, counted under
+  `heading-level-unrepresentable`.
+- **List items, never their numbers.** A `<w:numPr>`, the paragraph's or its style's, gives
+  `list_level` (its `<w:ilvl>`) and projects as an item at that depth, written `- `: the `1.` or
+  `a)` Word renders from `word/numbering.xml` is in no byte of the paragraph.
+- **Tables.** A `<w:tbl>` is a `tables[]` record: a row per `<w:tr>`, a cell per `<w:tc>` on the
+  table's grid (`<w:gridBefore>`, `<w:gridSpan>`), a `<w:vMerge>` continuing the cell above
+  extending it, a nested table its own record. `Extracted`, geometry typed absent, and its `page`
+  is the part it was read from. Both projections write it as they write any table. It spends the
+  document's one slot budget (decision #135): a table that would pass what is left is not built,
+  counted under `office-tables-not-built`, and its runs read as paragraphs. The DOCX profile no
+  longer declares `tables-not-extracted`, and, as an XLSX or PPTX profile, measures no ink, so
+  does not take `undrawn-table-edges-not-supplied`.
+- **Headers, footers and footnotes are read.** Each header a section references comes before the
+  body, once, each footer after it, then the footnotes, each bound by relationship and parented by
+  a part id of its own. Header and footer runs carry `furniture`, so `--drop-furniture` leaves
+  them out, counted under `page-furniture-not-projected-v1`. A footnote's number is rendered and
+  is not written, and a separator or continuation notice is passed over by its `w:type`. A `first`
+  header or footer is read only where its section states `<w:titlePg/>`, an `even` one only where
+  `word/settings.xml` states `<w:evenAndOddHeaders/>`, since Word shows neither otherwise. A
+  header, footer, footnotes or styles part that will not read is counted, and the rest of the
+  document is read. Endnotes, comments, and a header, footer or footnotes part nothing references
+  or Word does not show are still counted under `office-parts-not-read`. **With
+  `--drop-furniture`, a resume whose name sits in its page header loses it**, as the option asks;
+  a table in a header or footer goes with it, counted.
+- **List depth** steps in one level at a time: an item opens at the top with no list open, one
+  level under the open item where its `<w:ilvl>` is deeper, so a list starting at level two is no
+  indented code block and a jump from one to four no lazy text.
+- **A layout table is written as its blocks.** A `<w:tbl>` with a cell holding two paragraphs or
+  more with text, or holding a nested table, as a Word resume laid out as a table does, projects
+  row by row and cell by cell, a paragraph a block, a heading or a list item as outside a table,
+  a nested table in place (a grid of its own where it is one); counted under
+  `layout-table-as-blocks-v1`, new. Its `tables[]` record stays: the file states a table, and only
+  the projection chooses blocks. A grid table, one paragraph a cell and nothing nested, stays GFM.
+  **Known limit**: a table nested in the last cell, after every run of the outer table, is not
+  seen to be nested.
+- **A table with no run in it** is not written at the document's end; it is counted under
+  `gfm-table-not-projected-v1`. A cell's paragraphs are joined with one space where neither side
+  holds whitespace.
+- **Known limits**: a `<w:numPr>` naming no numbering in `word/numbering.xml` still projects as a
+  list item; a `<w:vMerge>` continue with no restart above is a cell of its own; a deleted row
+  (`<w:trPr><w:del/>`) is kept, its deleted text unread; `<w:tblGrid>` and `<w:gridAfter>` are not
+  read, so the grid's width is its widest row.
+- **Library**: `OfficeRunAttributes` gains `heading_level`, `list_level` and `furniture` (each
+  omitted when absent) and derives `Default`; `TableDetection` gains `office`;
+  `TABLE_DETECTION_DOCX_V1`. In `ethos_parser_office::docx`: `read_part`, `read_styles`, `Styles`,
+  `ParagraphProperties`, `Table`, `Cell`, `Reference`, `even_and_odd_headers`,
+  `Run::paragraph_properties`, and `MainPart`'s `tables` and `references`.
+- **Measured**: the made-up Word resumes: headings at their level 0 -> 150 of 150, list items
+  marked 0 -> 190 of 190, table rows 0 -> 60 of 60, header, footer and footnote 0 -> 20 of 20
+  each, the name 10 -> 20 of 20; the financial set's DOCX table rows 0 -> 69 of 69, totals 7 -> 19
+  of 19, header and footer 0 -> 5 of 5 each. Nothing falls. ParseBench and opendataloader-bench (PDF) unchanged; on the owner's private real Word resumes the tuning set keeps every field and gains contact details read from footers, and the held-out set loses one name and one company (accepted by the owner on 2026-11-14).
+
 ### A workbook's sheets and a slide's tables are tables, and a number shows as its format displays it (decision #135)
 
 Rule ids `xlsx-sheet-table-v1`, `pptx-tbl-v1` and `xlsx-number-format-v1` (was

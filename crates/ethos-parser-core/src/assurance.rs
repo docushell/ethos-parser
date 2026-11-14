@@ -74,7 +74,8 @@ pub mod codes {
     ///
     /// **Anydoc's A14, declared erasure, applied to a package rather than a page.** A `.docx`
     /// commonly carries headers, footers, footnotes, endnotes and comments as their own parts,
-    /// and v2-S2 reads `word/document.xml` alone. A reader that silently returned the body would
+    /// and v2-S2 read `word/document.xml` alone; since decision #136 the headers, footers and
+    /// footnotes it references are read, and the rest stay counted here. A reader that silently returned the body would
     /// let a caller conclude a phrase is absent from a document that contains it — so the parts
     /// are counted and named, and the count is the honest measure of what this artifact is not.
     pub const OFFICE_PARTS_NOT_READ: &str = "office-parts-not-read";
@@ -762,9 +763,10 @@ impl Capabilities {
             ));
         } else if !tables {
             // Decision #135: `tables` with no measured ink reaches neither arm. That is a page-less
-            // profile reading the grid its file states (an XLSX sheet, a PPTX `<a:tbl>`); no rule
-            // the arm above describes runs there — each reads drawn ink — so its scope is not
-            // this profile's to declare, and it did look, so it owes no absence either.
+            // profile reading the grid its file states (an XLSX sheet, a PPTX `<a:tbl>`, and since
+            // decision #136 a DOCX `<w:tbl>`); no rule the arm above describes runs there — each
+            // reads drawn ink — so its scope is not this profile's to declare, and it did look,
+            // so it owes no absence either.
             out.push(Limitation::profile(
                 codes::TABLES_NOT_EXTRACTED,
                 "No table is detected, reconstructed, or emitted. Ruling lines may still be \

@@ -34,11 +34,14 @@ fn src_dir() -> PathBuf {
 /// `other_kinds` was the one that mattered — it was still on a plain `+=` in two files, because
 /// v2-S9.1's own search was for names ending `_not_read` and it does not end that way.
 /// [`the_counter_list_is_complete`] now derives the list from the source instead of trusting it.
-const ERASURE_COUNTERS: [&str; 16] = [
+const ERASURE_COUNTERS: [&str; 17] = [
     "regions_not_read",
     "foreign_text_not_read",
     "shapes_not_read",
     "alternatives_not_read",
+    // Decision #136: a DOCX's tracked moves, summed over the parts it reads with `declare`, which
+    // the derivation found once the sum left `docx.rs`.
+    "moves_not_read",
     "destinations_not_read",
     "text_outside_a_cell",
     "text_outside_a_shape",

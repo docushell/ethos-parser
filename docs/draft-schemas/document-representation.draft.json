@@ -494,7 +494,12 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["space_preserved"],
-          "properties": { "space_preserved": { "type": "boolean", "$comment": "DOCX: whether the run's <w:t> carried xml:space=\"preserve\"." } }
+          "properties": {
+            "space_preserved": { "type": "boolean", "$comment": "DOCX: whether the run's <w:t> carried xml:space=\"preserve\"." },
+            "heading_level": { "type": "integer", "minimum": 1, "maximum": 9, "$comment": "Decision #136. The heading level, one-based, the run's paragraph declares: its own <w:outlineLvl w:val> plus one, or else its style's through word/styles.xml and the <w:basedOn> chain, or the built-in style name `heading N`. A styleId alone is never read as a level. ABSENT where nothing declares one, and where outlineLvl 9 states body text. A level past six projects as a paragraph." },
+            "list_level": { "type": "integer", "minimum": 0, "maximum": 8, "$comment": "Decision #136. The <w:ilvl>, zero-based, of the numbering the run's paragraph or its style names. ABSENT where none is named or <w:numId w:val=\"0\"/> removes it. The level, never the number: Word renders that from word/numbering.xml, so no projection writes one." },
+            "furniture": { "enum": ["header", "footer"], "$comment": "Decision #136. The run is in a header part a <w:headerReference> names, or a footer part a <w:footerReference> names: read off the reference, never off where anything lies. ABSENT on the body and the footnotes." }
+          }
         },
         "office_cell": {
           "type": "object",
@@ -664,13 +669,13 @@
       "required": ["id", "page", "geometry", "rows", "columns", "cells", "derivation", "detection_rule", "locator_check"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "page": { "type": "string", "$comment": "The id of the page record the table was found on, or, for a page-less document, the part id its cells' nodes are parented by (decision #135)." },
+        "page": { "type": "string", "$comment": "The id of the page record the table was found on, or, for a page-less document, the part id its cells' nodes are parented by (decision #135; a DOCX table's, decision #136)." },
         "geometry": { "$ref": "urn:ethos-parser:draft-schema:geometry:0" },
         "rows": { "type": "integer", "minimum": 0 },
         "columns": { "type": "integer", "minimum": 0 },
         "cells": { "type": "array", "items": { "$ref": "#/$defs/table_cell_record" } },
         "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "`computed` for a grid this engine reconstructed from ink or alignment, `extracted` for one the structure tree declares." },
-        "detection_rule": { "type": "string", "examples": ["ruled-rects-v8", "unruled-align-v1", "stroke-ruled-v2", "tagged-tables-v1", "whitespace-tracks-v16", "bar-labels-v3", "point-labels-v1", "slice-labels-v1", "xlsx-sheet-table-v1", "pptx-tbl-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
+        "detection_rule": { "type": "string", "examples": ["ruled-rects-v8", "unruled-align-v1", "stroke-ruled-v2", "tagged-tables-v1", "whitespace-tracks-v16", "bar-labels-v3", "point-labels-v1", "slice-labels-v1", "xlsx-sheet-table-v1", "pptx-tbl-v1", "docx-tbl-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
         "locator_check": {
           "$ref": "#/$defs/locator_check",
           "$comment": "The structural and geometric cross-check of the cells against the grid."

@@ -1334,6 +1334,18 @@ pub const TABLE_DETECTION_PPTX_TBL_V1: &str = "pptx-tbl-v1";
 /// a workbook is held to.
 pub const OFFICE_TABLE_MAX_SLOTS: u64 = 1_000_000;
 
+/// The rule that reads each `<w:tbl>` of a DOCX as one table (decision #136): a `<w:tbl>` as the
+/// file states it — a row per `<w:tr>`, a cell per `<w:tc>`,
+/// its columns counted on the table's grid from `<w:gridBefore>` and each cell's `<w:gridSpan>`,
+/// and a `<w:vMerge>` that continues the cell above extending that cell down a row (its runs, if
+/// any, joining that cell's). A cell's runs are the runs of its paragraphs, a nested table's
+/// runs its own; its text is theirs, its paragraphs joined by one space where neither holds
+/// whitespace at the seam. No box anywhere: the table and every cell carry typed-absent geometry,
+/// and its `page` is the part. A table that would take the document's tables past
+/// [`OFFICE_TABLE_MAX_SLOTS`] slots between them is not written, and its runs read as paragraphs.
+/// `Extracted`: nothing is inferred. The DOCX profile's `table_detection.office`.
+pub const TABLE_DETECTION_DOCX_V1: &str = "docx-tbl-v1";
+
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
 /// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
@@ -2029,13 +2041,15 @@ pub struct TableDetection {
     pub pies: String,
     /// Version id of the rule that reads a table an office file states itself — each worksheet of a
     /// workbook ([`TABLE_DETECTION_XLSX_SHEETS_V1`]), each `<a:tbl>` of a slide
-    /// ([`TABLE_DETECTION_PPTX_TBL_V1`]) — or absent where none runs (decision #135).
+    /// ([`TABLE_DETECTION_PPTX_TBL_V1`]) (decision #135), each `<w:tbl>` of a Word document
+    /// ([`TABLE_DETECTION_DOCX_V1`], decision #136) — or absent where none runs. Each office profile
+    /// names its own.
     ///
     /// **The one optional key here, and why absent is honest for it.** Every other key is refused
     /// when missing, because a default would claim a rule ran. Absent here claims the opposite —
     /// that no office table rule ran — which is true of every profile written before this key and
-    /// of every PDF and DOCX profile now, so their bytes and hashes do not move. An unknown key is
-    /// still refused.
+    /// of every PDF profile now, so their bytes and hashes do not move. An unknown key is still
+    /// refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub office: Option<String>,
 }
@@ -2296,6 +2310,15 @@ pub const NOT_RUN: &str = "not-run-for-this-format";
 /// v2's; the addresses of those runs move. And a run holding text either side of a box it anchors
 /// keeps both and stands where it opens, before the box's runs: the box's run took its place, so
 /// only the box's text was read.
+///
+/// Decision #136, folded in as no release carries `-v3`: the parts read, in this order — each
+/// header part a `<w:headerReference>` names, once, in the order first named; `word/document.xml`;
+/// each footer part a `<w:footerReference>` names, likewise; the footnotes part — each bound by
+/// relationship from `word/_rels/document.xml.rels`, never by its conventional name, and each
+/// parented by a part id of its own. The order within a part is the part's own. A `first` header
+/// or footer is read only where its section states `<w:titlePg/>`, an `even` one only where
+/// `word/settings.xml` states `<w:evenAndOddHeaders/>`; a separator or continuation notice is
+/// passed over by its `w:type`; and a part that will not read is counted and passed over.
 pub const DOCX_READING_ORDER_RULE_V3: &str = "docx-document-order-v3";
 
 /// v2-S2's DOCX text rule: the characters `<w:t>` carries, verbatim.
@@ -2320,6 +2343,12 @@ pub const DOCX_READING_ORDER_RULE_V3: &str = "docx-document-order-v3";
 /// A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab, is a tab; and only an
 /// element directly in the `<w:r>` states a character, so a text box's tab stop
 /// (`<w:tabs><w:tab/></w:tabs>`, inside a run of the anchoring paragraph) is none.
+///
+/// Decision #136, folded in as no release carries `-v4`: a run carries what its paragraph and its
+/// part declare — `heading_level`, from the paragraph's `<w:outlineLvl>` or its style's in
+/// `word/styles.xml` (through `<w:basedOn>`, or a built-in name `heading N`); `list_level`, from
+/// its `<w:numPr>` or its style's; and `furniture`, where its part is a referenced header or
+/// footer — never off a styleId alone, and never out of a tracked change's `…Change` element.
 pub const DOCX_TEXT_CODE_RULE_V4: &str = "docx-wt-verbatim-v4";
 
 /// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
@@ -3035,12 +3064,18 @@ impl Profile {
     /// `profile_sha256`. A DOCX read under the PDF profile would claim measured ink boxes,
     /// multi-column reading order and a table detector that never ran on it.
     ///
-    /// Every capability below is `false` because **v2-S2 reads one thing**: the runs of
-    /// `word/document.xml`. `spans` stays true because a run is a span, and that is the one claim
-    /// this reader can make. Tables, images, annotations and form fields are real OOXML features
-    /// this slice does not read, and the profile says so rather than letting a consumer infer
-    /// capability from the PDF default. `markdown` and `html` are false because `14-V2-SCOPE.md`
-    /// §4 does not teach those projections a second format in this slice.
+    /// Every capability below but `tables` is `false` because **v2-S2 read one thing**: the runs
+    /// of `word/document.xml`. `spans` stays true because a run is a span, and that is the one claim
+    /// this reader can make. Images, annotations and form fields are real OOXML features this
+    /// reader does not read, and the profile says so rather than letting a consumer infer
+    /// capability from the PDF default; tables it reads since decision #136, below. `markdown`
+    /// and `html` are false because `14-V2-SCOPE.md` §4 does not teach those projections a second
+    /// format in this slice.
+    ///
+    /// **`tables: true` since decision #136** (owner, 2026-11-14): a `<w:tbl>` is read into a
+    /// [`crate::tables::TableRecord`] under `table_detection.office`, [`TABLE_DETECTION_DOCX_V1`],
+    /// every other table rule not run. Its grid is the file's own rows and cells, its geometry
+    /// typed absent.
     ///
     /// **`measured_ink_boxes: false` is the load-bearing one.** A DOCX has no geometry and this
     /// engine invents none, so every node's geometry is typed absence — and `check_structure`
@@ -3073,7 +3108,7 @@ impl Profile {
             capabilities: Capabilities {
                 spans: true,
                 char_offsets: false,
-                tables: false,
+                tables: true,
                 outlines: false,
                 figures: false,
                 measured_ink_boxes: false,
@@ -3086,8 +3121,9 @@ impl Profile {
                 markdown: false,
                 html: false,
             },
-            // A DOCX is not classified by sampling pages it does not have, and no table detector,
-            // struct-tree reader, CMap or xref repair runs on it. These are PDF rules, and the
+            // A DOCX is not classified by sampling pages it does not have, and no PDF table
+            // detector, struct-tree reader, CMap or xref repair runs on it: its `<w:tbl>` is read
+            // as the file states it (decision #136). These are PDF rules, and the
             // honest value for a rule a format never reaches is the declared "did not run".
             classify_sample_pages: 0,
             table_detection: TableDetection {
@@ -3099,7 +3135,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
-                office: None,
+                office: Some(TABLE_DETECTION_DOCX_V1.to_string()),
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V3.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -5789,6 +5825,17 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()
+        );
+
+        // Decision #136: `office` is the one key that may be absent, and absent is the PDF
+        // default's not-run, above; a profile naming it reads it back.
+        let office = good.replace('}', r#","office":"docx-tbl-v1"}"#);
+        assert_eq!(
+            serde_json::from_str::<TableDetection>(&office)
+                .unwrap()
+                .office
+                .as_deref(),
+            Some(TABLE_DETECTION_DOCX_V1)
         );
     }
 

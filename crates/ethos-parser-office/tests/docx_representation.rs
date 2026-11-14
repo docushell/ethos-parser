@@ -514,6 +514,541 @@ fn whitespace_a_text_element_does_not_preserve_is_no_line_break() {
 }
 
 // -------------------------------------------------------------------------------------------
+// What a paragraph and a table declare, and the parts a section references (decision #136)
+// -------------------------------------------------------------------------------------------
+
+const W: &str = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#;
+const REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/// A Word package: `body` with a section naming a header and a footer, its styles, and the header,
+/// footer and footnotes parts, each bound by relationship.
+fn letter(body: &str) -> Vec<u8> {
+    let document = format!(
+        r#"<w:document {W}><w:body>{body}<w:sectPr><w:headerReference w:type="default" r:id="rH"/><w:footerReference w:type="default" r:id="rF"/><w:headerReference w:type="even" r:id="rH"/></w:sectPr></w:body></w:document>"#
+    );
+    let styles = format!(
+        r#"<w:styles {W}><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/></w:style></w:styles>"#
+    );
+    let rels = format!(
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rS" Type="{REL}/styles" Target="styles.xml"/><Relationship Id="rH" Type="{REL}/header" Target="header1.xml"/><Relationship Id="rF" Type="{REL}/footer" Target="footer1.xml"/><Relationship Id="rN" Type="{REL}/footnotes" Target="footnotes.xml"/></Relationships>"#
+    );
+    let header = format!(
+        r#"<w:hdr {W}><w:p><w:r><w:t>Asha Patil</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>asha@example.com</w:t></w:r></w:p></w:hdr>"#
+    );
+    let footer =
+        format!(r#"<w:ftr {W}><w:p><w:r><w:t>Registered office</w:t></w:r></w:p></w:ftr>"#);
+    let footnotes = format!(
+        r#"<w:footnotes {W}><w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> TDS is deducted.</w:t></w:r></w:p></w:footnote></w:footnotes>"#
+    );
+    build_zip(&[
+        ("word/document.xml", document.as_str()),
+        ("word/_rels/document.xml.rels", rels.as_str()),
+        ("word/styles.xml", styles.as_str()),
+        ("word/header1.xml", header.as_str()),
+        ("word/footer1.xml", footer.as_str()),
+        ("word/footnotes.xml", footnotes.as_str()),
+        ("word/header2.xml", header.as_str()),
+    ])
+}
+
+/// `repr` projected as Markdown and as HTML, leaving out page furniture where `drop` says.
+fn project(repr: &ethos_parser_core::DocumentRepresentation, drop: bool) -> (String, String) {
+    let profile = Profile::docx_v0().profile_sha256().expect("a digest");
+    let mut options = ethos_parser_core::ProjectionOptions::default();
+    options.drop_furniture = drop;
+    let md = ethos_parser_core::to_markdown_with(
+        repr,
+        "test",
+        &profile,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V14,
+        options,
+    )
+    .expect("projects");
+    let html = ethos_parser_core::to_html_with(
+        repr,
+        "test",
+        &profile,
+        ethos_parser_core::HTML_RULE_BLOCKS_V14,
+        options,
+    )
+    .expect("projects");
+    (md.markdown, html.html)
+}
+
+const LETTER_BODY: &str = concat!(
+    r#"<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>Offer Letter</w:t></w:r></w:p>"#,
+    r#"<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>1. Terms</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>of work</w:t></w:r></w:p>"#,
+    r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Basic </w:t></w:r><w:r><w:t>pay</w:t></w:r></w:p>"#,
+    r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Metro rate</w:t></w:r></w:p>"#,
+    r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Special</w:t></w:r></w:p>"#,
+    r#"<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Salary</w:t></w:r></w:p>"#,
+    r#"<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Component</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Monthly</w:t></w:r></w:p></w:tc></w:tr>"#,
+    r#"<w:tr><w:tc><w:p><w:r><w:t>Bas</w:t></w:r><w:r><w:t>ic</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>60,000</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"#,
+    r#"<w:p><w:r><w:t>See the note</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r><w:r><w:t xml:space="preserve"> for tax.</w:t></w:r></w:p>"#,
+);
+
+/// **Headings, list items, a table and the header, footer and footnote, each as the file declares
+/// it** (decision #136). A heading is a style that declares a level — its own `<w:outlineLvl>` or
+/// a built-in `heading N` name — and never a styleId alone, so `Title` stays a paragraph. A list
+/// item is a `<w:numPr>`, at its `<w:ilvl>`, and always `- `: the number Word renders is in no
+/// byte of the paragraph. The header, once though two references name it, comes before the body;
+/// the footer after it; the footnote last, with no number, since Word renders that too.
+#[test]
+fn a_documents_declared_structure_reaches_both_projections() {
+    let repr = ethos_parser_office::read(&letter(LETTER_BODY)).expect("reads");
+    let (md, html) = project(&repr, false);
+    assert_eq!(
+        md,
+        "Asha Patil\tasha@example.com\n\nOffer Letter\n\n# 1. Terms of work\n\n- Basic pay\n  - Metro rate\n- Special\n\n## Salary\n\n| Component | Monthly |\n| --- | --- |\n| Basic | 60,000 |\n\nSee the note for tax.\n\nRegistered office\n\nTDS is deducted.\n"
+    );
+    for want in [
+        "<h1>1. Terms of work</h1>",
+        "<li>Basic pay",
+        "<li>Metro rate</li>",
+        "<h2>Salary</h2>",
+        "<td>Basic</td>",
+        "<p>Asha Patil\tasha@example.com</p>",
+        "<p>TDS is deducted.</p>",
+    ] {
+        assert!(html.contains(want), "{want} in {html}");
+    }
+
+    let payload = repr.payload();
+    let parts: Vec<&str> = payload
+        .nodes
+        .iter()
+        .filter_map(|n| match &n.native_locator {
+            NativeLocator::Docx(d) => Some(d.part.as_str()),
+            _ => None,
+        })
+        .fold(Vec::new(), |mut v, p| {
+            if v.last() != Some(&p) {
+                v.push(p);
+            }
+            v
+        });
+    assert_eq!(
+        parts,
+        [
+            "word/header1.xml",
+            "word/document.xml",
+            "word/footer1.xml",
+            "word/footnotes.xml"
+        ]
+    );
+    let [table] = payload.tables.as_slice() else {
+        panic!("one table: {:?}", payload.tables);
+    };
+    assert_eq!((table.rows, table.columns, table.cells.len()), (2, 2, 4));
+    assert_eq!(table.detection_rule, "docx-tbl-v1");
+    assert_eq!(
+        table.derivation,
+        ethos_parser_core::DerivationClass::Extracted
+    );
+    assert!(matches!(table.geometry, GeometryPresence::Absent(_)));
+    assert_eq!(table.cells[2].text, "Basic", "its runs, concatenated");
+    let body = payload
+        .nodes
+        .iter()
+        .find(|n| n.text == "Offer Letter")
+        .expect("the body");
+    assert_eq!(table.page, body.parent, "the part it was read from");
+    assert!(payload.assurance.capabilities.tables);
+    // Neither `tables-not-extracted`, now false, nor the drawn-grid limitation, which a table read
+    // from markup does not share.
+    for code in [
+        ethos_parser_core::assurance::codes::TABLES_NOT_EXTRACTED,
+        ethos_parser_core::assurance::codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
+    ] {
+        assert!(
+            !payload.assurance.limitations.iter().any(|l| l.code == code),
+            "{code}"
+        );
+    }
+
+    // `header2.xml` is named by nothing, so it is still unread, and counted.
+    let unread = payload
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::assurance::codes::OFFICE_PARTS_NOT_READ)
+        .expect("an unreferenced header is declared");
+    assert!(unread.detail.starts_with("1 part(s)"), "{}", unread.detail);
+}
+
+/// **A header and a footer are page furniture, left out on request and counted** (decision #136,
+/// with #134's option): a section sets them on its pages by declaration. A footnote is no
+/// furniture and stays.
+#[test]
+fn a_header_and_a_footer_go_on_request_and_a_footnote_stays() {
+    let repr = ethos_parser_office::read(&letter(LETTER_BODY)).expect("reads");
+    let (md, html) = project(&repr, true);
+    assert!(md.starts_with("Offer Letter\n\n"), "{md}");
+    assert!(
+        md.ends_with("See the note for tax.\n\nTDS is deducted.\n"),
+        "{md}"
+    );
+    assert!(
+        !html.contains("Asha Patil") && !html.contains("Registered"),
+        "{html}"
+    );
+}
+
+/// **A level or a numbering a tracked change replaced is not the paragraph's**, and a level past
+/// six projects as a paragraph, as an ODF one does.
+#[test]
+fn a_replaced_or_unrepresentable_level_projects_as_a_paragraph() {
+    let repr = ethos_parser_office::read(&letter(concat!(
+        r#"<w:p><w:pPr><w:pPrChange><w:pPr><w:pStyle w:val="Heading1"/><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr></w:pPrChange></w:pPr><w:r><w:t>Was a heading</w:t></w:r></w:p>"#,
+        r#"<w:p><w:pPr><w:outlineLvl w:val="7"/></w:pPr><w:r><w:t>Level eight</w:t></w:r></w:p>"#,
+    )))
+    .expect("reads");
+    let (md, html) = project(&repr, true);
+    assert_eq!(md, "Was a heading\n\nLevel eight\n\nTDS is deducted.\n");
+    assert!(html.contains("<p>Level eight</p>"), "{html}");
+    let profile = Profile::docx_v0().profile_sha256().expect("a digest");
+    let artifact = ethos_parser_core::to_markdown(
+        &repr,
+        "test",
+        &profile,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V14,
+    )
+    .expect("projects");
+    assert!(
+        artifact
+            .coverage
+            .structural_erasures
+            .iter()
+            .any(|e| e.code == ethos_parser_core::HEADING_LEVEL_UNREPRESENTABLE),
+        "the flattened level is counted: {:?}",
+        artifact.coverage.structural_erasures
+    );
+}
+
+/// A Word package: `body` (its own `<w:sectPr>` included), the relationships `rels` as
+/// `(id, type, target)`, and the parts `parts` as `(name, bytes)`.
+fn word(body: &str, rels: &[(&str, &str, &str)], parts: &[(&str, &str)]) -> Vec<u8> {
+    let document = format!(r#"<w:document {W}><w:body>{body}</w:body></w:document>"#);
+    let rels: String = rels
+        .iter()
+        .map(|(id, kind, target)| {
+            format!(r#"<Relationship Id="{id}" Type="{REL}/{kind}" Target="{target}"/>"#)
+        })
+        .collect();
+    let rels = format!(
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rels}</Relationships>"#
+    );
+    let mut entries = vec![
+        ("word/document.xml", document.as_str()),
+        ("word/_rels/document.xml.rels", rels.as_str()),
+    ];
+    entries.extend_from_slice(parts);
+    build_zip(&entries)
+}
+
+fn header(text: &str) -> String {
+    format!(r#"<w:hdr {W}><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:hdr>"#)
+}
+
+fn unread(repr: &ethos_parser_core::DocumentRepresentation) -> Option<String> {
+    repr.payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::assurance::codes::OFFICE_PARTS_NOT_READ)
+        .map(|l| l.detail.clone())
+}
+
+/// **A first-page header is read only where its section states `<w:titlePg/>`, an even-page one
+/// only where the settings state `<w:evenAndOddHeaders/>`** (review of decision #136): Word shows
+/// neither otherwise, and both printed. One passed over is counted as not read.
+#[test]
+fn a_header_word_does_not_show_is_not_read_and_is_counted() {
+    let rels = [
+        ("h1", "header", "header1.xml"),
+        ("h2", "header", "header2.xml"),
+        ("h3", "header", "header3.xml"),
+        ("s", "settings", "settings.xml"),
+    ];
+    let (h1, h2, h3) = (header("Running"), header("First only"), header("Even only"));
+    let sect = |title: &str| {
+        format!(
+            r#"<w:p><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="h1"/><w:headerReference w:type="first" r:id="h2"/><w:headerReference w:type="even" r:id="h3"/>{title}</w:sectPr>"#
+        )
+    };
+    let read = |title: &str, even: &str| {
+        let settings = format!(r#"<w:settings {W}>{even}</w:settings>"#);
+        let repr = ethos_parser_office::read(&word(
+            &sect(title),
+            &rels,
+            &[
+                ("word/header1.xml", h1.as_str()),
+                ("word/header2.xml", h2.as_str()),
+                ("word/header3.xml", h3.as_str()),
+                ("word/settings.xml", settings.as_str()),
+            ],
+        ))
+        .expect("reads");
+        (project(&repr, false).0, unread(&repr))
+    };
+    let (md, declared) = read("", "");
+    assert_eq!(md, "Running\n\nBody\n");
+    assert!(declared.expect("counted").starts_with("2 part(s)"));
+    let (md, declared) = read("<w:titlePg/>", "<w:evenAndOddHeaders/>");
+    assert_eq!(md, "Running\n\nFirst only\n\nEven only\n\nBody\n");
+    assert_eq!(declared, None);
+}
+
+/// **A header, footer or styles part that will not read is counted, and the rest is read**
+/// (review of decision #136): a truncated or non-UTF-8 header, or a style name with a bare `&`, refused
+/// the whole document, where before this decision it read.
+#[test]
+fn a_part_that_will_not_read_is_counted_and_the_rest_read() {
+    let body = r#"<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="h1"/></w:sectPr>"#;
+    // Truncated: elements still open at its end, which `read_part` refuses.
+    let bad_header = format!("<w:hdr {W}><w:p><w:r><w:t>Header</w:t></w:r>");
+    let repr = ethos_parser_office::read(&word(
+        body,
+        &[("h1", "header", "header1.xml")],
+        &[("word/header1.xml", bad_header.as_str())],
+    ))
+    .expect("the body still reads");
+    assert_eq!(project(&repr, false).0, "Body\n");
+    assert!(unread(&repr).expect("counted").starts_with("1 part(s)"));
+
+    let styles = format!(
+        r#"<w:styles {W}><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading & 1"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>"#
+    );
+    let repr = ethos_parser_office::read(&word(
+        body,
+        &[("s", "styles", "styles.xml")],
+        &[("word/styles.xml", styles.as_str())],
+    ))
+    .expect("the body still reads");
+    assert_eq!(
+        project(&repr, false).0,
+        "Body\n",
+        "no level from styles not read"
+    );
+    assert!(
+        unread(&repr).expect("counted").contains("word/styles.xml"),
+        "{:?}",
+        unread(&repr)
+    );
+}
+
+/// **A list opens at the top and steps in one level at a time** (review of decision #136): an item
+/// at `<w:ilvl w:val="2"/>` with no list open wrote `    - Starts deep`, an indented code block,
+/// and a jump from level one to four lazy text; in HTML, a `<ul>` holding only `<ul>`s.
+#[test]
+fn a_list_steps_in_one_level_at_a_time() {
+    let item = |level: u32, text: &str| {
+        format!(
+            r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="{level}"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"#
+        )
+    };
+    let body = [
+        item(2, "Starts deep"),
+        "<w:p><w:r><w:t>Between</w:t></w:r></w:p>".into(),
+        item(0, "Top"),
+        item(3, "Jump"),
+        item(3, "Same"),
+        item(0, "Back"),
+    ]
+    .concat();
+    let repr = ethos_parser_office::read(&word(&body, &[], &[])).expect("reads");
+    let (md, html) = project(&repr, false);
+    assert_eq!(
+        md,
+        "- Starts deep\n\nBetween\n\n- Top\n  - Jump\n  - Same\n- Back\n"
+    );
+    assert!(
+        !html.contains("<ul><ul>") && !html.contains("<ul>\n<ul>"),
+        "{html}"
+    );
+}
+
+/// **A header's table goes with the header, on request, and is counted** (review of decision #136):
+/// a letterhead table survived `--drop-furniture`, uncounted. By default it stays.
+#[test]
+fn a_headers_table_goes_with_it_on_request() {
+    let header = format!(
+        r#"<w:hdr {W}><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Logo co</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Ref 123</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:hdr>"#
+    );
+    let repr = ethos_parser_office::read(&word(
+        r#"<w:p><w:r><w:t>Body text</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="h1"/></w:sectPr>"#,
+        &[("h1", "header", "header1.xml")],
+        &[("word/header1.xml", header.as_str())],
+    ))
+    .expect("reads");
+    assert_eq!(
+        project(&repr, false).0,
+        "| Logo co | Ref 123 |\n| --- | --- |\n\nBody text\n"
+    );
+    let (md, html) = project(&repr, true);
+    assert_eq!(md, "Body text\n");
+    assert!(!html.contains("Logo"), "{html}");
+    let profile = Profile::docx_v0().profile_sha256().expect("a digest");
+    let mut options = ethos_parser_core::ProjectionOptions::default();
+    options.drop_furniture = true;
+    let artifact = ethos_parser_core::to_markdown_with(
+        &repr,
+        "test",
+        &profile,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V14,
+        options,
+    )
+    .expect("projects");
+    let bucket = artifact
+        .coverage
+        .dropped
+        .iter()
+        .find(|b| b.code == "page-furniture-not-projected-v1")
+        .expect("counted");
+    assert_eq!((bucket.chars, bucket.nodes), (14, 2));
+    assert!(artifact.coverage.balances());
+}
+
+/// **A table with no run in it is not written at the document's end** (review of decision #136):
+/// it has no place in reading order, so it is counted as a table with no grid is, and its cells'
+/// text stays in the record. Two paragraphs of one cell are two words in the record, not one, and
+/// two blocks in the projection, the table being a layout table.
+#[test]
+fn an_empty_table_is_counted_and_a_cells_paragraphs_are_two_words() {
+    let body = concat!(
+        "<w:p><w:r><w:t>Para one</w:t></w:r></w:p>",
+        "<w:tbl><w:tr><w:tc><w:p/></w:tc><w:tc><w:p/></w:tc></w:tr></w:tbl>",
+        "<w:p><w:r><w:t>Para two</w:t></w:r></w:p>",
+        "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Line one</w:t></w:r></w:p><w:p><w:r><w:t>Line two</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+    );
+    let repr = ethos_parser_office::read(&word(body, &[], &[])).expect("reads");
+    let (md, html) = project(&repr, false);
+    assert_eq!(md, "Para one\n\nPara two\n\nLine one\n\nLine two\n");
+    assert!(!html.contains("<td></td>"), "{html}");
+    assert_eq!(repr.payload().tables[1].cells[0].text, "Line one Line two");
+    let profile = Profile::docx_v0().profile_sha256().expect("a digest");
+    let artifact = ethos_parser_core::to_markdown(
+        &repr,
+        "test",
+        &profile,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V14,
+    )
+    .expect("projects");
+    assert!(artifact
+        .coverage
+        .structural_erasures
+        .iter()
+        .any(|e| e.code == ethos_parser_core::GFM_TABLE_NOT_PROJECTED));
+}
+
+/// The structure census of `repr`'s Markdown: each code with its count.
+fn erasures(repr: &ethos_parser_core::DocumentRepresentation) -> Vec<(String, usize)> {
+    let profile = Profile::docx_v0().profile_sha256().expect("a digest");
+    ethos_parser_core::to_markdown(
+        repr,
+        "test",
+        &profile,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V14,
+    )
+    .expect("projects")
+    .coverage
+    .structural_erasures
+    .into_iter()
+    .map(|e| (e.code, e.count))
+    .collect()
+}
+
+fn p(text: &str) -> String {
+    format!("<w:p><w:r><w:t>{text}</w:t></w:r></w:p>")
+}
+
+/// **A resume laid out as one Word table reads a paragraph per line, in document order** (decision
+/// #136, real resumes): a cell holding two paragraphs or more makes a layout table, written as the
+/// blocks it holds, row by row and cell by cell, a heading and a list item projecting as they do
+/// outside a table, where the cell's paragraphs were one line of one grid cell. Its record stays a
+/// table, and it is counted. A grid table, one paragraph a cell, stays GFM.
+#[test]
+fn a_resume_laid_out_as_a_table_reads_a_paragraph_per_line() {
+    let heading = |level: u32, text: &str| {
+        format!(
+            r#"<w:p><w:pPr><w:outlineLvl w:val="{level}"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"#
+        )
+    };
+    let item = r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Built dashboards</w:t></w:r></w:p>"#;
+    let body = [
+        "<w:tbl><w:tr><w:tc>".to_string(),
+        heading(0, "Asha Patil"),
+        p("asha@example.com"),
+        "</w:tc><w:tc>".into(),
+        heading(1, "Experience"),
+        p("Analyst, Acme Ltd"),
+        item.into(),
+        "</w:tc></w:tr></w:tbl>".into(),
+        "<w:tbl><w:tr><w:tc>".into(),
+        p("Degree"),
+        // A paragraph holding only a tab is no second paragraph with text.
+        "<w:p><w:r><w:tab/></w:r></w:p>".into(),
+        "</w:tc><w:tc>".into(),
+        p("Year"),
+        "</w:tc></w:tr></w:tbl>".into(),
+    ]
+    .concat();
+    let repr = ethos_parser_office::read(&word(&body, &[], &[])).expect("reads");
+    let (md, html) = project(&repr, false);
+    assert_eq!(
+        md,
+        "# Asha Patil\n\nasha@example.com\n\n## Experience\n\nAnalyst, Acme Ltd\n\n- Built dashboards\n\n| Degree | Year |\n| --- | --- |\n"
+    );
+    assert!(
+        html.contains("<h1>Asha Patil</h1>") && html.contains("<li>Built dashboards</li>"),
+        "{html}"
+    );
+    assert_eq!(html.matches("<table>").count(), 1, "{html}");
+    assert_eq!(
+        repr.payload().tables.len(),
+        2,
+        "the record keeps both tables"
+    );
+    assert!(erasures(&repr).contains(&("layout-table-as-blocks-v1".to_string(), 1)));
+}
+
+/// **A table nested in a cell is written where it stands** (decision #136, real resumes): after the
+/// cell's paragraphs before it and before the cell after it, a grid of its own, where it was
+/// written after the whole outer table and a section heading lost its content. A table holding a
+/// nested table is a layout table.
+#[test]
+fn a_nested_table_is_written_where_it_stands() {
+    let body = [
+        "<w:tbl><w:tr><w:tc>".to_string(),
+        p("Education"),
+        "<w:tbl><w:tr><w:tc>".into(),
+        p("Degree"),
+        "</w:tc><w:tc>".into(),
+        p("Year"),
+        "</w:tc></w:tr><w:tr><w:tc>".into(),
+        p("B.Com"),
+        "</w:tc><w:tc>".into(),
+        p("2019"),
+        "</w:tc></w:tr></w:tbl><w:p/></w:tc><w:tc>".into(),
+        p("Skills"),
+        "</w:tc></w:tr></w:tbl>".into(),
+    ]
+    .concat();
+    let repr = ethos_parser_office::read(&word(&body, &[], &[])).expect("reads");
+    let (md, html) = project(&repr, false);
+    assert_eq!(
+        md,
+        "Education\n\n| Degree | Year |\n| --- | --- |\n| B.Com | 2019 |\n\nSkills\n"
+    );
+    let at = |s: &str| html.find(s).unwrap_or_else(|| panic!("{s} in {html}"));
+    assert!(
+        at("Education") < at("<table>") && at("</table>") < at("Skills"),
+        "{html}"
+    );
+    assert!(erasures(&repr).contains(&("layout-table-as-blocks-v1".to_string(), 1)));
+}
+
+// -------------------------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------------------------
 
