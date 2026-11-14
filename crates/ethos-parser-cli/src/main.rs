@@ -33,8 +33,9 @@
 //! # stdout is the artifact
 //!
 //! Every subcommand writes canonical bytes to stdout and nothing else. Failures, the grounding
-//! omission note, and `--diagnostics` all go to stderr, so a caller redirecting stdout to a file
-//! gets an artifact whose bytes are identical across runs (`docs/04-ARCHITECTURE.md` §2).
+//! omission note, the `--ocr` hint, and `--diagnostics` all go to stderr, so a caller redirecting
+//! stdout to a file gets an artifact whose bytes are identical across runs
+//! (`docs/04-ARCHITECTURE.md` §2).
 
 #![forbid(unsafe_code)]
 
@@ -435,7 +436,8 @@ struct MarkdownArgs {
     /// With `--source`, read the source through the recognizer, as `extract` does with the same
     /// flag: its scanned pages, or the image file. The output is byte-identical to that extract
     /// piped into this subcommand.
-    #[arg(long, requires = "source")]
+    // `requires = "source"` alone does not refuse `markdown RECORD --ocr`; `conflicts_with` does.
+    #[arg(long, requires = "source", conflicts_with = "path")]
     ocr: bool,
 }
 
@@ -751,11 +753,52 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         }
         profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
     }
-    if args.ocr {
-        emit_representation(recognized_representation(&head, profile))
+    let repr = if args.ocr {
+        recognized_representation(&head, profile)
     } else {
-        emit_representation(representation_for_bytes(&head, &profile))
+        representation_for_bytes(&head, &profile)
+    };
+    emit_representation(repr.inspect(|r| hint_ocr(r, OCR_ON_SOURCE)))
+}
+
+/// How [`hint_ocr`] asks for the recognizer on the command that read the source.
+const OCR_ON_SOURCE: &str = "--ocr";
+/// How it asks on a record, which `--ocr` cannot read: the source read again.
+const OCR_ON_RECORD: &str = "`extract --ocr` or `markdown --source FILE --ocr`";
+
+/// Name on stderr the scanned pages a read left unread (decision #132): one line, the count, each
+/// reason, and `ask` for the pages the recognizer was not asked to read. The record counts each
+/// under `scanned-page-not-recognized`, and the Markdown and HTML artifacts carry no limitation,
+/// so without this a scan projects to empty Markdown and says nothing; stdout stays the artifact.
+///
+/// A limitation has no field for the reason: it is the first code in backticks of the `detail`
+/// that `scanned_page_not_recognized` writes. A recognizer's reason is its own text, so a control
+/// character in it is written as a space, keeping the line one line.
+fn hint_ocr(repr: &ethos_parser_core::DocumentRepresentation, ask: &str) {
+    let mut reasons = std::collections::BTreeMap::<String, usize>::new();
+    for l in &repr.payload().assurance.limitations {
+        if l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED {
+            let reason = l.detail.split('`').nth(1).unwrap_or_default();
+            *reasons
+                .entry(reason.replace(char::is_control, " "))
+                .or_default() += 1;
+        }
     }
+    if reasons.is_empty() {
+        return;
+    }
+    let pages: usize = reasons.values().sum();
+    let why: Vec<String> = reasons.iter().map(|(r, n)| format!("{r} ({n})")).collect();
+    let not_asked = match reasons.get("ocr-not-requested") {
+        Some(n) => format!("; {ask} reads the {n} not requested"),
+        None => String::new(),
+    };
+    let _ = writeln!(
+        std::io::stderr(),
+        "engine: {pages} page(s) show no text and were not read: {}{not_asked} [{}]",
+        why.join(", "),
+        ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED
+    );
 }
 
 /// `--ocr`: the OCR profile (with any page budget the caller set), the recognizer found and
@@ -1077,6 +1120,14 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
             Ok(r) => r,
             Err(e) => return fail(&e),
         };
+    hint_ocr(
+        &repr,
+        if args.source.is_some() {
+            OCR_ON_SOURCE
+        } else {
+            OCR_ON_RECORD
+        },
+    );
 
     let profile = Profile::default();
     let profile_sha256 = match profile.profile_sha256() {
@@ -1160,6 +1211,7 @@ fn run_html(args: HtmlArgs) -> ExitCode {
     if let Err(e) = repr.verify_fingerprint() {
         return fail(&e);
     }
+    hint_ocr(&repr, OCR_ON_RECORD);
 
     let profile = Profile::default();
     let profile_sha256 = match profile.profile_sha256() {

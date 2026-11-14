@@ -32,6 +32,39 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A scan read without `--ocr` says so, and an image file's size is checked (decision #132)
+
+No rule id and no profile field moves; `profile_sha256` is unchanged by this entry.
+
+- **A page the OCR trigger takes is counted without the flag.** A page that shows no text and
+  places one image read as a blank page under the default profile. It is now counted under
+  `scanned-page-not-recognized`, by the reason `--ocr` would refuse it for before asking the
+  recognizer (a filter, a mask, a colour space, a placement), or as `ocr-not-requested`. Markdown
+  text is unchanged; the representation, and the Markdown and HTML artifacts'
+  `representation_sha256`, move on such documents only: 72 of ParseBench's 2,024 extracted
+  documents (69 not requested, 2 CCITT, 1 JPEG 2000), none of the gate's, the engine fixtures' or
+  opendataloader-bench's 200. A page the trigger itself refuses (several images, an inline image)
+  is not counted without the flag.
+  Owner, 2026-11-14.
+- **`extract`, `markdown` and `html` name every unread scanned page on stderr**, in one line: how
+  many, each reason, and the flag for the pages not requested — `--ocr`, or on a record
+  `extract --ocr` or `markdown --source FILE --ocr`. The Markdown artifact carries no limitation,
+  so `markdown --source --ocr` on a CCITT or JPEG 2000 scan exited 0 with empty Markdown and said
+  nothing. A recognizer's reason is written with control characters as spaces. MCP prints nothing.
+- **`markdown RECORD --ocr` is a usage error**, as its help always said: the flag reads a source.
+- **A filter the recognizer does not decode is named before the colour space is read**, by the
+  recognizer's own rule — the first filter that is neither Flate nor a final DCT — and the image is
+  not sent. A JPEG 2000 stream may leave its colour space to its own header, and such a page was
+  refused `colour-space-not-read`. No `--ocr` artifact moves: the gate's, the fixtures',
+  opendataloader-bench's and ParseBench's 2,079 files extract byte-identical with the flag.
+- **An image file is refused when its header and the recognizer disagree on its size.** The page
+  was built from the size the recognizer answered, unchecked. The header — a PNG's `IHDR`, a JPEG's
+  first frame header, found past tables, fill bytes and stray bytes, a height of 0 stating none —
+  is read before the file is sent: `image-size-not-read` where it states no size,
+  `image-size-mismatch` where the answer differs. The committed PNG and JPEG scans hold the same
+  nodes and limitations as before.
+- ParseBench and opendataloader-bench scores unchanged, with and without `--ocr`; `--ocr` artifacts byte-identical on the gate, the engine fixtures, opendataloader-bench and ParseBench; 72 of ParseBench's 2,024 documents gain the page limitation without `--ocr` (69 `ocr-not-requested`, 3 naming the codec `--ocr` cannot read).
+
 ### A raised or lowered mark stays on its line (decision #131)
 
 Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet.

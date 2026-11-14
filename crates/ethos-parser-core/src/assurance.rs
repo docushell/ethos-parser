@@ -251,7 +251,9 @@ pub mod codes {
     /// blank page.
     pub const FORM_XOBJECTS_NOT_DESCENDED: &str = "form-xobjects-not-descended";
     /// A page that showed no text and placed an image was not read by the recognizer the profile
-    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail.
+    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail. Under a
+    /// profile that pins none, a page `--ocr` would read is counted here as `ocr-not-requested`
+    /// (decision #132).
     pub const SCANNED_PAGE_NOT_RECOGNIZED: &str = "scanned-page-not-recognized";
     /// Recognized words left unwritten because the page's visible box does not show where they lie.
     pub const RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX: &str = "recognized-words-outside-visible-box";

@@ -1672,7 +1672,7 @@ fn the_source_path_equals_the_two_step_path() {
 /// **`--ocr` is `extract --ocr` in this process, and the bytes say so** (v3,
 /// `docs/35-OCR-SCOPE.md`). The recognizer is `tests/fake-ocr.sh`, which states the identity the
 /// OCR profile pins and reads "Hello world" off any image; the source is an image file, which the
-/// engine does not decode, so its signature is all of it.
+/// engine does not decode, so its signature and its header are all of it.
 #[cfg(unix)]
 #[test]
 fn the_ocr_source_path_equals_the_two_step_path() {
@@ -1697,7 +1697,13 @@ fn the_ocr_source_path_equals_the_two_step_path() {
     };
     let dir = scratch("ocr-source-equals");
     let image = dir.join("scan.png");
-    std::fs::write(&image, b"\x89PNG\r\n\x1a\n and the rest of the file").expect("write");
+    // The signature and an `IHDR` stating the answer's 200 x 100 pixels (decision #132).
+    let png = [
+        &b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR\0\0\0\xc8\0\0\0\x64"[..],
+        b" and the rest of the file",
+    ]
+    .concat();
+    std::fs::write(&image, png).expect("write");
     let image = image.to_str().unwrap();
 
     let extracted = with_ocr(&["extract", "--ocr", image]);
@@ -1732,6 +1738,219 @@ fn the_ocr_source_path_equals_the_two_step_path() {
     assert!(
         md["markdown"].as_str().unwrap().contains("Hello world"),
         "{md}"
+    );
+}
+
+/// A two-page scan: each 200 x 100 point page paints one 20 x 10 gray image over itself and shows
+/// no text. The image's stream is stored under `filter`, where one is named; nothing decodes it.
+fn two_page_scan(dir: &Path, filter: Option<&str>) -> PathBuf {
+    use lopdf::{dictionary, Object, Stream};
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let mut dict = dictionary! {
+        "Type" => "XObject", "Subtype" => "Image", "Width" => 20, "Height" => 10,
+        "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+    };
+    if let Some(f) = filter {
+        dict.set("Filter", Object::Name(f.as_bytes().to_vec()));
+    }
+    let image = doc.add_object(Stream::new(dict, vec![255u8; 200]));
+    let kids: Vec<Object> = (0..2)
+        .map(|_| {
+            let content = doc.add_object(Stream::new(
+                dictionary! {},
+                b"q 200 0 0 100 0 0 cm /Im0 Do Q".to_vec(),
+            ));
+            doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages,
+                "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } },
+                "Contents" => content,
+            })
+            .into()
+        })
+        .collect();
+    doc.objects.insert(
+        pages,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+    doc.trailer.set("Root", catalog);
+    let scan = dir.join(format!("scan-{}.pdf", filter.unwrap_or("raw")));
+    doc.save(&scan).expect("saves");
+    scan
+}
+
+/// **A scan read without `--ocr` says so on stderr, once, and nowhere else** (decision #132).
+/// The record counts each such page under `scanned-page-not-recognized`; stderr names how many,
+/// the reason and the flag that reads them, and stdout is the artifact it was. A born-digital page
+/// gets neither.
+#[test]
+fn a_scan_read_without_ocr_names_the_flag_on_stderr() {
+    let dir = scratch("scan-without-ocr");
+    let scan = two_page_scan(&dir, None);
+    let scan = scan.to_str().unwrap();
+
+    let extracted = engine(&["extract", scan]);
+    assert_eq!(extracted.status.code(), Some(0));
+    let record: Value = serde_json::from_slice(&extracted.stdout).expect("a record");
+    let counted = record["representation"]["assurance"]["limitations"]
+        .as_array()
+        .expect("limitations")
+        .iter()
+        .filter(|l| {
+            l["code"] == "scanned-page-not-recognized"
+                && l["detail"]
+                    .as_str()
+                    .is_some_and(|d| d.contains("`ocr-not-requested`"))
+        })
+        .count();
+    assert_eq!(counted, 2, "one per page");
+    let repr_path = dir.join("scan.json");
+    std::fs::write(&repr_path, &extracted.stdout).expect("write the record");
+    let one_step = engine(&["markdown", "--source", scan]);
+    let two_step = engine(&["markdown", repr_path.to_str().unwrap()]);
+    assert_eq!(one_step.stdout, two_step.stdout, "stdout is the artifact");
+    for (what, out) in [
+        ("extract", &extracted),
+        ("markdown --source", &one_step),
+        ("markdown", &two_step),
+    ] {
+        assert_eq!(out.status.code(), Some(0), "{what}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.lines().count(), 1, "{what}: one line: {stderr}");
+        assert!(
+            stderr.contains("2 page(s)")
+                && stderr.contains("ocr-not-requested")
+                && stderr.contains("--ocr"),
+            "{what}: {stderr}"
+        );
+    }
+
+    let drawn = engine_fixture("leading-gap-two-blocks");
+    let drawn = drawn.to_str().unwrap();
+    for args in [vec!["extract", drawn], vec!["markdown", "--source", drawn]] {
+        let out = engine(&args);
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}: {:?}", out.stderr);
+    }
+}
+
+/// **A scan `--ocr` does not read names its reason on stderr** (decision #132): the Markdown
+/// artifact carries no limitation, so without this line `markdown --source --ocr` on a CCITT scan
+/// exits 0 with empty Markdown and says nothing. stdout is unchanged. The recognizer is
+/// `tests/fake-ocr.sh`, refusing every image as the real one refuses a CCITT stream.
+#[cfg(unix)]
+#[test]
+fn a_scan_ocr_does_not_read_names_its_reason_on_stderr() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 20, "height": 10,
+        "lines": [], "refused": "filter-not-decoded:CCITTFaxDecode"
+    });
+    let fake = repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh");
+    let dir = scratch("scan-not-read");
+    let scan = two_page_scan(&dir, None);
+    for args in [
+        vec!["extract", "--ocr", scan.to_str().unwrap()],
+        vec!["markdown", "--source", scan.to_str().unwrap(), "--ocr"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+            .args(&args)
+            .env("ETHOS_PARSER_OCR", &fake)
+            .env("FAKE_OCR_IDENTITY", identity.to_string())
+            .env("FAKE_OCR_ANSWER", answer.to_string())
+            .output()
+            .expect("the engine binary runs");
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.lines().count(), 1, "{args:?}: one line: {stderr}");
+        assert!(
+            stderr.contains("2 page(s)")
+                && stderr.contains("filter-not-decoded:CCITTFaxDecode")
+                && !stderr.contains("run with --ocr"),
+            "{args:?}: {stderr}"
+        );
+    }
+}
+
+/// **The hint names what `--ocr` would say, and where to ask for it** (decision #132). A page
+/// `--ocr` would refuse before asking the recognizer is counted by that reason without the flag,
+/// and the flag is not offered for it. On a record, the flag cannot read anything — `markdown`
+/// refuses it without `--source` — so the hint names the commands that read the source again, the
+/// same for `markdown` and `html`.
+#[test]
+fn the_hint_names_what_ocr_would_and_where_to_ask() {
+    let dir = scratch("hint-names");
+    let ccitt = two_page_scan(&dir, Some("CCITTFaxDecode"));
+    let out = engine(&["markdown", "--source", ccitt.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("filter-not-decoded:CCITTFaxDecode (2)") && !stderr.contains("--ocr"),
+        "{stderr}"
+    );
+
+    let scan = two_page_scan(&dir, None);
+    let record = dir.join("scan.json");
+    let extracted = engine(&["extract", scan.to_str().unwrap()]);
+    std::fs::write(&record, &extracted.stdout).expect("write the record");
+    let record = record.to_str().unwrap();
+    let markdown = engine(&["markdown", record]);
+    let html = engine(&["html", record]);
+    assert_eq!(
+        (markdown.status.code(), html.status.code()),
+        (Some(0), Some(0))
+    );
+    let stderr = String::from_utf8_lossy(&markdown.stderr);
+    assert!(
+        stderr.contains("ocr-not-requested (2)") && stderr.contains("--source FILE --ocr"),
+        "{stderr}"
+    );
+    assert_eq!(
+        markdown.stderr, html.stderr,
+        "the same hint on either projection"
+    );
+    let refused = engine(&["markdown", record, "--ocr"]);
+    assert_eq!(
+        refused.status.code(),
+        Some(2),
+        "--ocr reads a source, never a record"
+    );
+    assert!(refused.stdout.is_empty());
+}
+
+/// **A recognizer's reason reaches the terminal as one line**: it is the recognizer's text, so
+/// a control character in it is not written as one (decision #132).
+#[cfg(unix)]
+#[test]
+fn a_recognizers_reason_is_one_line_on_stderr() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 20, "height": 10,
+        "lines": [], "refused": "first\nsecond\u{1b}[31m"
+    });
+    let dir = scratch("reason-one-line");
+    let scan = two_page_scan(&dir, None);
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["markdown", "--source", scan.to_str().unwrap(), "--ocr"])
+        .env(
+            "ETHOS_PARSER_OCR",
+            repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh"),
+        )
+        .env("FAKE_OCR_IDENTITY", identity.to_string())
+        .env("FAKE_OCR_ANSWER", answer.to_string())
+        .output()
+        .expect("the engine binary runs");
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(stderr.lines().count(), 1, "{stderr:?}");
+    assert!(
+        stderr.contains("first second [31m (2)") && !stderr.contains('\u{1b}'),
+        "{stderr:?}"
     );
 }
 

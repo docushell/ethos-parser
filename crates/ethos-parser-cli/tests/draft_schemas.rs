@@ -304,7 +304,12 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         ),
         (
             "scan.png",
-            ethos_parser_pdf::extract_image(b"\x89PNG\r\n\x1a\n", &ocr, &mut Reads::new()),
+            // The signature and an `IHDR` stating the answer's 20 x 10 pixels.
+            ethos_parser_pdf::extract_image(
+                b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR\0\0\0\x14\0\0\0\x0a",
+                &ocr,
+                &mut Reads::new(),
+            ),
         ),
     ] {
         let extract = extract.expect("the recognizer reads it");

@@ -859,7 +859,8 @@ pub fn form_xobjects_not_descended_on_page(page: u32, count: u32) -> Limitation 
 }
 
 /// A scanned page the OCR profile's recognizer did not read, and why (v3, `docs/35-OCR-SCOPE.md`
-/// §7): never dropped in silence, because a page with no runs would otherwise read as blank.
+/// §7): never dropped in silence, because a page with no runs would otherwise read as blank. Read
+/// without `--ocr`, the reason is `ocr-not-requested` (decision #132).
 pub fn scanned_page_not_recognized(page: u32, reason: &str) -> Limitation {
     Limitation::page(
         page,
