@@ -790,7 +790,14 @@ pub fn to_html_with(
             let separator = match (across, open_prev) {
                 (Some(SequenceJoin::ElementNextLine), Some(prev)) => {
                     let heading = matches!(open_block, Some(Some(_)));
-                    crate::markdown::element_next_line(prev, node, &text, heading, &wrapped)
+                    crate::markdown::element_next_line(
+                        prev,
+                        &payload.nodes,
+                        i,
+                        &text,
+                        heading,
+                        &wrapped,
+                    )
                 }
                 _ => " ",
             };
@@ -1413,6 +1420,14 @@ mod tests {
             let html = two(a, b, bold);
             assert!(html.contains(want), "{html}");
         }
+        // A marker its runs cut along the line is read whole (review of decision #126).
+        let split = artifact_of(repr_of_placed(&[
+            ("Experience", p(1), 7200, 7200, Some(2000), None),
+            ("1", p(2), 7200, 5800, Some(500), None),
+            (". Led a team", p(3), 7700, 5800, Some(2000), None),
+        ]))
+        .html;
+        assert!(split.contains("<p>Experience 1. Led a team</p>"), "{split}");
     }
 
     /// **A tagged title's lines read on into one `<strong>`** (decision #85), as in Markdown, and

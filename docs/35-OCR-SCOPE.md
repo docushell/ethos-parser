@@ -144,8 +144,9 @@ not read and each reason, and offer the flag only for the pages not requested �
 command that read the source, `extract --ocr` or `markdown --source FILE --ocr` on a record, which
 the flag cannot read — since the Markdown and HTML artifacts carry no limitation; stdout is
 unchanged. A recognizer's reason is written there with its control characters as spaces, so the
-line stays one line. MCP prints nothing; its tools return the record, which carries every
-limitation — a hint there is a follow-up. **A known limit:** the trigger has no size condition, so a
+line stays one line. MCP prints nothing: `extract` returns the record, which carries every
+limitation, but `markdown` sends a model the text without it (decision #36), so a scan left
+unread goes unsaid there — a hint there is a follow-up. **A known limit:** the trigger has no size condition, so a
 page that places one 1 x 1 spacer image and shows no text is taken, counted `ocr-not-requested`
 and, under `--ocr`, sent; `--ocr` reads it under the same trigger, and nothing is drawn from size.
 Under `--ocr`, the reasons:

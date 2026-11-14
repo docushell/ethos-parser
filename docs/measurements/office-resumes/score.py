@@ -164,19 +164,25 @@ def main():
         ap.error("no binary: pass --bin or set ETHOS_PARSER_BIN")
     version = subprocess.run([args.bin, "--version"], capture_output=True, text=True, check=True).stdout.strip()
 
+    keys = sorted(args.set.glob("*.key.json"))
+    if not keys:
+        ap.error(f"no *.key.json in {args.set}")
     checks, by_format, documents, generators, producers = {}, {}, {}, set(), set()
-    for key_path in sorted(args.set.glob("*.key.json")):
+    for key_path in keys:
         key = json.loads(key_path.read_text(encoding="utf-8"))
         src = args.set / key["source"]
         generators.add(key["generator"])
         if key.get("producer"):
             producers.add(key["producer"])
-        proc = subprocess.run([args.bin, "markdown", "--source", str(src)], capture_output=True, timeout=600)
-        md = json.loads(proc.stdout)["markdown"] if proc.returncode == 0 else ""
+        try:
+            proc = subprocess.run([args.bin, "markdown", "--source", str(src)], capture_output=True, timeout=600)
+            code, md = proc.returncode, json.loads(proc.stdout)["markdown"] if proc.returncode == 0 else ""
+        except subprocess.TimeoutExpired:
+            code, md = "timeout", ""
         (args.set / (key["source"] + ".md")).write_text(md, encoding="utf-8")
         result = score(key, md)
         fmt = src.suffix.lstrip(".")
-        doc = {"sha256": hashlib.sha256(src.read_bytes()).hexdigest(), "exit": proc.returncode,
+        doc = {"sha256": hashlib.sha256(src.read_bytes()).hexdigest(), "exit": code,
                "markdown_sha256": hashlib.sha256(md.encode()).hexdigest(), "checks": {}, "failed": []}
         for check, items in result.items():
             passed = sum(ok for ok, _ in items)

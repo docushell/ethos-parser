@@ -115,7 +115,8 @@ pub fn unread_text_parts(entry_names: &[String]) -> u32 {
 /// What one `word/document.xml` holds: its runs, and what was passed over.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MainPart {
-    /// The runs, in the part's own document order.
+    /// The runs, in the part's own document order: each where its `<w:r>` opens, so a run anchoring
+    /// a text box comes before the box's runs, holding its text from either side of the box.
     pub runs: Vec<Run>,
     /// `<mc:AlternateContent>` branches that held text and were passed over — a second or later
     /// `<mc:Choice>`, or an `<mc:Fallback>`.
@@ -169,9 +170,14 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
     let mut open_paragraphs: Vec<(u32, u32)> = Vec::new();
     let mut last_paragraph: (u32, u32) = (0, 0);
     // `Some` while inside a `<w:r>`: the run being built, and the depth of its `<w:r>`, so only
-    // an element directly in it states a character.
+    // an element directly in it states a character. A text box's run opens inside the run
+    // anchoring the box, which waits in `enclosing`, its text and its depth kept, and goes on
+    // after the box (review of decision #130). Each run is put at `run_slot`, where its `<w:r>`
+    // opened among the runs read: the anchoring run before the box's.
     let mut open_run: Option<Run> = None;
     let mut run_at: i32 = 0;
+    let mut run_slot: usize = 0;
+    let mut enclosing: Vec<(Run, i32, bool, usize)> = Vec::new();
     // `true` while inside a `<w:t>`, so text outside one is not collected.
     let mut in_text = false;
     // Whether the open run's `<w:t>` elements held any text. Since decision #130 the characters a
@@ -271,8 +277,12 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                     b"r" => {
                         let (paragraph, run) = next_run(&mut open_paragraphs, &mut last_paragraph);
                         if !skipping {
+                            if let Some(anchor) = open_run.take() {
+                                enclosing.push((anchor, run_at, run_has_text, run_slot));
+                            }
                             run_has_text = false;
                             run_at = depth;
+                            run_slot = runs.len();
                             open_run = Some(Run {
                                 paragraph,
                                 run,
@@ -327,15 +337,21 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                             last_paragraph = closed;
                         }
                     }
-                    b"r" => {
+                    // Only the open run's own `</w:r>`: a run passed over inside it, in a branch
+                    // not read, closes no run.
+                    b"r" if closing == run_at => {
                         if let Some(run) = open_run.take() {
                             // A run with no character at all — a drawing anchor, a footnote mark —
                             // carries no text to cite. It is not an erasure either: there was never
                             // a character in it. Skipped without a count, deliberately. A run that
                             // states only a tab or a break is a node (decision #130).
                             if run_has_text || (deleted == 0 && !run.text.is_empty()) {
-                                runs.push(run);
+                                runs.insert(run_slot, run);
                             }
+                        }
+                        if let Some((anchor, at, has_text, slot)) = enclosing.pop() {
+                            (open_run, run_at, run_has_text, run_slot) =
+                                (Some(anchor), at, has_text, slot);
                         }
                     }
                     _ => {}
@@ -599,6 +615,39 @@ mod tests {
                     (2, 1, "Box"),
                     (1, 3, "After"),
                     (3, 1, "Next")
+                ],
+                "{anchor}"
+            );
+        }
+    }
+
+    /// **Text a run holds around the text box it anchors is kept** (review of decision #130). The
+    /// box's run, opened inside the anchoring one, took its place: `Before ` was dropped, and
+    /// `After`, read with no run open, was never read. The anchoring run is one node at its own
+    /// address, holding what it states in order, where its `<w:r>` opens, before the box's runs.
+    /// A box written twice keeps it open past the branch passed over.
+    #[test]
+    fn text_around_a_text_box_in_one_run_is_kept() {
+        let drawing = "<w:drawing><wps:txbx><w:txbxContent><w:p><w:r><w:t>Box</w:t></w:r></w:p></w:txbxContent></wps:txbx></w:drawing>";
+        let alternate = format!(
+            "<mc:AlternateContent><mc:Choice Requires=\"wps\">{drawing}</mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Box</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent>"
+        );
+        for (anchor, next) in [(drawing.to_string(), 3), (alternate, 4)] {
+            let xml = format!(
+                r#"<w:document xmlns:w="x" xmlns:wps="s" xmlns:v="v" xmlns:mc="mc"><w:body>
+                <w:p><w:r><w:t xml:space="preserve">Before </w:t>{anchor}<w:br/><w:t>After</w:t></w:r><w:r><w:t>Tail</w:t></w:r></w:p>
+                <w:p><w:r><w:t>Next</w:t></w:r></w:p></w:body></w:document>"#
+            );
+            let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+            assert_eq!(
+                runs.iter()
+                    .map(|r| (r.paragraph, r.run, r.text.as_str()))
+                    .collect::<Vec<_>>(),
+                [
+                    (1, 1, "Before \nAfter"),
+                    (2, 1, "Box"),
+                    (1, 2, "Tail"),
+                    (next, 1, "Next")
                 ],
                 "{anchor}"
             );

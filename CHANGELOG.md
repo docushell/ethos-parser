@@ -166,7 +166,9 @@ Rule ids `docx-wt-verbatim-v4` and `docx-document-order-v3`, so the DOCX profile
   character, so a text box's tab stop is none.
 - **A run after a text box is its own paragraph's.** A box's `<w:p>` sits inside a run of the
   paragraph anchoring it, and the counter gave every run after it the box's paragraph: a wrong
-  locator, and `Ira Testcase` welded to `Experience` once paragraphs joined.
+  locator, and `Ira Testcase` welded to `Experience` once paragraphs joined. And a run holding text
+  either side of a box it anchors keeps both: the box's run took its place, so only the box's text
+  was read. It stays one node at its own address, standing where it opens, before the box's runs.
 - **One paragraph, one block.** Every DOCX run was a Markdown block and a `<p>` of its own:
   `Name:` / `Asha Patil`, and a sentence with one bold phrase in three. The runs one `<w:p>` holds
   are now one block, joined with a line break where the paragraph holds one between them, a tab
@@ -266,11 +268,12 @@ Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id
   content stream wrote row by row for a table, so a two-column article whose stream writes each
   left line, then the right line level with it, read as a table of interleaved lines. A grid whose
   every column is running text, and whose first column is not short labels, is now refused in any
-  order, and its lines are passed over whole, so no shorter run of them stands either. A table with
-  a column of anything else keeps its row order, and so does one whose first column names every row
-  in under thirty characters: a model's settings, a data dictionary. One side of two tables drawn
-  side by side, which stood as one, is unchanged. This reverses one case decision #125 kept: three
-  columns of prose on a drawn page.
+  order, and its lines are passed over down to the last that opens a line lower-case, so no shorter
+  run of them stands either, and a table set right under them on their pitch and tracks, which grew
+  into them, is still read. A table with a column of anything else keeps its row order, and so does
+  one whose first column names every row in under thirty characters: a model's settings, a data
+  dictionary. One side of two tables drawn side by side, which stood as one, is unchanged. This
+  reverses one case decision #125 kept: three columns of prose on a drawn page.
 - **A header set flush left over figures set flush right heads them.** `Qty`, `Rate` and `Amount`
   set where their columns' space opens sat on no track, and the nearest centres put `Rate` over
   `Qty`'s figures, so the header stood outside the table and its first row of figures became the
@@ -292,8 +295,9 @@ Rule ids `markdown-blocks-v14` and `html-blocks-v14`; `profile_sha256` moves.
   wrapped** (decisions #47, #81, #85); **from a bold run onto a bold run**, so a bold paragraph its
   column wrapped stays one span, unless the second is a label ending in `:` — `**Duration:** 2019`
   keeps its line; and **before a line CommonMark reads as a block of its own** — a list marker, `>`,
-  `#`, a fence, an HTML tag, or a line of `=`, `-` or `|` alone — so HTML's one `<p>` and the
-  Markdown agree. A soft wrap inside one sequence stays a space.
+  `#`, a fence, an HTML tag, or a line of `=`, `-` or `|` alone, a marker its runs cut along the
+  line, `1` and `. Led a team`, read whole — so HTML's one `<p>` and the Markdown agree. A soft
+  wrap inside one sequence stays a space.
 - **A short bold line over another bold line reads as one span**, `**ICICI Bank Relationship
   Manager**`: two lines alone cannot tell it from a wrap, since the second's first word would not
   have fitted after the first within either.

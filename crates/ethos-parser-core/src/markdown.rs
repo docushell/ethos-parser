@@ -2013,28 +2013,31 @@ pub(crate) fn sequence_join(
         .then_some(SequenceJoin::Line)
 }
 
-/// Decision #126. What joins `node`, whose text is `text`, onto `prev`'s element's next line
+/// Decision #126. What joins `nodes[i]`, whose text is `text`, onto `prev`'s element's next line
 /// ([`SequenceJoin::ElementNextLine`]): a line break, as [`body_line_continues`] keeps one on an
 /// untagged page, since a producer that opens a sequence at every line — Chromium's — sets a
 /// resume's fields a line each. One space in a `heading`, which an ATX heading must keep on one
 /// line; on a line [`wrapped_labels`] says its column wrapped (decisions #47, #81, #85); from a
 /// bold run onto a bold run, so a bold phrase or paragraph its column wrapped stays one span,
-/// unless `node` is a label opening its line, `Duration:`; and before a line CommonMark would
-/// read as a block of its own ([`opens_block_syntax`]). Any other span — italic, a script —
-/// closes at the line's end and opens again on the next. Called by both projections.
+/// unless the run is a label opening its line, `Duration:`; and before a line CommonMark would
+/// read as a block of its own ([`opens_block_syntax`]), read on along its line where the run holds
+/// no whole word ([`read_on`]), so `1` and `. Led a team` are one marker. Any other span — italic,
+/// a script — closes at the line's end and opens again on the next. Called by both projections.
 pub(crate) fn element_next_line(
     prev: &crate::Node,
-    node: &crate::Node,
+    nodes: &[crate::Node],
+    i: usize,
     text: &str,
     heading: bool,
     wrapped: &std::collections::BTreeSet<&str>,
 ) -> &'static str {
+    let node = &nodes[i];
     let bold = |n: &crate::Node| text_run_attributes(n).is_some_and(|a| a.bold);
     let label = text.trim_end().ends_with(':');
     if heading
         || wrapped.contains(node.id.as_str())
         || (bold(prev) && bold(node) && !label)
-        || opens_block_syntax(text)
+        || opens_block_syntax(read_on(nodes, i, text).as_deref().unwrap_or(text))
     {
         " "
     } else {
@@ -2105,18 +2108,35 @@ fn stretch(whitespace: &str, preserved: bool) -> Option<char> {
 
 /// Decision #130. Whether the line a DOCX paragraph's line break opens — `rest`, then the runs of
 /// the paragraph after `nodes[i]` — would read in CommonMark as a block of its own
-/// ([`opens_block_syntax`]). Its first word is read across up to eight runs, as [`list_role_at`]
-/// reads a list run's, since Word cuts a run anywhere: `1` and `. apples`, `` ` `` and ` `` `.
+/// ([`opens_block_syntax`]). Its first word is read across up to eight runs ([`read_on`]).
 fn opens_line(nodes: &[crate::Node], i: usize, rest: &str) -> bool {
-    let paragraph = nodes.get(i).and_then(docx_paragraph);
+    let line = read_on(nodes, i, rest);
+    let line = line.as_deref().unwrap_or(rest);
+    opens_block_syntax(line.split_whitespace().next().unwrap_or_default())
+}
+
+/// `rest`, read on across up to eight runs after `nodes[i]` until it holds a whole first word, as
+/// [`list_role_at`] reads a list run's, since a producer cuts a run anywhere: `1` and `. apples`,
+/// `` ` `` and ` `` `. Only along the line `nodes[i]` is on: the runs of its DOCX paragraph, or of
+/// its PDF line (review of decision #126). `None` where `rest` holds its first word whole, which is
+/// then read where it lies: copied at every line break of a run, it made the run's projection
+/// quadratic in its length (review of decision #130).
+fn read_on(nodes: &[crate::Node], i: usize, rest: &str) -> Option<String> {
+    if rest.trim_start().contains(char::is_whitespace) {
+        return None;
+    }
+    let (paragraph, on) = (docx_paragraph(&nodes[i]), line_key(&nodes[i]));
     let mut line = rest.to_string();
     for node in nodes.iter().skip(i + 1).take(8) {
-        if line.trim_start().contains(char::is_whitespace) || docx_paragraph(node) != paragraph {
+        if line.trim_start().contains(char::is_whitespace)
+            || docx_paragraph(node) != paragraph
+            || line_key(node) != on
+        {
             break;
         }
         line.push_str(node.reading_text());
     }
-    opens_block_syntax(line.split_whitespace().next().unwrap_or_default())
+    Some(line)
 }
 
 /// The text `nodes[i]` projects as: [`normalize`]'s, and for a DOCX run (decision #130) each
@@ -3963,7 +3983,7 @@ pub fn to_markdown_with(
                 // Decision #126: onto its element's next line, on a line of its own.
                 let separator = match (across, open_prev) {
                     (Some(SequenceJoin::ElementNextLine), Some(prev)) => {
-                        element_next_line(prev, node, &text, open_heading, &wrapped)
+                        element_next_line(prev, &payload.nodes, i, &text, open_heading, &wrapped)
                     }
                     _ => " ",
                 };
@@ -9775,6 +9795,32 @@ pub(crate) mod tests {
         }
         // Not a marker: a line that only opens with the character keeps its break.
         assert_eq!(two("Experience", "-5 years", &[]), "Experience\n-5 years\n");
+        // A marker its runs cut along the line, `1` and `. Led a team`, in one sequence or two, is
+        // read whole; and only along the line, so `===` is not read with the next line's word
+        // (review of decision #126).
+        let split = |second| {
+            styled(
+                &[
+                    ("Experience", p(1), 7200, 7200, Some(2000), None),
+                    ("1", p(2), 7200, 5800, Some(500), None),
+                    (". Led a team", p(second), 7700, 5800, Some(2000), None),
+                ],
+                &[],
+            )
+        };
+        assert_eq!(split(3), "Experience 1. Led a team\n");
+        assert_eq!(split(2), "Experience 1. Led a team\n");
+        assert_eq!(
+            styled(
+                &[
+                    ("Experience", p(1), 7200, 7200, Some(2000), None),
+                    ("===", p(2), 7200, 5800, Some(600), None),
+                    ("Skills", p(3), 7200, 4400, Some(1200), None),
+                ],
+                &[],
+            ),
+            "Experience ===\nSkills\n"
+        );
 
         let h = |mcid| tagged_in(mcid, &["Document", "H1"], Some(9));
         let heading = project_lines(&[

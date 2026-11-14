@@ -480,6 +480,21 @@ fn a_text_box_does_not_weld_into_the_paragraph_around_it() {
     );
 }
 
+/// **Text around a text box in one run is kept** (review of decision #130): the box's run took the
+/// anchoring run's place, so only `Box` reached the Markdown. The anchoring run is read whole,
+/// before the box.
+#[test]
+fn text_around_a_text_box_in_one_run_is_kept() {
+    let (md, html) = projected(&[
+        r#"<w:r><w:t xml:space="preserve">Before </w:t><w:drawing><wps:txbx><w:txbxContent><w:p><w:r><w:t>Box</w:t></w:r></w:p></w:txbxContent></wps:txbx></w:drawing><w:t>After</w:t></w:r>"#,
+    ]);
+    assert_eq!(md, "Before After\n\nBox\n");
+    assert!(
+        html.contains("<p>Before After</p>") && html.contains("<p>Box</p>"),
+        "{html}"
+    );
+}
+
 /// **Whitespace a `<w:t>` does not preserve is the XML's own layout, not a line break** (review of
 /// decision #130): a pretty-printed `<w:t>` read as `Pretty` and `printed` on two lines. A tab or
 /// a break the run states stays, and so does a line feed `xml:space="preserve"` keeps. A

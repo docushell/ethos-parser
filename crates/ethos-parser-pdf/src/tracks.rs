@@ -244,10 +244,12 @@
 //!    list of names and marks is a table as much as a table of values is. **Nor is it evidence where
 //!    every column is running text** (decision #127, [`columns_of_prose`]): a two-column article
 //!    whose stream writes each left line, then the right line level with it, passed it as a table of
-//!    interleaved lines. Such a grid is refused, and its lines passed over whole, since a shorter run
-//!    of them may open fewer lines lower-case — unless its first column is labels ([`label_column`]),
-//!    as a model's settings or a data dictionary set in lower case are. A table with any other column
-//!    keeps its row order, and one side of two tables drawn side by side is asked nothing new.
+//!    interleaved lines. Such a grid is refused, and its lines passed over down to the last that opens
+//!    a line lower-case, since a shorter run of them may open fewer lines lower-case, while a table set
+//!    right under them, which grew into them, is read — unless its first column is labels
+//!    ([`label_column`]), as a model's settings or a data dictionary set in lower case are. A table
+//!    with any other column keeps its row order, and one side of two tables drawn side by side is
+//!    asked nothing new.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!
@@ -423,10 +425,24 @@ fn detect_within(
                 end = at;
                 stand = stands(&rows, end);
             }
-            // Columns of prose are passed over whole (decision #127): a run of their lines further
-            // down may open fewer of them lower-case, and stood as a table.
+            // Columns of prose are passed over (decision #127): a run of their lines further down
+            // may open fewer of them lower-case, and stood as a table. Down to their last row that
+            // opens a line lower-case: a table set right under them, on their pitch and tracks,
+            // grew into them, and its rows are tried again (review of decision #127).
             if !stand && !within && columns_of_prose(&rows, runs) {
-                i = end;
+                let prose = rows.iter().rposition(|r| {
+                    r.cells.iter().any(|c| {
+                        let text = cell_text(c, runs);
+                        text.trim_start()
+                            .chars()
+                            .next()
+                            .is_some_and(char::is_lowercase)
+                    })
+                });
+                i = prose
+                    .and_then(|k| rows.get(k + 1))
+                    .and_then(|r| (i..end).find(|&j| lines[j].y == r.y))
+                    .unwrap_or(end);
                 continue;
             }
             // `-v14`: two flows side by side, each holding a column of numbers, are each read on
@@ -5439,6 +5455,36 @@ mod tests {
     fn columns_of_prose_written_row_by_row_are_no_table() {
         assert!(tables(&article(4)).is_empty(), "four lines");
         assert!(tables(&article(8)).is_empty(), "eight lines");
+    }
+
+    /// **A table set right under columns of prose is still a table** (review of decision #127):
+    /// on the prose's pitch and tracks its rows grow into the prose's candidate, and passing that
+    /// over whole passed the table over too.
+    #[test]
+    fn a_table_right_under_columns_of_prose_is_a_table() {
+        const TABLE: [[&str; 2]; 4] = [
+            ["District", "Rainfall"],
+            ["Nagpur", "1,034"],
+            ["Wardha", "958"],
+            ["Akola", "812"],
+        ];
+        let mut runs = article(8);
+        runs.extend(TABLE.iter().enumerate().flat_map(|(r, row)| {
+            row.iter().enumerate().map(move |(c, &text)| {
+                run(
+                    72 + 248 * c as i64,
+                    186 + 13 * r as i64,
+                    6 * text.len() as i64,
+                    text,
+                )
+            })
+        }));
+        let found = tables(&runs);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(
+            texts(&found[0]),
+            TABLE.map(|row| row.map(String::from).to_vec()).to_vec()
+        );
     }
 
     /// **But a table of short names in lower case keeps its row order** (decision #127): a model's

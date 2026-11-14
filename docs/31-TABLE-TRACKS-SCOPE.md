@@ -1634,7 +1634,9 @@ blocks above the table, and its first row of figures was the header.
 
 **The change**, folded into `-v16`, which no release carries. A grid whose every column is running
 text and whose first column is no column of labels (`-v12`: a cell in every row, each under thirty
-characters) is refused whatever order the stream wrote it in, and its lines are passed over whole.
+characters) is refused whatever order the stream wrote it in, and its lines are passed over down to
+the last that opens a line lower-case: a table set right under them, on their pitch and tracks,
+grows into their candidate, and passed over whole it was lost (review of decision #127).
 An earlier draft refused only the grid, and the rule then tried every shorter run of its lines: of
 an eight-line article, the last four open only one right-hand line lower-case, and stood as a 4×2
 table. A table with any other column keeps its row order, and so does a table of short names in
