@@ -143,21 +143,25 @@ pub struct SlideRun {
 pub struct SlideTable {
     /// 1-based position of its `<p:graphicFrame>` among the part's graphic frames.
     pub frame: u32,
-    /// How many `<a:tr>` it holds.
+    /// How many `<a:tr>` it holds, less any in an `<mc:AlternateContent>` branch passed over.
     pub rows: u32,
-    /// The most `<a:tc>` any of its rows holds.
+    /// The most `<a:tc>` any of its rows holds, less any in a branch passed over.
     pub columns: u32,
-    /// Every `<a:tc>` inside an `<a:tr>`, in document order.
+    /// Every `<a:tc>` inside an `<a:tr>`, in document order, but those in a branch passed over:
+    /// the file states the same row twice there, and only the branch read is the table's (review).
     pub cells: Vec<SlideTableCell>,
 }
 
 /// One `<a:tc>`, with the span its `gridSpan` and `rowSpan` state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlideTableCell {
-    /// 1-based `<a:tr>`.
+    /// 1-based `<a:tr>`, as a locator counts it: every one the file holds.
     pub row: u32,
-    /// 1-based `<a:tc>` within it.
+    /// 1-based `<a:tc>` within it, counted so.
     pub column: u32,
+    /// Its 1-based row and column in the table's grid: the `<a:tr>` and `<a:tc>` read, one in an
+    /// `<mc:AlternateContent>` branch passed over not counted (review).
+    pub grid: (u32, u32),
     /// `rowSpan`, 1 when absent.
     pub rowspan: u32,
     /// `gridSpan`, 1 when absent.
@@ -385,6 +389,8 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
     let mut cell: Option<(u32, u32)> = None;
     let mut table_row: u32 = 0;
     let mut table_column: u32 = 0;
+    // The same, counting only the rows and cells of branches read: where each sits in the grid.
+    let mut grid: (u32, u32) = (0, 0);
 
     // **Markup Compatibility and Extensibility**, and the two things it can do wrong.
     //
@@ -471,13 +477,12 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                             cells: Vec::new(),
                         });
                         table_row = 0;
+                        grid = (0, 0);
                     }
                     b"tr" if table.is_some() => {
                         table_row += 1;
                         table_column = 0;
-                        if let Some(t) = table.as_mut() {
-                            t.rows = table_row;
-                        }
+                        open_row(&mut table, &mut grid, skip_from.is_none());
                     }
                     // A cell outside any row has no row to name: passed over, and counted.
                     b"tc" if table.is_some() && table_row == 0 => {
@@ -486,10 +491,9 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                     b"tc" if table.is_some() => {
                         table_column += 1;
                         cell = Some((table_row, table_column));
-                        if let Some(t) = table.as_mut() {
-                            t.columns = t.columns.max(table_column);
-                            t.cells
-                                .push(table_cell(&start, table_row, table_column, part_name)?);
+                        if skip_from.is_none() {
+                            let at = (table_row, table_column);
+                            place_cell(&mut table, &mut grid, table_cell(&start, at, part_name)?);
                         }
                     }
                     b"txBody" if in_shape || cell.is_some() => {
@@ -570,18 +574,15 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                     // A self-closing `<a:tc/>` still holds its grid column.
                     b"tc" if table.is_some() && table_row > 0 => {
                         table_column += 1;
-                        if let Some(t) = table.as_mut() {
-                            t.columns = t.columns.max(table_column);
-                            t.cells
-                                .push(table_cell(&start, table_row, table_column, part_name)?);
+                        if skip_from.is_none() {
+                            let at = (table_row, table_column);
+                            place_cell(&mut table, &mut grid, table_cell(&start, at, part_name)?);
                         }
                     }
                     b"tr" if table.is_some() => {
                         table_row += 1;
                         table_column = 0;
-                        if let Some(t) = table.as_mut() {
-                            t.rows = table_row;
-                        }
+                        open_row(&mut table, &mut grid, skip_from.is_none());
                     }
                     _ => {}
                 }
@@ -678,16 +679,35 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
     })
 }
 
-/// An `<a:tc>` with the span it states and whether it says a merge covers it (decision #135).
+/// An `<a:tr>` opening: a row of the table's grid where its branch is read (review).
+fn open_row(table: &mut Option<SlideTable>, grid: &mut (u32, u32), read: bool) {
+    if let (true, Some(t)) = (read, table.as_mut()) {
+        *grid = (grid.0 + 1, 0);
+        t.rows = grid.0;
+    }
+}
+
+/// A read `<a:tc>`, at the next column of the grid's row (review).
+fn place_cell(table: &mut Option<SlideTable>, grid: &mut (u32, u32), mut cell: SlideTableCell) {
+    if let Some(t) = table.as_mut() {
+        grid.1 += 1;
+        cell.grid = *grid;
+        t.columns = t.columns.max(grid.1);
+        t.cells.push(cell);
+    }
+}
+
+/// An `<a:tc>` with the span it states and whether it says a merge covers it (decision #135), at
+/// `(row, column)` as a locator counts them.
 fn table_cell(
     start: &BytesStart<'_>,
-    row: u32,
-    column: u32,
+    (row, column): (u32, u32),
     part_name: &str,
 ) -> Result<SlideTableCell, EngineError> {
     let mut out = SlideTableCell {
         row,
         column,
+        grid: (row, column),
         rowspan: 1,
         colspan: 1,
         covered: false,
@@ -1261,6 +1281,7 @@ mod tests {
                 .map(|(row, column, rowspan, colspan, covered)| SlideTableCell {
                     row,
                     column,
+                    grid: (row, column),
                     rowspan,
                     colspan,
                     covered

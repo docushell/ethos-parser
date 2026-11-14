@@ -2917,8 +2917,15 @@ fn extract_counted(
                     }
                 }
             }
+            // How many labels each style heads, counted once rather than once per label (review).
+            // A style is a font resource name and a size, and the name is its page's own: two pages
+            // naming different fonts `F1` at one size read as one style (known limit, review).
+            let mut styles: std::collections::BTreeMap<&(String, i64), usize> = Default::default();
+            for (_, _, style) in &heads {
+                *styles.entry(style).or_default() += 1;
+            }
             for (p, indices, style) in &heads {
-                if heads.iter().filter(|(_, _, s)| s == style).count() >= 2 {
+                if styles[style] >= 2 {
                     for &i in *indices {
                         pages[*p].runs[i].inferred_heading_level = None;
                     }

@@ -870,6 +870,76 @@ fn a_covered_cell_takes_no_slot_and_its_text_is_counted() {
     assert!(l.detail.starts_with("2 cell(s)"), "{}", l.detail);
 }
 
+/// **A cell's runs of one paragraph join as they stand** (review of decision #135): formatting cut
+/// `Revenue` into `Rev` and `enue`, and the cell read `Rev enue` in the record, in Markdown and in
+/// HTML. Its paragraphs still join with a space.
+#[test]
+fn a_cells_runs_of_one_paragraph_join_as_they_stand() {
+    let body = frame(
+        4,
+        "<a:tr><a:tc><a:txBody><a:p><a:r><a:t>Rev</a:t></a:r><a:r><a:t>enue</a:t></a:r></a:p><a:p><a:r><a:t>FY</a:t></a:r><a:r><a:t>2026</a:t></a:r></a:p></a:txBody></a:tc></a:tr>",
+    );
+    let sealed = ethos_parser_office::read(&deck(&body)).expect("reads");
+    assert_eq!(sealed.payload().tables[0].cells[0].text, "Revenue FY2026");
+    let profile = Profile::default();
+    let sha = profile.profile_sha256().unwrap();
+    let md = ethos_parser_core::to_markdown(
+        &sealed,
+        &profile.parser_version,
+        &sha,
+        &profile.markdown_rule,
+    )
+    .expect("projects");
+    assert_eq!(md.markdown, "| Revenue FY2026 |\n| --- |\n");
+    let html =
+        ethos_parser_core::to_html(&sealed, &profile.parser_version, &sha, &profile.html_rule)
+            .expect("projects");
+    assert!(html.html.contains(">Revenue FY2026<"), "{}", html.html);
+}
+
+/// **A row in a branch passed over is no row of the table** (review of decision #135): an
+/// `<mc:Fallback>` row beside the `<mc:Choice>` one read added an empty row. The locators still
+/// count it, as they count every `<a:tr>` the file holds.
+#[test]
+fn a_row_in_a_branch_passed_over_is_no_row_of_the_table() {
+    let row = |a: &str, b: &str| format!("<a:tr>{}{}</a:tr>", tc("", a), tc("", b));
+    let body = frame(
+        4,
+        &format!(
+            "{}<mc:AlternateContent xmlns:mc=\"mc\"><mc:Choice Requires=\"a14\">{}</mc:Choice><mc:Fallback>{}</mc:Fallback></mc:AlternateContent>{}",
+            row("h1", "h2"),
+            row("new1", "new2"),
+            row("old1", "old2"),
+            row("x1", "x2")
+        ),
+    );
+    let sealed = ethos_parser_office::read(&deck(&body)).expect("reads");
+    let t = &sealed.payload().tables[0];
+    assert_eq!((t.rows, t.columns), (3, 2));
+    let cells: Vec<_> = t
+        .cells
+        .iter()
+        .map(|c| (c.position.row, c.position.column, c.text.as_str()))
+        .collect();
+    assert_eq!(
+        cells,
+        vec![
+            (0, 0, "h1"),
+            (0, 1, "h2"),
+            (1, 0, "new1"),
+            (1, 1, "new2"),
+            (2, 0, "x1"),
+            (2, 1, "x2"),
+        ]
+    );
+    let rows: Vec<_> = locators(&sealed).into_iter().map(|l| l.row).collect();
+    assert_eq!(
+        rows,
+        vec![Some(1), Some(1), Some(2), Some(2), Some(4), Some(4)],
+        "the fallback row keeps its place in the count"
+    );
+}
+
 /// **A cell's paragraphs are joined as the projections join them**: `Revenue FY2026`, not
 /// `RevenueFY2026`.
 #[test]

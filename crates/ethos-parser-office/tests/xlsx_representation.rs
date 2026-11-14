@@ -1244,10 +1244,13 @@ fn a_styles_part_that_will_not_read_refuses_nothing() {
         r#"<styleSheet xmlns="{MAIN}"><cellXfs count="2"><xf/><xf numFmtId="x"/></cellXfs></styleSheet>"#
     );
     let truncated = format!(r#"<styleSheet xmlns="{MAIN}"><cellXfs count="2"><xf/>"#);
-    for package in [
-        rebuilt(None),
-        rebuilt(Some(&bad_id)),
-        rebuilt(Some(&truncated)),
+    // Review of decision #135: where no styles were read, style zero's format is no more known
+    // than style one's, so the cell that names none is counted too; a part that reads, its one
+    // unreadable `numFmtId` aside, leaves style zero `General`.
+    for (package, counted) in [
+        (rebuilt(None), "2 number cell(s)"),
+        (rebuilt(Some(&bad_id)), "1 number cell(s)"),
+        (rebuilt(Some(&truncated)), "2 number cell(s)"),
     ] {
         let sealed = ethos_parser_office::read(&package).expect("formats refuse nothing");
         assert_eq!(cell_at(&sealed, "Ledger", "A", 1).unwrap().text, "46339");
@@ -1257,7 +1260,93 @@ fn a_styles_part_that_will_not_read_refuses_nothing() {
             ethos_parser_core::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED,
         )
         .expect("the styled cell is counted");
-        assert!(l.detail.starts_with("1 number cell(s)"), "{}", l.detail);
+        assert!(l.detail.starts_with(counted), "{}", l.detail);
+    }
+}
+
+/// **Style zero is unknown where the styles part will not read** (review of decision #135): a
+/// workbook whose numbers all name style zero, or none, read as `General`, uncounted, and the
+/// styles part that would not read went undeclared.
+#[test]
+fn style_zero_is_unknown_where_the_styles_part_will_not_read() {
+    let sheet = r#"<row r="1"><c r="A1" s="0"><v>0.5</v></c><c r="B1"><v>7</v></c></row>"#;
+    let mut entries = zip_entries(&styled(sheet, "", ""));
+    for (name, body) in &mut entries {
+        if name == "xl/styles.xml" {
+            *body = format!(r#"<styleSheet xmlns="{MAIN}"><cellXfs count="1"><xf/>"#);
+        }
+    }
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()))
+        .collect();
+    let sealed = ethos_parser_office::read(&build_zip(&borrowed)).expect("reads");
+    assert_eq!(cell_at(&sealed, "Ledger", "A", 1).unwrap().text, "0.5");
+    let l = limitation(
+        &sealed,
+        ethos_parser_core::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED,
+    )
+    .expect("declared");
+    assert!(l.detail.starts_with("2 number cell(s)"), "{}", l.detail);
+    assert!(l.detail.contains("xl/styles.xml"), "{}", l.detail);
+}
+
+/// **A merge covers its cells whatever its first cell holds, and wherever the file lists them**
+/// (review of decision #135): for `A1:B1` with `A1` empty, `B1`'s text took an ordinary slot,
+/// uncounted; listed before its anchor, it took one under the anchor's span.
+#[test]
+fn a_merge_covers_its_cells_whatever_its_first_cell_holds() {
+    let merge = r#"<mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>"#;
+    let row2 =
+        r#"<row r="2"><c r="A2"><v>1</v></c><c r="B2"><v>2</v></c><c r="C2"><v>3</v></c></row>"#;
+    for (row1, want) in [
+        (
+            format!("{}{}", inline("B1", "hidden"), inline("C1", "c")),
+            vec![
+                (0, 2, 1, "c"),
+                (1, 0, 1, "1"),
+                (1, 1, 1, "2"),
+                (1, 2, 1, "3"),
+            ],
+        ),
+        (
+            format!(
+                "{}{}{}",
+                inline("B1", "hidden"),
+                inline("A1", "head"),
+                inline("C1", "c")
+            ),
+            vec![
+                (0, 0, 2, "head"),
+                (0, 2, 1, "c"),
+                (1, 0, 1, "1"),
+                (1, 1, 1, "2"),
+                (1, 2, 1, "3"),
+            ],
+        ),
+    ] {
+        let sheet = format!(r#"<row r="1">{row1}</row>{row2}"#);
+        let sealed = ethos_parser_office::read(&styled(&sheet, merge, "")).expect("reads");
+        let texts: Vec<_> = sealed.payload().tables[0]
+            .cells
+            .iter()
+            .map(|c| {
+                (
+                    c.position.row,
+                    c.position.column,
+                    c.position.colspan,
+                    c.text.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(texts, want);
+        assert!(cell_at(&sealed, "Ledger", "B", 1).is_some(), "a node still");
+        let l = limitation(
+            &sealed,
+            ethos_parser_core::codes::OFFICE_COVERED_CELLS_NOT_PLACED,
+        )
+        .expect("declared");
+        assert!(l.detail.starts_with("1 cell(s)"), "{}", l.detail);
     }
 }
 

@@ -1753,29 +1753,38 @@ pub(crate) fn list_role_at(
 }
 
 /// Decision #136 (review). A DOCX list run's role as both projections write it: the open item's,
-/// where the run goes on in it (`seam`); at the top with no item open; with one open, whose last
-/// run is `prev`, at its depth where the two `<w:ilvl>` agree, one level under it where this one is
-/// deeper, and at the shallower of the two depths where it is shallower. A list starting at level
-/// two, or jumping from level one to four, read `    - item` — an indented code block — or lazy
-/// text, and in HTML a `<ul>` holding only `<ul>`s. Every other run's role is its own.
+/// where the run goes on in it (`seam`); at the top with no item open; with one open, at the depth
+/// its `<w:ilvl>` was set at where an open item set it, one level under the deepest open item set
+/// shallower otherwise. `levels` holds the `<w:ilvl>` each depth of the open list was set at, the
+/// caller's to keep between runs. A list starting at level two, or jumping from level one to four,
+/// read `    - item` — an indented code block — or lazy text, and in HTML a `<ul>` holding only
+/// `<ul>`s; and levels 2, 3, 2 set the third item under the second, not beside the first. Every
+/// other run's role is its own.
 pub(crate) fn docx_item(
     node: &crate::Node,
     role: ListRole,
     open: Option<ListRole>,
-    prev: Option<&crate::Node>,
+    levels: &mut Vec<usize>,
     seam: bool,
 ) -> ListRole {
     if docx_paragraph(node).is_none() {
         return role;
     }
-    let depth = match (open, prev.and_then(list_role).map(|r| r.depth)) {
-        (Some(open), _) if seam => return open,
-        (Some(open), Some(level)) if role.depth == level => open.depth,
-        (Some(open), Some(level)) if role.depth > level => open.depth + 1,
-        (Some(open), _) => role.depth.min(open.depth),
-        (None, _) => 0,
-    };
-    ListRole { depth, ..role }
+    match open {
+        Some(open) if seam => return open,
+        Some(_) => {}
+        None => levels.clear(),
+    }
+    while levels.last().is_some_and(|&level| level > role.depth) {
+        levels.pop();
+    }
+    if levels.last() != Some(&role.depth) {
+        levels.push(role.depth);
+    }
+    ListRole {
+        depth: levels.len() - 1,
+        ..role
+    }
 }
 
 /// Whether a list run's `text` reads on from the item before (decision #128): it opens lowercase,
@@ -1943,13 +1952,16 @@ const OVERPRINT_CHARS_READ: usize = 1024;
 /// the font ([`FontMeasure`]), so a run stretched across a table's row reaches no further than its
 /// font. A lone character counts only beside another copy, since a letter of unrelated text set over
 /// this text can land on its twin by chance. The first painting stands, and a later one is read
-/// against it alone. A run with no width has no extent to read, and a table's runs are its cells' to
-/// place. ParseBench content faithfulness 0.6747 -> 0.6751, 10 pages up and none down; semantic
-/// formatting 0.5127 -> 0.5131, one up and one down; tables, charts and visual grounding unchanged
-/// on every page; opendataloader-bench unchanged on every document.
+/// against it alone. A run with no width has no extent to read, a table's runs are its cells' to
+/// place, and a run in `left_out` is no painting (decision #139, review: flagged text left out on
+/// request is no copy's original, or the copy a reader sees would go with it). ParseBench content
+/// faithfulness 0.6747 -> 0.6751, 10 pages up and none down; semantic formatting 0.5127 -> 0.5131,
+/// one up and one down; tables, charts and visual grounding unchanged on every page;
+/// opendataloader-bench unchanged on every document.
 pub(crate) fn overprinted_runs<'a>(
     nodes: &'a [crate::Node],
     owner: &std::collections::BTreeMap<&str, usize>,
+    left_out: &std::collections::BTreeSet<&str>,
     pitch: &PitchReference,
 ) -> std::collections::BTreeSet<&'a str> {
     // By baseline, then by where a character starts.
@@ -1986,7 +1998,9 @@ pub(crate) fn overprinted_runs<'a>(
         let measure = pitch.get(&(a.font_id.clone(), size));
         let glyph = measure.map_or(0, |m| width.min(m.pitch));
         let drawn = || node.text.chars().filter(|c| !c.is_whitespace());
-        if glyph <= 0 || owner.contains_key(node.id.as_str()) || drawn().next().is_none() {
+        let id = node.id.as_str();
+        if glyph <= 0 || owner.contains_key(id) || left_out.contains(id) || drawn().next().is_none()
+        {
             continue;
         }
         if page.replace(at.page) != Some(at.page) {
@@ -2733,6 +2747,20 @@ fn opens_block_syntax(text: &str) -> bool {
 pub(crate) fn docx_paragraph(node: &crate::Node) -> Option<(&str, u32)> {
     match &node.native_locator {
         crate::NativeLocator::Docx(d) => Some((d.part.as_str(), d.paragraph)),
+        _ => None,
+    }
+}
+
+/// A slide paragraph's address: part, shape or frame, cell row and column, and paragraph.
+type SlideParagraph<'a> = (&'a str, u32, Option<u32>, Option<u32>, u32);
+
+/// Decision #135 (review). The slide paragraph a run is in, as its locator states it, or `None` for
+/// any other node.
+fn slide_paragraph(node: &crate::Node) -> Option<SlideParagraph<'_>> {
+    match &node.native_locator {
+        crate::NativeLocator::Pptx(l) => {
+            Some((l.part.as_str(), l.shape, l.row, l.column, l.paragraph))
+        }
         _ => None,
     }
 }
@@ -4454,6 +4482,8 @@ pub fn to_markdown_with(
     let mut last: Option<Block> = None;
     // The list item currently open: the previous run's place in it, its own `/Lbl` or not.
     let mut open_item: Option<ListRole> = None;
+    // Decision #136 (review): the `<w:ilvl>` each depth of the open DOCX list was set at.
+    let mut docx_levels: Vec<usize> = Vec::new();
     // Set when the previous node's hyphen join already emitted this one's text, as the tail of a
     // joined word. Its characters still count toward `in_representation` — they are in the record
     // whether or not this pass reaches them separately — so the flag is read after that.
@@ -4485,7 +4515,7 @@ pub fn to_markdown_with(
     let pitch = pitch_reference(&payload.nodes);
     let stretches = read_stretches(&payload.nodes, &pitch);
     let wrapped = wrapped_labels(repr);
-    let overprinted = overprinted_runs(&payload.nodes, &owner, &pitch);
+    let overprinted = overprinted_runs(&payload.nodes, &owner, &flagged, &pitch);
     let mut furniture = if options.drop_furniture {
         let mut furniture = repeated_furniture(repr, &owner);
         furniture.extend(office);
@@ -4626,7 +4656,7 @@ pub fn to_markdown_with(
             let seam = open_item
                 .and(open_prev)
                 .and_then(|prev| paragraph_seam(&payload.nodes, i, prev));
-            let role = docx_item(node, role, open_item, open_prev, seam.is_some());
+            let role = docx_item(node, role, open_item, &mut docx_levels, seam.is_some());
             if let Some(seam) = seam {
                 e.syntax(seam);
                 *erasures.entry(BLOCK_ELEMENT_RUN_JOINS).or_insert(0) += 1;
@@ -5485,9 +5515,11 @@ pub(crate) fn cell_runs_abut(
             && !node.reading_text().starts_with(char::is_whitespace);
     }
     // Decision #136: two runs of one DOCX paragraph abut where neither holds whitespace at the
-    // seam, as `paragraph_seam` joins them outside a table.
-    if docx_paragraph(prev).is_some() {
-        return docx_paragraph(prev) == docx_paragraph(node)
+    // seam, as `paragraph_seam` joins them outside a table. Decision #135 (review): and two runs of
+    // one paragraph of a slide's cell, as the record's cell text joins them.
+    if docx_paragraph(prev).is_some() || slide_paragraph(prev).is_some() {
+        return (docx_paragraph(prev), slide_paragraph(prev))
+            == (docx_paragraph(node), slide_paragraph(node))
             && !prev.text.ends_with(char::is_whitespace)
             && !node.text.starts_with(char::is_whitespace);
     }
@@ -8003,7 +8035,13 @@ pub(crate) mod tests {
 
     /// How many of `nodes` [`overprinted_runs`] leaves out.
     fn copies_in(nodes: &[Node]) -> usize {
-        overprinted_runs(nodes, &Default::default(), &pitch_reference(nodes)).len()
+        overprinted_runs(
+            nodes,
+            &Default::default(),
+            &Default::default(),
+            &pitch_reference(nodes),
+        )
+        .len()
     }
 
     /// How many runs of `repr` [`overprinted_runs`] leaves out.
@@ -12355,6 +12393,27 @@ pub(crate) mod tests {
             plain.coverage.source_chars_emitted,
             "nothing else moved"
         );
+    }
+
+    /// **A flagged run is no visible run's original** (review): a run painted first and flagged,
+    /// then painted again where a reader sees it, goes on request, and the copy painted over it is
+    /// written rather than left out as its copy, so the page's text survives.
+    #[test]
+    fn a_visible_run_painted_over_a_flagged_one_is_written() {
+        let repr = flagged_at(
+            &overprint_of(&[
+                ("Report", 7200, 7200, Some(2400)),
+                ("Report", 7200, 7200, Some(2400)),
+                ("Next", 7200, 9600, Some(1600)),
+            ]),
+            &[0],
+        );
+        assert_eq!(artifact_of(repr.clone()).markdown, "Report\n\nNext\n");
+        let a = artifact_with(&repr, DROP_FLAGGED);
+        assert_eq!(a.markdown, "Report\n\nNext\n");
+        assert!(a.coverage.balances());
+        assert_eq!(bucket(&a, FLAGGED_TEXT_NOT_PROJECTED), Some((6, 1)));
+        assert_eq!(bucket(&a, OVERPRINTED_RUN_DROPPED), None);
     }
 
     /// **A flagged run leaves its table cell**, which keeps its other runs; a cell of nothing else

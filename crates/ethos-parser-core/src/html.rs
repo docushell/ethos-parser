@@ -472,6 +472,8 @@ pub fn to_html_with(
     // one?" — is about the TREE, and both projections have to give it the same answer or they
     // describe different documents.
     let mut open_item: Option<crate::markdown::ListRole> = None;
+    // Decision #136 (review), as in `crate::markdown`.
+    let mut docx_levels: Vec<usize> = Vec::new();
     let mut joined_tail = false;
 
     // v2.2-S1. The open block's closing tag, deferred.
@@ -498,7 +500,7 @@ pub fn to_html_with(
     let pitch = crate::markdown::pitch_reference(&payload.nodes);
     let stretches = crate::markdown::read_stretches(&payload.nodes, &pitch);
     let wrapped = crate::markdown::wrapped_labels(repr);
-    let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &pitch);
+    let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &flagged, &pitch);
     let mut furniture = if options.drop_furniture {
         let mut furniture = crate::markdown::repeated_furniture(repr, &owner);
         furniture.extend(office);
@@ -628,7 +630,8 @@ pub fn to_html_with(
             let seam = open_item
                 .and(open_prev)
                 .and_then(|prev| crate::markdown::paragraph_seam(&payload.nodes, i, prev));
-            let role = crate::markdown::docx_item(node, role, open_item, open_prev, seam.is_some());
+            let role =
+                crate::markdown::docx_item(node, role, open_item, &mut docx_levels, seam.is_some());
             let docx = matches!(node.native_locator, crate::NativeLocator::Docx(_));
             flush_block(&mut e, &mut open_block);
             open_group = None;
@@ -2476,6 +2479,16 @@ mod tests {
             "{}",
             t.html
         );
+
+        // A visible run painted over a flagged copy of itself is written (review).
+        let copy = flagged_at(
+            &repr_of_placed(&[
+                ("Report", None, 7200, 7200, Some(2400), None),
+                ("Report", None, 7200, 7200, Some(2400), None),
+            ]),
+            &[0],
+        );
+        assert_eq!(both(&copy).html, "<p>Report</p>\n");
     }
 
     /// **Repeated furniture goes on request, as in Markdown, under the same count** (decision

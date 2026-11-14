@@ -182,11 +182,13 @@ impl<'d> PageForms<'d> {
             layer: (stream.dict.get(b"OC").ok()).and_then(|oc| switches.layer(doc, oc)),
             layers: switches.names(doc, resources.as_ref()),
             plain_states: crate::layers::plain_states(doc, resources.as_ref()),
+            // Each number read through its reference, and four of them or no box (review).
             bbox: crate::fonts::resolve_array(doc, stream.dict.get(b"BBox").ok()).and_then(|b| {
                 let n: Vec<f64> = b
                     .iter()
-                    .filter_map(|o| o.as_float().ok().map(f64::from))
-                    .collect();
+                    .map(|o| crate::fonts::resolve_object(doc, Some(o))?.as_float().ok())
+                    .map(|v| v.map(f64::from))
+                    .collect::<Option<_>>()?;
                 match n[..] {
                     [a, b, c, d] => Some([a.min(c), b.min(d), a.max(c), b.max(d)]),
                     _ => None,

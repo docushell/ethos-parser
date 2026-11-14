@@ -271,6 +271,31 @@ fn a_docx_paragraph_is_one_element() {
     assert!(artifact["omitted"].as_array().unwrap().is_empty());
 }
 
+/// **A heading an EPUB or an ODT declares is a `section-header`** (review of decision #137), as
+/// both projections write it `#`; it was `text`.
+#[test]
+fn a_heading_an_epub_or_odt_declares_is_a_section_header() {
+    for source in [
+        "fixtures/office/book-spine/book.epub",
+        "fixtures/office/text-paragraphs/document.odt",
+    ] {
+        let first = &elements_of(source)["elements"][0];
+        assert_eq!(
+            (
+                first["label"].as_str(),
+                first["level"].as_u64(),
+                first["text"].as_str()
+            ),
+            (
+                Some("section-header"),
+                Some(1),
+                Some("Evidence, not extraction.")
+            ),
+            "{source}"
+        );
+    }
+}
+
 #[test]
 fn a_painted_image_and_a_figure_region_are_pictures_with_boxes() {
     for (source, first_kind) in [

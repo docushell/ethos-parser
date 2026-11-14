@@ -863,13 +863,17 @@ impl<'a> Interpreter<'a> {
             None if self.gs.clip_unknown => None,
             None => fill,
         };
-        if let Some(shown) = area
-            .clip_to(self.gs.clip)
-            .and_then(|a| a.clip_to(self.gs.form_clip))
-        {
+        if let Some(shown) = self.shown_part(area) {
             self.through_clip_text(&shown);
             self.backdrop.push(shown, fill);
         }
+    }
+
+    /// As much of `area` as the page's known clip and each open form's `/BBox` show, or `None`
+    /// where they show none of it.
+    fn shown_part(&self, area: PathRect) -> Option<PathRect> {
+        area.clip_to(self.gs.clip)
+            .and_then(|a| a.clip_to(self.gs.form_clip))
     }
 
     /// Marks as clipping paint each rendering-mode-7 run whose clip has taken effect, still stands,
@@ -1120,9 +1124,11 @@ impl<'a> Interpreter<'a> {
                 self.ts.begin_text();
                 self.text_drawn_since_placement = false;
             }
-            // Decision #139: the clip a mode-7 run adds takes effect here.
+            // Decision #139: the clip a mode-7 run adds takes effect here. Records are added at the
+            // end and kept in order, so those not yet armed are the last ones: each is armed once,
+            // where arming every record at every `ET` was quadratic in a page's mode-7 objects.
             EndText => {
-                for c in &mut self.clip_text {
+                for c in self.clip_text.iter_mut().rev().take_while(|c| !c.armed) {
                     c.armed = true;
                 }
             }
@@ -1416,10 +1422,12 @@ impl<'a> Interpreter<'a> {
                     .path_box
                     .is_some_and(|b| self.outside_clip(((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0)));
                 // Decision #139: what a fill covered, in its colour only where the path is one
-                // rectangle and nothing else — a second subpath may cut a hole in it — the page
-                // does not clip, filled in a device colour under no `gs` this reader does not read.
+                // rectangle and nothing else — a second subpath may cut a hole in it, a rectangle
+                // drawn with each corner named twice among them (review) — the page does not clip,
+                // filled in a device colour under no `gs` this reader does not read.
                 if let (true, Some(b)) = (fills, self.path_box) {
-                    let one = matches!(&self.pending[..], [r] if r.contains(&b) && b.contains(r));
+                    let one = subpaths == 1
+                        && matches!(&self.pending[..], [r] if r.contains(&b) && b.contains(r));
                     let plain = self.gs.fill_device && !self.gs.ext_gstate;
                     let compared = one && !shaped && !gone && plain;
                     self.paint(b, compared.then_some(self.gs.fill));
@@ -1810,10 +1818,10 @@ impl<'a> Interpreter<'a> {
         let scale = self.gs.ctm.x_scale();
         // Decision #139: the run's glyphs, from its baseline to seven tenths of its em above, from
         // its origin to where its pen ends — what paint beneath it, or paint through its clip,
-        // has to meet.
-        let band = {
+        // has to meet. A string spread a glyph a run (decision #102) has a band per glyph, from
+        // its own origin over its own width (review).
+        let band_of = |origin: (f64, f64), travel: (f64, f64)| {
             let up = |(x, y): (f64, f64)| (x + 0.7 * trm.c, y + 0.7 * trm.d);
-            let travel = self.gs.ctm.apply_linear(advance_total, advance_total_f);
             let end = (origin.0 + travel.0, origin.1 + travel.1);
             let a = PathRect::from_corners(origin, up(end));
             let b = PathRect::from_corners(up(origin), end);
@@ -1823,6 +1831,19 @@ impl<'a> Interpreter<'a> {
                 x1: a.x1.max(b.x1),
                 y1: a.y1.max(b.y1),
             }
+        };
+        let band = band_of(
+            origin,
+            self.gs.ctm.apply_linear(advance_total, advance_total_f),
+        );
+        let spread = spread && advance_known;
+        let bands: Vec<(f64, f64, PathRect)> = if spread {
+            glyphs
+                .iter()
+                .map(|&(at, (dx, dy))| (at.0, at.1, band_of(at, self.gs.ctm.apply_linear(dx, dy))))
+                .collect()
+        } else {
+            vec![(origin.0, origin.1, band)]
         };
         // Decision #139: compared with what lies beneath it only where the page does not clip it
         // away, the pen's travel is known — with no widths the band would be the origin alone —
@@ -1835,7 +1856,11 @@ impl<'a> Interpreter<'a> {
                 ..
             }
         );
-        let compared = !self.outside_clip(origin) && advance_known && !type3;
+        let compared = |at: (f64, f64)| !self.outside_clip(at) && advance_known && !type3;
+        let matches: Vec<bool> = bands
+            .iter()
+            .map(|&(x, y, band)| compared((x, y)) && self.fill_matches_background(band))
+            .collect();
         let run = ShownText {
             text,
             codes: kept_codes,
@@ -1863,21 +1888,27 @@ impl<'a> Interpreter<'a> {
             layer: self.layer(),
             // Decision #139: a run the page clips away is hidden by the clip, not by its colour,
             // and is not compared.
-            fill_matches_background: compared && self.fill_matches_background(band),
+            fill_matches_background: matches[0],
             clips_paint: false,
         };
         // Decision #139: text painted shows a mode-7 clip it is drawn through; a run that sets one
         // waits for the paint that would show it, and leaves the paint after it of no shape this
         // reader knows — as does a run set as a clip in mode 4, 5 or 6.
+        // Text a layer switches off, or a clip keeps from the page, paints nothing (review).
         let first = self.shown.len();
-        if !matches!(self.ts.render_mode, 3 | 7) {
-            self.through_clip_text(&band);
+        if !matches!(self.ts.render_mode, 3 | 7) && self.layer() != Some(crate::layers::Layer::Off)
+        {
+            for &(_, _, band) in &bands {
+                if let Some(shown) = self.shown_part(band) {
+                    self.through_clip_text(&shown);
+                }
+            }
         }
         if (4..=7).contains(&self.ts.render_mode) {
             self.gs.clip_unknown = true;
         }
-        if spread && advance_known {
-            self.push_glyphs(run, glyphs, scale);
+        if spread {
+            self.push_glyphs(run, glyphs, &matches, scale);
         } else {
             self.last_run = Some(self.shown.len());
             self.shown.push(run);
@@ -1885,13 +1916,17 @@ impl<'a> Interpreter<'a> {
         if self.ts.render_mode == 7 {
             let (forms, states) = (self.form_stack.len(), self.gs_stack.len());
             self.clip_text
-                .extend((first..self.shown.len()).map(|index| ClipText {
-                    index,
-                    forms,
-                    states,
-                    band,
-                    armed: false,
-                }));
+                .extend(
+                    (first..self.shown.len())
+                        .zip(&bands)
+                        .map(|(index, &(_, _, band))| ClipText {
+                            index,
+                            forms,
+                            states,
+                            band,
+                            armed: false,
+                        }),
+                );
         }
 
         Ok(())
@@ -1909,7 +1944,13 @@ impl<'a> Interpreter<'a> {
     /// page draws `3`, `24`, `83` and `380`. 40 of ParseBench's 503 table pages set strings so, and
     /// none of the gate's documents. Spacing under an em — the tracking of ordinary type — keeps a
     /// string one run, and so does a string holding a code of no known width, which has no box.
-    fn push_glyphs(&mut self, mut run: ShownText, glyphs: Vec<Glyph>, scale: f64) {
+    fn push_glyphs(
+        &mut self,
+        mut run: ShownText,
+        glyphs: Vec<Glyph>,
+        matches: &[bool],
+        scale: f64,
+    ) {
         debug_assert_eq!(
             glyphs.len(),
             run.codes.len(),
@@ -1920,13 +1961,16 @@ impl<'a> Interpreter<'a> {
         let code_chars = std::mem::take(&mut run.code_chars);
         run.code_advances = None;
         let mut chars = text.chars();
-        for ((origin, (dx, dy)), (code, n)) in
-            glyphs.into_iter().zip(codes.into_iter().zip(code_chars))
+        for (((origin, (dx, dy)), (code, n)), &matches) in glyphs
+            .into_iter()
+            .zip(codes.into_iter().zip(code_chars))
+            .zip(matches)
         {
             self.last_run = Some(self.shown.len());
             let clipped = self.outside_clip(origin);
             self.shown.push(ShownText {
                 clipped,
+                fill_matches_background: matches,
                 text: chars.by_ref().take(n).collect(),
                 codes: vec![code],
                 code_chars: vec![n],

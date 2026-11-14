@@ -868,6 +868,94 @@ fn a_list_steps_in_one_level_at_a_time() {
     );
 }
 
+/// **A referenced part that will not read is counted whatever its name** (review of decision #136):
+/// a truncated header at `word/custom/header.xml` matched no conventional name, and went
+/// uncounted; one at a conventional name is counted once, not twice.
+#[test]
+fn a_referenced_part_that_will_not_read_is_counted_whatever_its_name() {
+    let body = r#"<w:p><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="h1"/></w:sectPr>"#;
+    let bad_header = format!("<w:hdr {W}><w:p><w:r><w:t>Header</w:t></w:r>");
+    for (target, part) in [
+        ("custom/header.xml", "word/custom/header.xml"),
+        ("header1.xml", "word/header1.xml"),
+    ] {
+        let repr = ethos_parser_office::read(&word(
+            body,
+            &[("h1", "header", target)],
+            &[(part, bad_header.as_str())],
+        ))
+        .expect("the body still reads");
+        assert_eq!(project(&repr, false).0, "Body\n");
+        assert!(
+            unread(&repr).expect("counted").starts_with("1 part(s)"),
+            "{part}: {:?}",
+            unread(&repr)
+        );
+    }
+}
+
+/// **The element view keeps the labels a DOCX declares** (review of decision #137): a referenced
+/// header's paragraph is a `page-header`, and a paragraph with a declared level a `section-header`
+/// at that level, as both projections read them; both were `text`.
+#[test]
+fn the_element_view_keeps_a_headers_and_a_headings_label() {
+    use ethos_parser_core::ElementLabel::{PageHeader, SectionHeader, Text};
+    let header = format!(r#"<w:hdr {W}><w:p><w:r><w:t>Running head</w:t></w:r></w:p></w:hdr>"#);
+    let repr = ethos_parser_office::read(&word(
+        r#"<w:p><w:pPr><w:outlineLvl w:val="1"/></w:pPr><w:r><w:t>Scope</w:t></w:r></w:p><w:p><w:r><w:t>Body text</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="h1"/></w:sectPr>"#,
+        &[("h1", "header", "header1.xml")],
+        &[("word/header1.xml", header.as_str())],
+    ))
+    .expect("reads");
+    let elements = ethos_parser_core::to_elements(&repr, "test")
+        .expect("projects")
+        .elements;
+    let got: Vec<_> = elements
+        .iter()
+        .map(|e| (e.label, e.text.as_str(), e.level))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (PageHeader, "Running head", None),
+            (SectionHeader, "Scope", Some(2)),
+            (Text, "Body text", None),
+        ]
+    );
+}
+
+/// **A list goes back out to the depth its level was set at** (review of decision #136): levels 2,
+/// 3, 2 wrote the third item under the second, where Word sets it beside the first, in Markdown and
+/// HTML alike; a level between two set ones goes under the shallower.
+#[test]
+fn a_list_goes_back_out_to_the_depth_its_level_was_set_at() {
+    let item = |level: u32, text: &str| {
+        format!(
+            r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="{level}"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"#
+        )
+    };
+    let body = [
+        item(2, "First"),
+        item(3, "Nested"),
+        item(2, "Back"),
+        item(4, "Deep"),
+        item(3, "Between"),
+        "<w:p><w:r><w:t>Prose</w:t></w:r></w:p>".into(),
+        item(3, "Again"),
+    ]
+    .concat();
+    let repr = ethos_parser_office::read(&word(&body, &[], &[])).expect("reads");
+    let (md, html) = project(&repr, false);
+    assert_eq!(
+        md,
+        "- First\n  - Nested\n- Back\n  - Deep\n  - Between\n\nProse\n\n- Again\n"
+    );
+    assert_eq!(
+        html,
+        "<ul>\n<li>First<ul>\n<li>Nested</li>\n</ul>\n</li>\n<li>Back<ul>\n<li>Deep</li>\n<li>Between</li>\n</ul>\n</li>\n</ul>\n<p>Prose</p>\n<ul>\n<li>Again</li>\n</ul>\n"
+    );
+}
+
 /// **A header's table goes with the header, on request, and is counted** (review of decision #136):
 /// a letterhead table survived `--drop-furniture`, uncounted. By default it stays.
 #[test]

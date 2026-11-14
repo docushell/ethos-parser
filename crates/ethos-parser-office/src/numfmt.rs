@@ -130,7 +130,8 @@ impl Decimal {
             Some(at) => (&rest[..at], rest[at + 1..].parse::<i32>().ok()?),
             None => (rest, 0),
         };
-        if exponent.abs() > 400 {
+        // A range, not `abs()`: `i32::MIN` has no absolute value (review).
+        if !(-400..=400).contains(&exponent) {
             return None;
         }
         let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
@@ -910,6 +911,19 @@ mod tests {
             Shown::Rendered(s) => s,
             other => panic!("`{code}` on `{stored}`: {other:?}"),
         }
+    }
+
+    /// **An exponent past 400 either way is refused before a digit is built** (review): `i32::MIN`
+    /// has no absolute value, so `abs()` panicked with overflow checks and, without them, gave
+    /// `i32::MIN` back, which passed the guard and asked for two gigabytes of zeros.
+    #[test]
+    fn an_exponent_at_i32_min_is_refused_before_any_digit_is_built() {
+        assert_eq!(Decimal::parse("1E-2147483648"), None);
+        assert_eq!(render("0.0", "1E-2147483648", false), Shown::NotRendered);
+        assert_eq!(Decimal::parse("1E-401"), None);
+        assert_eq!(Decimal::parse("1E401"), None);
+        assert!(Decimal::parse("1E-400").is_some());
+        assert!(Decimal::parse("1E400").is_some());
     }
 
     #[test]

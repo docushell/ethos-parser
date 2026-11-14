@@ -395,21 +395,66 @@ fn stated_table(
     })
 }
 
-/// A cell's text as both projections write its runs: one space between two runs unless either
-/// holds whitespace at the seam (decision #135). A cell's paragraphs are runs too, so
-/// `Revenue` over `FY2026` is `Revenue FY2026`.
-fn cell_text<'a>(runs: impl IntoIterator<Item = &'a str>) -> String {
-    let mut text = String::new();
-    for run in runs {
-        if !text.is_empty()
-            && !text.ends_with(char::is_whitespace)
-            && !run.starts_with(char::is_whitespace)
-        {
-            text.push(' ');
-        }
-        text.push_str(run);
+/// Which slots of a sheet's `rows` x `columns` grid, its first slot the sheet's `(top, left)`, lie
+/// under a merge they do not open (review of decision #135): Excel shows the merge there, not the
+/// cell, whether or not the merge's first cell holds anything and wherever the file lists the cell.
+/// Each merge is read once, as the corners of a running sum over the grid, so a sheet stating a
+/// million costs what its grid does. `None` where the grid is past `slots`, as no table is built.
+fn under_merges(
+    merges: &[xlsx::Merge],
+    (top, left): (u64, u64),
+    (rows, columns): (u64, u64),
+    slots: u64,
+) -> Option<Vec<bool>> {
+    let area = rows.saturating_mul(columns);
+    if area == 0 || area > slots {
+        return None;
     }
-    text
+    // Every number here is under the slot ceiling, so each fits a `usize`.
+    let (height, width) = (rows as usize, columns as usize);
+    let mut sum = vec![0i64; (height + 1) * (width + 1)];
+    let mut opens = vec![false; height * width];
+    for m in merges {
+        // The merge cut to the grid, or passed over where none of it lies there.
+        let (r1, c1) = (u64::from(m.last_row), m.last_column);
+        if r1 < top || c1 < left {
+            continue;
+        }
+        let (r0, c0) = (
+            u64::from(m.first_row).max(top) - top,
+            m.first_column.max(left) - left,
+        );
+        if r0 >= rows || c0 >= columns {
+            continue;
+        }
+        let (r1, c1) = ((r1 - top).min(rows - 1), (c1 - left).min(columns - 1));
+        let (r0, r1, c0, c1) = (r0 as usize, r1 as usize + 1, c0 as usize, c1 as usize + 1);
+        sum[r0 * (width + 1) + c0] += 1;
+        sum[r0 * (width + 1) + c1] -= 1;
+        sum[r1 * (width + 1) + c0] -= 1;
+        sum[r1 * (width + 1) + c1] += 1;
+        if u64::from(m.first_row) >= top && m.first_column >= left {
+            opens[r0 * width + c0] = true;
+        }
+    }
+    let mut under = vec![false; height * width];
+    for r in 0..=height {
+        for c in 0..=width {
+            let at = r * (width + 1) + c;
+            let up = if r > 0 { sum[at - width - 1] } else { 0 };
+            let back = if c > 0 { sum[at - 1] } else { 0 };
+            let both = if r > 0 && c > 0 {
+                sum[at - width - 2]
+            } else {
+                0
+            };
+            sum[at] += up + back - both;
+            if r < height && c < width {
+                under[r * width + c] = sum[at] > 0 && !opens[r * width + c];
+            }
+        }
+    }
+    Some(under)
 }
 
 /// The limitations a document's stated tables owe: tables past the slot budget, and cells holding
@@ -718,23 +763,25 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     }
 }
 
-/// A DOCX cell's text (decision #136): its runs' text concatenated, with one space where two of
-/// its paragraphs meet and neither holds whitespace at the seam, so `Line one` and `Line two` do
-/// not weld into `Line oneLine two` — but two runs of one paragraph are joined as they stand, so
-/// a word Word cut into runs stays one word, where [`cell_text`] spaces every run.
-fn docx_cell_text(runs: &[docx::Run], cell: &[usize]) -> String {
+/// A DOCX or slide cell's text as both projections write it (decisions #135 and #136): its runs'
+/// text, each beside the paragraph it is in, concatenated, with one space where two of its
+/// paragraphs meet and neither holds whitespace at the seam, so `Line one` and `Line two` do not
+/// weld into `Line oneLine two` — but two runs of one paragraph are joined as they stand, so a word
+/// formatting cut into runs stays one word (review: a slide cell's `Rev` and `enue` read
+/// `Rev enue`).
+fn cell_text<'a>(runs: impl IntoIterator<Item = (u32, &'a str)>) -> String {
     let mut text = String::new();
-    let mut prev: Option<&docx::Run> = None;
-    for run in cell.iter().map(|&i| &runs[i]) {
-        if prev.is_some_and(|p| {
-            p.paragraph != run.paragraph
-                && !p.text.ends_with(char::is_whitespace)
-                && !run.text.starts_with(char::is_whitespace)
+    let mut prev: Option<(u32, &str)> = None;
+    for (paragraph, run) in runs {
+        if prev.is_some_and(|(p, before)| {
+            p != paragraph
+                && !before.ends_with(char::is_whitespace)
+                && !run.starts_with(char::is_whitespace)
         }) {
             text.push(' ');
         }
-        text.push_str(&run.text);
-        prev = Some(run);
+        text.push_str(run);
+        prev = Some((paragraph, run));
     }
     text
 }
@@ -847,13 +894,19 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     let mut cells_covered = 0u32;
     let mut slots = ethos_parser_core::OFFICE_TABLE_MAX_SLOTS;
     let mut read_parts: Vec<&str> = Vec::new();
+    // A referenced part that would not read, counted by itself: its name may be no conventional one
+    // `docx::unread_text_parts` matches (review).
+    let mut failed_parts: Vec<&str> = Vec::new();
     for (part_name, furniture) in &parts {
         let read = if part_name == docx::MAIN_PART {
             std::mem::take(&mut main)
         } else {
             match zip::read_entry(bytes, part_name).and_then(|p| docx::read_part(&p, part_name)) {
                 Ok(read) => read,
-                Err(_) => continue,
+                Err(_) => {
+                    failed_parts.push(part_name);
+                    continue;
+                }
             }
         };
         read_parts.push(part_name);
@@ -912,7 +965,10 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     colspan: cell.colspan.into(),
                     covered: false,
                     nodes: cell.runs.iter().map(|&i| run_ids[i].clone()).collect(),
-                    text: docx_cell_text(&read.runs, &cell.runs),
+                    text: cell_text(cell.runs.iter().map(|&i| {
+                        let run = &read.runs[i];
+                        (run.paragraph, run.text.as_str())
+                    })),
                 })
                 .collect();
             let made = stated_table(
@@ -948,10 +1004,13 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     // Word does not show, or one that will not read is.
     let unread_names: Vec<String> = names
         .iter()
-        .filter(|n| !read_parts.contains(&n.as_str()))
+        .filter(|n| !read_parts.contains(&n.as_str()) && !failed_parts.contains(&n.as_str()))
         .cloned()
         .collect();
-    let unread = docx::unread_text_parts(&unread_names);
+    let unread = declare(
+        docx::unread_text_parts(&unread_names),
+        declared_len(failed_parts.len()),
+    );
     if unread > 0 || alternatives_not_read > 0 || moves_not_read > 0 || styles_unread.is_some() {
         let mut detail = String::new();
         if let Some(part) = &styles_unread {
@@ -1106,14 +1165,15 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 
     // Decision #135: the number formats and the date system the workbook states. **A styles part
     // that will not read refuses nothing**: the cells were read before formats were, so a missing,
-    // oversized or broken one leaves every styled number showing what it stores, counted.
+    // oversized or broken one leaves every number showing what it stores, counted — style zero's
+    // too, whose format the part states as it states any other's (review).
     let mut styles_unread = None;
     let mut formats = match xlsx::styles_part(&rels, names) {
         Some(part_name) => zip::read_entry(bytes, &part_name)
             .and_then(|part| xlsx::read_number_formats(&part, &part_name))
             .unwrap_or_else(|e| {
                 styles_unread = Some(format!("`{part_name}` ({e})"));
-                xlsx::NumberFormats::default()
+                xlsx::NumberFormats::unread()
             }),
         None => xlsx::NumberFormats::default(),
     };
@@ -1229,6 +1289,11 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     nodes: vec![node.id.clone()],
                     text: node.text.clone(),
                 });
+            }
+            if let Some(under) = under_merges(&merges, (top, left), (rows, columns), slots) {
+                for cell in &mut stated {
+                    cell.covered = under[(cell.row * columns + cell.column) as usize];
+                }
             }
             let made = stated_table(
                 &mut alloc,
@@ -2356,6 +2421,11 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 held.entry((run.shape, row, column)).or_default().push(node);
             }
         }
+        // The paragraph a cell's run is in, as its locator states it (review).
+        let paragraph = |n: &Node| match &n.native_locator {
+            NativeLocator::Pptx(l) => l.paragraph,
+            _ => 0,
+        };
         // An `<a:tbl>` with no `<a:tc>` states no cell, so there is no table to emit and nothing
         // left out.
         for table in content.tables.iter().filter(|t| !t.cells.is_empty()) {
@@ -2365,14 +2435,14 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     .get(&(table.frame, cell.row, cell.column))
                     .map_or(&[][..], Vec::as_slice);
                 stated.push(StatedCell {
-                    // Both 1-based, from a `<a:tr>` and a `<a:tc>` the reader counted.
-                    row: u64::from(cell.row.saturating_sub(1)),
-                    column: u64::from(cell.column.saturating_sub(1)),
+                    // Both 1-based, from a `<a:tr>` and a `<a:tc>` the reader read (review).
+                    row: u64::from(cell.grid.0.saturating_sub(1)),
+                    column: u64::from(cell.grid.1.saturating_sub(1)),
                     rowspan: u64::from(cell.rowspan),
                     colspan: u64::from(cell.colspan),
                     covered: cell.covered,
                     nodes: held.iter().map(|n| n.id.clone()).collect(),
-                    text: cell_text(held.iter().map(|n| n.text.as_str())),
+                    text: cell_text(held.iter().map(|n| (paragraph(n), n.text.as_str()))),
                 });
             }
             let made = stated_table(

@@ -189,6 +189,8 @@ Rule id `heading_inference_rule` `type-size-v7` -> `type-size-v8`; `profile_sha2
 - Measured: opendataloader-bench MHS 0.6285 -> 0.6378 over #141 alone, none down.
   Without the recurrence clause MHS read 0.7024, with `#` lines on twelve made-up forms, invoices
   and resumes; the shipped rule writes none there (`docs/measurements/headings/README.md` §15).
+- **Known limit**: a font is the name its page gives it, so labels on two pages naming different
+  fonts `F1` at one size recur as one style.
 
 ### A heading set a marked-content sequence to a word is one heading line (decision #141)
 
@@ -235,13 +237,21 @@ flagged run.
   is cut to the known clip and to each form's `/BBox`; a run the page clips away is not
   compared, nor one with no known advance (no widths, a predefined CMap) or in a Type 3 font; a
   glyph painted as a box is not read as one, and a white fill painted through a mode-7 clip shows
-  the clip's text. Whitespace carries none of the three.
+  the clip's text. Whitespace carries none of the three. A fill's colour is recorded only where
+  its path is one rectangle and nothing else: a second subpath, a rectangle drawn with each corner
+  named twice among them, may cut a hole. A string spread a glyph a run (decision #102) is
+  compared glyph by glyph, each glyph's own box against what lies beneath it. A form's `/BBox`
+  numbers are read through their references, and a box of other than four numbers is none.
   What was painted is indexed by 32-point and 512-point cells, so a page of many paths is not
   compared path by path with every run; many large paints in the cells a run's glyphs lie in are
-  still each looked at.
+  still each looked at. Each `ET` gives effect only to the clips set since the one before it, so
+  a page of 100,000 mode-7 text objects reads in 0.7 s, where it took 14.3; each paint still
+  reads every mode-7 clip standing, so 50,000 of them then 50,000 fills beside them take 15 s.
 - **`invisible-render-mode` narrows for mode 7**: a run set in `Tr 7` carries it only where
   nothing is painted, after `ET`, through the clip it sets and over its glyphs, so a heading
-  filled with a shading is not hidden and a clip nothing paints through still is.
+  filled with a shading is not hidden and a clip nothing paints through still is. Text in a layer
+  switched off, or kept from the page by a known clip, paints nothing through it, and a spread
+  string's glyph shows only what is painted over that glyph.
 - **Operands, never contrast.** Grey at 0.99 on white, a colour in `rg` over the same in `g`,
   and transparency are not flagged; `low-contrast-not-detected` stays on every profile and says
   so. OpenDataLoader's filters are not matched: they render the page and test a contrast ratio
@@ -254,7 +264,8 @@ flagged run.
   its images together cover half of or more; a scan drawn as an inline image, or under half its
   page, is not one. A run whose one finding is `off-page` goes only where its measured box is
   known and misses the visible box: one whose box crosses the media box's edge has none and stays,
-  so text wholly off the media box stays too. Counted
+  so text wholly off the media box stays too. A run left out is no painting a later run copies
+  (decision #110): text painted over a flagged copy of itself is written. Counted
   once under `flagged-text-not-projected-v1`; coverage balances. MCP and the SDKs do not offer it
   yet.
 
@@ -308,7 +319,9 @@ what it was, `profile_sha256` included: the rule id travels on the artifact, not
   `page-footer`, `table` with its cells, `picture`), `page`, `bbox` in centipoints from the page's
   top-left, `text`, and the `node_ids` it covers, in page order and reading order. A page-less
   source (DOCX, XLSX, …) has no pages and no boxes; a DOCX paragraph is one element and a
-  workbook's sheet a named `table`.
+  workbook's sheet a named `table`. A Word header's or footer's paragraph is a `page-header` or
+  `page-footer`, and a heading a DOCX, ODF or EPUB file declares a `section-header` at its level,
+  as both projections read them.
 - **Nothing is dropped silently.** Every node is in one element or under `omitted` with its reason
   (`no-measured-box`, `whitespace-only`, `form-field`, `annotation`, `image-not-painted`,
   `figure-not-measured`), and one line on stderr counts them.
@@ -354,14 +367,15 @@ key, so theirs do not, and no PDF artifact moves.
   is not written, and a separator or continuation notice is passed over by its `w:type`. A `first`
   header or footer is read only where its section states `<w:titlePg/>`, an `even` one only where
   `word/settings.xml` states `<w:evenAndOddHeaders/>`, since Word shows neither otherwise. A
-  header, footer, footnotes or styles part that will not read is counted, and the rest of the
-  document is read. Endnotes, comments, and a header, footer or footnotes part nothing references
-  or Word does not show are still counted under `office-parts-not-read`. **With
+  header, footer, footnotes or styles part that will not read is counted, whatever its name, and
+  the rest of the document is read. Endnotes, comments, and a header, footer or footnotes part
+  nothing references or Word does not show are still counted under `office-parts-not-read`. **With
   `--drop-furniture`, a resume whose name sits in its page header loses it**, as the option asks;
   a table in a header or footer goes with it, counted.
 - **List depth** steps in one level at a time: an item opens at the top with no list open, one
   level under the open item where its `<w:ilvl>` is deeper, so a list starting at level two is no
-  indented code block and a jump from one to four no lazy text.
+  indented code block and a jump from one to four no lazy text; and an item goes back out to the
+  depth its `<w:ilvl>` was set at, so levels 2, 3, 2 set the third beside the first.
 - **A layout table is written as its blocks.** A `<w:tbl>` with a cell holding two paragraphs or
   more with text, or holding a nested table, as a Word resume laid out as a table does, projects
   row by row and cell by cell, a paragraph a block, a heading or a list item as outside a table,
@@ -402,11 +416,15 @@ byte for byte what it was, profiles included.
   `rowSpan`, a span reaching no further than the rows and columns the table states. Its runs are
   nodes now, where the frame was counted under `office-parts-not-read`; a frame holding a chart,
   SmartArt or an object still is, and so is a cell before any `<a:tr>`. A cell's record text is
-  its runs joined by one space where neither holds whitespace at the seam, as the projections
-  write them (`Revenue FY2026`).
+  its paragraphs joined by one space where neither holds whitespace at the seam, and a paragraph's
+  runs as they stand, as the projections write them (`Revenue FY2026`; `Rev` and `enue` are
+  `Revenue`). A row or cell in an `<mc:AlternateContent>` branch passed over is no row or cell of
+  the table, though the locators count it.
 - **A cell under a merge takes no slot**: one the file marks `hMerge`/`vMerge`, or whose slot an
-  earlier cell's span or a sheet's `<mergeCells>` range covers. Its text stays in its node,
-  projected after the table, and is counted under `office-covered-cells-not-placed`, new.
+  earlier cell's span covers, or that a sheet's `<mergeCells>` range covers and does not open,
+  whatever the range's first cell holds and wherever the sheet lists the cell. Its text stays in
+  its node, projected after the table, and is counted under `office-covered-cells-not-placed`,
+  new.
 - **`PptxLocator` gains `row` and `column`**, optional and written only for a run in a table cell:
   the 1-based `<a:tr>` and `<a:tc>`. With them, `shape` is the 1-based position of the
   `<p:graphicFrame>` among the part's graphic frames, and `paragraph` and `run` count within the
@@ -430,8 +448,10 @@ byte for byte what it was, profiles included.
   a scientific, fraction or elapsed-time code, a fill, a locale's own format, a non-English LCID
   with month or day names, a built-in the standard leaves to the locale, a condition on a negative
   value. A styles part that is missing, broken or names a format id that is no number refuses
-  nothing: styled numbers show what they store, counted. A conditional format's `<numFmt>` (in
-  `<dxfs>`) styles no cell. A string, boolean or error cell shows what it stores, as before.
+  nothing: styled numbers show what they store, counted, and where the part is missing or broken
+  every number is, since style zero's format is the part's to state too. A conditional format's
+  `<numFmt>` (in `<dxfs>`) styles no cell. A string, boolean or error cell shows what it stores,
+  as before.
 - **Markdown and HTML** write a worksheet's table under its sheet's name: `# Ledger`, `<h1>`. The
   name is quoted from the locator every cell carries and is `syntax`, so a quote of it does not
   invert; no node is added for it. Folded into `markdown-blocks-v14` and `html-blocks-v14`, which

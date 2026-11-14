@@ -24,14 +24,18 @@
 //! - A **text unit** is a block of [`crate::markdown::geometric_blocks`] — the element
 //!   `ethos.grounding.v1` cites — and consecutive blocks whose runs share a page and a
 //!   [`crate::TextRunAttributes::layout_unit`] are one unit, boxed by their union and joined by one
-//!   space. A unit, a label and a picture's text are read from the runs with a measured box — the
-//!   spans `ground` cites — and on a source with no pages from every run. **A DOCX paragraph's
+//!   space. A unit's box and label, and the units a picture's text is read from, come from the
+//!   runs with a measured box — the spans `ground` cites — and on a source with no pages from every
+//!   run; a unit's text is its blocks' text, as `ground`'s element states it, so a space the page
+//!   drew as a run of its own, with no ink to measure, stays between its words. **A DOCX paragraph's
 //!   runs are one unit** (decision #130), its text as both projections write it
 //!   ([`crate::markdown::projected_text`], [`crate::markdown::paragraph_seam`]): a whitespace run
 //!   joins its paragraph and never stands alone (the adapter, reading `ground`, had one element
 //!   per run).
 //! - Its **label** is the first the record states: a run's page `furniture` (`page-header`,
-//!   `page-footer`); then a run's tagged role path after the document's `/RoleMap`, as Markdown
+//!   `page-footer`), a Word header's or footer's included; then a level a DOCX, ODF or EPUB file
+//!   declares, as both projections read it ([`crate::markdown::heading_level`]), a
+//!   `section-header`; then a run's tagged role path after the document's `/RoleMap`, as Markdown
 //!   reads it, innermost role first — `H`, `H1`–`H6` are a `section-header`, and `Title`, `LI`,
 //!   `LBody`, `Lbl` and `Caption` settle it as `text`, since this view has no title, list or
 //!   caption label (`docs/06-STEAL-REFUSE.md` P14); then a run's `inferred_heading` (decision #29)
@@ -327,12 +331,19 @@ fn union(a: Option<QRect>, b: Option<QRect>) -> Result<Option<QRect>, EngineErro
 
 /// A unit's label and a `section-header`'s level, from what its runs' records state.
 ///
-/// Page furniture first (decision #41): a running head the heading rule also read stays the
-/// page's header. Then, run by run, the tagged role path after the document's `/RoleMap`,
-/// innermost first, and the run's inferred heading at a level the projections write as one.
+/// Page furniture first (decision #41), a Word header's or footer's included (decision #136): a
+/// running head the heading rule also read stays the page's header. Then, run by run, a level a
+/// page-less source declares — a DOCX paragraph's, an ODF heading's, an EPUB `<h1>`–`<h6>` — as
+/// both projections read it ([`crate::markdown::heading_level`]); the tagged role path after the
+/// document's `/RoleMap`, innermost first; and the run's inferred heading at a level the
+/// projections write as one.
 fn label_of(nodes: &[crate::Node], members: &[usize]) -> (ElementLabel, Option<u8>) {
     for &i in members {
-        match text_run_attributes(&nodes[i]).and_then(|a| a.furniture) {
+        let furniture = match &nodes[i].attributes {
+            NodeAttributes::OfficeRun(a) => a.furniture,
+            _ => text_run_attributes(&nodes[i]).and_then(|a| a.furniture),
+        };
+        match furniture {
             Some(Furniture::Header) => return (ElementLabel::PageHeader, None),
             Some(Furniture::Footer) => return (ElementLabel::PageFooter, None),
             None => {}
@@ -340,6 +351,11 @@ fn label_of(nodes: &[crate::Node], members: &[usize]) -> (ElementLabel, Option<u
     }
     for &i in members {
         let node = &nodes[i];
+        if text_run_attributes(node).is_none() {
+            if let Some(level) = crate::markdown::heading_level(node) {
+                return (ElementLabel::SectionHeader, Some(level));
+            }
+        }
         if let Some(StructuralLocator::PdfTagged(t)) = &node.structural_locator {
             let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
             for role in path.iter().rev() {

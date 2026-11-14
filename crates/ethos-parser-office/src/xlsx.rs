@@ -176,12 +176,26 @@ pub struct NumberFormats {
     cell_formats: Vec<u32>,
     /// Whether `<workbookPr date1904>` puts serial 0 on 1904-01-01.
     pub date1904: bool,
+    /// Whether the styles part would not read, so no style's format is known, style zero's
+    /// included (review).
+    unread: bool,
 }
 
 impl NumberFormats {
+    /// A workbook whose styles part would not read: no cell's format is known.
+    pub(crate) fn unread() -> Self {
+        Self {
+            unread: true,
+            ..Self::default()
+        }
+    }
+
     /// The format a style index names, applied to a stored number, and whether that format is
     /// built-in 14 or 22 — a date the file leaves to the reader's locale, written in ISO 8601.
     pub(crate) fn show(&self, style: Option<u32>, stored: &str) -> (crate::numfmt::Shown, bool) {
+        if self.unread {
+            return (crate::numfmt::Shown::NotRendered, false);
+        }
         let Some(&id) = self.cell_formats.get(style.unwrap_or(0) as usize) else {
             // No `cellXfs` at all is a workbook of `General` cells; a style index past the list
             // names a format the file does not state.

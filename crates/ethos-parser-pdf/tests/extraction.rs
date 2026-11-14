@@ -6392,6 +6392,84 @@ fn hidden_text_after_text_clips_rules_and_blends() {
     assert_eq!(got, expected);
 }
 
+/// **What CodeRabbit's second review found** (decision #139): a fill whose second subpath is a
+/// rectangle drawn with each corner named twice cuts a hole, so black text in it is not on black;
+/// a string spread a glyph a run is compared and clips glyph by glyph, so a box under its first
+/// glyph alone flags that glyph, and paint touching one glyph of a mode-7 string shows that one;
+/// and text a layer switches off, or a clip keeps from the page, paints nothing through a mode-7
+/// clip.
+#[test]
+fn hidden_text_holes_spread_glyphs_and_text_that_paints_nothing() {
+    use ethos_parser_core::TextFinding::{FillMatchesBackground, HiddenLayer, InvisibleRenderMode};
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "q 0 g 10 340 280 50 re 30 350 m 30 350 l 270 350 l 270 350 l 270 380 l 270 380 l 30 380 l \
+         30 380 l h f* Q BT /F1 10 Tf 1 0 0 1 40 360 Tm (In the hole) Tj ET \
+         q 0 g 18 295 8 15 re f BT /F1 10 Tf 12 Tc 1 0 0 1 20 300 Tm (AB) Tj ET Q \
+         q BT 7 Tr /F1 10 Tf 12 Tc 1 0 0 1 20 250 Tm (CD) Tj ET 0 g 18 245 8 15 re f Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 200 Tm (Clip word) Tj ET /OC /Off BDC BT 0 Tr /F1 10 Tf \
+         1 0 0 1 20 200 Tm (Off over it) Tj ET EMC Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 150 Tm (Clip two) Tj ET 250 0 10 10 re W n BT 0 Tr /F1 10 \
+         Tf 1 0 0 1 20 150 Tm (Clipped over it) Tj ET Q",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("In the hole", &[]),
+        want("A", &[FillMatchesBackground]),
+        want("B", &[]),
+        want("C", &[]),
+        want("D", &[InvisibleRenderMode]),
+        want("Clip word", &[InvisibleRenderMode]),
+        want("Off over it", &[HiddenLayer]),
+        want("Clip two", &[InvisibleRenderMode]),
+        want("Clipped over it", &[]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **A form's `/BBox` clips its paint whether its numbers are stated or referenced** (review of
+/// decision #139): `[0 0 300 7 0 R]` dropped the reference, read no box, and the form's black
+/// fill reached text above it, flagged as black on black.
+#[test]
+fn a_forms_bbox_with_a_referenced_coordinate_still_clips() {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let findings = |bbox: &str| {
+        let page = "/Fm Do BT /F1 10 Tf 1 0 0 1 20 200 Tm (Above the box) Tj ET";
+        let form = "0 g 0 0 300 400 re f";
+        let objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 \
+              0 R >> /XObject << /Fm 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            format!("<< /Length {} >>\nstream\n{page}\nendstream", page.len()).into_bytes(),
+            format!(
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+                 /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+            )
+            .into_bytes(),
+            format!(
+                "<< /Type /XObject /Subtype /Form /BBox {bbox} /Length {} >>\nstream\n{form}\nendstream",
+                form.len()
+            )
+            .into_bytes(),
+            b"50".to_vec(),
+        ];
+        let profile = Profile::default();
+        let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+        findings_of(&a)
+    };
+    let clear = vec![("Above the box".to_owned(), Vec::new())];
+    assert_eq!(findings("[0 0 300 50]"), clear);
+    assert_eq!(findings("[0 0 300 7 0 R]"), clear);
+}
+
 /// **A Type 3 font's em is measured only at the default `/FontMatrix`** (decision #139): drawn at
 /// half a point it is tiny text there, and under a matrix of a hundredth nothing says how tall its
 /// em is drawn, so it carries no finding.
