@@ -1,8 +1,8 @@
 # ethos-parser-assist
 
 The assist lane's own process (decisions #143 and #144). It renders a PDF's pages, sends each to a
-model server you run, and writes the replies to a file. The engine reads that file; it does not
-call this binary yet.
+model server you run, and writes the replies to a file. `ethos-parser extract --assist` runs it and
+then reads that file (decision #149, [below](#from-the-engine-extract---assist)).
 
 **Install.** From 0.66.0 every release archive carries this binary beside `ethos-parser`, built
 for Linux, Windows and both macOS architectures, and no model: the model runs in a server you
@@ -43,7 +43,8 @@ bad usage.
   `ask` again with the same
   arguments: a page with a reply is kept, and a page with an `error` is asked again. A file for
   another PDF is refused, as are a model the server reports differently and another VERSION
-  (`assist-answers-other-source`, `assist-answers-other-model`). Once FILE holds a reply, MODEL's
+  (`assist-answers-other-source`, `assist-answers-other-model`); a MODEL with no `@VERSION` keeps
+  FILE's, since a version left out is not compared. Once FILE holds a reply, MODEL's
   ID must be its `asked` or its `id`, so a server's alias resumes under either name; any other is
   refused before a page is passed over as answered. A file without `asked` was asked by its `id`.
 - **Exit codes.**
@@ -109,8 +110,9 @@ These are Phase 4a's commands (2026-11-14), which were run on an M4 Pro, with on
 - **The change.** Phase 4a converted the model to an absolute path (`--mlx-path ~/lighton-mlx`)
   and served that path. mlx-vlm then reports the path as the id, and every output would record it.
 - **Here,** the model is converted under `~` and served by a relative name, so the id holds no
-  path. mlx-vlm 0.7.12's source returns the request's `model` as the reply's. This form has not
-  been run.
+  path. mlx-vlm 0.7.12's source returns the request's `model` as the reply's. Run on 2026-11-16
+  with a conversion served as `lighton_mlx` from its parent directory: `check` and
+  `extract --assist` recorded the id `lighton_mlx`.
 - **Two more notes.** `<snapshot dir>` is the directory `hf download` prints. `--host 127.0.0.1`
   matters, since mlx-vlm listens on every interface by default.
 ```bash
@@ -119,9 +121,8 @@ uv venv --python 3.12 ~/lighton && uv pip install --python ~/lighton mlx-vlm==0.
 cd ~ && ~/lighton/bin/python -m mlx_vlm convert --hf-path <snapshot dir> --mlx-path LightOnOCR-3-0.8B
 cd ~ && HF_HUB_OFFLINE=1 ~/lighton/bin/python -m mlx_vlm.server --host 127.0.0.1 --port 8089 --model LightOnOCR-3-0.8B --max-tokens 12288
 ethos-parser-assist check http://127.0.0.1:8089 LightOnOCR-3-0.8B@36d8636925327c671bd8e479c517a004f7566bd9
-ethos-parser-assist ask http://127.0.0.1:8089 doc.answers.json 1,2,3 LightOnOCR-3-0.8B@36d8636925327c671bd8e479c517a004f7566bd9 < doc.pdf
+ethos-parser extract doc.pdf --assist http://127.0.0.1:8089 --assist-model LightOnOCR-3-0.8B@36d8636925327c671bd8e479c517a004f7566bd9 --assist-answers doc.answers.json > doc.json
 ```
-A later step gives `ethos-parser extract` the `--assist` flag, which runs `ask` for you.
 
 ### Linux (vLLM, NVIDIA GPU): not run here
 
@@ -134,6 +135,38 @@ docker run --gpus all -p 127.0.0.1:8089:8000 vllm/vllm-openai:v0.30.0 --model li
 ethos-parser-assist check http://127.0.0.1:8089 lightonai/LightOnOCR-3-0.8B@36d8636925327c671bd8e479c517a004f7566bd9
 ```
 A cloud API that serves the model works the same way, with `ETHOS_PARSER_ASSIST_KEY` set.
+
+## From the engine: `extract --assist`
+
+`ethos-parser extract doc.pdf --assist SERVER --assist-answers FILE [--assist-model ID@VERSION]
+[--assist-pages trigger|all|LIST]` (decisions #149 and #150):
+- **Found** as the recognizer is: `ETHOS_PARSER_ASSIST` (a relative name taken from the working
+  directory, never looked up on `PATH`), or `ethos-parser-assist` beside `ethos-parser`; missing, or stating another `renderer` or `request` than the engine reads, it is
+  refused by name before any page is asked.
+- **Run** as `ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF`, its progress passed on to
+  stderr, the key in the environment it inherits. Then FILE is read as `--assist-answers FILE`
+  reads it, so the output is a function of the PDF and FILE: `extract doc.pdf --assist-answers FILE`
+  later gives the same bytes, and a stopped run resumes. A FILE reused from an earlier run keeps
+  its pages, and they are attached too; only pages with no reply are asked. A model named without
+  `@VERSION` takes FILE's version, as the merge does not compare one left out.
+- **Stderr** is passed on line by line from a thread of its own, lossily where it is not UTF-8.
+  No timeout is set: each request is bounded by curl's, and a child that hangs otherwise hangs
+  `extract`.
+- **Pages.** `trigger`, the default, asks for each page the engine's record shows a scan, under 20
+  distinct words, a figure, a table, a picture over a quarter of the visible page, or U+FFFD on;
+  `all`, every page the record lists; LIST (`1,3,7`, digits only), those pages. A page the record
+  does not list, as one `--max-pages` cut, is never asked (`assist-pages-left-out` on stderr). No
+  page to ask, and no FILE, gives the engine's record alone, said on stderr
+  (`assist-nothing-attached`).
+- **Exits, by name.** 3 reads FILE as it stands and says `assist-page-not-rendered`; 4 is
+  `assist-server-unreachable`; 5 is this binary's refusal, `assist-` and its name
+  (`assist-curl-not-found`, `assist-model-not-chosen`, ...) or the `assist-answers-*` name the
+  merge gives; any other exit is refused with this binary's last line. `ethos-parser` exits 2 on
+  each, with nothing on stdout.
+
+The tests run both binaries against a fake server on 127.0.0.1 (`tests/transport.rs`, which needs
+the engine built: `cargo build -p ethos-parser-cli` at the root, or `ETHOS_PARSER_BIN`), and the
+engine's own against `crates/ethos-parser-cli/tests/fake-assist.sh`.
 
 ## Why a workspace of its own
 
@@ -171,8 +204,10 @@ cargo clippy --release --all-targets --locked -- -D warnings
 cargo test --release --locked
 ```
 
-The tests need `curl` on `PATH` and nothing beyond loopback: `tests/transport.rs` runs `ask` and
-`check` against a fake server on 127.0.0.1, with an empty environment.
+The tests need `curl` on `PATH` and nothing beyond loopback: `tests/transport.rs` runs `ask`,
+`check` and the engine's `extract --assist` against a fake server on 127.0.0.1, with an empty
+environment. The engine comes from `ETHOS_PARSER_BIN`, or the root's `target/debug/ethos-parser`,
+which the gate and CI build first.
 
 `ci/assist.sh` runs the last four lines in `ci/gate.sh` and in CI. Both also run
 `cargo deny --manifest-path assist/Cargo.toml check` from the repository root. cargo-deny then reads `assist/deny.toml`, which allows Apache-2.0, MIT, BSD-3-Clause, Zlib and

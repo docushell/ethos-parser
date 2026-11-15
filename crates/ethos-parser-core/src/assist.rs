@@ -1727,6 +1727,89 @@ fn loops(text: &str) -> bool {
     })
 }
 
+/// The fewest distinct words a page's runs may hold without the trigger asking a model to read the
+/// page: [`words`], over the page's runs joined in order.
+const TRIGGER_WORDS: usize = 20;
+
+/// The pages, by number, `extract --assist` asks a model to read under `--assist-pages trigger`
+/// (design §6, decision #150): each page of the sealed record where one of six signals fires.
+///
+/// - **S1, a scan:** the page's `scanned-page-not-recognized`, or a recognized run on it.
+/// - **S2, few words:** under 20 distinct words (decision #123's) in its runs, joined in order,
+///   a space between two lines.
+/// - **S3, a figure:** a figure region on it, a table read from it or not.
+/// - **S4, a table:** a table on it.
+/// - **S5, a picture:** an image painted over a quarter of the page's visible box or more.
+/// - **S6, U+FFFD:** a run holding it.
+pub fn assist_trigger(repr: &DocumentRepresentation) -> Vec<u32> {
+    triggered(repr.payload())
+}
+
+fn triggered(p: &crate::representation::RepresentationPayload) -> Vec<u32> {
+    use std::collections::{BTreeMap, BTreeSet};
+    // One pass over the nodes, grouped by page: a page's own scan of every node would cost pages
+    // times nodes, minutes on a document of a million runs.
+    let mut by_page: BTreeMap<&str, Vec<&crate::Node>> = BTreeMap::new();
+    for n in &p.nodes {
+        by_page.entry(n.parent.as_str()).or_default().push(n);
+    }
+    let figures: BTreeSet<&str> = p.figures.iter().map(|f| f.page.as_str()).collect();
+    let tables: BTreeSet<&str> = p.tables.iter().map(|t| t.page.as_str()).collect();
+    let scanned: BTreeSet<u32> = p
+        .assurance
+        .limitations
+        .iter()
+        .filter(|l| l.code == crate::assurance::codes::SCANNED_PAGE_NOT_RECOGNIZED)
+        .filter_map(|l| match l.scope {
+            crate::LimitationScope::Page(index) => Some(index),
+            _ => None,
+        })
+        .collect();
+    let fires = |page: &crate::representation::PageRecord| {
+        let on_page = by_page.get(page.id.as_str()).map_or(&[][..], Vec::as_slice);
+        let runs = || {
+            on_page
+                .iter()
+                .filter(|n| n.kind == crate::NodeKind::TextRun)
+        };
+        // Runs on one baseline join as they stand, since the engine splits a word it kerns; a
+        // run on another baseline opens a new line, after a space, so no two words fuse.
+        let (mut text, mut baseline) = (String::new(), None);
+        for n in runs() {
+            let at = n.native_locator.run_locator().map(|at| at.origin_y);
+            if baseline.is_some_and(|b| b != at) {
+                text.push(' ');
+            }
+            baseline = Some(at);
+            text.push_str(n.reading_text());
+        }
+        let [left, top, width, height] = frame_of(page).map(i128::from);
+        let covers = |r: QRect| {
+            let side = |a0: i64, a1: i64, from: i128, size: i128| {
+                (i128::from(a1).min(from + size) - i128::from(a0).max(from)).max(0)
+            };
+            4 * side(r.x0(), r.x1(), left, width) * side(r.y0(), r.y1(), top, height)
+                >= width * height
+        };
+        scanned.contains(&page.index)
+            || runs().any(|n| n.derivation == DerivationClass::Recognized)
+            || words(&text).len() < TRIGGER_WORDS
+            || figures.contains(page.id.as_str())
+            || tables.contains(page.id.as_str())
+            // An image's box is where its `Do` painted it, never a measured geometry.
+            || on_page.iter().any(|n| {
+                matches!(&n.native_locator, crate::representation::NativeLocator::PdfImage(at)
+                    if at.rect.painted().is_some_and(covers))
+            })
+            || text.contains('\u{FFFD}')
+    };
+    p.pages
+        .iter()
+        .filter(|page| fires(page))
+        .map(|page| page.index)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4066,5 +4149,112 @@ mod tests {
             check(&apart, "Total 123"),
             (1, 0, vec![flag(1, c, Some("123"))])
         );
+    }
+
+    /// **The trigger asks for a page where one of its six signals fires, and for no other**
+    /// (design §6, decision #150). Page 1 is twenty made-up words and nothing else; pages 2 to 10
+    /// are page 1 with one change each: a recognized run, its `scanned-page-not-recognized`, a
+    /// figure, a table, a picture painted over a quarter of the page, U+FFFD in a run, a word
+    /// fewer; a picture as large, half of it off the page, which asks nothing; a picture over a
+    /// quarter of a crop; and page 1's words set on two lines, which asks nothing. Runs split a
+    /// word as the engine's do, so the page's runs are read joined, and a space parts two lines.
+    #[test]
+    fn the_trigger_asks_for_the_pages_a_signal_fires_on() {
+        use crate::markdown::tests::{payload, placed_run};
+        use crate::representation::{NativeLocator, PageRecord, PaintedRect, PdfImageLocator};
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let pages: Vec<PageRecord> = (1..=11)
+            .map(|index| PageRecord {
+                id: alloc.next(IdKind::Page).unwrap(),
+                index,
+                width: 40000,
+                height: 50000,
+                rotation: 0,
+                // The last page shows a 200 x 250 point crop: a quarter of it is a sixteenth of
+                // the page.
+                visible: (index == 10).then(|| QRect::new(0, 0, 20000, 25000).unwrap()),
+            })
+            .collect();
+        let words = "Seven made-up lanterns guard the quiet northern bay while twelve sailors \
+                     mend nets, count gulls and sing old songs";
+        let mut nodes = Vec::new();
+        for page in &pages {
+            let mut add_at = |text: &str, baseline: i64| {
+                nodes.push(placed_run(
+                    &mut alloc, &page.id, 1, text, None, 7200, baseline, None, None,
+                ));
+            };
+            match page.index {
+                // Nineteen words: `songs` is gone.
+                8 => add_at(words.trim_end_matches(" songs"), 7200),
+                // `twelve` ends one line and `sailors` opens the next, with no space read.
+                11 => {
+                    let (head, tail) = words.split_at(words.find(" sailors").unwrap());
+                    add_at(head, 7200);
+                    add_at(tail.trim_start(), 8600);
+                }
+                // `up` split across two runs, as the engine splits words it kerns.
+                _ => {
+                    let (head, tail) = words.split_at(12);
+                    add_at(head, 7200);
+                    add_at(tail, 7200);
+                }
+            }
+            // 200 x 250 points of a 400 x 500 point page is a quarter; the same off the page's
+            // foot is under one, clipped; 100 x 125 is a quarter of the last page's crop.
+            let painted = match page.index {
+                6 => Some(QRect::new(10000, 20000, 30000, 45000)),
+                9 => Some(QRect::new(10000, 37500, 30000, 62500)),
+                10 => Some(QRect::new(0, 0, 10000, 12500)),
+                _ => None,
+            };
+            if let Some(rect) = painted {
+                add_at("", 7200);
+                let image = nodes.last_mut().unwrap();
+                image.kind = crate::NodeKind::Image;
+                image.native_locator = NativeLocator::PdfImage(PdfImageLocator {
+                    page: page.index,
+                    object: 9,
+                    generation: 0,
+                    rect: PaintedRect::Painted(rect.unwrap()),
+                });
+            }
+            match page.index {
+                2 => nodes.last_mut().unwrap().derivation = DerivationClass::Recognized,
+                7 => nodes.last_mut().unwrap().text.push('\u{FFFD}'),
+                _ => {}
+            }
+        }
+        let line = QRect::new(7200, 6000, 30000, 7200).unwrap();
+        let mut p = payload(nodes, pages);
+        p.assurance.limitations.push(crate::Limitation {
+            code: crate::assurance::codes::SCANNED_PAGE_NOT_RECOGNIZED.into(),
+            detail: "test fixture".into(),
+            scope: crate::LimitationScope::Page(3),
+        });
+        p.figures.push(crate::figures::FigureRecord {
+            page: p.pages[3].id.clone(),
+            geometry: crate::derivation::GeometryPresence::Measured(line),
+            derivation: DerivationClass::Computed,
+            detection_rule: crate::FIGURE_RULE_V1.into(),
+            runs_inside: Vec::new(),
+        });
+        p.tables.push(crate::TableRecord {
+            id: alloc.next(IdKind::Table).unwrap(),
+            page: p.pages[4].id.clone(),
+            geometry: crate::derivation::GeometryPresence::Measured(line),
+            rows: 0,
+            columns: 0,
+            cells: Vec::new(),
+            derivation: DerivationClass::Computed,
+            detection_rule: crate::TABLE_DETECTION_V3.into(),
+            locator_check: crate::LocatorCheck {
+                check_id: crate::LOCATOR_CHECK_V1.into(),
+                check_version: "1".into(),
+                outcome: crate::CheckStatus::Ok,
+            },
+            tagged_check: None,
+        });
+        assert_eq!(triggered(&p), [2, 3, 4, 5, 6, 7, 8, 10]);
     }
 }

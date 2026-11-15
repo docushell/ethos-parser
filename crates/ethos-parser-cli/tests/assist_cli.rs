@@ -699,3 +699,473 @@ fn the_repository_tracks_no_model_file() {
         .collect();
     assert!(models.is_empty(), "model files are tracked: {models:?}");
 }
+
+// ---- `extract --assist`: the assist binary spawned (decisions #149 and #150) -------------------
+
+/// `extract ARGS` with `tests/fake-assist.sh` as the assist binary, its log under `dir`, and `env`
+/// set; no key unless `env` sets one.
+#[cfg(unix)]
+fn with_fake_assist(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let identity = json!({
+        "assist": "ethos-parser-assist", "version": "0.1.0",
+        "renderer": ASSIST_RENDERER, "request": ASSIST_REQUEST_V1,
+    });
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ethos-parser"));
+    command
+        .args(args)
+        .env(
+            "ETHOS_PARSER_ASSIST",
+            repo_root().join("crates/ethos-parser-cli/tests/fake-assist.sh"),
+        )
+        .env("FAKE_ASSIST_IDENTITY", identity.to_string())
+        .env("FAKE_ASSIST_LOG", dir.join("asked"))
+        .env_remove("ETHOS_PARSER_ASSIST_KEY");
+    for (k, v) in env {
+        command.env(k, v);
+    }
+    command.output().expect("the engine binary runs")
+}
+
+/// A made-up line of text at height `y`.
+fn line_at(y: u32, t: &str) -> String {
+    format!("BT /F1 11 Tf 72 {y} Td ({t}) Tj ET\n")
+}
+
+/// A made-up US Letter page of twenty-four words, and no table, figure, picture or scan: the
+/// trigger does not ask for it.
+fn full_page() -> String {
+    line_at(
+        700,
+        "Seven made-up lanterns guard the quiet northern bay while twelve",
+    ) + &line_at(
+        680,
+        "sailors mend their nets, count gulls and sing old songs about",
+    ) + &line_at(660, "distant harbors.")
+}
+
+/// Two made-up US Letter pages: the first of four words, which the trigger asks for, then
+/// [`full_page`].
+fn sparse_then_full() -> Vec<u8> {
+    pdf(&[
+        ("/MediaBox [0 0 612 792]", &line_at(700, "A made-up page.")),
+        ("/MediaBox [0 0 612 792]", &full_page()),
+    ])
+}
+
+/// What the fake assist binary was asked: its argv after `ask`, one per line.
+fn asked(dir: &Path) -> Vec<String> {
+    std::fs::read_to_string(dir.join("asked"))
+        .expect("the assist binary was run")
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+/// **`extract --assist` spawns the assist binary on the trigger's pages and reads FILE back**:
+/// the child gets the server, FILE and the pages in argv, the PDF on stdin and the key in its
+/// environment alone; the record is the bytes `--assist-answers FILE` gives. `--assist-pages`
+/// asks for every page, or the pages listed, and `--assist-model` is the model asked.
+#[cfg(unix)]
+#[test]
+fn extract_assist_asks_through_the_assist_binary_and_reads_file_back() {
+    const KEY: &str = "sk-made-up-key-0451";
+    const SERVER: &str = "http://127.0.0.1:9";
+    let dir = scratch("spawn");
+    let source = sparse_then_full();
+    let mut canned = replies(&source);
+    canned["pages"] = json!([canned["pages"][0].clone()]);
+    canned["pages"][0]["points"] = json!([61200, 79200]);
+    let (pdf, canned) = write(&dir, &source, &canned);
+    let file = dir.join("asked.answers.json");
+    let file = file.to_str().expect("utf-8");
+    let run = |extra: &[&str]| {
+        let _ = std::fs::remove_file(file);
+        let mut args = vec!["extract", pdf.as_str(), "--assist", SERVER];
+        args.extend(["--assist-answers", file]);
+        args.extend(extra);
+        let env = [
+            ("FAKE_ASSIST_REPLIES", canned.as_str()),
+            ("ETHOS_PARSER_ASSIST_KEY", KEY),
+        ];
+        let out = with_fake_assist(&dir, &args, &env);
+        assert_eq!(out.status.code(), Some(0), "{extra:?}: {}", stderr(&out));
+        out
+    };
+
+    let out = run(&[]);
+    assert_eq!(asked(&dir), ["ask", SERVER, file, "1"]);
+    assert_eq!(std::fs::read(dir.join("asked.pdf")).expect("read"), source);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("asked.key")).expect("read"),
+        KEY
+    );
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert!(!printed.contains(KEY) && !printed.contains(SERVER) && !stderr(&out).contains(KEY));
+    let merged = engine(&["extract", &pdf, "--assist-answers", file]);
+    assert_eq!(merged.status.code(), Some(0), "{}", stderr(&merged));
+    assert_eq!(out.stdout, merged.stdout);
+    assert_eq!(
+        json_of(&out)["representation"]["assist"]["pages"][0]["page"],
+        "p1"
+    );
+
+    for (extra, pages) in [
+        (&["--assist-pages", "trigger"][..], "1"),
+        (&["--assist-pages", "all"], "1,2"),
+        (&["--assist-pages", "2,1,2"], "1,2"),
+        (&["--assist-pages", "2"], "2"),
+    ] {
+        run(extra);
+        assert_eq!(asked(&dir), ["ask", SERVER, file, pages], "{extra:?}");
+    }
+    let model = "example/made-up-model@not-reported";
+    run(&["--assist-model", model]);
+    assert_eq!(asked(&dir), ["ask", SERVER, file, "1", model]);
+
+    // `--assist` writes its replies somewhere; `--assist-pages` asks for nothing alone; a page is
+    // a number from 1.
+    for args in [
+        &["extract", &pdf, "--assist", SERVER][..],
+        &[
+            "extract",
+            &pdf,
+            "--assist-answers",
+            file,
+            "--assist-pages",
+            "all",
+        ],
+        &[
+            "extract",
+            &pdf,
+            "--assist",
+            SERVER,
+            "--assist-answers",
+            file,
+            "--assist-pages",
+            "0",
+        ],
+        &[
+            "extract",
+            &pdf,
+            "--assist",
+            SERVER,
+            "--assist-answers",
+            file,
+            "--assist-pages",
+            "1,x",
+        ],
+        &[
+            "extract",
+            &pdf,
+            "--assist",
+            SERVER,
+            "--assist-answers",
+            file,
+            "--assist-pages",
+            "+1",
+        ],
+    ] {
+        let out = with_fake_assist(&dir, args, &[]);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", stderr(&out));
+    }
+}
+
+/// **The assist binary's exits are the engine's, by name**, and none leaves an artifact on stdout:
+/// 3 (a page not rendered) reads FILE as it stands and says so; 4 is `assist-server-unreachable`;
+/// 5 is the child's refusal under `assist-`, or the `assist-answers-*` name the merge gives; any
+/// other exit is the child's last word.
+#[cfg(unix)]
+#[test]
+fn the_assist_binarys_exits_are_named() {
+    let dir = scratch("exits");
+    let source = sparse_then_full();
+    let mut canned = replies(&source);
+    canned["pages"] = json!([canned["pages"][0].clone()]);
+    canned["pages"][0]["points"] = json!([61200, 79200]);
+    let (pdf, canned) = write(&dir, &source, &canned);
+    let file = dir.join("exits.answers.json");
+    let file = file.to_str().expect("utf-8");
+    let says = |name: &str, detail: &str| format!("ethos-parser-assist: {name}: {detail}");
+    for (exit, said, ok, named) in [
+        (
+            "3",
+            "page 2: page-not-rendered: no; skipped, and not in FILE".to_string(),
+            true,
+            "[assist-page-not-rendered]",
+        ),
+        (
+            "4",
+            says("server-unreachable", "no connection to SERVER"),
+            false,
+            "io error: assist-server-unreachable: no connection to SERVER [io]",
+        ),
+        (
+            "5",
+            says("model-not-chosen", "the server lists 2: a, b; name one"),
+            false,
+            "unsupported assist-model-not-chosen: the server lists 2: a, b; name one [unsupported]",
+        ),
+        (
+            "5",
+            says("assist-answers-other-source", "FILE answers another PDF"),
+            false,
+            "malformed assist-answers-other-source: FILE answers another PDF [malformed]",
+        ),
+        (
+            "1",
+            says("/made/up/FILE", "No such file or directory"),
+            false,
+            "ethos-parser-assist stopped (exit 1): ethos-parser-assist: /made/up/FILE: No such",
+        ),
+        (
+            "2",
+            "usage: ethos-parser-assist identity".to_string(),
+            false,
+            "ethos-parser-assist stopped (exit 2): usage",
+        ),
+    ] {
+        let _ = std::fs::remove_file(file);
+        let mut env = vec![
+            ("FAKE_ASSIST_EXIT", exit),
+            ("FAKE_ASSIST_SAYS", said.as_str()),
+        ];
+        if ok {
+            env.push(("FAKE_ASSIST_REPLIES", canned.as_str()));
+        }
+        let args = [
+            "extract",
+            &pdf,
+            "--assist",
+            "http://127.0.0.1:9",
+            "--assist-answers",
+            file,
+        ];
+        let out = with_fake_assist(&dir, &args, &env);
+        let err = stderr(&out);
+        assert!(
+            err.contains(&said),
+            "{exit}: the child's word is passed on: {err}"
+        );
+        assert!(err.contains(named), "{exit}: {err}");
+        assert_eq!(out.status.code() == Some(0), ok, "{exit}: {err}");
+        assert_eq!(out.stdout.is_empty(), !ok, "{exit}");
+    }
+}
+
+/// **No page to ask asks nothing**, and without FILE the record is the engine's alone, said on
+/// stderr; and an assist binary that is missing, or another build, is refused by name before any
+/// page is asked.
+#[cfg(unix)]
+#[test]
+fn extract_assist_asks_nothing_it_need_not_and_refuses_a_missing_binary() {
+    let dir = scratch("nothing");
+    let source = pdf(&[("/MediaBox [0 0 612 792]", &full_page())]);
+    let (pdf, _) = write(&dir, &source, &replies(&source));
+    let file = dir.join("none.answers.json");
+    let file = file.to_str().expect("utf-8");
+    let base = ["extract", pdf.as_str(), "--assist", "http://127.0.0.1:9"];
+    let ask = |extra: &[&str], env: &[(&str, &str)]| {
+        let mut args = base.to_vec();
+        args.extend(["--assist-answers", file]);
+        args.extend(extra);
+        with_fake_assist(&dir, &args, env)
+    };
+
+    let _ = std::fs::remove_file(dir.join("asked"));
+    let out = ask(&[], &[("FAKE_ASSIST_EXIT", "3")]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stderr(&out).contains("[assist-nothing-attached]"));
+    assert!(!dir.join("asked").exists(), "nothing was asked");
+    assert_eq!(out.stdout, engine(&["extract", &pdf]).stdout);
+
+    let missing = dir.join("no-such-assist-binary");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ethos-parser"));
+    command
+        .args(base)
+        .args(["--assist-answers", file, "--assist-pages", "all"]);
+    let out = command
+        .env("ETHOS_PARSER_ASSIST", &missing)
+        .output()
+        .expect("runs");
+    assert_ne!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty());
+    let err = stderr(&out);
+    assert!(err.contains("ETHOS_PARSER_ASSIST") && err.contains("no-such-assist-binary"));
+
+    let renderer = json!({"assist": "ethos-parser-assist", "renderer": "another renderer"});
+    let request = json!({
+        "assist": "ethos-parser-assist", "renderer": ASSIST_RENDERER, "request": "another-request",
+    });
+    for (other, says) in [(renderer, "another renderer"), (request, "another-request")] {
+        let _ = std::fs::remove_file(dir.join("asked"));
+        let out = ask(
+            &["--assist-pages", "all"],
+            &[("FAKE_ASSIST_IDENTITY", &other.to_string())],
+        );
+        assert_ne!(out.status.code(), Some(0), "{says}");
+        assert!(out.stdout.is_empty());
+        assert!(stderr(&out).contains(says), "{}", stderr(&out));
+        assert!(!dir.join("asked").exists(), "{says}: nothing was asked");
+    }
+}
+
+/// **A page `--max-pages` cut is never asked for**: it is left out before the assist binary runs,
+/// and counted on stderr, as the merge leaves out a reply to one; a page past the document's end
+/// is still the assist binary's to refuse by name.
+#[cfg(unix)]
+#[test]
+fn a_page_the_budget_cut_is_never_asked_for() {
+    let dir = scratch("budget-asked");
+    let source = sparse_then_full();
+    let (pdf, _) = write(&dir, &source, &replies(&source));
+    let file = dir.join("budget.answers.json");
+    let file = file.to_str().expect("utf-8");
+    for (pages, asks) in [("2", None), ("1,2", Some("1")), ("3", Some("3"))] {
+        let _ = std::fs::remove_file(dir.join("asked"));
+        let args = [
+            "extract",
+            pdf.as_str(),
+            "--max-pages",
+            "1",
+            "--assist",
+            "http://127.0.0.1:9",
+            "--assist-answers",
+            file,
+            "--assist-pages",
+            pages,
+        ];
+        let out = with_fake_assist(&dir, &args, &[]);
+        assert_eq!(out.status.code(), Some(0), "{pages}: {}", stderr(&out));
+        let left_out = stderr(&out).contains("1 page(s) the record does not list");
+        assert_eq!(left_out, pages.contains('2'), "{pages}: {}", stderr(&out));
+        match asks {
+            Some(asks) => assert_eq!(asked(&dir), ["ask", "http://127.0.0.1:9", file, asks]),
+            None => assert!(!dir.join("asked").exists(), "{pages}: nothing was asked"),
+        }
+    }
+}
+
+/// **The assist binary's stderr is read while the PDF is written, and read whole**: a child that
+/// says 200 KB before it reads a PDF of 200 KB does not deadlock the engine, and a line that is not
+/// UTF-8 is passed on, lossily, with every line after it.
+#[cfg(unix)]
+#[test]
+fn the_assist_binarys_stderr_is_read_whole_while_the_pdf_is_written() {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = scratch("pipes");
+    let padding = format!("% {}\n", "x".repeat(200_000));
+    let source = pdf(&[(
+        "/MediaBox [0 0 612 792]",
+        &(padding + &line_at(700, "A made-up page.")),
+    )]);
+    let (pdf, _) = write(&dir, &source, &replies(&source));
+    let file = dir.join("pipes.answers.json");
+    let identity = json!({
+        "assist": "ethos-parser-assist", "version": "0.1.0",
+        "renderer": ASSIST_RENDERER, "request": ASSIST_REQUEST_V1,
+    });
+    let says = std::ffi::OsStr::from_bytes(b"page 1: \xff\xfe not UTF-8\npage 1: stop, 0.1 s");
+    let (out_path, err_path) = (dir.join("out"), dir.join("err"));
+    for noise in [true, false] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ethos-parser"));
+        command
+            .args(["extract", &pdf, "--assist", "http://127.0.0.1:9"])
+            .arg("--assist-answers")
+            .arg(&file)
+            .env(
+                "ETHOS_PARSER_ASSIST",
+                repo_root().join("crates/ethos-parser-cli/tests/fake-assist.sh"),
+            )
+            .env("FAKE_ASSIST_IDENTITY", identity.to_string())
+            .env("FAKE_ASSIST_LOG", dir.join("asked"))
+            .env("FAKE_ASSIST_SAYS", says)
+            .stdout(std::fs::File::create(&out_path).expect("create"))
+            .stderr(std::fs::File::create(&err_path).expect("create"));
+        if noise {
+            command.env("FAKE_ASSIST_NOISE", "200000");
+        }
+        let mut child = command.spawn().expect("the engine binary runs");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("waits") {
+                break Some(status);
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        let err = String::from_utf8_lossy(&std::fs::read(&err_path).expect("read")).into_owned();
+        let status = status.unwrap_or_else(|| panic!("noise {noise}: the engine hung"));
+        assert!(status.success(), "noise {noise}: {err}");
+        assert_eq!(std::fs::read(dir.join("asked.pdf")).expect("read"), source);
+        let passed_on = "page 1: \u{FFFD}\u{FFFD} not UTF-8\npage 1: stop, 0.1 s\n";
+        assert!(err.contains(passed_on), "noise {noise}: {err}");
+    }
+}
+
+/// **A companion binary named by its bare name is the one in the working directory, never one on
+/// `PATH`**, for `ETHOS_PARSER_ASSIST` and `ETHOS_PARSER_OCR` alike: each is checked where it is
+/// run. Here `PATH` holds a planted binary of that name that states no identity.
+#[cfg(unix)]
+#[test]
+fn a_bare_binary_name_is_never_looked_up_on_path() {
+    let dir = scratch("bare-name");
+    let (here, planted) = (dir.join("here"), dir.join("planted"));
+    let tests = repo_root().join("crates/ethos-parser-cli/tests");
+    for (name, wanted, other) in [
+        ("ethos-parser-assist", "fake-assist.sh", "fake-ocr.sh"),
+        ("ethos-parser-ocr", "fake-ocr.sh", "fake-assist.sh"),
+    ] {
+        for (at, script) in [(&here, wanted), (&planted, other)] {
+            std::fs::create_dir_all(at).expect("mkdir");
+            let link = at.join(name);
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(tests.join(script), &link).expect("symlink");
+        }
+    }
+    let source = sparse_then_full();
+    let (pdf, _) = write(&dir, &source, &replies(&source));
+    let path = format!(
+        "{}:{}",
+        planted.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let assist_identity = json!({
+        "assist": "ethos-parser-assist", "version": "0.1.0",
+        "renderer": ASSIST_RENDERER, "request": ASSIST_REQUEST_V1,
+    });
+    let ocr_identity =
+        serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+            .expect("serializes");
+    let file = dir.join("bare.answers.json");
+    let file = file.to_str().expect("utf-8");
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+            .args(args)
+            .current_dir(&here)
+            .env("PATH", &path)
+            .env("ETHOS_PARSER_ASSIST", "ethos-parser-assist")
+            .env("ETHOS_PARSER_OCR", "ethos-parser-ocr")
+            .env("FAKE_ASSIST_IDENTITY", assist_identity.to_string())
+            .env("FAKE_ASSIST_LOG", dir.join("asked"))
+            .env("FAKE_OCR_IDENTITY", ocr_identity.to_string())
+            .output()
+            .expect("the engine binary runs")
+    };
+    let server = "http://127.0.0.1:9";
+    let assisted = run(&[
+        "extract",
+        &pdf,
+        "--assist",
+        server,
+        "--assist-answers",
+        file,
+    ]);
+    assert_eq!(assisted.status.code(), Some(0), "{}", stderr(&assisted));
+    assert_eq!(asked(&dir), ["ask", server, file, "1"]);
+    let read = run(&["extract", "--ocr", &pdf]);
+    assert_eq!(read.status.code(), Some(0), "{}", stderr(&read));
+}

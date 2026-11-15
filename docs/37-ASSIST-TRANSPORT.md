@@ -162,8 +162,22 @@ Nothing leaves loopback.
 
 ## 6. What this does not decide
 
-- How `ethos-parser extract --assist` spawns the binary, and how it reports exits 4 and 5. A later
-  step decides that.
+- How `ethos-parser extract --assist` spawns the binary and names its exits: decision #149
+  (section 7).
 - Shipping the binary in releases (Q2, step D8).
 - A streaming request, concurrent pages, or retries within one run. A failed page is retried by
   running `ask` again.
+
+## 7. The engine spawns it (decision #149)
+
+`ethos-parser extract doc.pdf --assist SERVER --assist-answers FILE` finds the binary as `--ocr`
+finds the recognizer (`ETHOS_PARSER_ASSIST`, a relative name taken from the working directory and
+never looked up on `PATH`, or beside `ethos-parser`), checks that its `identity`
+states the renderer and request the engine reads, and runs `ask SERVER FILE PAGES [MODEL] <PDF`.
+The engine's process still opens no socket, renders nothing and never reads the key: the key
+reaches the child in the environment it inherits, never in argv. The engine then reads FILE as
+`--assist-answers FILE` does, pages a reused FILE held before included. The child's stderr is read
+on a thread of its own while the PDF is written, so neither pipe can stall the other; no timeout is
+set beyond curl's per request. Exit 3 reads FILE as it stands, 4 is `assist-server-unreachable`, 5
+the child's refusal under the engine's `assist-` names, and any other the child's last line.
+`--assist-pages` chooses the pages (decision #150). `assist/README.md` has the recipe.

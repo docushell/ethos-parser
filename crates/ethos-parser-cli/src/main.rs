@@ -39,6 +39,7 @@
 
 #![forbid(unsafe_code)]
 
+mod assist;
 mod mcp;
 mod recognizer;
 
@@ -388,9 +389,65 @@ struct ExtractArgs {
     assist_answers: Option<PathBuf>,
 
     /// The model the replies must come from, as `ID` or `ID@VERSION`: FILE naming another is
-    /// refused. A version left out is not compared.
+    /// refused. A version left out is not compared. With `--assist`, the model asked, and its
+    /// `@VERSION` the one FILE records; without it, the one model SERVER lists.
     #[arg(long, value_name = "ID[@VERSION]", requires = "assist_answers")]
     assist_model: Option<String>,
+
+    /// Ask the model server at SERVER (an `http://` or `https://` address of an OpenAI-compatible
+    /// server) to read this PDF's pages, then attach its replies as `--assist-answers FILE` does
+    /// (decision #149). The asking is done by `ethos-parser-assist` (beside this binary, or named
+    /// by `ETHOS_PARSER_ASSIST`), which renders each page, sends it, and writes FILE after each
+    /// one, so a stopped run resumes where it stopped; this binary opens no connection. FILE is
+    /// then read back, so the output is a function of the PDF and FILE alone: a later
+    /// `--assist-answers FILE` gives the same bytes. A FILE reused from an earlier run keeps its
+    /// pages, which are attached with the new ones; only a page with no reply is asked. No timeout
+    /// is set: the assist binary bounds each request, and an assist binary that hangs otherwise
+    /// hangs this command. An API key is read from
+    /// `ETHOS_PARSER_ASSIST_KEY` only, by the assist binary, and never written. Refused by name:
+    /// `assist-server-unreachable`, and the assist binary's refusals as `assist-` and its name
+    /// (`assist-curl-not-found`, `assist-key-needs-https`, `assist-model-not-chosen`, ...) or as
+    /// the `assist-answers-*` name the merge would give. Where no page is asked or none could be
+    /// drawn, and FILE does not exist, the record is the engine's alone and stderr says so. Setup:
+    /// `assist/README.md`.
+    #[arg(long, value_name = "SERVER", requires = "assist_answers")]
+    assist: Option<String>,
+
+    /// The pages `--assist` asks for. `trigger`, the default, asks for each page where the record
+    /// shows a scan, under 20 distinct words, a figure, a table, a picture covering a quarter of
+    /// the visible page or more, or U+FFFD in a run (decision #150); `all` asks for every page
+    /// the record lists; a LIST of page numbers in digits, as `1,3,7`, for those pages. A page the
+    /// record does not list, as one `--max-pages` cut, is never asked, and stderr counts it.
+    #[arg(long, value_name = "trigger|all|LIST", requires = "assist", value_parser = assist_pages)]
+    assist_pages: Option<AssistPages>,
+}
+
+/// Which pages `extract --assist` asks for.
+#[derive(Clone)]
+enum AssistPages {
+    Trigger,
+    All,
+    List(Vec<u32>),
+}
+
+/// `--assist-pages`: `trigger`, `all`, or page numbers from 1 in digits, comma-separated, sorted
+/// and made unique.
+fn assist_pages(s: &str) -> Result<AssistPages, String> {
+    match s {
+        "trigger" => Ok(AssistPages::Trigger),
+        "all" => Ok(AssistPages::All),
+        _ => s
+            .split(',')
+            .map(|p| {
+                // Digits only: `parse` would take a sign.
+                let p = p.trim();
+                let digits = p.bytes().all(|b| b.is_ascii_digit());
+                p.parse::<u32>().ok().filter(|&n| digits && n >= 1)
+            })
+            .collect::<Option<std::collections::BTreeSet<u32>>>()
+            .map(|pages| AssistPages::List(pages.into_iter().collect()))
+            .ok_or_else(|| "`trigger`, `all`, or page numbers from 1, as `1,3,7`".into()),
+    }
 }
 
 #[derive(clap::Args)]
@@ -902,6 +959,42 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     };
     let repr = match &args.assist_answers {
         Some(path) => repr.and_then(|r| {
+            if let Some(server) = &args.assist {
+                let mut pages = match &args.assist_pages {
+                    None | Some(AssistPages::Trigger) => ethos_parser_core::assist_trigger(&r),
+                    Some(AssistPages::All) => r.payload().pages.iter().map(|p| p.index).collect(),
+                    Some(AssistPages::List(pages)) => pages.clone(),
+                };
+                // A page the document has and the record does not list — cut by `--max-pages`, or
+                // not read — is not asked: a reply to it would be left out. One past the end is
+                // the assist binary's to refuse by name.
+                let p = r.payload();
+                let unlisted = |n: &u32| {
+                    *n <= p.assurance.coverage.pages_authorized
+                        && !p.pages.iter().any(|page| page.index == *n)
+                };
+                let left_out = pages.iter().filter(|n| unlisted(n)).count();
+                if left_out > 0 {
+                    pages.retain(|n| !unlisted(n));
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "engine: {left_out} page(s) the record does not list are not asked; a \
+                         reply to one would be left out [assist-pages-left-out]"
+                    );
+                }
+                if !pages.is_empty() {
+                    assist::ask(server, path, &pages, args.assist_model.as_deref(), &head)?;
+                }
+                if !path.exists() {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "engine: {} page(s) asked and no reply written, so the record is the \
+                         engine's alone [assist-nothing-attached]",
+                        pages.len()
+                    );
+                    return Ok(r);
+                }
+            }
             // Read no further than the budget the library refuses past, and by the same name.
             let budget = ethos_parser_core::ASSIST_ANSWERS_MAX_BYTES;
             let answers = read_source_within(path, budget as u64).map_err(|e| match e {

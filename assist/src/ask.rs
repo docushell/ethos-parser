@@ -465,7 +465,10 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
             "FILE answers another PDF",
         ));
     }
-    if answers.model_version != version {
+    // A version left out is not compared, as the engine's `--assist-model ID` does not compare
+    // it: FILE's is kept.
+    let version_named = model.is_some_and(|m| m.contains('@'));
+    if version_named && answers.model_version != version {
         return Err(refused(
             "assist-answers-other-model",
             format!(

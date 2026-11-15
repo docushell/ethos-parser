@@ -32,6 +32,85 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### `--assist-pages`: a trigger chooses the pages a model reads (decision #150)
+
+`extract --assist` asks for a page only where the engine's own record says a model could help. The
+signals are read from the sealed engine-only record before anything is asked, by
+`ethos_parser_core::assist_trigger`, new and public (design §6):
+- **S1, a scan:** the page's `scanned-page-not-recognized`, or a recognized run on it.
+- **S2, few words:** under 20 distinct words in its runs, joined in order, since the engine splits
+  a word it kerns across runs; a run on another baseline opens a new line after a space, so the
+  last word of one line and the first of the next never fuse (review).
+- **S3, a figure** region on it, a table read from it or not; **S4, a table** on it.
+- **S5, a picture:** an image painted over a quarter of the page's visible box or more, clipped to
+  that box.
+- **S6:** a run holding U+FFFD.
+
+`--assist-pages trigger` is the default; `all` asks for every page the record lists, and a LIST
+(`1,3,7`, digits only, so `+1` is refused) for those pages, sorted and made unique. A page the
+record does not list, as one `--max-pages` cut, is never asked, and stderr counts it
+(`assist-pages-left-out`); a page past the document's end is the assist binary's to refuse. The
+nodes are grouped by page in one pass: on the gate's 733-page `nist-sp-800-53Ar5`, `extract
+--assist` with nothing asked takes 7.2 s, as plain `extract` does, where a scan of every node per
+page took 73.6 s (review). Engine-only output does not move (gate sample, 54 of 54 outputs byte-identical).
+- **Measured** on ParseBench, over the PDFs of decision #123's lane read with `extract --ocr` (2,023
+  of 2,036; the engine refuses 13): the trigger sends 1,694 of the 2,023 pages (83.7%; 77.6% of the
+  2,511 PDF examples), and 823 of the 869 examples #123's lane scored above the engine-only lane
+  (94.7%; 92.4% weighted by the score gained): tables 285 of 298, charts 419 of 443, content 72 of
+  77, formatting 47 of 51. The 42 PDFs it misses are charts and tables the engine read as neither a
+  figure nor a table, beside pictures under a quarter of the page. `trigger` stays the default, its
+  recall over 90%. The line rule moves no page sent.
+- Tested: one record of eleven made-up pages, each signal alone and three near misses, every signal
+  and boundary mutation-checked; the CLI's page lists, the budget's pages and `+1` through the fake
+  assist binary.
+
+### `extract --assist` asks a model server through the assist binary (decision #149)
+
+The fourth step of the assist lane. `ethos-parser extract doc.pdf --assist SERVER --assist-answers
+FILE [--assist-model ID@VERSION]` runs `ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF`,
+then reads FILE back exactly as `--assist-answers FILE` does. So the output is a function of the
+PDF and FILE: a later `--assist-answers FILE` gives the same bytes, and a stopped run resumes.
+**The engine gains no network code and no renderer**, and engine-only output does not move (gate sample, byte-identical). A live run on this Mac against LightOnOCR-3-0.8B on MLX: `check` ready in 8.7 s, and `extract --assist` on a made-up two-page PDF asked one page and gave the bytes `--assist-answers FILE` gives.
+- **Found** as `--ocr` finds the recognizer: `ETHOS_PARSER_ASSIST`, or `ethos-parser-assist`
+  beside `ethos-parser`, refused by name when missing. Its `identity` must state the renderer and
+  request this build reads, or it is refused before any page is asked. The two binaries share one
+  discovery function, which now makes a relative name absolute against the working directory,
+  where it was checked (review): a bare name was checked there and then run from `PATH`, so a
+  binary planted on `PATH` ran. **This fixes `ETHOS_PARSER_OCR` too**, which had the flaw since
+  decision #120.
+- **Spawned** with the PDF on stdin and SERVER, FILE, the pages and the model in argv. The key,
+  `ETHOS_PARSER_ASSIST_KEY`, reaches it only in the environment it inherits; the engine never reads
+  it. The child's stderr is passed on line by line from a thread of its own while the PDF is
+  written, lossily where it is not UTF-8 (review: a child that spoke 200 KB before reading
+  deadlocked `extract`, and a line that was not UTF-8 closed the pipe and killed the child). No
+  timeout is set: each request is bounded by curl's, and a child that hangs otherwise hangs
+  `extract`, as a hung recognizer hangs `--ocr`.
+- **Exits, by name:** 3 (a page not rendered) reads FILE as it stands and says
+  `assist-page-not-rendered`; 4 is `assist-server-unreachable`; 5 is the child's refusal as
+  `assist-` and its name (`assist-curl-not-found`, `assist-model-not-chosen`, ...), or the
+  `assist-answers-*` name the merge gives; any other exit is refused with the child's last line.
+  Each refusal exits 2 with nothing on stdout.
+- **Nothing to ask** (no page chosen, or none drawn) and no FILE gives the engine's record alone,
+  said on stderr (`assist-nothing-attached`). **A FILE reused from an earlier run keeps its pages**,
+  which are attached with the new ones; only a page with no reply is asked.
+- **A version left out is not compared**, on either path (review): `ethos-parser-assist ask` with
+  a MODEL of no `@VERSION` now resumes a FILE recorded under a version, and keeps it, as the merge
+  under `--assist-model ID` already did; another version named is still refused.
+- Tested: six CLI tests against `tests/fake-assist.sh` (argv, stdin, the key, every exit, a
+  missing binary, another renderer or request, a bare name beside a planted one for both binaries,
+  200 KB of stderr before a 200 KB PDF is read, a line not UTF-8), one resume test of the assist
+  binary, and one end-to-end test in `assist/tests/` that runs both
+  binaries against a fake server on 127.0.0.1: the key in a header only, the bytes
+  `--assist-answers FILE` gives, a resumed run asking nothing, an unreachable server refused by
+  name. Each guard was mutation-checked. `assist/tests/` now needs the engine built
+  (`target/debug/ethos-parser`, or `ETHOS_PARSER_BIN`), which the gate and CI build first.
+- **Run live** on an M4 Pro against LightOnOCR-3-0.8B under mlx-vlm on 127.0.0.1: `check` ready in
+  8.7 s, and `extract --assist` on a made-up 2-page PDF asked the 1 page the trigger chose in 8.5 s,
+  9.2 s end to end, its bytes those `--assist-answers FILE` gives.
+- `assist/README.md` and `docs/37-ASSIST-TRANSPORT.md` §7 give the recipe: `ethos-parser extract
+  doc.pdf --assist http://127.0.0.1:8089 --assist-model ID@VERSION --assist-answers
+  doc.answers.json`.
+
 ### Every release archive carries the assist binary, and no model file (decision #148)
 
 The owner's call (2026-11-15): `ethos-parser-assist` ships in every release, beside

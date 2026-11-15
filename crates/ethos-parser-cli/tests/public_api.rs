@@ -472,6 +472,8 @@ const CORE: &[&str] = &[
     "AssistRecord",
     "assist",
     "attach",
+    // Decision #150: the pages `extract --assist` asks a model to read by default.
+    "assist_trigger",
     // Decision #147: what a projection writes and leaves out of a drafting model's blocks, and
     // its codes.
     "proposed",

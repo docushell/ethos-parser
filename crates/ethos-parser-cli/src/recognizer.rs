@@ -39,26 +39,28 @@ pub(crate) struct Process {
     serving: Option<(Child, ChildStdin, BufReader<ChildStdout>)>,
 }
 
-fn missing(part: String) -> EngineError {
+pub(crate) fn missing(part: String) -> EngineError {
     EngineError::MissingPart { part }
+}
+
+/// The binary the environment variable `env` names, or `name` beside this executable: where a
+/// companion binary is looked for, never anywhere else. A relative name is made absolute against
+/// the working directory, where it is checked, so a bare name is never looked up on `PATH`.
+pub(crate) fn located(env: &str, name: &str) -> Result<PathBuf, EngineError> {
+    match std::env::var_os(env) {
+        Some(p) => Ok(std::path::absolute(p)?),
+        None => Ok(std::env::current_exe()
+            .map_err(|e| EngineError::Io {
+                detail: e.to_string(),
+            })?
+            .with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX))),
+    }
 }
 
 impl Process {
     /// Find the recognizer and read its identity.
     pub(crate) fn find() -> Result<Self, EngineError> {
-        let name = if cfg!(windows) {
-            "ethos-parser-ocr.exe"
-        } else {
-            "ethos-parser-ocr"
-        };
-        let path = match std::env::var_os(ENV) {
-            Some(p) => PathBuf::from(p),
-            None => std::env::current_exe()
-                .map_err(|e| EngineError::Io {
-                    detail: e.to_string(),
-                })?
-                .with_file_name(name),
-        };
+        let path = located(ENV, "ethos-parser-ocr")?;
         if !path.is_file() {
             return Err(missing(format!(
                 "recognizer `{}`: --ocr reads scanned pages with ethos-parser-ocr, which must sit \

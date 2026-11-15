@@ -695,6 +695,38 @@ fn a_model_change_on_resume_is_refused() {
     assert!(std::fs::read(dir.join("answers.json")).unwrap() == before);
 }
 
+/// **A version left out is not compared**, as `extract --assist-answers --assist-model ID` does
+/// not compare it: a file of `m-one@v1`'s replies resumes under `m-one`, and keeps `v1`; another
+/// version named is still refused.
+#[test]
+fn a_version_left_out_is_not_compared_on_resume() {
+    let dir = scratch("version-left-out");
+    let pdf = three_pages();
+    let one = serve(
+        &[],
+        vec![ok(completion("m-one", "stop", "![text](1,1,2,2) a"))],
+    );
+    assert_eq!(ask(&dir, &one.url(), "1", Some("m-one@v1"), &pdf).code, 0);
+    let two = serve(
+        &["m-one"],
+        vec![ok(completion("m-one", "stop", "![text](1,1,2,2) b"))],
+    );
+    for model in [Some("m-one"), None] {
+        let r = ask(&dir, &two.url(), "1,2", model, &pdf);
+        assert_eq!(r.code, 0, "{model:?}: {}", r.stderr);
+    }
+    assert_eq!(two.posts(), 1, "page 2 asked once, page 1 kept");
+    let v = answers(&dir);
+    assert_eq!(str_of(v.get("model").unwrap(), "version"), Some("v1"));
+    let r = ask(&dir, &two.url(), "3", Some("m-one@v2"), &pdf);
+    assert_eq!(r.code, 5);
+    assert!(
+        r.stderr.contains("assist-answers-other-model"),
+        "{}",
+        r.stderr
+    );
+}
+
 /// Saved replies are kept only for the model they are from (review): another name is refused
 /// before any page is passed over as answered, even when every page asked is answered and no
 /// version is named. A server's alias resumes under the name asked or the id it reported.
@@ -1133,4 +1165,119 @@ fn check_warns_when_the_id_is_a_path() {
             r.stdout
         );
     }
+}
+
+// ---- extract --assist, through the engine ----------------------------------------------------
+
+/// The engine, `ethos-parser`: `ETHOS_PARSER_BIN`, or the repository's debug build, which the gate
+/// and CI build before this suite runs.
+fn engine_bin() -> PathBuf {
+    let bin = std::env::var_os("ETHOS_PARSER_BIN").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/debug/ethos-parser"),
+        PathBuf::from,
+    );
+    assert!(
+        bin.is_file(),
+        "{} is not built: run `cargo build -p ethos-parser-cli` at the repository root, or name \
+         the engine by ETHOS_PARSER_BIN",
+        bin.display()
+    );
+    bin
+}
+
+/// `ethos-parser ARGS` in `dir`, with this build as its assist binary, the logging curl alone on
+/// `PATH`, and nothing else in its environment but `key`.
+fn engine(dir: &Path, key: Option<&str>, args: &[&str]) -> Run {
+    let log = dir.join("curl-argv.txt");
+    let _ = std::fs::remove_file(&log);
+    let out = Command::new(engine_bin())
+        .args(args)
+        .env_clear()
+        .env("PATH", &tools().curl)
+        .env("TMPDIR", dir)
+        .env("ETHOS_TEST_CURL_ARGV", &log)
+        .env("ETHOS_PARSER_ASSIST", BIN)
+        .envs(key.map(|k| ("ETHOS_PARSER_ASSIST_KEY", k)))
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    Run {
+        code: out.status.code().unwrap_or(-1),
+        stdout: String::from_utf8(out.stdout).unwrap(),
+        stderr: String::from_utf8(out.stderr).unwrap(),
+        argv: std::fs::read_to_string(&log).unwrap_or_default(),
+        env: String::new(),
+    }
+}
+
+/// **`extract --assist` end to end** (decision #149): the engine spawns this binary, which asks
+/// the fake server for each page the trigger chose (all three: each holds two words) with the key
+/// in a header, and the record is the bytes `--assist-answers FILE` gives with no server at all;
+/// a second run resumes, asking nothing. A server that is not there is the engine's refusal, by
+/// name, with nothing on stdout.
+#[test]
+fn extract_assist_asks_the_server_and_records_what_answers_file_gives() {
+    let dir = scratch("extract");
+    std::fs::write(dir.join("doc.pdf"), three_pages()).unwrap();
+    let replies = (0..3)
+        .map(|_| ok(completion("LightOnOCR-3-0.8B", "stop", REPLY)))
+        .collect();
+    let server = serve(&["LightOnOCR-3-0.8B"], replies);
+    let url = server.url();
+    let args = [
+        "extract",
+        "doc.pdf",
+        "--assist",
+        url.as_str(),
+        "--assist-answers",
+        "doc.answers.json",
+    ];
+    let asked = engine(&dir, Some(KEY), &args);
+    assert_eq!(asked.code, 0, "{}", asked.stderr);
+    assert_eq!(server.posts(), 3, "one request a page");
+    for req in server.requests.lock().unwrap().iter() {
+        let bearer = format!("Bearer {KEY}");
+        assert_eq!(req.header("authorization"), Some(bearer.as_str()));
+    }
+    let file = std::fs::read_to_string(dir.join("doc.answers.json")).unwrap();
+    for out in [&asked.stdout, &asked.stderr, &asked.argv, &file] {
+        assert!(!out.contains(KEY), "the key is never written");
+    }
+    assert!(!asked.stdout.contains("127.0.0.1") && !file.contains("127.0.0.1"));
+    let record = Json::parse(asked.stdout.as_bytes()).expect("a record");
+    let pages = record
+        .get("representation")
+        .and_then(|r| r.get("assist"))
+        .and_then(|a| a.get("pages"))
+        .and_then(Json::arr)
+        .expect("the replies are attached");
+    assert_eq!(pages.len(), 3);
+
+    let merged = engine(
+        &dir,
+        None,
+        &["extract", "doc.pdf", "--assist-answers", "doc.answers.json"],
+    );
+    assert_eq!(merged.code, 0, "{}", merged.stderr);
+    assert_eq!(
+        merged.stdout, asked.stdout,
+        "a function of the PDF and FILE"
+    );
+    let resumed = engine(&dir, Some(KEY), &args);
+    assert_eq!(resumed.code, 0, "{}", resumed.stderr);
+    assert_eq!(server.posts(), 3, "every page was answered before");
+    assert_eq!(resumed.stdout, asked.stdout);
+
+    let gone = format!("http://127.0.0.1:{}", dead_port());
+    let mut unreachable = args;
+    unreachable[3] = &gone;
+    unreachable[5] = "other.answers.json";
+    let r = engine(&dir, None, &unreachable);
+    assert_ne!(r.code, 0);
+    assert!(r.stdout.is_empty());
+    assert!(
+        r.stderr.contains("assist-server-unreachable"),
+        "{}",
+        r.stderr
+    );
 }
