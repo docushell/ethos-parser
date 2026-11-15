@@ -37,10 +37,12 @@
 //!    `0..markdown.len()` exactly — unsorted, overlapping, gapped, out of range, or empty against
 //!    non-empty Markdown. The same check re-runs on parse, so a hand-edited file cannot smuggle a
 //!    hole past the type.
-//! 3. **Two segment kinds, and only two.** [`SegmentKind::Source`] inverts to node text — as read
-//!    ([`crate::Node::reading_text`], decision #54);
+//! 3. **Two segment kinds for the engine's bytes, and only two.** [`SegmentKind::Source`] inverts
+//!    to node text — as read ([`crate::Node::reading_text`], decision #54);
 //!    [`SegmentKind::Syntax`] is markup this exporter invented and says so. There is no
-//!    "probably source" — that is a confidence field wearing a different hat (§9).
+//!    "probably source" — that is a confidence field wearing a different hat (§9). A record holding
+//!    a drafting model's replies adds a third, [`SegmentKind::Proposed`]: the model's text, never
+//!    the engine's reading and never citable (decision #147).
 //! 4. **Coverage is a census.** `emitted + dropped == in_representation`, in *characters*, with
 //!    every dropped character in a named bucket carrying a count. Checklist **A14**: if something
 //!    is removed, the artifact says so and says how much.
@@ -908,9 +910,12 @@ pub const HEADING_LEVEL_UNREPRESENTABLE: &str = "heading-level-unrepresentable-v
 
 /// What one stretch of the Markdown string is.
 ///
-/// **Two values, deliberately.** A third — "probably source", "source-ish", a score — would be the
-/// confidence field `docs/01-CONTRACT.md` §9 forbids, and it would put the consumer back in the
-/// position this whole version exists to remove: guessing whether a quote is citable.
+/// **Two values for the engine's own bytes, deliberately.** A third — "probably source",
+/// "source-ish", a score — would be the confidence field `docs/01-CONTRACT.md` §9 forbids, and it
+/// would put the consumer back in the position this whole version exists to remove: guessing
+/// whether a quote is citable. [`SegmentKind::Proposed`] is no such third: it is not the engine's
+/// reading at all, but a drafting model's text, written only where the record holds an `assist`
+/// key (decision #147), and a quote touching it is as plainly not citable as one touching syntax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentKind {
@@ -925,6 +930,9 @@ pub enum SegmentKind {
     /// The document did not draw these bytes. A quote touching one is **not** invertible, and the
     /// artifact says so here rather than leaving a consumer to infer it from the text's shape.
     Syntax,
+    /// A drafting model's text (decision #147): never evidence, never invertible. The segment
+    /// names the `m`-numbered block of the record's `assist` key it came from, which is no node.
+    Proposed,
 }
 
 /// One stretch of the Markdown string, as `[start, end)` **UTF-8 byte offsets**.
@@ -947,8 +955,9 @@ pub struct Segment {
     /// The representation nodes these bytes came from, in emission order.
     ///
     /// Present on [`SegmentKind::Source`] and absent on [`SegmentKind::Syntax`], because syntax
-    /// came from no node. **Never a newly minted id** — every value here already exists in the
-    /// representation this artifact projects.
+    /// came from no node. On [`SegmentKind::Proposed`], the one proposed block's `m` id. **Never a
+    /// newly minted id** — every value here already exists in the representation this artifact
+    /// projects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub node_ids: Vec<String>,
 }
@@ -1035,6 +1044,14 @@ impl AnchorMap {
                 return bad(format!(
                     "segment {i} is source and names no node; a source segment that cannot say \
                      where it came from is not invertible and must be syntax"
+                ))
+                .pipe_err();
+            }
+            if matches!(s.kind, SegmentKind::Proposed) && s.node_ids.len() != 1 {
+                return bad(format!(
+                    "segment {i} is proposed and names {} id(s); a proposed segment names the one \
+                     block it came from",
+                    s.node_ids.len()
                 ))
                 .pipe_err();
             }
@@ -1208,6 +1225,10 @@ pub struct MarkdownArtifact {
     pub anchor_map: AnchorMap,
     /// The census of what reached the Markdown and what did not.
     pub coverage: Coverage,
+    /// What of a drafting model's blocks this artifact writes and leaves out, page by page
+    /// (decision #147). Present exactly where the record holds an `assist` key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed: Option<crate::proposed::ProposedCensus>,
 }
 
 impl MarkdownArtifact {
@@ -4225,6 +4246,28 @@ impl Emit {
         self.write_source(&s, chars, node, continuing);
     }
 
+    /// Bytes of a drafting model's text, from the proposed block `id` (decision #147): never
+    /// coalesced, never counted among the source characters, and no emphasis span is open across
+    /// them.
+    pub(crate) fn proposed(&mut self, s: &str, id: &str) {
+        if s.is_empty() {
+            return;
+        }
+        if self.emphasis.markup.is_some() {
+            self.settle(true);
+            self.close_emphasis();
+            self.flush_held();
+        }
+        let start = self.markdown.len();
+        self.markdown.push_str(s);
+        self.segments.push(Segment {
+            kind: SegmentKind::Proposed,
+            start,
+            end: self.markdown.len(),
+            node_ids: vec![id.to_string()],
+        });
+    }
+
     fn write_source(&mut self, s: &str, chars: usize, node: &str, continuing: bool) {
         let start = self.markdown.len();
         self.markdown.push_str(s);
@@ -4432,6 +4475,10 @@ pub fn to_markdown(
 /// for a caller who does not ask: page furniture goes only on request, and the census says how
 /// much went.
 ///
+/// A record holding a drafting model's replies (its `assist` key) is projected with the model's
+/// blocks placed and labelled by [`crate::proposed`]'s rule, and the artifact's
+/// [`MarkdownArtifact::proposed`] census says what was written and left out (decision #147).
+///
 /// # Errors
 ///
 /// As [`to_markdown`].
@@ -4441,6 +4488,42 @@ pub fn to_markdown_with(
     profile_sha256: &Sha256Hex,
     markdown_rule: &str,
     options: ProjectionOptions,
+) -> Result<MarkdownArtifact, EngineError> {
+    let plan = crate::proposed::Plan::of(repr, options.drop_furniture)?;
+    markdown_of(
+        repr,
+        parser_version,
+        profile_sha256,
+        markdown_rule,
+        options,
+        plan.as_ref(),
+    )
+}
+
+/// Write the groups of a drafting model's blocks pending at this block boundary (decision #147),
+/// each a block of its own.
+fn proposals(
+    e: &mut Emit,
+    last: &mut Option<Block>,
+    cursor: &mut Option<crate::proposed::Cursor<'_, '_>>,
+) {
+    let Some(cursor) = cursor else {
+        return;
+    };
+    for group in cursor.take() {
+        separate(e, last, Block::Standalone);
+        cursor.markdown(e, group);
+    }
+}
+
+/// [`to_markdown_with`], with a drafting model's blocks placed as `plan` says, or none.
+pub(crate) fn markdown_of(
+    repr: &DocumentRepresentation,
+    parser_version: &str,
+    profile_sha256: &Sha256Hex,
+    markdown_rule: &str,
+    options: ProjectionOptions,
+    plan: Option<&crate::proposed::Plan<'_>>,
 ) -> Result<MarkdownArtifact, EngineError> {
     let payload = repr.payload();
 
@@ -4458,7 +4541,19 @@ pub fn to_markdown_with(
     } else {
         Default::default()
     };
-    let mut plans = plan_tables(repr, &mut erasures, &office, options.drop_furniture);
+    // Decision #147: a page a drafting model's reading replaces goes as furniture left out goes,
+    // its tables with it.
+    let replaced = plan.map(|p| &p.replaced);
+    let tables_left_out = match replaced {
+        Some(replaced) => office.union(replaced).copied().collect(),
+        None => office.clone(),
+    };
+    let mut plans = plan_tables(
+        repr,
+        &mut erasures,
+        &tables_left_out,
+        options.drop_furniture,
+    );
     // Decision #139: flagged runs leave their cells, so no table writes them.
     let flagged = if options.drop_flagged {
         flagged_runs(repr)
@@ -4530,6 +4625,8 @@ pub fn to_markdown_with(
         .map(|n| n.id.as_str())
         .collect();
     furniture.extend(&repeated);
+    furniture.extend(replaced.into_iter().flatten());
+    let mut cursor = plan.map(crate::proposed::Plan::cursor);
     // Decision #138: the runs that open a list item on request, and the unit of the one open.
     let items = if options.infer_lists {
         marker_items(repr)
@@ -4542,6 +4639,9 @@ pub fn to_markdown_with(
 
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
+        if let Some(cursor) = &mut cursor {
+            cursor.at(i, &node.parent);
+        }
 
         if joined_tail {
             joined_tail = false;
@@ -4553,6 +4653,8 @@ pub fn to_markdown_with(
             let id = node.id.as_str();
             furniture.contains(id).then_some(if repeated.contains(id) {
                 REPEATED_TABLE_HEADER_NOT_PROJECTED
+            } else if replaced.is_some_and(|r| r.contains(id)) {
+                crate::proposed::REPLACED_BY_PROPOSED_PAGE
             } else {
                 PAGE_FURNITURE_NOT_PROJECTED
             })
@@ -4570,7 +4672,9 @@ pub fn to_markdown_with(
             line_ink = None;
             // Decision #134: and the list item, and the separator, as the furniture's own block
             // ended them, so the blocks either side are the default's with that block cut out.
-            if code == PAGE_FURNITURE_NOT_PROJECTED {
+            if code == PAGE_FURNITURE_NOT_PROJECTED
+                || code == crate::proposed::REPLACED_BY_PROPOSED_PAGE
+            {
                 open_item = None;
                 if last.is_some() {
                     last = Some(Block::Standalone);
@@ -4601,6 +4705,7 @@ pub fn to_markdown_with(
         if let Some(&t) = owner.get(node.id.as_str()) {
             if !emitted_tables[t] {
                 emitted_tables[t] = true;
+                proposals(&mut e, &mut last, &mut cursor);
                 separate(&mut e, &mut last, Block::Standalone);
                 emit_table(&mut e, &plans[t], &pitch, &stretches);
                 open_item = None;
@@ -4675,6 +4780,7 @@ pub fn to_markdown_with(
                     e.syntax(" ");
                 }
             } else {
+                proposals(&mut e, &mut last, &mut cursor);
                 separate(&mut e, &mut last, Block::ListItem(role.depth));
                 // Two spaces per level, which is what GFM reads as a sub-list. `syntax`, like
                 // the marker: the document drew an indent in *coordinates*, not in spaces.
@@ -4974,6 +5080,7 @@ pub fn to_markdown_with(
                     Some(Block::ListItem(open)) => depth.min(open + 1),
                     _ => 0,
                 });
+                proposals(&mut e, &mut last, &mut cursor);
                 separate(
                     &mut e,
                     &mut last,
@@ -5044,6 +5151,12 @@ pub fn to_markdown_with(
         e.source(&text, node.id.as_str());
     }
 
+    // Decision #147: what a drafting model proposed after the last node, or for a page after it.
+    if let Some(cursor) = &mut cursor {
+        cursor.end();
+    }
+    proposals(&mut e, &mut last, &mut cursor);
+
     // A table whose cells enclose no run has no first run to sit behind, so it has no position in
     // reading order at all. Emitting it here is the one place the grid is not where the document
     // put it, and it is the only honest option left: the alternative is to drop a grid the
@@ -5089,6 +5202,7 @@ pub fn to_markdown_with(
         markdown,
         anchor_map,
         coverage,
+        proposed: cursor.map(crate::proposed::Cursor::finish),
     };
     artifact.validate()?;
     Ok(artifact)
@@ -5261,7 +5375,7 @@ pub(crate) enum SlotRole {
 ///
 /// Decision #142: a table the next page goes on with ([`continued_tables`]) takes that page's
 /// rows under its own, a [`TABLES_JOINED_ACROSS_PAGES`] each, and the continuation is no grid of
-/// its own. Its first row, where it repeats the header cell for cell, is left out where
+/// its own. A table left out whole is never joined (decision #147). Its first row, where it repeats the header cell for cell, is left out where
 /// `leave_out_repeated` asks, its runs in [`TablePlan::repeated`].
 pub(crate) fn plan_tables<'a>(
     repr: &'a DocumentRepresentation,
@@ -5277,6 +5391,8 @@ pub(crate) fn plan_tables<'a>(
     let mut claimed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     let mut plans = Vec::with_capacity(payload.tables.len());
     let layout = layout_tables(payload);
+    // The tables left out whole, by index.
+    let mut left = std::collections::BTreeSet::new();
 
     for (t, table) in payload.tables.iter().enumerate() {
         let (rows, columns) = (table.rows as usize, table.columns as usize);
@@ -5287,6 +5403,7 @@ pub(crate) fn plan_tables<'a>(
             .peekable();
         let empty = ids.peek().is_none();
         if !empty && ids.all(|id| left_out.contains(id.as_str())) {
+            left.insert(t);
             plans.push(TablePlan {
                 projected: false,
                 slots: Vec::new(),
@@ -5467,6 +5584,11 @@ pub(crate) fn plan_tables<'a>(
         let Some((prev, repeated)) = link else {
             continue;
         };
+        // Decision #147: a table left out whole — a page a drafting model's reading replaces —
+        // is joined to nothing and nothing to it, so no row is counted that no slot holds.
+        if left.contains(&t) || left.contains(&opens[prev]) {
+            continue;
+        }
         let h = opens[prev];
         opens[t] = h;
         let (head, rest) = plans.split_at_mut(t);
@@ -7584,6 +7706,9 @@ pub(crate) mod tests {
                 match s.kind {
                     SegmentKind::Source => assert!(!s.node_ids.is_empty(), "case {i}"),
                     SegmentKind::Syntax => assert!(s.node_ids.is_empty(), "case {i}"),
+                    SegmentKind::Proposed => {
+                        panic!("case {i}: an engine-only record proposes nothing")
+                    }
                 }
             }
         }

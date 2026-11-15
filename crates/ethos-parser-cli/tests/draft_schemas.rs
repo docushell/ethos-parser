@@ -319,7 +319,9 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
     }
 
     // Decision #145: the scan with a made-up model's replies attached, a block before its first
-    // marker and one marked, so the assisted profile and the record's `assist` key are walked too.
+    // marker and one marked, so the assisted profile and the record's `assist` key are walked too;
+    // and a table with a span, which the projections add, so their `proposed` segments and census
+    // are walked (decision #147).
     let scan = representations
         .iter()
         .find(|(name, _)| name == "scan.pdf")
@@ -336,7 +338,9 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         "pages": [{
             "page": page.index, "points": [page.width, page.height], "dpi": 200,
             "width": 556, "height": 278, "pixels_sha256": pixels, "finish_reason": "stop",
-            "reply": "made-up words\n\n![text+](10,20,30,40) Hello world"
+            "reply": "made-up words\n\n![text+](10,20,30,40) Hello world\n\n\
+                      ![table](10,50,90,90) <table><tr><td rowspan=\"2\">Made-up</td><td>7</td></tr>\
+                      <tr><td>8</td></tr></table>"
         }]
     });
     let assisted = ethos_parser_core::attach(

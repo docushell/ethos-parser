@@ -1013,6 +1013,9 @@ fn markdown_summary(artifact: &ethos_parser_core::MarkdownArtifact) -> String {
         // The map names node ids, and it stays behind with the artifact (decision #36).
         anchor_map: _,
         coverage,
+        // Decision #147: a drafting model's blocks, said so a reader knows the text is not all
+        // the page's.
+        proposed,
     } = artifact;
     let ethos_parser_core::Coverage {
         source_chars_in_representation,
@@ -1036,6 +1039,16 @@ fn markdown_summary(artifact: &ethos_parser_core::MarkdownArtifact) -> String {
     }
     for erasure in structural_erasures {
         summary.push_str(&format!(" {}: {}.", erasure.code, erasure.count));
+    }
+    if let Some(proposed) = proposed {
+        let blocks: usize = proposed.pages.iter().map(|p| p.blocks).sum();
+        let swapped = proposed.pages.iter().filter(|p| p.swapped).count();
+        summary.push_str(&format!(
+            " A drafting model's text, {}@{}: this artifact writes {blocks} of its blocks, and on \
+             {swapped} page(s) its reading replaced the engine's; each group labelled `Proposed`, \
+             model text, not read from the document, never to cite.",
+            proposed.model.id, proposed.model.version
+        ));
     }
     summary.push_str(" To cite a passage, pass its exact text to `locate`.");
     summary

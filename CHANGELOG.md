@@ -32,6 +32,92 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A drafting model's blocks reach Markdown and HTML, labelled `Proposed` (decision #147)
+
+The third step of the assist lane: `markdown` and `html` read the record's `assist` key, place the
+model's blocks by the rule the pin names (`assist-lightonocr-v1`, decision #123's lane with three
+changes) and say what they wrote and left out. **Engine-only output does not move**: without
+`--assist-answers` every `extract`, Markdown and HTML byte is what it was.
+
+- **A page the engine read under 30% of the model's words of is the model's page.** In decision
+  #123's words (distinct runs of letters, digits and `_`, two characters or more, lower-cased, tags
+  removed) and in integers: `10 * shared < 3 * model` and `2 * model >= engine`, `model` counting
+  the words of the blocks a swap would write — not a reply's cut last block, not furniture
+  `--drop-furniture` leaves out, not a table's text outside its cells, so no page is swapped for
+  words it would not show, nor to nothing — and `engine` the page's share of the engine-only
+  Markdown. The engine's runs and tables there are left out, counted in `coverage.dropped` under
+  `replaced-by-proposed-page-v1`, and the census balances; a table the next page goes on with is
+  not joined across such a page (decision #142's join held off), so no row is written that no cell
+  holds. Where the page's first node stood, the model's blocks follow in reply order.
+- **Every other page gains the model's tables and charts at their reading position**: each with the
+  `title` or `caption` just before it, unless every word of that is the engine's on the page,
+  after the last run of the page, in reading order, that overlaps it across and starts above its
+  foot, at the next block boundary (never inside a paragraph, a list or a table), or before the
+  page's first node where no run does. Every other block stays in the record, counted.
+- **Model text is labelled, and cannot leave its label.** Each insertion — a swapped page, or a
+  table or chart with its caption — is one Markdown block quote: first `> **Proposed:** WHAT by
+  ID@VERSION; model text, not read from the document.` (WHAT `page N as read`, `table`, `chart`,
+  or `chart values estimated` where the guard marked a value an estimate), last `> **End of
+  proposed text.**`, and between them the model's blocks one quote deeper, every line opening
+  with `> >`, the model's blank lines too, so no model text stands where the label or the end line
+  stands, whatever it writes. The model's text reaches it only through one escape: references
+  decoded and U+0000 left out (a `&#0;` too) before anything is measured, then `&` and `<` written
+  as `&amp;` and `&lt;`, so no HTML block, comment, tag or autolink forms (a tag a removed one
+  rebuilt included); every `[` and `]` after a `\` (a `\` before one doubled), so no link, image
+  or link reference definition forms; the first of a run of three backticks or tildes where a
+  fence could open after a `\`; a `\r` a line break, so no line stands outside the quote; code
+  inside a fence longer than any run of backticks in it as written, the model's own fence taken
+  off. In HTML each insertion is one `<blockquote class="ethos-proposed"
+  data-derivation="proposed" data-model="ID" data-model-version="VERSION">`, the label a `<p>`
+  first and `<p><strong>End of proposed text.</strong></p>` last, the model's blocks between in a
+  `<blockquote>` of their own, so a browser indents them with no style sheet; its text escaped.
+  The model's id and version are escaped as its text is, in both.
+- **An exact duplicate is left out**: a model table whose rows, cells (whitespace collapsed) and
+  spans equal those of an engine table it overlaps on half the smaller box or more; otherwise both
+  stand, the engine's first.
+- **The guard's marks decide what is shown** (decision #146): `contradicted` and `unsupported`
+  lines are left out and counted, a table cell emptied, never removed (in HTML
+  `data-dropped="contradicted"` or `"unsupported"`); `disputed`, unchecked and bound lines are
+  kept; a chart's estimates are kept and labelled (`data-estimate="true"` on the cell); a reply's
+  cut last block, truncated or a loop, is left out. Under `--drop-furniture`, a swapped page's
+  `header`, `footer`, `page_number`, `header_image` and `footer_image` blocks go too.
+- **Model HTML never passes through.** A table is read into its cells and written by this engine:
+  a GFM grid in Markdown, its spans flattened and counted, and a `<table>` keeping its spans and
+  header cells in HTML; a `table` block holding no cell is left out. In any text, tags other than
+  `<sub>`, `<sup>` and `<br>` are removed (an inline one with nothing in its place, any other with
+  a space) and those three written by this engine, balanced. A character reference is decoded,
+  `&dollar;` too, then escaped. A title keeps the model's own `#` level, or is level 1; a formula
+  loses one outer `$$` or `$` and is fenced in `$$`; code is fenced; as ParseBench's
+  `_render_block` writes them, but for the language guess on code, which is not ported.
+- **The anchor map gains a third kind, `proposed`**, naming the one `m`-numbered block its bytes
+  came from: never invertible, as `syntax` is not. The labels are `syntax`. Breaking for a library
+  caller matching `SegmentKind` exhaustively.
+- **The census**: `MarkdownArtifact` and `HtmlArtifact` gain `proposed`, present exactly where the
+  record holds an `assist` key: the rule, the model, and a line per page asked — its model,
+  engine and shared word counts, whether it was swapped, how many blocks were written, and what
+  was left out by code (`proposed-table-duplicate-v1`, `proposed-value-contradicted-v1`,
+  `proposed-line-unsupported-v1`, `proposed-block-truncated-v1`, `proposed-table-unparsed-v1`,
+  `proposed-block-not-projected-v1`; in Markdown, `gfm-span-slots-unrepresentable-v1` for a model
+  table's spans). MCP's `markdown` summary says how many of the model's blocks the artifact
+  writes, and on how many pages its reading replaced the engine's. `markdown --help` and
+  `html --help` say what an assisted record projects to.
+- Library: the `proposed` module, `ProposedCensus`, `ProposedPage`, the seven codes and
+  `SegmentKind::Proposed`. Draft schemas: the `proposed` segment kind and census on both
+  projections, and `replaced-by-proposed-page-v1`.
+- Not ported: ParseBench's `_repair_dollar_delimiters`. Measured on decision #123's replies, it
+  changes 8 blocks on 3 pages, none of which this rule projects (text, list and footnote blocks on
+  pages not swapped), so it is worth nothing here.
+- Measured on decision #123's replies to the 1,567 ParseBench pages the engine reads, attached as
+  decisions #145 and #146 attach them (`extract --ocr --assist-answers`): the swap test picks 88
+  pages, and decision #123's Python lane, on the same engine's Markdown, 86 — the 86 its stored run
+  swapped. The two others, a Marathi and a Telugu page, are combining marks, which Rust's
+  `char::is_alphanumeric` keeps inside a word and Python's `\w` does not. Counting only the words
+  a swap would write changes `model` on 222 pages (27 a cut last block, 195 a table's text outside
+  its cells) and moves no decision. Markdown and HTML swap the same pages, and two runs give the
+  same bytes on all 1,567.
+  Engine-only `extract`, Markdown and HTML byte-identical to decision #146's build on the gate's 113
+  documents and opendataloader-bench's 200. ParseBench, with LightOnOCR-3-0.8B on hayro pages through the product lane: 71.91 overall where the benchmark adapter unwraps the quote markup (its converter reads no table or title inside a quote; written as is, 65.33); 71.07 was the bar. The guard costs 0.10 of it.
+
 ### A guard checks a drafting model's blocks against the engine's runs, in the record (decision #146)
 
 The second step of the assist lane: each block a model proposes is checked against what the engine
@@ -46,7 +132,9 @@ and so is every profile's hash.
   A run holding U+FFFD, or one the engine found hidden, invisible, off the page or too small, is no
   evidence. The runs are joined as `ground` joins them into elements, with no table claiming its
   cells, then read line by line: a page the engine reads glyph by glyph keeps its words, two lines
-  are never glued, runs more than a quarter of their height apart on either side are two pieces,
+  are never glued, runs more than a quarter of their height apart on either side are two pieces
+  (half, after a space the engine read: a page letter-spacing digits sets one between them, and
+  `19 ,5 2 1` held no `19,521`),
   two pieces are never one value, nor two lines but where the first ends in `. , : / -` (a range or
   a link the page wraps, `2007-` above `2023`; review: `12` above `34` held `1234`), and a printed
   `<` and `>` hide nothing between them.
@@ -54,7 +142,10 @@ and so is every profile's hash.
   words after the table), or else its text's lines; blank lines outside a cell do not count.
 - A value is decision #123's prototype token with any script's decimal digit: a run of ASCII
   letters and digits holding a digit, going on through `. , : / -` (`1,234.5`, `2024-03-01`),
-  compared as written. It is found where it occurs in the runs' text with whitespace removed,
+  compared as written, but that a dash of any width between two letters or digits (U+2010 to
+  U+2015, U+2212) reads as `-` on either side (the page's `99‐R98CR` held no `99-R98CR`), and that
+  in the model's text a LaTeX command, a backslash and the lower-case letters after it, is no part
+  of a value (`\pm20V` read as `pm20V`; a path's `\O365` keeps its value). It is found where it occurs in the runs' text with whitespace removed,
   starting and ending outside the runs' own values, with the same sign (brackets read as a minus,
   an en dash too) and, where both show one, the same currency symbol and percent sign; brackets, a
   leading currency symbol and a percent sign count across a space or a gap the engine drew, a
@@ -68,7 +159,7 @@ and so is every profile's hash.
   between it and the neighbouring rows' lines (a first or last row reaches one line past its own);
   a cell's words bind on those lines. A cell set on two lines binds, its second line on a neighbouring row's line too when it lies in
   the cell's column and the cell shows on its own line, while a swapped cell, a row
-  shifted a column or a wrong value printed nearby does not; a swap between rows whose lines
+  shifted a column or a wrong value printed nearby does not bind; a swap between rows whose lines
   interleave may pass. Two rows swapped whole, labels kept, bind neither (review): each row's
   label, its words of letters no other row holds, lies on the other's own line and not on its own.
   A label alone on another row's line swaps nothing, since a table centres a label over the rows
@@ -77,11 +168,18 @@ and so is every profile's hash.
   large, so a value copied from elsewhere stays unfound. **A box over half the page places
   nothing**: no line binds by it alone, though a table row still binds on its lines.
 - **A chart's value not found is an `estimate`**, kept: a chart's values are read from its bars.
+  **Its first row and the first cell of each row, its series and category names, are never
+  `unsupported`**: they name and assert nothing, so one the engine did not read is unchecked.
   **The region is read where the engine's legible runs there hold a value or three words** and share
   a word or a value with the block, so a reply that is mostly wrong is checked as closely as one
   mostly right, while a font that maps its codes to other letters reads as nothing. There, a line with a value not found is `contradicted`, and a line of three words or more,
   fewer than half of them found, `unsupported`, a chart's text lines included; both are to be
-  dropped, a table cell emptied rather than removed. **In a block fewer than half of whose words the
+  dropped, a table cell emptied rather than removed. **A table cell whose values off its row's
+  lines the region holds elsewhere is `disputed` instead, and kept**: a total column the engine
+  reads below its table, a code or a date the page prints once for rows the model repeats it in. A
+  value the region does not hold, or a row swapped whole, stays `contradicted`. Both rules were
+  calibrated on the product lane's ParseBench run, where the guard's drops cost 0.40 overall
+  (tables -1.38 over 65 pages, charts -0.58 over 10). **In a block fewer than half of whose words the
   engine holds, such a line is `disputed` instead, and kept**: a reply that much at odds with the
   engine is as often the engine's misreading as the model's. A line binds where all its values are found,
   or, holding none, half its words; any other line is unchecked. Where the region was not read,
@@ -101,9 +199,14 @@ and so is every profile's hash.
   98,040 lines bind, 1,751 are contradicted, 86 unsupported, 629 disputed (kept), 23,847 chart
   values estimated and 31,551 unchecked (the fourth review's line rule made 11 chart values the
   engine reads a digit per line estimates and left one disputed line unchecked; its swap rule
-  fires on no row); 19,985 lines sit in the 30 dropped last blocks. Of the
-  contradicted lines, 958 (273 table rows) are a row's values not on its engine lines in order,
-  chiefly columns the model invents by repeating a value. The loop rule fires on 14 of the 30
+  fires on no row); 19,985 lines sit in the 30 dropped last blocks. After the calibration, 98,069
+  bind, 732 are contradicted, 34 unsupported, 1,463 disputed, 23,847 estimated and 31,759
+  unchecked: 1,019 table cells in 282 rows moved from contradicted to disputed, and 237 chart names
+  from unsupported or disputed to unchecked or bound. After the three value-matching fixes, 98,208
+  bind, 623 are contradicted, 35 unsupported, 1,429 disputed, 23,850 estimated and 31,759
+  unchecked: 108 contradicted lines and 34 disputed ones bind, one paragraph line the page wraps
+  after `2019—` is newly contradicted, and three chart years the page prints as a range become
+  estimates. The loop rule fires on 14 of the 30
   capped replies and on none of the 1,537 others. Engine-only output is byte-identical to decision
   #145's build on the gate's 113 documents and opendataloader-bench's 200.
 

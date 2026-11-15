@@ -72,8 +72,9 @@
 //! 1. **Never one without the other.** [`HtmlArtifact`] holds `html` and `anchor_map` together,
 //!    and there is no `--html-only` on the CLI.
 //! 2. **The map total-tiles the bytes.** The same [`crate::AnchorMap::new`] runs, over the HTML.
-//! 3. **Two segment kinds.** Every tag, attribute, and newline this file writes is `syntax`. Only
-//!    node text is `source`.
+//! 3. **Two segment kinds for the engine's bytes.** Every tag, attribute, and newline this file
+//!    writes is `syntax`. Only node text is `source`; a drafting model's text, where the record
+//!    holds it, is `proposed` (decision #147).
 //! 4. **Coverage is a census.** The same [`crate::markdown::census`] closes it, so the two
 //!    artifacts cannot disagree about how many CHARACTERS a document contains, nor about which
 //!    are dropped and why. Their `structural_erasures` do differ, and that difference is the
@@ -211,6 +212,10 @@ pub struct HtmlArtifact {
     pub anchor_map: AnchorMap,
     /// The census of what reached the HTML and what did not.
     pub coverage: Coverage,
+    /// What of a drafting model's blocks this artifact writes and leaves out, page by page, as
+    /// [`crate::MarkdownArtifact::proposed`] (decision #147).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed: Option<crate::proposed::ProposedCensus>,
 }
 
 impl HtmlArtifact {
@@ -276,7 +281,7 @@ fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIde
 /// `source` segment on this artifact means HTML-unescaping it — a total, lossless transform, said
 /// out loud here and in the schema, for the same reason [`normalize`] says it: a map that claimed
 /// exact bytes and delivered encoded ones would be the subtlest lie available to this module.
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -350,6 +355,25 @@ impl ListState {
     }
 }
 
+/// Write the groups of a drafting model's blocks pending at this block boundary (decision #147),
+/// any open list closed first, as a block of its own closes it in Markdown.
+fn proposals(
+    e: &mut Emit,
+    list: &mut ListState,
+    cursor: &mut Option<crate::proposed::Cursor<'_, '_>>,
+) {
+    let Some(cursor) = cursor else {
+        return;
+    };
+    let groups = cursor.take();
+    if !groups.is_empty() {
+        list.close_to(e, 0);
+    }
+    for group in groups {
+        cursor.html(e, group);
+    }
+}
+
 /// Close the open block, if one is open. **The only place a closing tag is written** (v2.2-S1).
 fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
     match open.take() {
@@ -409,7 +433,8 @@ pub fn to_html(
 }
 
 /// [`to_html`], leaving out what `options` asks to, counted as [`crate::to_markdown_with`] counts
-/// it (decision #134).
+/// it (decision #134); a record holding a drafting model's replies is projected as that function
+/// projects it, each group in a `<blockquote class="ethos-proposed">` (decision #147).
 ///
 /// # Errors
 ///
@@ -438,7 +463,19 @@ pub fn to_html_with(
     } else {
         Default::default()
     };
-    let mut plans = plan_tables(repr, &mut erasures, &office, options.drop_furniture);
+    // Decision #147, as in `crate::markdown`: a page a drafting model's reading replaces.
+    let plan = crate::proposed::Plan::of(repr, options.drop_furniture)?;
+    let replaced = plan.as_ref().map(|p| &p.replaced);
+    let tables_left_out = match replaced {
+        Some(replaced) => office.union(replaced).copied().collect(),
+        None => office.clone(),
+    };
+    let mut plans = plan_tables(
+        repr,
+        &mut erasures,
+        &tables_left_out,
+        options.drop_furniture,
+    );
     // Decision #139, as in `crate::markdown`.
     let flagged = if options.drop_flagged {
         crate::markdown::flagged_runs(repr)
@@ -515,6 +552,8 @@ pub fn to_html_with(
         .map(|n| n.id.as_str())
         .collect();
     furniture.extend(&repeated);
+    furniture.extend(replaced.into_iter().flatten());
+    let mut cursor = plan.as_ref().map(crate::proposed::Plan::cursor);
     // Decision #138, as in `crate::markdown`.
     let items = if options.infer_lists {
         crate::markdown::marker_items(repr)
@@ -527,6 +566,9 @@ pub fn to_html_with(
 
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
+        if let Some(cursor) = &mut cursor {
+            cursor.at(i, &node.parent);
+        }
 
         if joined_tail {
             joined_tail = false;
@@ -538,6 +580,8 @@ pub fn to_html_with(
             let id = node.id.as_str();
             furniture.contains(id).then_some(if repeated.contains(id) {
                 crate::markdown::REPEATED_TABLE_HEADER_NOT_PROJECTED
+            } else if replaced.is_some_and(|r| r.contains(id)) {
+                crate::proposed::REPLACED_BY_PROPOSED_PAGE
             } else {
                 crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
             })
@@ -554,7 +598,9 @@ pub fn to_html_with(
             line_ink = None;
             // Decision #134, as in `crate::markdown`: the list closes, as the furniture's own
             // paragraph closed it.
-            if code == crate::markdown::PAGE_FURNITURE_NOT_PROJECTED {
+            if code == crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
+                || code == crate::proposed::REPLACED_BY_PROPOSED_PAGE
+            {
                 list.close_to(&mut e, 0);
                 open_item = None;
             }
@@ -586,6 +632,7 @@ pub fn to_html_with(
                 emitted_tables[t] = true;
                 flush_block(&mut e, &mut open_block);
                 list.close_to(&mut e, 0);
+                proposals(&mut e, &mut list, &mut cursor);
                 emit_table(&mut e, &plans[t], &pitch, &stretches);
                 open_item = None;
             }
@@ -668,6 +715,7 @@ pub fn to_html_with(
                     e.syntax(" ");
                 }
             } else {
+                proposals(&mut e, &mut list, &mut cursor);
                 list.open_item(&mut e, role.depth);
             }
             escaped_source(&mut e, &text, node.id.as_str());
@@ -920,6 +968,7 @@ pub fn to_html_with(
         }
 
         flush_block(&mut e, &mut open_block);
+        proposals(&mut e, &mut list, &mut cursor);
         // Decision #138, as in `crate::markdown`: an item, no deeper than one under the open one,
         // whose `</li>` the list writes.
         let item = items.get(node.id.as_str()).copied();
@@ -992,6 +1041,11 @@ pub fn to_html_with(
 
     flush_block(&mut e, &mut open_block);
     list.close_to(&mut e, 0);
+    // Decision #147, as in `crate::markdown`.
+    if let Some(cursor) = &mut cursor {
+        cursor.end();
+    }
+    proposals(&mut e, &mut list, &mut cursor);
 
     // A table whose cells enclose no run has no first run to sit behind, so it has no position in
     // reading order at all — emitted here, in document order, for the reason the Markdown
@@ -1033,6 +1087,7 @@ pub fn to_html_with(
         html,
         anchor_map,
         coverage,
+        proposed: cursor.map(crate::proposed::Cursor::finish),
     };
     artifact.validate()?;
     Ok(artifact)

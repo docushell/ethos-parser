@@ -150,8 +150,9 @@ fn json_of(out: &Output) -> Value {
 
 /// **The replies attach as `Proposed` blocks beside the engine's record, and nothing else moves**:
 /// the record differs from the engine-only one in its profile hash, its `assist` key and its
-/// fingerprint, and its Markdown, HTML and `ground` are the engine-only ones but for those two
-/// hashes, as this decision projects nothing (design §8.4).
+/// fingerprint, and its `ground` is the engine-only one but for those two hashes (design §8.4); its
+/// Markdown and HTML are too, but for their `proposed` census, as these replies hold no table or
+/// chart to add and swap no page (decision #147).
 /// Pages 1 and 3 were asked, so page 2 is absent; page 3 is cropped and turned, and the size it was
 /// rendered at is the turned crop's. Page 3's reply was cut at the cap, so it is `truncated`
 /// (decision #146), its block kept in the record.
@@ -200,8 +201,8 @@ fn replies_attach_as_proposed_blocks_and_move_nothing_else() {
         json_of(&assisted)["representation"]["identity"]["profile_sha256"]
     );
 
-    // Projected and grounded, it is the engine's but for the two hashes the record carries: blocks
-    // are not projected yet, and `ground` reads nodes alone.
+    // Projected and grounded, it is the engine's but for the two hashes the record carries and the
+    // projections' census of the blocks they leave out; `ground` reads nodes alone.
     let hashes = |out: &Output| {
         let v = json_of(out);
         [
@@ -224,7 +225,15 @@ fn replies_attach_as_proposed_blocks_and_move_nothing_else() {
         for (theirs, ours) in with_hashes.iter().zip(&plain_hashes) {
             with = with.replace(theirs.as_str(), ours);
         }
-        assert_eq!(run(&plain_path), with, "{command}");
+        let mut with: Value = serde_json::from_str(&with).expect("JSON");
+        let census = with
+            .as_object_mut()
+            .expect("an artifact")
+            .remove("proposed");
+        assert_eq!(census.is_some(), command != "ground", "{command}");
+        let plain: Value = serde_json::from_str(&run(&plain_path)).expect("JSON");
+        assert!(plain.get("proposed").is_none(), "{command}");
+        assert_eq!(plain, with, "{command}");
     }
 }
 
@@ -425,8 +434,10 @@ fn under_ocr_the_pin_stacks_on_the_ocr_profile() {
 /// estimates; an invented line is unsupported; a region the engine read nothing in, or only text
 /// it drew invisibly, stays unchecked. Page 2 prints the wrong values where page 1's table stands, so only page 1's runs
 /// may bind page 1's blocks; its reply was cut in a loop, which drops its last block.
-#[test]
-fn the_guard_drops_exactly_the_planted_wrong_lines() {
+/// Two made-up pages with planted wrong lines, and replies to them: page 1 a ruled table of values,
+/// ids and dates, a chart with labelled bars and a paragraph; page 2 the same table read wrong, its
+/// reply cut at the cap inside a looping table.
+fn planted() -> (Vec<u8>, Value) {
     let at = |x: u32, y: u32, t: &str| format!("BT /F1 10 Tf {x} {y} Td ({t}) Tj ET\n");
     let grid = |rows: &[[&str; 4]]| {
         let mut s = String::new();
@@ -488,6 +499,12 @@ fn the_guard_drops_exactly_the_planted_wrong_lines() {
             )
         }
     ]);
+    (source, answers)
+}
+
+#[test]
+fn the_guard_drops_exactly_the_planted_wrong_lines() {
+    let (source, answers) = planted();
     let dir = scratch("guard");
     let (pdf, file) = write(&dir, &source, &answers);
     let record = json_of(&engine(&["extract", &pdf, "--assist-answers", &file]));
@@ -543,6 +560,80 @@ fn the_guard_drops_exactly_the_planted_wrong_lines() {
 
     assert_eq!(pages[1]["outcome"], "loop");
     assert_eq!(pages[1]["blocks"].as_array().expect("blocks").len(), 2);
+}
+
+/// **The projections show what the guard keeps** (decision #147): the model's table is added with
+/// its four planted wrong cells emptied, and its chart with its bar values labelled estimates; its
+/// paragraphs, the engine's to read, are left out, and so is the looping table its cut reply ends
+/// in; each counted, and the same bytes run after run.
+#[test]
+fn the_projections_show_what_the_guard_keeps() {
+    let (source, answers) = planted();
+    let dir = scratch("projected");
+    let (pdf, file) = write(&dir, &source, &answers);
+    let record = dir.join("record.json");
+    let out = engine(&["extract", &pdf, "--assist-answers", &file]);
+    json_of(&out);
+    std::fs::write(&record, &out.stdout).expect("write");
+    let record = record.to_str().expect("utf-8");
+    let markdown = engine(&["markdown", record]);
+    assert_eq!(markdown.stdout, engine(&["markdown", record]).stdout);
+    let markdown = json_of(&markdown);
+    let html = json_of(&engine(&["html", record]));
+    let label = |what: &str| {
+        format!(
+            "> **Proposed:** {what} by example/made-up-model@not-reported; model text, not read \
+             from the document."
+        )
+    };
+    let text = markdown["markdown"].as_str().expect("markdown");
+    // Each group one block quote, closed by its end line, the model's rows one quote deeper.
+    assert!(text.contains(&format!(
+        "{}\n>\n> > | Item | Amount | Code | Date |\n> > | --- | --- | --- | --- |\n> > | Alpha \
+         |  |  |  |\n> > | Beta |  | B-220 | 2024-04-15 |\n> > | Gamma | 9012 | C-310 | \
+         2024-05-30 |\n>\n> **End of proposed text.**\n\n",
+        label("table")
+    )));
+    assert!(text.contains(&format!(
+        "{}\n>\n> > | Quarter | Sales |\n> > | --- | --- |\n> > | Q1 | 42 |\n> > | Q2 | 57 |\n\
+         > > | Q3 | 61 |\n>\n> **End of proposed text.**",
+        label("chart values estimated")
+    )));
+    assert!(!text.contains("Quarterly revenue") && !text.contains("| 0 |"));
+    let census = |artifact: &Value| {
+        artifact["proposed"]["pages"]
+            .as_array()
+            .expect("pages")
+            .iter()
+            .map(|p| {
+                (
+                    p["swapped"].clone(),
+                    p["blocks"].clone(),
+                    p["left_out"].clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let not_projected = |n: u32| json!({"code": "proposed-block-not-projected-v1", "count": n});
+    let truncated = json!({"code": "proposed-block-truncated-v1", "count": 1});
+    let contradicted = json!({"code": "proposed-value-contradicted-v1", "count": 4});
+    assert_eq!(
+        census(&html),
+        [
+            (
+                json!(false),
+                json!(2),
+                json!([not_projected(2), contradicted])
+            ),
+            (json!(false), json!(0), json!([not_projected(1), truncated])),
+        ]
+    );
+    assert_eq!(census(&markdown), census(&html));
+    let html = html["html"].as_str().expect("html");
+    assert_eq!(html.matches("data-dropped=\"contradicted\"").count(), 4);
+    assert_eq!(html.matches("data-estimate=\"true\"").count(), 2);
+    let end = "</blockquote>\n<p><strong>End of proposed text.</strong></p>\n</blockquote>\n";
+    assert_eq!(html.matches(end).count(), 2);
 }
 
 /// **The record names the renderer and request the assist binary uses** (decisions #143-#145):

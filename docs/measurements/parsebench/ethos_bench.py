@@ -34,6 +34,15 @@ reported beside the engine-only ones; what the model wrote is not the engine's e
 LightOnOCR-3 provider imports `aiohttp`, which its project does not declare: run with
 `uv run --with aiohttp`.
 
+`ETHOS_BENCH_ASSIST_PRODUCT=<dir>` (decision #147) is the same model's reading through the product
+instead: where `<dir>` holds `<group dir>__<stem>.json`, a replies file `assist_replies.py` wrote, the
+document is read with `extract --assist-answers <file>` (with `--ocr` under `ETHOS_BENCH_OCR=engine`), and
+the engine's own projections place the model's blocks, each insertion a block quote under its
+`> **Proposed:**` label. `ETHOS_BENCH_ASSIST_STRIP=1` unwraps each one in the Markdown scored, which the
+product never does: its label and end lines and its quote markers go, and the model's text reads as
+written, the escapes `proposed.rs` writes undone; results under it are reported as such. Not with
+`ETHOS_BENCH_ASSIST` or `ETHOS_BENCH_OCR=1`.
+
 `ETHOS_BENCH_LEDGER=<dir>` (decision #121) reuses scores: an example whose output and test case are
 byte-identical to one scored before takes the stored result instead of being scored again. The
 scores are the same; a run that changes a few pages scores in under a minute instead of five. The
@@ -267,6 +276,41 @@ if _ASSIST:
         extra = render(kept)
         return f"{markdown}\n\n{extra}" if extra else markdown
 
+# The product assist lane (decision #147), opt in with `ETHOS_BENCH_ASSIST_PRODUCT=<dir>`: the engine
+# merges and places the model's blocks itself (`extract --assist-answers`), so nothing here edits the
+# Markdown, but for `ETHOS_BENCH_ASSIST_STRIP=1`'s unwrapping of each insertion.
+_PRODUCT = os.environ.get("ETHOS_BENCH_ASSIST_PRODUCT")
+if _PRODUCT and (_ASSIST or os.environ.get("ETHOS_BENCH_OCR") == "1"):
+    raise SystemExit("ETHOS_BENCH_ASSIST_PRODUCT goes with neither ETHOS_BENCH_ASSIST nor ETHOS_BENCH_OCR=1")
+# An insertion as `proposed.rs` writes it: its label line, a `>` line, the model's blocks one quote deeper
+# (every line `> > ` and its text, or a bare `> >`), a `>` line and its end line.
+_GROUP = re.compile(r"^> \*\*Proposed:\*\* [^\n]*\n>\n((?:> >(?: [^\n]*)?\n)*)>\n> \*\*End of proposed text\.\*\*$", re.M)
+
+
+def _unescaped(line: str, cell: bool) -> str:
+    """One line of model text with `md_escaped`'s escapes undone: a bracket's `\\`, and in text each `\\`
+    before that one written twice; the `\\` before a run of three backticks or tildes where a fence could
+    open; `&amp;` and `&lt;`. A cell keeps `\\|` and `\\\\`, as the engine's own cells write them."""
+    line = re.sub(r"(\\+)(?=[\[\]])", lambda m: m[1][: len(m[1]) - 1 if cell else len(m[1]) // 2], line)
+    line = re.sub(r"(?:^|(?<=[ \t>]))\\(?=([`~])\1\1)", "", line)
+    return re.sub(r"&(amp|lt);", lambda m: "&" if m[1] == "amp" else "<", line)
+
+
+def _unwrapped(group: re.Match) -> str:
+    """An insertion's model text, a blank line where each of its four own lines stood; a fence's code as
+    written, which `md_escaped` leaves alone."""
+    lines, fence = [], None
+    for line in group[1].split("\n")[:-1]:
+        line = line[4:]
+        if fence:
+            fence = None if line == fence else fence
+        elif re.fullmatch(r"`{3,}", line):
+            fence = line
+        else:
+            line = _unescaped(line, line.startswith("|"))
+        lines.append(line)
+    return "\n\n" + "\n".join(lines) + "\n\n"
+
 
 @register_provider("ethos")
 class EthosProvider(Provider):
@@ -276,6 +320,9 @@ class EthosProvider(Provider):
             raise ProviderConfigError("set ETHOS_PARSER_BIN to an ethos-parser binary")
         started_at = datetime.now()
         source = str(Path(request.source_file_path))
+        # By the example's id (`<group dir>/<stem>`): the source path here is a copy under a random name.
+        replies = Path(_PRODUCT or ".") / f"{request.example_id.replace('/', '__', 1)}.json"
+        assist = ["--assist-answers", str(replies)] if _PRODUCT and replies.is_file() else []
         with tempfile.TemporaryDirectory() as scratch:
             extract_path = Path(scratch) / "extract.json"
             if os.environ.get("ETHOS_BENCH_OCR") == "1":
@@ -295,9 +342,9 @@ class EthosProvider(Provider):
                 # the engine decides page by page: a page that shows no text and places one image is
                 # read by `ethos-parser-ocr` (beside the binary, or `ETHOS_PARSER_OCR`); every other
                 # page reads exactly as it does without the flag.
-                extract_path.write_text(_run(binary, "extract", "--ocr", source))
+                extract_path.write_text(_run(binary, "extract", "--ocr", *assist, source))
             else:
-                extract_path.write_text(_run(binary, "extract", source))
+                extract_path.write_text(_run(binary, "extract", *assist, source))
             artifact = json.loads(_run(binary, "markdown", str(extract_path)))
             html = json.loads(_run(binary, "html", str(extract_path))).get("html", "")
             try:
@@ -326,6 +373,9 @@ class EthosProvider(Provider):
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
         markdown = raw_result.raw_output.get("markdown", "")
+        # Before the tables are converted: a pipe table inside a quote is not converted.
+        if _PRODUCT and os.environ.get("ETHOS_BENCH_ASSIST_STRIP") == "1":
+            markdown = _GROUP.sub(_unwrapped, markdown)
         # The table scorer reads only HTML tables; every local provider converts its pipe tables,
         # and this is LiteParse's own conversion.
         markdown = LiteParseProvider._convert_md_tables_to_html(markdown)

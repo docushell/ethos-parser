@@ -122,6 +122,23 @@ enum Command {
     /// stdout is canonical JSON. A consumer that wants a `.md` file writes
     /// `.markdown` out itself, and owns the fact that doing so discards the map.
     ///
+    /// **A record holding a drafting model's replies** (`extract --assist-answers`, decision
+    /// #147): a page where the engine read under 30% of the words the model's blocks would write
+    /// is written as the model read it, in place of the engine's runs; on every other page the
+    /// model's tables and charts are added where they stand on the page, and one equal to an
+    /// engine table it overlaps is left out. Each insertion is one block quote, opening `>
+    /// **Proposed:** WHAT by ID@VERSION; model text, not read from the document.` and closing `>
+    /// **End of proposed text.**`, the model's blocks between them one quote deeper, every line
+    /// opening with `> >`; the model's text there is escaped — `&` and `<` as references, every
+    /// `[` and `]` after a `\`, a run of backticks or tildes that could open a fence after a `\` —
+    /// and its code fenced by more backticks than it holds, so none of it leaves its quote nor
+    /// stands where the label and end line stand, and no link or image forms. A table is
+    /// written from its cells, never as the model's HTML. Lines the guard found contradicted or
+    /// unsupported are left out, a table cell emptied; a chart's estimated values are kept and its
+    /// label says so. The model's bytes are `proposed` segments of the map, never citable, and the
+    /// artifact's `proposed` census says page by page what was written and left out. Without that
+    /// key, nothing here changes.
+    ///
     /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
     /// its declared digest.
     Markdown(MarkdownArgs),
@@ -129,7 +146,7 @@ enum Command {
     /// Project a `DocumentRepresentation v0` into `ethos.html.v1` (v1.1-S4).
     ///
     /// **HTML and its Anchor Map, always together**, on exactly the discipline `markdown` runs
-    /// under: one artifact, two segment kinds, a map that tiles every byte, and a census that
+    /// under: one artifact, the same segment kinds, a map that tiles every byte, and a census that
     /// accounts for every source character. There is no `--html-only`.
     ///
     /// **Not a rendering of the Markdown.** It is projected from the representation, because a
@@ -140,6 +157,15 @@ enum Command {
     ///
     /// stdout is canonical JSON. A consumer that wants an `.html` file writes `.html` out itself,
     /// and owns the fact that doing so discards the map.
+    ///
+    /// **A record holding a drafting model's replies** is projected as `markdown` projects it
+    /// (decision #147), each page or table the model proposed inside one `<blockquote
+    /// class="ethos-proposed" data-derivation="proposed" data-model="ID"
+    /// data-model-version="VERSION">` opening with a `<p>` that says so and closing with `<p>`
+    /// **End of proposed text.**, the model's blocks between in a `<blockquote>` of their own, its
+    /// text escaped; a model table keeps its spans, a cell holding
+    /// an estimate is marked `data-estimate="true"` and an emptied one `data-dropped="contradicted"`
+    /// or `"unsupported"`.
     ///
     /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
     /// its declared digest.

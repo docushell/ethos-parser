@@ -80,9 +80,10 @@
               "kind": {
                 "enum": [
                   "source",
-                  "syntax"
+                  "syntax",
+                  "proposed"
                 ],
-                "description": "TWO values, deliberately. `source` inverts to canonical node text; `syntax` is markup the exporter invented. There is no third — a 'probably source' would be the confidence field docs/01-CONTRACT.md §9 forbids, and would put the consumer back to guessing whether a quote is citable."
+                "description": "TWO values for the engine's bytes, deliberately. `source` inverts to canonical node text; `syntax` is markup the exporter invented. There is no third for them — a 'probably source' would be the confidence field docs/01-CONTRACT.md §9 forbids, and would put the consumer back to guessing whether a quote is citable. `proposed` is no such third: it is a drafting model's text, never the engine's reading, written only where the record holds an `assist` key (decision #147), and a quote touching it is not citable, as one touching `syntax` is not."
               },
               "start": {
                 "type": "integer",
@@ -100,7 +101,7 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "description": "The representation nodes these bytes came from, in emission order. Present on `source` and ABSENT on `syntax`, because syntax came from no node. Never a newly minted id: a projection that invented identifiers would be a second record of one document, and two records drift."
+                "description": "The representation nodes these bytes came from, in emission order. Present on `source` and ABSENT on `syntax`, because syntax came from no node. Never a newly minted id: a projection that invented identifiers would be a second record of one document, and two records drift. On `proposed`, exactly one: the `m`-numbered block of the record's `assist` key the bytes came from, which is no node."
               }
             }
           }
@@ -158,7 +159,8 @@
                   "overprinted-run-dropped-v1",
                   "page-furniture-not-projected-v1",
                   "repeated-table-header-not-projected-v1",
-                  "null-characters-not-projected-v1"
+                  "null-characters-not-projected-v1",
+                  "replaced-by-proposed-page-v1"
                 ]
               },
               "chars": {
@@ -212,6 +214,120 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "How many. Never a severity and never a ratio (docs/01-CONTRACT.md §9). Only non-zero classes appear: a list of codes all reading `0` is the disclosure-shaped noise a reader learns to skip, and every code is documented here whether or not a document trips it."
+              }
+            }
+          }
+        }
+      }
+    },
+    "proposed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "model",
+        "pages"
+      ],
+      "description": "What this artifact writes and leaves out of a drafting model's blocks (decision #147). PRESENT EXACTLY WHERE THE RECORD HOLDS AN `assist` KEY, so an engine-only artifact is byte for byte what it was. Under the rule `assist-lightonocr-v1`, a page where the engine read under 30% of the model's words (`model > 0`, `10 * shared < 3 * model`, `2 * model >= engine`, in decision #123's words: distinct runs of letters, digits and `_`, two characters or more, lower-cased, tags removed; `model` counted in the blocks a swap would write, not a cut last block, furniture `--drop-furniture` leaves out or a table's text outside its cells; `engine` in the engine-only Markdown) is swapped: the engine's runs and tables there are left out, counted in `coverage.dropped` under `replaced-by-proposed-page-v1`, and the model's blocks follow in reply order. On every other page, each `table` and `chart` block, with the `title` or `caption` before it unless all its words are the engine's, is added after the last run of the page that overlaps it across and starts above its foot, at the next block boundary, or before the page's first node; a model table whose cells, spans and rows equal an engine table's it overlaps on half the smaller box is left out. A model table is written from its parsed cells (a GFM grid here in Markdown, spans flattened; with its spans in HTML), never as the model's HTML; in text, tags but `<sub>`, `<sup>` and `<br>` are removed. Each insertion is one block quote: first `> **Proposed:** WHAT by ID@VERSION; model text, not read from the document.` (WHAT `page N as read`, `table`, `chart`, or `chart values estimated` where a value is an estimate), last `> **End of proposed text.**`, and the model's blocks between them one quote deeper, every line opening with `> >`. The model's text in it is escaped so none of it leaves its quote nor stands where the label or end line stands: U+0000 left out first, `&` and `<` as `&amp;` and `&lt;`, every `[` and `]` after a `\\`, a run of three backticks or tildes where a fence could open after a `\\`, a `\\r` a line break; code in a fence longer than any run of backticks in it as written. The model's id and version are escaped as its text is. The guard's `contradicted` and `unsupported` lines are left out, a cell emptied, never removed; a reply's cut last block is left out.",
+      "properties": {
+        "rule": {
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "assist-lightonocr-v1"
+          ]
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "The model the record's `assist` key names, which every label names too."
+        },
+        "pages": {
+          "type": "array",
+          "description": "One line per page the record holds a reply for, in page order.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "page",
+              "model_words",
+              "engine_words",
+              "shared_words",
+              "swapped",
+              "blocks",
+              "left_out"
+            ],
+            "properties": {
+              "page": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model_words": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Distinct words of the blocks a swap would write: not a cut last block, furniture `--drop-furniture` leaves out, or a table's text outside its cells."
+              },
+              "engine_words": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Distinct words of this page in the engine-only Markdown."
+              },
+              "shared_words": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "swapped": {
+                "type": "boolean"
+              },
+              "blocks": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "How many of the model's blocks this artifact writes."
+              },
+              "left_out": {
+                "type": "array",
+                "description": "What of the reply is left out, by code, sorted; only non-zero codes appear. Blocks: `proposed-table-duplicate-v1`, `proposed-block-truncated-v1`, `proposed-table-unparsed-v1` (a `table` holding no cell), `proposed-block-not-projected-v1` (off a swapped page, any block but a table, a chart and the caption before one; an empty block; furniture under `--drop-furniture`). Lines: `proposed-value-contradicted-v1`, `proposed-line-unsupported-v1`. In Markdown only, `gfm-span-slots-unrepresentable-v1`: slots a model table's spans covered.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "count"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "minLength": 1,
+                      "examples": [
+                        "proposed-block-not-projected-v1",
+                        "proposed-block-truncated-v1",
+                        "proposed-line-unsupported-v1",
+                        "proposed-table-duplicate-v1",
+                        "proposed-table-unparsed-v1",
+                        "proposed-value-contradicted-v1",
+                        "gfm-span-slots-unrepresentable-v1"
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
               }
             }
           }

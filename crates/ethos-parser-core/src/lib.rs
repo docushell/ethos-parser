@@ -84,6 +84,7 @@ pub mod locate;
 pub mod markdown;
 pub mod outlines;
 pub mod profile;
+pub mod proposed;
 pub mod representation;
 pub mod tables;
 pub mod verifier;
@@ -165,6 +166,11 @@ pub use profile::{
     TABLE_DETECTION_V7, TABLE_DETECTION_V8, TABLE_DETECTION_V9, TABLE_DETECTION_XLSX_SHEETS_V1,
     TEXT_CODE_RULE_V2, TEXT_CODE_RULE_V3, TEXT_CODE_RULE_V4, XLSX_READING_ORDER_RULE_V1,
     XLSX_TEXT_CODE_RULE_V3, XLSX_TEXT_CODE_RULE_V4,
+};
+pub use proposed::{
+    ProposedCensus, ProposedPage, PROPOSED_BLOCK_NOT_PROJECTED, PROPOSED_BLOCK_TRUNCATED,
+    PROPOSED_LINE_UNSUPPORTED, PROPOSED_TABLE_DUPLICATE, PROPOSED_TABLE_UNPARSED,
+    PROPOSED_VALUE_CONTRADICTED, REPLACED_BY_PROPOSED_PAGE,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,

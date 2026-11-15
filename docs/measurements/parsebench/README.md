@@ -1609,6 +1609,84 @@ whole model page appended to the engine's read charts 0.6385 against 0.6555 for 
 alone. Before it, assist Phase 0 measured Qwen2.5-VL-7B's tables appended to the engine's chart
 pages: charts 0.1726 -> 0.3982, overall 58.45.
 
+## ethos-parser + assist, through the product (decision #147, 2026-11-16)
+
+The same model's reading, merged and placed by the engine itself instead of by this adapter: each
+document is read with `extract --ocr --assist-answers <replies file>`, and its `markdown` and `html`
+are scored as the engine-only lane's are. The record holds the model's blocks as `Proposed`, the guard
+(decision #146) leaves out the lines the page contradicts, and the projections (decision #147) swap a
+page the engine barely read, add tables and charts at their reading position, leave out an exact copy
+of an engine table, and write every insertion as one block quote: its label `> **Proposed:** … by
+<model>@<version>` first, the model's blocks one quote deeper (`> > `), their text escaped, and
+`> **End of proposed text.**` last. These are still "ethos-parser + assist (LightOnOCR-3-0.8B)"
+numbers, not engine numbers.
+
+**The replies.** Decision #123's 1,578 pages, rendered again by hayro as `ethos-parser-assist` renders
+them and answered by the same model, revision and request (Phase 4a; 1 page, a JPEG 2000 image hayro
+cannot decode, has no answer). `assist_replies.py` writes one replies file per document, page 1 only,
+as #123 asked; `ethos-parser-assist render` drew all 1,577 pages byte for byte as the PNGs the model
+read. `render` prints no points, so `points` comes from the pixels and the dpi: at most 0.48 pt from
+the record's box, inside the 1 pt it is checked against. Every file loads; the 11 documents the engine
+refuses are refused with or without it. No trigger runs yet: every answered page is merged.
+
+```bash
+python3 -I assist_replies.py answers.json <the PNGs the model read> replies/ <ethos-parser-assist>
+ETHOS_BENCH_ASSIST_PRODUCT=replies/ ETHOS_BENCH_OCR=engine ETHOS_PARSER_BIN=<ethos-parser> uv run python ethos_bench.py run ethos_markdown
+```
+
+ParseBench hands the provider a copy of each source under a random name, so the adapter finds a
+document's replies file by the example's id. `ETHOS_BENCH_ASSIST_STRIP=1` unwraps each insertion in
+the Markdown scored, before its pipe tables are converted: the label and end lines and the quote
+markers go, and the escapes the product writes into model text (`&amp;`, `&lt;`, a `\` before `[`
+and `]`, before a fence's run of backticks or tildes, and before a `\` that precedes one of those)
+are undone, so the model's text reads as it wrote it. **The product never does**, and the row under
+it is reported as such. Checked on every page with an insertion: each of 26,392 unwrapped lines is
+the model's text as its reply wrote it, but for the tags the engine rewrites (`<br />` as `<br>`);
+437 of them the unwrap changed: 316 holding `&`, 40 `<`, 160 `[` or `]`.
+
+**Measured** on the engine of this tree with `--ocr`, the score ledger on; place against
+`leaderboard.csv`'s 157 rows (49th reads 69.12):
+
+| Lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| #123, Ghostscript pages, engine `bdcebe6` (the official row) | 86.36 | 65.53 | 83.94 | 59.50 | 60.04 | 71.07 | 35th |
+| #123's lane, hayro pages, engine `bdcebe6` | 86.41 | 66.17 | 83.83 | 59.44 | 60.04 | 71.18 | 34th |
+| #123's lane, hayro pages, this engine | 86.41 | 66.17 | 84.07 | 59.59 | 63.25 | 71.90 | 30th |
+| **Product, as written** | **60.53** | **64.81** | **83.71** | **54.34** | **63.25** | **65.33** | **68th** |
+| Product, unwrapped by the adapter | 85.75 | 66.67 | 84.19 | 59.68 | 63.25 | 71.91 | 30th |
+
+**As written, ParseBench reads past the quote.** The product scores 65.33 as it writes its Markdown,
+and 71.91 unwrapped, level with #123's lane on this engine (71.90) and 0.84 over #123's 71.07. The
+6.58 between them is the block quote, not the model's text: of the 236 pages that fall more than
+0.3 against #123's lane on this engine, 230 score as that lane does once unwrapped.
+
+- **Tables -25.22 for the quote**: the adapter converts a pipe table only where its line starts with
+  `|`, as every local provider's converter does, so a model table in `> > ` is never a table to the
+  table scorer. 191 table pages fall, each one whose model table the product added or swapped in;
+  190 recover unwrapped.
+- **Formatting -5.34**: ParseBench reads a title only from a `#` at a line's start, so the 33
+  swapped text pages that fall lose every heading in the quote.
+- **Charts -1.86**: 7 chart pages fall whose chart table is quoted, and recover unwrapped.
+- **Content -0.48**, 86 pages each a little: the quote markers are text to the content scorer.
+- **Two pages go the other way**, 1.0 as written and lower unwrapped (a table page 0.35, a chart page
+  0): the quote hides a model insertion that #123's lane scores just as low.
+- **Unwrapped, against #123's lane on this engine**: tables -0.66 (2 pages up, 36 down), charts
+  +0.49 (22 up, 16 down), content +0.12, formatting +0.10. The guard left out 329 contradicted lines,
+  16 unsupported lines and 30 cut last blocks on the table, chart and content pages; de-duplication
+  left out 185 model tables equal to an engine table cell for cell.
+- **Swap parity**: the product swaps every page #123's lane swaps (4 table, 3 chart, 78 text pages),
+  plus a Telugu and a Marathi page, where Python's `\w` and Rust's alphanumerics part words at
+  combining marks differently.
+
+**Pages that fall more than 0.3**, unwrapped, against #123's lane on this engine: 6, none from the
+engine. One table page is the guard's: it leaves out 30 cells of a table whose `Total` column and
+2027–2031 rows the engine does not read, while the page's prose and its totals row bear the model's
+values out. Five chart pages are the titles and placement: #123's lane writes each chart right after
+the model's own title, as a heading, while the product leaves out a title whose words the engine
+already holds and places the chart where it stands on the page. ParseBench takes a chart's labels
+only from a heading, bold text or a caption near the table, so four lose the chart's title, and one,
+four panels, places two panels out of order without their titles.
+
 ## What it found that is not fixed
 
 - **Content on readable pages** (decision #61's census, 2026-10-11). Of the content lost on text

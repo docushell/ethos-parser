@@ -60,8 +60,10 @@
 //! the engine found hidden, invisible, off the page or too small to see, is no evidence. The runs
 //! are joined as `ground` joins them into elements, with no table claiming its cells, so a page read
 //! glyph by glyph keeps its words; then read **line by line**: runs on one line, in a block, join
-//! into a piece unless more than a quarter of a run's height parts them, on either side; lines never
-//! join, and no value spans two pieces of a line, so two cells are never one value. Nor does one
+//! into a piece unless more than a quarter of a run's height parts them, on either side (half,
+//! after a space the engine read: a page letter-spacing digits sets one between them,
+//! `19 ,5 2 1`); lines never join, and no value spans two pieces of a line, so two cells are never
+//! one value. Nor does one
 //! span two lines (`12` above `34` is not `1234`), but where the first ends in `. , : / -`, as a
 //! range or a link the page wraps does (`2007-` above `2023`); a table row's never does.
 //!
@@ -71,7 +73,10 @@
 //! the page's text as it is. A **value** is the prototype's token, with any script's decimal digit
 //! for a digit: a run of ASCII letters and digits holding a digit, going on through letters, digits
 //! and `. , : / -` to its last letter or digit (`1,234.5`, `A113`, `٢٠٢٤-١١`; `A-113` gives `113`),
-//! read with what goes with it: a minus touching it or brackets around it make it negative (an en
+//! a dash of any width between two letters or digits (U+2010 to U+2015, U+2212) reading as `-`
+//! on either side (`99‐R98CR` is `99-R98CR`), and in the model's text a LaTeX command, a
+//! backslash and the lower-case letters after it, no part of one (`\pm20V` gives `20V`); read
+//! with what goes with it: a minus touching it or brackets around it make it negative (an en
 //! dash too), and a leading currency symbol or a percent sign is kept, brackets, a leading currency
 //! symbol and a percent sign also across a space or a piece break. A value is **found** where it
 //! occurs in the runs' text with whitespace removed, starting and ending outside the runs' own values, with the same sign and, where both
@@ -88,8 +93,9 @@
 //! or last row reaches one line past its own. A cell set on two lines whose second falls on a
 //! neighbouring row's line binds there too, in its column, between the row's values found either
 //! side, where the cell also shows on its own line (another of its values, or a word of letters).
-//! Brackets a right-to-left line draws mirrored, `)x(`, read as `(x)` where they touch. A cell the page sets on two lines binds, and a swap
-//! between rows each on its own line is caught; one between rows whose lines interleave may pass.
+//! Brackets a right-to-left line draws mirrored, `)x(`, read as `(x)` where they touch. A cell the
+//! page sets on two lines binds, and a swap between rows each on its own line binds neither cell;
+//! one between rows whose lines interleave may pass.
 //! Two rows swapped whole, labels kept, are caught by their **labels**, a row's words of letters no
 //! other row holds: where each row's label lies on the other's own line and not on its own, neither
 //! row's values are found. A label alone on another row's line is no swap: a table centres a label
@@ -106,11 +112,16 @@
 //! binds on its engine lines.
 //!
 //! 1. **A chart's** value not found is an `estimate`, kept and labelled: a chart's values are read
-//!    from its bars, so most are not in the page's text.
+//!    from its bars, so most are not in the page's text. Its first row and the first cell of each
+//!    row name its series and categories and assert nothing: never `unsupported`, they bind or are
+//!    unchecked.
 //! 2. **Where the engine did not read the region**, every other line is unchecked and kept:
 //!    supplying it is the model's point.
 //! 3. **Where it did**, a line with a value not found is `contradicted`, and a line of three words
-//!    or more, fewer than half of them the engine's, `unsupported`; both are dropped. In a block
+//!    or more, fewer than half of them the engine's, `unsupported`; both are dropped. A table cell
+//!    whose values off its row's lines the region holds elsewhere is `disputed` and kept instead (a
+//!    total the engine reads below its table, a code or a date the page prints once); one holding a
+//!    value the region does not hold, or in a row swapped whole, stays `contradicted`. In a block
 //!    fewer than half of whose words the engine holds, such a line is `disputed` instead and kept:
 //!    a reply that much at odds with the engine is as often the engine's misreading as the
 //!    model's. A line binds
@@ -308,17 +319,18 @@ pub struct AssistFlag {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AssistMark {
-    /// A value the runs do not hold as written, sign and symbols included, or not on its table row's
-    /// line, in a region the engine read: dropped.
+    /// A value the runs do not hold as written, sign and symbols included, in a region the engine
+    /// read, or a table row's value in a row swapped whole with another: dropped.
     Contradicted,
-    /// Three words or more, fewer than half of them the runs': dropped.
+    /// Three words or more, fewer than half of them the runs', never a chart's names: dropped.
     Unsupported,
     /// A chart's value the runs do not hold: kept, labelled an estimate.
     Estimate,
     /// A line that would be contradicted or unsupported, in a block fewer than half of whose words
     /// the runs hold: kept, labelled disputed, since a reply mostly at odds with the engine's
-    /// reading is as often the engine's misreading as the model's (decision #146). It names its
-    /// first value not found, if a value failed.
+    /// reading is as often the engine's misreading as the model's (decision #146); or a table cell
+    /// whose values the region holds, one not on its row's lines. It names its first value not
+    /// found, if a value failed.
     Disputed,
 }
 
@@ -612,10 +624,7 @@ pub fn attach(
             }
             return Err(other_page("which this document does not have".into()));
         };
-        let frame @ [_, _, width, height] = match page.visible {
-            Some(v) => [v.x0(), v.y0(), v.x1() - v.x0(), v.y1() - v.y0()],
-            None => [0, 0, page.width, page.height],
-        };
+        let frame @ [_, _, width, height] = frame_of(page);
         let off = |rendered: i64, shown: i64| {
             rendered.abs_diff(shown) > u64::from(crate::geom::QUANTUM_PER_POINT)
         };
@@ -838,6 +847,29 @@ fn legible(node: &crate::Node) -> bool {
     !found && !node.text.contains('\u{FFFD}')
 }
 
+/// A page's visible box, `[left, top, width, height]` in centipoints: the frame a block's grid is
+/// drawn on. The renderer draws exactly that box, turned, and the record's sizes are after the
+/// turn, so no rotation enters (design §4.3).
+pub(crate) fn frame_of(page: &crate::representation::PageRecord) -> [i64; 4] {
+    match page.visible {
+        Some(v) => [v.x0(), v.y0(), v.x1() - v.x0(), v.y1() - v.y0()],
+        None => [0, 0, page.width, page.height],
+    }
+}
+
+/// A block's box on the 0-1000 grid, mapped onto `frame` (as [`frame_of`] gives it), as
+/// `[x0, y0, x1, y1]` in thousandths of a centipoint, so no division rounds.
+pub(crate) fn placed(grid: [u32; 4], frame: [i64; 4]) -> [i128; 4] {
+    let [left, top, width, height] = frame.map(i128::from);
+    let at = |origin: i128, size: i128, g: u32| 1000 * origin + i128::from(g) * size;
+    [
+        at(left, width, grid[0]),
+        at(top, height, grid[1]),
+        at(left, width, grid[2]),
+        at(top, height, grid[3]),
+    ]
+}
+
 /// One run of the engine's ink: its measured box, if it has one, its text, and whether it is
 /// [`legible`].
 #[derive(Debug, Clone)]
@@ -863,14 +895,8 @@ fn guard_with(
 ) -> AssistGuard {
     // A box the model drew too small binds against the engine's table it overlaps, or a block region
     // of the engine's no larger than half the page: never against the page at large.
-    let [left, top, width, height] = frame.map(i128::from);
-    let at = |origin: i128, size: i128, g: u32| 1000 * origin + i128::from(g) * size;
-    let model = [
-        at(left, width, grid[0]),
-        at(top, height, grid[1]),
-        at(left, width, grid[2]),
-        at(top, height, grid[3]),
-    ];
+    let [_, _, width, height] = frame.map(i128::from);
+    let model = placed(grid, frame);
     let union: Vec<QRect> = regions
         .iter()
         .filter(|(r, table)| {
@@ -898,7 +924,7 @@ fn guard_with(
     let [x0, y0, x1, y1] = grid;
     let placed = (x1 - x0) * (y1 - y0) <= 500_000;
 
-    let whole = plain(text);
+    let whole = hyphenated(&plain(text));
     let own = words(&whole);
     let shared = own.intersection(&all.words).count();
     let agreement = (shared * 1000).checked_div(own.len()).unwrap_or(0);
@@ -911,12 +937,18 @@ fn guard_with(
     // fails is disputed, kept, not dropped, as often the engine's misreading as the model's.
     let disputed = agreement < GUARD_AGREEMENT_PERMILLE;
     let chart = label == Some("chart");
-    let lines = block_lines(label, text);
-    let (rows, row_words) = if label == Some("table") {
+    let lines: Vec<(Option<u32>, String)> = block_lines(label, text)
+        .into_iter()
+        .map(|(row, line)| (row, hyphenated(&line)))
+        .collect();
+    let (rows, row_words, swapped) = if label == Some("table") {
         rows_found(&lines, &bands)
     } else {
         Default::default()
     };
+    // A chart's first row and the first cell of each row name its series and categories.
+    let first_row = lines.iter().find_map(|(row, _)| *row);
+    let mut rows_seen = std::collections::BTreeSet::new();
     let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
     let mut guard = AssistGuard {
         engine_words: count(all.words.len()),
@@ -938,14 +970,23 @@ fn guard_with(
             _ => all.find(v, 0).is_none(),
         };
         let missing = (0..).zip(&values).find(|(k, v)| unfound(*k, v));
+        // A table cell whose values off its row's lines the region holds elsewhere is disputed,
+        // kept: a total the engine reads below its table, a date the page prints once. A value
+        // the region does not hold, or a row swapped whole with another, stays contradicted.
+        let misplaced = matches!(row, Some(r) if label == Some("table") && !swapped.contains(r))
+            && (0..)
+                .zip(&values)
+                .all(|(k, v)| !unfound(k, v) || all.find(v, 0).is_some());
+        // A chart's names assert nothing, so they are never unsupported: bound, or unchecked.
+        let naming = chart && row.is_some_and(|r| Some(r) == first_row || rows_seen.insert(r));
         let own = words(text);
         let shared = own.intersection(&all.words).count();
         let (mark, value) = match missing {
             Some((_, v)) if chart => (AssistMark::Estimate, Some(v.token)),
             _ if !read => continue, // The engine did not read the region: unchecked.
-            Some((_, v)) if disputed => (AssistMark::Disputed, Some(v.token)),
+            Some((_, v)) if disputed || misplaced => (AssistMark::Disputed, Some(v.token)),
             Some((_, v)) => (AssistMark::Contradicted, Some(v.token)),
-            None if own.len() >= 3 && 2 * shared < own.len() => {
+            None if !naming && own.len() >= 3 && 2 * shared < own.len() => {
                 let mark = if disputed {
                     AssistMark::Disputed
                 } else {
@@ -1016,8 +1057,16 @@ fn bands_inside(grid: [u32; 4], frame: [i64; 4], ink: &[Ink], union: &[QRect]) -
     // the same block, inside, legible, its centre lies within the piece's height, and it lies no
     // more than a quarter of its own height beyond the piece on either side: glyphs of a word touch,
     // whichever way they run, while two cells the engine read as one block stand apart, and a run
-    // the reading order jumps back left to starts afresh. A run of spaces, which has no box,
-    // joins whatever piece is open.
+    // the reading order jumps back left to starts afresh. After a space the engine read, less than
+    // half its height: a page that letter-spaces digits sets a space between them (`19 ,5 2 1`).
+    // A run of spaces, which has no box, joins whatever piece is open.
+    let near = |piece: &str, gap: i64, height: i64| {
+        if piece.ends_with(char::is_whitespace) {
+            2 * gap < height
+        } else {
+            4 * gap <= height
+        }
+    };
     let mut pieces: Vec<([i64; 4], String)> = Vec::new();
     for runs in ink {
         let mut open = false;
@@ -1030,8 +1079,8 @@ fn bands_inside(grid: [u32; 4], frame: [i64; 4], ink: &[Ink], union: &[QRect]) -
                             if open
                                 && 2 * *t <= mid
                                 && mid <= 2 * *b
-                                && 4 * (r.x0() - *right) <= r.y1() - r.y0()
-                                && 4 * (*left - r.x1()) <= r.y1() - r.y0() =>
+                                && near(piece, r.x0() - *right, r.y1() - r.y0())
+                                && near(piece, *left - r.x1(), r.y1() - r.y0()) =>
                         {
                             piece.push_str(run.text);
                             *left = (*left).min(r.x0());
@@ -1083,10 +1132,12 @@ fn joined(line: &[(i64, String)]) -> String {
     texts.join(PIECE)
 }
 
-/// What [`rows_found`] gives: the `(line, value)` pairs found, and the words of each row's lines.
+/// What [`rows_found`] gives: the `(line, value)` pairs found, the words of each row's lines, and
+/// the rows swapped whole with another.
 type RowsFound = (
     std::collections::BTreeSet<(usize, usize)>,
     std::collections::BTreeMap<u32, std::collections::BTreeSet<String>>,
+    std::collections::BTreeSet<u32>,
 );
 
 /// Where a table's rows lie among the engine's lines, and which of their values are found there.
@@ -1248,7 +1299,7 @@ fn rows_found(lines: &[(Option<u32>, String)], bands: &[Line]) -> RowsFound {
         }
         spread.insert(number, span.words);
     }
-    (found, spread)
+    (found, spread, swapped)
 }
 
 /// A value as written: its token, and what touches it — a minus sign or brackets, which make it
@@ -1361,6 +1412,7 @@ impl Engine {
     /// The engine's text is the page's, never markup: a page that prints `<` and `>` keeps what
     /// stands between them (the prototype removed it as a tag).
     fn new(text: &str) -> Self {
+        let text = &hyphenated(text);
         let spans = value_spans(text);
         let mut next = spans.iter().peekable();
         let mut squashed = String::with_capacity(text.len());
@@ -1408,7 +1460,7 @@ impl Engine {
 
 /// Decision #123's words: the distinct runs of letters, digits and `_` of two characters or more,
 /// lower-cased.
-fn words(text: &str) -> std::collections::BTreeSet<String> {
+pub(crate) fn words(text: &str) -> std::collections::BTreeSet<String> {
     text.to_lowercase()
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|w| w.chars().nth(1).is_some())
@@ -1416,12 +1468,42 @@ fn words(text: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-/// The values of `text`, in order, each with what touches it (`value_at`).
+/// The values of the model's `text`, in order, each with what touches it (`value_at`). A LaTeX
+/// command, a backslash and the lower-case letters after it, is no part of a value: `\pm20V` holds
+/// `20V`, while a path's `\O365` keeps its value.
 fn values(text: &str) -> Vec<Value<'_>> {
     value_spans(text)
         .into_iter()
-        .map(|(start, end)| value_at(text, start, end))
+        .map(|(start, end)| {
+            let command = if text[..start].ends_with('\\') {
+                text[start..end]
+                    .bytes()
+                    .take_while(u8::is_ascii_lowercase)
+                    .count()
+            } else {
+                0
+            };
+            value_at(text, start + command, end)
+        })
         .collect()
+}
+
+/// `text` with each dash between two letters or digits written `-`: U+2010 to U+2015 and U+2212
+/// join a value as `-` does, so the engine's `99‐R98CR` is the model's `99-R98CR`, whichever dash
+/// each side wrote. A dash touching a value on one side only is left as written, so a minus stays
+/// one.
+fn hyphenated(text: &str) -> String {
+    let joins = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphabetic() || is_digit(c));
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut before = None;
+    while let Some(c) = chars.next() {
+        let dash = matches!(c, '\u{2010}'..='\u{2015}' | '\u{2212}');
+        let between = joins(before) && joins(chars.peek().copied());
+        out.push(if dash && between { '-' } else { c });
+        before = Some(c);
+    }
+    out
 }
 
 /// The first code point of each block of ten Unicode decimal digits (general category `Nd`),
@@ -1488,7 +1570,7 @@ fn plain(text: &str) -> String {
 /// `text` with the HTML character references a reply writes decoded: `&lt;`, `&gt;`, `&amp;`,
 /// `&quot;`, `&#39;` and `&apos;`, and any decimal or hexadecimal reference to a character. Any
 /// other `&` stays as written.
-fn decoded(text: &str) -> String {
+pub(crate) fn decoded(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(at) = rest.find('&') {
@@ -1531,7 +1613,7 @@ fn decoded(text: &str) -> String {
 }
 
 /// `text` with each tag, a `<` and the next `>` with something between, made one space.
-fn untagged(text: &str) -> String {
+pub(crate) fn untagged(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(open) = rest.find('<') {
@@ -1551,21 +1633,16 @@ fn untagged(text: &str) -> String {
 }
 
 /// `text` with its whitespace runs made one space, and none at either end.
-fn collapsed(text: &str) -> String {
+pub(crate) fn collapsed(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// A block's lines, in its order, as the guard reads them, whitespace collapsed: for a table or chart, each cell with
 /// its row, and the text outside any cell (a caption, words after the table) line by line; for
 /// any other block, its text line by line. Blank lines outside a cell are not lines.
-fn block_lines(label: Option<&str>, text: &str) -> Vec<(Option<u32>, String)> {
+pub(crate) fn block_lines(label: Option<&str>, text: &str) -> Vec<(Option<u32>, String)> {
     let free = |text: &str| -> Vec<(Option<u32>, String)> {
-        plain(text)
-            .lines()
-            .map(collapsed)
-            .filter(|l| !l.is_empty())
-            .map(|l| (None, l))
-            .collect()
+        text_lines(text).into_iter().map(|l| (None, l)).collect()
     };
     if !matches!(label, Some("table" | "chart")) {
         return free(text);
@@ -1579,10 +1656,29 @@ fn block_lines(label: Option<&str>, text: &str) -> Vec<(Option<u32>, String)> {
         .collect()
 }
 
+/// Text outside a table's cells as the guard reads it, line by line: its tags removed, its
+/// character references decoded, each line's whitespace collapsed, blank lines left out.
+pub(crate) fn text_lines(text: &str) -> Vec<String> {
+    plain(text)
+        .lines()
+        .map(collapsed)
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
 /// A table's parts, in order: what each `<td>` and `<th>` holds, up to the next tag of a cell, row
 /// or table, with its row's number (each `<tr>` starts one); and what lies outside every cell.
 /// A tag that no `>` closes ends the table: nothing after it is read.
 fn table_parts(html: &str) -> Vec<(Option<u32>, &str)> {
+    cells_of(html)
+        .into_iter()
+        .map(|(row, _, part)| (row, part))
+        .collect()
+}
+
+/// [`table_parts`], each cell with its opening tag (`<td colspan="2">`), which the projection reads
+/// a cell's kind and spans from (decision #147); a part outside every cell has an empty tag.
+pub(crate) fn cells_of(html: &str) -> Vec<(Option<u32>, &str, &str)> {
     let lower = html.to_ascii_lowercase();
     let mut out = Vec::new();
     let (mut row, mut cell, mut free, mut at) = (0u32, None, 0, 0);
@@ -1598,8 +1694,8 @@ fn table_parts(html: &str) -> Vec<(Option<u32>, &str)> {
             continue;
         }
         match cell.take() {
-            Some(from) => out.push((Some(row), &html[from..start])),
-            None => out.push((None, &html[free..start])),
+            Some((tag, from)) => out.push((Some(row), &html[tag..from], &html[from..start])),
+            None => out.push((None, "", &html[free..start])),
         }
         let Some(end) = lower[start..].find('>') else {
             return out;
@@ -1610,12 +1706,12 @@ fn table_parts(html: &str) -> Vec<(Option<u32>, &str)> {
             row += 1;
         }
         if !closing && matches!(name, "td" | "th") {
-            cell = Some(at);
+            cell = Some((start, at));
         }
     }
     match cell {
-        Some(from) => out.push((Some(row), &html[from..])),
-        None => out.push((None, &html[free..])),
+        Some((tag, from)) => out.push((Some(row), &html[tag..from], &html[from..])),
+        None => out.push((None, "", &html[free..])),
     }
     out
 }
@@ -2795,6 +2891,36 @@ mod tests {
         );
     }
 
+    /// **A chart's first row and first column name its series and categories, and are never
+    /// unsupported**: a name the engine did not read is unchecked. Its other cells and the text
+    /// outside them are checked as any other block's.
+    #[test]
+    fn a_charts_names_are_never_unsupported() {
+        const CHART: &str = "Figure seven shows national averages across eleven world regions \
+            between nineteen eighty and twenty two inclusive\n\
+            <table><tr><th>Group</th><th>Pretax income share</th></tr>\
+            <tr><td>Top tenth decile</td><td>42</td></tr>\
+            <tr><td>Middle</td><td>not yet reported</td></tr></table>\n\
+            Revenue tripled after merger";
+        let runs = [
+            run(
+                300,
+                300,
+                "Figure seven shows national averages across eleven world regions between \
+                 nineteen eighty and twenty two inclusive",
+            ),
+            run(200, 380, "42"),
+        ];
+        let g = guard(Some("chart"), CHART, [150, 290, 450, 490], FRAME, &runs);
+        assert!(g.agreement_permille >= 500, "checked, not disputed");
+        let u = AssistMark::Unsupported;
+        assert_eq!(tally(&g), (8, 2, vec![flag(7, u, None), flag(8, u, None)]));
+        // A table's header and first column are cells like any other.
+        let g = guard(Some("table"), CHART, [150, 290, 450, 490], FRAME, &runs);
+        let flagged: Vec<u32> = g.flagged.iter().map(|f| f.line).collect();
+        assert_eq!(flagged, [3, 4, 7, 8]);
+    }
+
     /// **A line of three words or more, fewer than half of them the engine's, is unsupported**;
     /// a line of words half of which are found binds; a shorter line none of whose words are
     /// found is unchecked; a line both unsupported and holding a value not found is contradicted.
@@ -2966,10 +3092,11 @@ mod tests {
 
     /// **A table row's values are found on one engine line, in the row's order**: swapped cells,
     /// a row shifted by a column, a wrong value printed just outside the table and a box over
-    /// the whole page bind no wrong cell.
+    /// the whole page bind no wrong cell. Each is disputed, the region holding it off its row; a
+    /// value the region does not hold is contradicted.
     #[test]
     fn a_rows_values_are_found_on_one_line_in_order() {
-        let c = AssistMark::Contradicted;
+        let (c, d) = (AssistMark::Contradicted, AssistMark::Disputed);
         let check = |rows: &[&[&str]], grid: [u32; 4], runs: &[Ink<'static>]| {
             tally(&guard(Some("table"), &html(rows), grid, FRAME, runs))
         };
@@ -2981,14 +3108,14 @@ mod tests {
             (
                 16,
                 14,
-                vec![flag(6, c, Some("9012")), flag(14, c, Some("1,234"))]
+                vec![flag(6, d, Some("9012")), flag(14, d, Some("1,234"))]
             )
         );
         let mut shifted = TRUE_TABLE;
         shifted[1] = &["Alpha", "A-113", "2024-03-01", "1,234"];
         assert_eq!(
             check(&shifted, TABLE_BOX, &table_runs()),
-            (16, 15, vec![flag(8, c, Some("1,234"))])
+            (16, 15, vec![flag(8, d, Some("1,234"))])
         );
         // `1,243` printed on its own line inside the box's slack, and elsewhere on the page.
         let mut wrong = TRUE_TABLE;
@@ -2998,11 +3125,11 @@ mod tests {
         runs.push(run(100, 900, "Footnote 1,243 units"));
         assert_eq!(
             check(&wrong, TABLE_BOX, &runs),
-            (16, 15, vec![flag(6, c, Some("1,243"))])
+            (16, 15, vec![flag(6, d, Some("1,243"))])
         );
         assert_eq!(
             check(&wrong, [0, 0, 1000, 1000], &runs),
-            (16, 15, vec![flag(6, c, Some("1,243"))]),
+            (16, 15, vec![flag(6, d, Some("1,243"))]),
             "over the whole page, each row binds on its line"
         );
         // A row's repeated values, in order.
@@ -3064,7 +3191,34 @@ mod tests {
         ];
         assert_eq!(
             check(&rows, [80, 100, 400, 140], &runs),
-            (6, 5, vec![flag(5, c, Some("1,234"))])
+            (6, 5, vec![flag(5, d, Some("1,234"))])
+        );
+    }
+
+    /// **A table cell whose values the region holds, one not on its row's lines, is disputed and
+    /// kept**: a total the engine reads below its table, a date the page prints once for rows the
+    /// model repeats it in. A cell holding a value the region does not hold is contradicted.
+    #[test]
+    fn a_value_the_region_holds_off_its_row_is_disputed() {
+        let (c, d) = (AssistMark::Contradicted, AssistMark::Disputed);
+        let mut runs = table_runs();
+        runs.push(run(700, 186, "4,321"));
+        let mut model = TRUE_TABLE;
+        model[1] = &["Alpha", "1,234", "A-113", "2024-03-01 4,321"];
+        model[2] = &["Beta", "5.678", "B-220", "2024-03-01"];
+        model[3] = &["Gamma", "9012", "C-310", "1,234 8,888"];
+        let g = guard(Some("table"), &html(&model), TABLE_BOX, FRAME, &runs);
+        assert_eq!(
+            tally(&g),
+            (
+                16,
+                13,
+                vec![
+                    flag(8, d, Some("4,321")),
+                    flag(12, d, Some("2024-03-01")),
+                    flag(16, c, Some("1,234")),
+                ]
+            )
         );
     }
 
@@ -3443,11 +3597,12 @@ mod tests {
             &runs,
         );
         assert_eq!(tally(&g), (8, 8, vec![]));
-        // Neighbouring rows that swap a value, each on its own line, are both wrong.
+        // Neighbouring rows that swap a value, each on its own line, are both disputed: neither
+        // binds, and the region holds both values.
         let mut swapped = TRUE_TABLE;
         swapped[1] = &["Alpha", "5.678", "A-113", "2024-03-01"];
         swapped[2] = &["Beta", "1,234", "B-220", "2024-04-15"];
-        let c = AssistMark::Contradicted;
+        let (c, d) = (AssistMark::Contradicted, AssistMark::Disputed);
         assert_eq!(
             tally(&guard(
                 Some("table"),
@@ -3459,11 +3614,11 @@ mod tests {
             (
                 16,
                 14,
-                vec![flag(6, c, Some("5.678")), flag(10, c, Some("1,234"))]
+                vec![flag(6, d, Some("5.678")), flag(10, d, Some("1,234"))]
             )
         );
-        // Neighbouring rows that swap every value, labels kept, are both wrong (review): each
-        // row's values lie on the other's line, which does not hold its label.
+        // Neighbouring rows that swap every value, labels kept, are both contradicted (review):
+        // each row's values lie on the other's line, which does not hold its label.
         let mut swapped = TRUE_TABLE;
         swapped[1] = &["Alpha", "5.678", "B-220", "2024-04-15"];
         swapped[2] = &["Beta", "1,234", "A-113", "2024-03-01"];
@@ -3542,7 +3697,8 @@ mod tests {
             &runs,
         );
         assert_eq!(tally(&g), (4, 3, vec![]));
-        // The last row's wrong value printed on the line below binds; two lines below, it does not.
+        // The last row's wrong value printed on the line below binds; two lines below, it does
+        // not, and is disputed.
         let mut wrong = TRUE_TABLE;
         wrong[3] = &["Gamma", "9,999", "C-310", "2024-05-30"];
         let mut runs = table_runs();
@@ -3564,7 +3720,7 @@ mod tests {
         let mut runs = table_runs();
         runs.push(run(100, 186, "Note"));
         runs.push(run(300, 200, "9,999"));
-        assert_eq!(at(&runs), (16, 15, vec![flag(14, c, Some("9,999"))]));
+        assert_eq!(at(&runs), (16, 15, vec![flag(14, d, Some("9,999"))]));
     }
 
     /// **A box the model drew too small binds against the engine's table it overlaps**, or a block
@@ -3628,7 +3784,8 @@ mod tests {
         // An engine table binds at any size: its rows still bind each on its own lines.
         let large = QRect::new(0, 10000, 100_000, 70000).unwrap();
         assert_eq!(at(&[(large, true)]), (16, 16, vec![]));
-        // The model's wrong value printed in the engine's table but off its row stays wrong.
+        // The model's wrong value printed in the engine's table but off its row does not bind: it
+        // is disputed.
         let mut wrong = TRUE_TABLE;
         wrong[1] = &["Alpha", "5.678", "A-113", "2024-03-01"];
         let g = guard_with(
@@ -3639,10 +3796,7 @@ mod tests {
             &table_runs(),
             &[(table, true)],
         );
-        assert_eq!(
-            tally(&g).2,
-            [flag(6, AssistMark::Contradicted, Some("5.678"))]
-        );
+        assert_eq!(tally(&g).2, [flag(6, AssistMark::Disputed, Some("5.678"))]);
     }
 
     /// A block whose reading order jumps back left starts a new piece there: `0.` and `92` drawn
@@ -3712,7 +3866,7 @@ mod tests {
     /// **A table cell set on two lines, its second on the next row's line, binds to its own row**
     /// where it lies in its column, between the row's values found either side of it, and shows on
     /// its own line too; a single value the next row prints does not, nor one the model adds past
-    /// the last one found.
+    /// the last one found: each is disputed, the region holding it.
     #[test]
     fn a_stacked_cell_binds_to_its_row_in_its_column() {
         let runs = [
@@ -3744,10 +3898,7 @@ mod tests {
             FRAME,
             &runs,
         );
-        assert_eq!(
-            tally(&g).2,
-            [flag(4, AssistMark::Contradicted, Some("5.678"))]
-        );
+        assert_eq!(tally(&g).2, [flag(4, AssistMark::Disputed, Some("5.678"))]);
         // Out of its column, or past the row's last value found, the next row's line lends nothing,
         // though the cell shows on its own line.
         let runs = [
@@ -3767,10 +3918,7 @@ mod tests {
             FRAME,
             &runs,
         );
-        assert_eq!(
-            tally(&g).2,
-            [flag(2, AssistMark::Contradicted, Some("5.678"))]
-        );
+        assert_eq!(tally(&g).2, [flag(2, AssistMark::Disputed, Some("5.678"))]);
         let rows: [&[&str]; 2] = [
             &["Alpha", "1,234", "A-113", "Total 5.678"],
             &["Beta", "", "B-220", ""],
@@ -3782,10 +3930,7 @@ mod tests {
             FRAME,
             &runs,
         );
-        assert_eq!(
-            tally(&g).2,
-            [flag(4, AssistMark::Contradicted, Some("5.678"))]
-        );
+        assert_eq!(tally(&g).2, [flag(4, AssistMark::Disputed, Some("5.678"))]);
         // A single wrong value does not borrow the next row's, printed in its column.
         let rows: [&[&str]; 2] = [&["Alpha", "5,678", "A-113"], &["Beta", "5,678", "B-220"]];
         let runs = [
@@ -3803,10 +3948,7 @@ mod tests {
             FRAME,
             &runs,
         );
-        assert_eq!(
-            tally(&g).2,
-            [flag(2, AssistMark::Contradicted, Some("5,678"))]
-        );
+        assert_eq!(tally(&g).2, [flag(2, AssistMark::Disputed, Some("5,678"))]);
     }
 
     /// Brackets the engine read mirrored, as a right-to-left line draws them, touching the value:
@@ -3817,5 +3959,112 @@ mod tests {
         assert!(!holds(")2(", "2"));
         assert!(holds("(1) 2 (3)", "2"));
         assert!(!holds("(1) 2 (3)", "(2)"));
+    }
+
+    /// The guard on one line of text whose engine reading is `engine`, one run.
+    fn line_against(engine: &str, model: &str) -> (u32, u32, Vec<AssistFlag>) {
+        let runs = [vec![InkRun {
+            rect: Some(QRect::new(10000, 10000, 30000, 11000).unwrap()),
+            text: engine,
+            legible: true,
+        }]];
+        tally(&guard(
+            Some("text"),
+            model,
+            [90, 90, 310, 120],
+            FRAME,
+            &runs,
+        ))
+    }
+
+    /// **A dash of any width between two letters or digits reads as `-`, on either side**: the
+    /// engine's `99‐R98CR` (U+2010) holds the model's `99-R98CR`, and the other way round, and an
+    /// en dash one side wrote holds the other's em dash. A dash touching a value on one side only is
+    /// left as written.
+    #[test]
+    fn a_dash_between_letters_or_digits_is_a_hyphen() {
+        for dash in [
+            '\u{2010}', '\u{2011}', '\u{2012}', '\u{2013}', '\u{2014}', '\u{2015}',
+        ] {
+            let page = format!("Form 99{dash}R98CR filed");
+            assert_eq!(line_against(&page, "Form 99-R98CR filed"), (1, 1, vec![]));
+            assert_eq!(line_against("Form 99-R98CR filed", &page), (1, 1, vec![]));
+        }
+        let page = "Part 9\u{2014}Internal 4\u{2013}G";
+        assert_eq!(
+            line_against(page, "Part 9\u{2013}Internal 4\u{2014}G"),
+            (1, 1, vec![])
+        );
+        let page = "Years 2007\u{2212}2023 filed";
+        assert_eq!(line_against(page, "Years 2007-2023 filed"), (1, 1, vec![]));
+        // Touching one side only, a dash is as written: U+2212 is a minus, U+2010 is not.
+        assert_eq!(
+            line_against("Loss \u{2212}5 units", "Loss -5 units"),
+            (1, 1, vec![])
+        );
+        assert_eq!(
+            line_against("Loss \u{2010}5 units", "Loss 5 units"),
+            (1, 1, vec![])
+        );
+    }
+
+    /// **A LaTeX command in the model's text is no part of a value**: a backslash and the
+    /// lower-case letters after it, so `$\pm20V$` holds `20V`. A path's `\O365` keeps its value.
+    #[test]
+    fn a_latex_command_is_no_part_of_a_value() {
+        let tokens = |s| values(s).iter().map(|v| v.token).collect::<Vec<_>>();
+        assert_eq!(
+            tokens("$V_{GS}=\\pm20V$, $\\pm100$, 3\\times10^{6}"),
+            ["20V", "100", "3", "10", "6"]
+        );
+        assert_eq!(tokens("C:\\Users\\O365-[Sec]\\MSS194"), ["O365", "MSS194"]);
+        assert_eq!(
+            line_against(
+                "Gate voltage \u{B1}20V rated",
+                "Gate voltage $\\pm20V$ rated"
+            ),
+            (1, 1, vec![])
+        );
+    }
+
+    /// **Digits the page letter-spaces with a space read between them are one piece**: a run
+    /// after a piece ending in a space joins it within less than half its height, so the engine's
+    /// `19 ,5 2 1` holds `19,521`. Without the space, or half a height apart, they are two.
+    #[test]
+    fn letter_spaced_digits_with_spaces_between_are_one_piece() {
+        // The runs as the engine reads one page's cell, a run 771 high, after a label.
+        let at = |x0, x1, text| ink(QRect::new(x0, 27352, x1, 28123).unwrap(), text);
+        let check = |digits: &[(i64, i64, &'static str)], model: &str| {
+            let mut runs = vec![at(26000, 27800, "Total")];
+            runs.extend(digits.iter().map(|&(x0, x1, t)| at(x0, x1, t)));
+            tally(&guard(
+                Some("text"),
+                model,
+                [255, 270, 310, 285],
+                FRAME,
+                &[runs],
+            ))
+        };
+        let spaced = [
+            (28428, 28885, "19 "),
+            (29100, 29155, ","),
+            (29232, 29461, "5 "),
+            (29664, 29893, "2 "),
+            (30060, 30289, "1"),
+        ];
+        assert_eq!(check(&spaced, "Total 19,521"), (1, 1, vec![]));
+        let c = AssistMark::Contradicted;
+        // No space read between them: a quarter of the height parts them, as before.
+        let unspaced = [(28428, 28885, "12"), (29100, 29329, "3")];
+        assert_eq!(
+            check(&unspaced, "Total 123"),
+            (1, 0, vec![flag(1, c, Some("123"))])
+        );
+        // Half the height parts them, a space read or not.
+        let apart = [(28428, 28885, "12 "), (29271, 29500, "3")];
+        assert_eq!(
+            check(&apart, "Total 123"),
+            (1, 0, vec![flag(1, c, Some("123"))])
+        );
     }
 }

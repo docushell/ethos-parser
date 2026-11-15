@@ -472,6 +472,18 @@ const CORE: &[&str] = &[
     "AssistRecord",
     "assist",
     "attach",
+    // Decision #147: what a projection writes and leaves out of a drafting model's blocks, and
+    // its codes.
+    "proposed",
+    "ProposedCensus",
+    "ProposedPage",
+    "PROPOSED_BLOCK_NOT_PROJECTED",
+    "PROPOSED_BLOCK_TRUNCATED",
+    "PROPOSED_LINE_UNSUPPORTED",
+    "PROPOSED_TABLE_DUPLICATE",
+    "PROPOSED_TABLE_UNPARSED",
+    "PROPOSED_VALUE_CONTRADICTED",
+    "REPLACED_BY_PROPOSED_PAGE",
     "assurance",
     "c14n",
     "c14n_bytes",
