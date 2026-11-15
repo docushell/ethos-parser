@@ -2402,7 +2402,7 @@ mod tests {
     }
 
     /// (lines, bound, flagged) of a guard.
-    fn verdict(g: &AssistGuard) -> (u32, u32, Vec<AssistFlag>) {
+    fn tally(g: &AssistGuard) -> (u32, u32, Vec<AssistFlag>) {
         (g.lines, g.bound, g.flagged.clone())
     }
 
@@ -2462,7 +2462,7 @@ mod tests {
         );
         let c = AssistMark::Contradicted;
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (
                 16,
                 12,
@@ -2483,7 +2483,7 @@ mod tests {
             FRAME,
             &table_runs(),
         );
-        assert_eq!(verdict(&g), (16, 16, vec![]));
+        assert_eq!(tally(&g), (16, 16, vec![]));
     }
 
     /// Whether the engine's `text` holds the first value of `model`, signs and symbols included.
@@ -2633,7 +2633,7 @@ mod tests {
         let g = guard(Some("table"), &model, TABLE_BOX, FRAME, &table_runs());
         let c = AssistMark::Contradicted;
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (
                 16,
                 14,
@@ -2691,7 +2691,7 @@ mod tests {
             &[run(100, 100, "Item 42")],
         );
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (2, 1, vec![flag(2, AssistMark::Contradicted, Some("43"))])
         );
     }
@@ -2715,7 +2715,7 @@ mod tests {
         let e = AssistMark::Estimate;
         let g = guard(Some("chart"), CHART, [150, 290, 450, 490], FRAME, &runs);
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (
                 9,
                 6,
@@ -2729,7 +2729,7 @@ mod tests {
         // The same chart drawn as a picture: every value an estimate, none dropped, no line bound.
         let g = guard(Some("chart"), CHART, [150, 290, 450, 490], FRAME, &[]);
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (
                 9,
                 0,
@@ -2771,7 +2771,7 @@ mod tests {
         );
         let u = AssistMark::Unsupported;
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (
                 6,
                 2,
@@ -2803,29 +2803,29 @@ mod tests {
         );
         assert!(g.agreement_permille < 500);
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (2, 0, vec![flag(1, d, None), flag(2, d, Some("77"))])
         );
         // A value alone reads the region; so do three words alone.
         let g = at(&[run(150, 150, "76")], "alpha beta gamma\n76 77");
-        assert_eq!(verdict(&g).2, [flag(1, d, None), flag(2, d, Some("77"))]);
+        assert_eq!(tally(&g).2, [flag(1, d, None), flag(2, d, Some("77"))]);
         // Text the engine holds that shares no word and no value with the block — a font that
         // maps its codes to other letters — is no reading of it.
         let g = at(
             &[run(150, 150, "Hfaa]V ZWV VeZcV R 76")],
             "alpha beta gamma\n77",
         );
-        assert_eq!(verdict(&g), (2, 0, vec![]));
+        assert_eq!(tally(&g), (2, 0, vec![]));
         let g = at(&[run(150, 150, "alpha beta gamma")], "alpha beta gamma\n77");
-        assert_eq!(verdict(&g), (2, 1, vec![flag(2, c, Some("77"))]));
+        assert_eq!(tally(&g), (2, 1, vec![flag(2, c, Some("77"))]));
         // Two words and no value: not read, every line unchecked.
         let g = at(&[run(150, 150, "alpha beta")], "alpha beta gamma\n77");
-        assert_eq!(verdict(&g), (2, 0, vec![]));
+        assert_eq!(tally(&g), (2, 0, vec![]));
         // Runs the engine marks illegible are no reading.
         let mut hidden = run(150, 150, "alpha beta gamma 76");
         hidden[0].legible = false;
         let g = at(&[hidden], "alpha beta gamma\n77");
-        assert_eq!((g.engine_words, verdict(&g)), (0, (2, 0, vec![])));
+        assert_eq!((g.engine_words, tally(&g)), (0, (2, 0, vec![])));
         // A numbers-only table the model reads twelve cells of sixteen wrong: all twelve dropped.
         let truth = [
             "1,204", "3,517", "8,842", "6,031", "2,975", "4,410", "7,123", "5,688", "9,306",
@@ -2923,7 +2923,7 @@ mod tests {
     fn a_rows_values_are_found_on_one_line_in_order() {
         let c = AssistMark::Contradicted;
         let check = |rows: &[&[&str]], grid: [u32; 4], runs: &[Ink<'static>]| {
-            verdict(&guard(Some("table"), &html(rows), grid, FRAME, runs))
+            tally(&guard(Some("table"), &html(rows), grid, FRAME, runs))
         };
         let mut swapped = TRUE_TABLE;
         swapped[1] = &["Alpha", "9012", "A-113", "2024-03-01"];
@@ -3026,7 +3026,7 @@ mod tests {
     fn a_box_over_half_the_page_binds_nothing_by_itself() {
         let runs = [run(500, 500, "Total 42 and more words")];
         let at = |grid| {
-            verdict(&guard(
+            tally(&guard(
                 Some("text"),
                 "Total 42\nTotal 43\nmore words",
                 grid,
@@ -3101,7 +3101,7 @@ mod tests {
             FRAME,
             &[run_at(900, 1500, "alpha 42")],
         );
-        assert_eq!(verdict(&g), (1, 1, vec![]));
+        assert_eq!(tally(&g), (1, 1, vec![]));
     }
 
     /// A page read glyph by glyph: a block's runs inside the box are joined as the engine joins
@@ -3139,7 +3139,7 @@ mod tests {
         assert_eq!(g.engine_words, 3, "net, revenue and 42");
         assert_eq!(g.agreement_permille, 750);
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (2, 1, vec![flag(2, AssistMark::Contradicted, Some("43"))])
         );
         // One block wrapping to the next line with no space drawn between.
@@ -3160,7 +3160,7 @@ mod tests {
             FRAME,
             &[wrapped],
         );
-        assert_eq!(verdict(&g), (2, 2, vec![]));
+        assert_eq!(tally(&g), (2, 2, vec![]));
         // A run of spaces joins a value the engine split inside one block.
         let split = vec![
             ink(QRect::new(10000, 10000, 10500, 11000).unwrap(), "1"),
@@ -3174,7 +3174,7 @@ mod tests {
             FRAME,
             &[split],
         );
-        assert_eq!(verdict(&g), (1, 1, vec![]));
+        assert_eq!(tally(&g), (1, 1, vec![]));
         // An illegible run between two digits, however narrow, is a hole, not a join: `1` and `2`
         // are not `12`.
         let mut holed = vec![
@@ -3192,7 +3192,7 @@ mod tests {
             &[label, holed],
         );
         assert_eq!(
-            verdict(&g),
+            tally(&g),
             (1, 0, vec![flag(1, AssistMark::Contradicted, Some("12"))])
         );
     }
@@ -3216,7 +3216,7 @@ mod tests {
             FRAME,
             &[run(150, 150, "alpha beta gamma")],
         );
-        assert_eq!(verdict(&g), (2, 1, vec![]));
+        assert_eq!(tally(&g), (2, 1, vec![]));
     }
 
     /// **Rule 4's loop**: four copies or more of one string of 1 to 400 characters, 64 or more in
@@ -3282,7 +3282,7 @@ mod tests {
         );
     }
 
-    /// A block with a box carries the guard's verdict; one with none carries no guard.
+    /// A block with a box carries the guard's marks; one with none carries no guard.
     #[test]
     fn a_block_with_a_box_carries_its_guard() {
         let mut v = file();
@@ -3323,7 +3323,7 @@ mod tests {
             &runs,
         );
         assert_eq!(g.agreement_permille, 1000);
-        assert_eq!(verdict(&g), (3, 3, vec![]));
+        assert_eq!(tally(&g), (3, 3, vec![]));
     }
 
     /// **A table row's values may lie on the engine lines between its neighbours' lines**, read
@@ -3359,14 +3359,14 @@ mod tests {
             FRAME,
             &runs,
         );
-        assert_eq!(verdict(&g), (8, 8, vec![]));
+        assert_eq!(tally(&g), (8, 8, vec![]));
         // Neighbouring rows that swap a value, each on its own line, are both wrong.
         let mut swapped = TRUE_TABLE;
         swapped[1] = &["Alpha", "5.678", "A-113", "2024-03-01"];
         swapped[2] = &["Beta", "1,234", "B-220", "2024-04-15"];
         let c = AssistMark::Contradicted;
         assert_eq!(
-            verdict(&guard(
+            tally(&guard(
                 Some("table"),
                 &html(&swapped),
                 TABLE_BOX,
@@ -3385,7 +3385,7 @@ mod tests {
         let mut runs = table_runs();
         runs.push(run(300, 186, "9,999"));
         let at = |runs: &[Ink<'static>]| {
-            verdict(&guard(
+            tally(&guard(
                 Some("table"),
                 &html(&wrong),
                 [80, 100, 800, 200],
@@ -3412,7 +3412,7 @@ mod tests {
         let small = [80, 100, 300, 180];
         let table = QRect::new(8000, 10000, 80000, 18000).unwrap();
         let at = |regions: &[(QRect, bool)]| {
-            verdict(&guard_with(
+            tally(&guard_with(
                 Some("table"),
                 &model,
                 small,
@@ -3477,7 +3477,7 @@ mod tests {
             &[(table, true)],
         );
         assert_eq!(
-            verdict(&g).2,
+            tally(&g).2,
             [flag(6, AssistMark::Contradicted, Some("5.678"))]
         );
     }
@@ -3504,7 +3504,7 @@ mod tests {
             FRAME,
             &[block],
         );
-        assert_eq!(verdict(&g), (5, 5, vec![]));
+        assert_eq!(tally(&g), (5, 5, vec![]));
         // Right-to-left glyphs, each left of the last, still make one piece.
         let rtl = vec![
             line(12000, 12500, "1"),
@@ -3518,7 +3518,7 @@ mod tests {
             FRAME,
             &[rtl],
         );
-        assert_eq!(verdict(&g), (1, 1, vec![]));
+        assert_eq!(tally(&g), (1, 1, vec![]));
     }
 
     /// Brackets, a currency symbol or a percent sign the engine drew apart from a value, or the
@@ -3569,7 +3569,7 @@ mod tests {
             FRAME,
             &runs,
         );
-        assert_eq!(verdict(&g), (6, 5, vec![]));
+        assert_eq!(tally(&g), (6, 5, vec![]));
         let rows: [&[&str]; 2] = [
             &["Alpha", "1,234", "A-113", "5.678"],
             &["Beta", "", "B-220", ""],
@@ -3582,7 +3582,7 @@ mod tests {
             &runs,
         );
         assert_eq!(
-            verdict(&g).2,
+            tally(&g).2,
             [flag(4, AssistMark::Contradicted, Some("5.678"))]
         );
         // Out of its column, or past the row's last value found, the next row's line lends nothing,
@@ -3605,7 +3605,7 @@ mod tests {
             &runs,
         );
         assert_eq!(
-            verdict(&g).2,
+            tally(&g).2,
             [flag(2, AssistMark::Contradicted, Some("5.678"))]
         );
         let rows: [&[&str]; 2] = [
@@ -3620,7 +3620,7 @@ mod tests {
             &runs,
         );
         assert_eq!(
-            verdict(&g).2,
+            tally(&g).2,
             [flag(4, AssistMark::Contradicted, Some("5.678"))]
         );
         // A single wrong value does not borrow the next row's, printed in its column.
@@ -3641,7 +3641,7 @@ mod tests {
             &runs,
         );
         assert_eq!(
-            verdict(&g).2,
+            tally(&g).2,
             [flag(2, AssistMark::Contradicted, Some("5,678"))]
         );
     }
