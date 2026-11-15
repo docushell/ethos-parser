@@ -144,8 +144,8 @@
               "pixels_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "$comment": "Provenance only: nothing in the engine renders." },
               "finish_reason": { "type": "string", "$comment": "Why the model stopped, as the server said. Absent where the page was not answered." },
               "outcome": {
-                "enum": ["read", "no-blocks", "error"],
-                "$comment": "`read`: a reply with block markers. `no-blocks`: a reply with none, not one this request's format reads. `error`: no reply."
+                "enum": ["read", "truncated", "loop", "no-blocks", "error"],
+                "$comment": "`read`: a reply with block markers. `truncated` (decision #146): one the server cut at its cap (`finish_reason` `length`), whose last block is dropped. `loop`: a cut one whose last block ends in four or more copies of one string of 1 to 400 characters, 64 or more in all; that block is dropped. `no-blocks`: a reply with none, not one this request's format reads. `error`: no reply. An unusable reply is said here alone, never as an `assurance` limitation."
               },
               "blocks": {
                 "type": "array",
@@ -165,7 +165,37 @@
                       "$comment": "[x0, y0, x1, y1] on the image's 0-1000 grid, clamped to it and ordered (x0 <= x1, y0 <= y1). Absent where the model gave no box."
                     },
                     "text": { "type": "string" },
-                    "derivation": { "const": "proposed" }
+                    "derivation": { "const": "proposed" },
+                    "guard": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["engine_words", "agreement_permille", "lines", "bound"],
+                      "$comment": "Decision #146. What the engine's legible text runs whose box centre lies in the block's box, mapped onto the visible box and widened by 10 grid units, joined as `ground` joins runs into elements and read line by line, say of the block's lines: a table's or chart's cells, row by row, and the text outside them, or its text's non-blank lines. A table row's values are found on one engine line in order; a box over half the page binds nothing by itself. Present exactly where the block has a box. A line neither bound nor flagged is unchecked and kept.",
+                      "properties": {
+                        "engine_words": { "type": "integer", "minimum": 0, "$comment": "Distinct words (letters, digits and `_`, two characters or more, lower-cased) of the runs inside the box." },
+                        "agreement_permille": { "type": "integer", "minimum": 0, "maximum": 1000, "$comment": "The share of the block's distinct words among them, in thousandths, rounded down; 0 for a block of none. Reported only: a region is read where the engine's legible runs there hold a value or three words." },
+                        "lines": { "type": "integer", "minimum": 0 },
+                        "bound": { "type": "integer", "minimum": 0, "$comment": "Lines the runs bear out. `bound` plus the flagged lines is at most `lines`." },
+                        "flagged": {
+                          "type": "array",
+                          "minItems": 1,
+                          "$comment": "In line order, each line once. Absent where none is flagged.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["line", "mark"],
+                            "properties": {
+                              "line": { "type": "integer", "minimum": 1, "$comment": "Counted from 1, at most `lines`." },
+                              "mark": {
+                                "enum": ["contradicted", "unsupported", "estimate", "disputed"],
+                                "$comment": "`contradicted`: in a region the engine read, a value the runs do not hold as written, sign, brackets, currency and percent included, or, in a table, not on its row's engine line in order; dropped. `unsupported`: three words or more, fewer than half the runs'; dropped. `estimate`: a chart's value the runs do not hold; kept and labelled. `disputed`: a line that would be contradicted or unsupported in a block fewer than half of whose words the runs hold; kept and labelled. A dropped table cell is emptied, never removed."
+                              },
+                              "value": { "type": "string", "$comment": "The line's first value not found: present on a `contradicted` or `estimate` line, absent on an `unsupported` one, and on a `disputed` one where a value failed." }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }

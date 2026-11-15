@@ -2998,6 +2998,12 @@ impl DocumentRepresentation {
     ///   holds no block.
     /// - Each block is `Proposed`, its id `m` and a number, used once, its box on the 0-1000 grid
     ///   with no side inverted.
+    /// - A page is `truncated` or a `loop` only where the server cut its reply and it has a block to
+    ///   drop, and a page the server cut is never `read` (decision #146).
+    /// - A block has a guard exactly where it has a box; its agreement is at most 1,000; its flagged
+    ///   lines are in line order, each once, within its lines, a contradicted or estimated one naming
+    ///   its value, an unsupported one none, a disputed one either; and it binds and flags no more lines than the block
+    ///   has.
     /// - A page left out is one the document has and this record does not list, in ascending
     ///   order.
     fn check_assist(
@@ -3035,6 +3041,20 @@ impl DocumentRepresentation {
                     page.page
                 )));
             }
+            let capped = page.finish_reason.as_deref() == Some("length");
+            let cut = matches!(
+                page.outcome,
+                crate::assist::AssistOutcome::Truncated | crate::assist::AssistOutcome::Loop
+            );
+            if (cut && (!capped || page.blocks.is_empty()))
+                || (capped && page.outcome == crate::assist::AssistOutcome::Read)
+            {
+                return Err(Self::malformed(format!(
+                    "page `{}` is `{:?}`: a page is truncated or a loop only where the server \
+                     cut a reply of blocks, and a page it cut is never read whole",
+                    page.page, page.outcome
+                )));
+            }
             for block in &page.blocks {
                 if block.derivation != DerivationClass::Proposed {
                     return Err(Self::malformed(format!(
@@ -3057,6 +3077,35 @@ impl DocumentRepresentation {
                         return Err(Self::malformed(format!(
                             "block `{id}`'s box [{x0}, {y0}, {x1}, {y1}] is not on the 0-1000 \
                              grid with its sides in order"
+                        )));
+                    }
+                }
+                if block.grid.is_some() != block.guard.is_some() {
+                    return Err(Self::malformed(format!(
+                        "block `{id}` has a guard exactly where it has a box, and does not"
+                    )));
+                }
+                if let Some(guard) = &block.guard {
+                    let mut last = 0;
+                    let in_order = guard.flagged.iter().all(|f| {
+                        let next = last < f.line && f.line <= guard.lines;
+                        last = f.line;
+                        let named = match f.mark {
+                            crate::assist::AssistMark::Unsupported => Some(false),
+                            crate::assist::AssistMark::Disputed => None,
+                            _ => Some(true),
+                        };
+                        next && named.is_none_or(|named| f.value.is_some() == named)
+                    });
+                    let marked = u64::from(guard.bound) + guard.flagged.len() as u64;
+                    if guard.agreement_permille > 1000
+                        || !in_order
+                        || marked > u64::from(guard.lines)
+                    {
+                        return Err(Self::malformed(format!(
+                            "block `{id}`'s guard is not one the guard writes: agreement at most \
+                             1,000, flagged lines in order within its lines, each naming its value \
+                             unless unsupported, and no more lines bound and flagged than it has"
                         )));
                     }
                 }

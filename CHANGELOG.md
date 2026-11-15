@@ -32,6 +32,74 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A guard checks a drafting model's blocks against the engine's runs, in the record (decision #146)
+
+The second step of the assist lane: each block a model proposes is checked against what the engine
+read inside its box, and what the page contradicts is marked to be dropped. **Engine-only output
+does not move**: without `--assist-answers` every `extract`, Markdown and HTML byte is what it was,
+and so is every profile's hash.
+
+- Each block with a box carries a `guard`: the distinct words of the engine's legible text runs
+  whose box centre lies in the block's box (the grid mapped onto the visible box, widened by 10
+  grid units), the share of the block's words among them in thousandths (reported, never a gate),
+  its line count, how many lines bind, and the lines flagged, each with its first value not found.
+  A run holding U+FFFD, or one the engine found hidden, invisible, off the page or too small, is no
+  evidence. The runs are joined as `ground` joins them into elements, with no table claiming its
+  cells, then read line by line: a page the engine reads glyph by glyph keeps its words, two lines
+  are never glued, runs more than a quarter of their height apart on either side are two pieces,
+  two pieces are never one value, and a printed `<` and `>` hide nothing between them.
+- A block's lines are a table's or chart's cells, row by row, and the text outside them (a caption,
+  words after the table), or else its text's lines; blank lines outside a cell do not count.
+- A value is decision #123's prototype token with any script's decimal digit: a run of ASCII
+  letters and digits holding a digit, going on through `. , : / -` (`1,234.5`, `2024-03-01`),
+  compared as written. It is found where it occurs in the runs' text with whitespace removed,
+  starting and ending outside the runs' own values, with the same sign (brackets read as a minus,
+  an en dash too) and, where both show one, the same currency symbol and percent sign; brackets, a
+  leading currency symbol and a percent sign count across a space or a gap the engine drew, a
+  minus only touching: a split `1 234` binds
+  `1234`; `12345` does not bind `1234`, nor `1.234` `1,234`, nor `(1,234)` `1,234`, nor `€980`
+  `$980`. A value the engine ran into its neighbour with no space (`1983` read as `1983DODG`) is not
+  found either: the rule is "exactly", kept until the ParseBench run measures its cost. The model's
+  text is read with its tags removed and its HTML character references decoded.
+- **A table row's values must be found on its own lines of the engine's, in the row's order, read
+  left to right**: the line holding most of them, then most of the row's words, and the lines
+  between it and the neighbouring rows' lines (a first or last row reaches one line past its own);
+  a cell's words bind on those lines. A cell set on two lines binds, its second line on a neighbouring row's line too when it lies in
+  the cell's column and the cell shows on its own line, while a swapped cell, a row
+  shifted a column or a wrong value printed nearby does not; a swap between rows whose lines
+  interleave may pass. **A box the model drew too small binds against the engine's table it
+  overlaps**, or an engine block region of no more than half the page; never against the page at
+  large, so a value copied from elsewhere stays unfound. **A box over half the page places
+  nothing**: no line binds by it alone, though a table row still binds on its lines.
+- **A chart's value not found is an `estimate`**, kept: a chart's values are read from its bars.
+  **The region is read where the engine's legible runs there hold a value or three words** and share
+  a word or a value with the block, so a reply that is mostly wrong is checked as closely as one
+  mostly right, while a font that maps its codes to other letters reads as nothing. There, a line with a value not found is `contradicted`, and a line of three words or more,
+  fewer than half of them found, `unsupported`, a chart's text lines included; both are to be
+  dropped, a table cell emptied rather than removed. **In a block fewer than half of whose words the
+  engine holds, such a line is `disputed` instead, and kept**: a reply that much at odds with the
+  engine is as often the engine's misreading as the model's. A line binds where all its values are found,
+  or, holding none, half its words; any other line is unchecked. Where the region was not read,
+  every line but a chart's estimates is kept unchecked. A `/ToUnicode` mapping codes to wrong but
+  valid characters cannot be told from the record, and its text is read as the engine's.
+- **A reply the server cut at its cap** (`finish_reason` `length`) loses its last block: the page is
+  `loop` where that block ends in four or more copies of one string of 1 to 400 characters, 64 or
+  more in all, and `truncated` otherwise. An unusable reply is said by the page's outcome alone, not
+  as an `assurance` limitation, so an assisted record's `ground` stays the engine's.
+- The profile's `assist` pin gains `guard` (`assist-guard-v1`), so an assisted record's
+  `profile_sha256` moves; an engine-only one's does not. The seal holds the guard's bounds, a guard
+  on exactly the blocks with a box, a value named on every contradicted and estimated line, and
+  the cut outcomes, on reading a record too. Library: `AssistGuard`, `AssistFlag`, `AssistMark`,
+  `ASSIST_GUARD_V1`. Draft schemas: the block's `guard`, the two outcomes, the pin's `guard`.
+- Nothing projects the blocks yet; the projection reads these marks. ParseBench: measured with the projection (decisions to come).
+- Measured on decision #123's replies to 1,567 ParseBench pages, attached to this build's records:
+  98,046 lines bind, 1,751 are contradicted, 86 unsupported, 630 disputed (kept), 23,836 chart
+  values estimated and 31,555 unchecked; 19,985 lines sit in the 30 dropped last blocks. Of the
+  contradicted lines, 958 (273 table rows) are a row's values not on its engine lines in order,
+  chiefly columns the model invents by repeating a value. The loop rule fires on 14 of the 30
+  capped replies and on none of the 1,537 others. Engine-only output is byte-identical to decision
+  #145's build on the gate's 113 documents and opendataloader-bench's 200.
+
 ### A drafting model's replies attach to the record as `Proposed` blocks (decision #145)
 
 The first step of the assist lane: a model that reads page images may propose text, and its text is

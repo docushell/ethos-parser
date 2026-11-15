@@ -408,6 +408,7 @@
       "description": "Decision #145. The drafting model whose replies an assisted record holds as `proposed` blocks, and how they were asked for and read. The one optional top-level key: absent means no model's reply is in the record, which is true of every engine-only profile and of every profile written before it, so their bytes and hashes do not move. Pinned by `extract --assist-answers`, on the base or the OCR profile.",
       "required": [
         "rule",
+        "guard",
         "renderer",
         "request",
         "model",
@@ -419,6 +420,11 @@
           "type": "string",
           "examples": ["assist-lightonocr-v1"],
           "description": "The rule that reads a reply into blocks."
+        },
+        "guard": {
+          "type": "string",
+          "examples": ["assist-guard-v1"],
+          "description": "Decision #146. The guard that checks each block against the engine's runs inside its box, and drops a capped reply's last block."
         },
         "renderer": {
           "type": "string",

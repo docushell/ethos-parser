@@ -348,6 +348,7 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
     .expect("the replies attach");
     let pin = ethos_parser_core::AssistPin {
         rule: ethos_parser_core::ASSIST_RULE_V1.into(),
+        guard: ethos_parser_core::ASSIST_GUARD_V1.into(),
         renderer: ethos_parser_core::ASSIST_RENDERER.into(),
         request: ethos_parser_core::ASSIST_REQUEST_V1.into(),
         model: "example/made-up-model".into(),

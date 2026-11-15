@@ -153,7 +153,8 @@ fn json_of(out: &Output) -> Value {
 /// fingerprint, and its Markdown, HTML and `ground` are the engine-only ones but for those two
 /// hashes, as this decision projects nothing (design §8.4).
 /// Pages 1 and 3 were asked, so page 2 is absent; page 3 is cropped and turned, and the size it was
-/// rendered at is the turned crop's.
+/// rendered at is the turned crop's. Page 3's reply was cut at the cap, so it is `truncated`
+/// (decision #146), its block kept in the record.
 #[test]
 fn replies_attach_as_proposed_blocks_and_move_nothing_else() {
     let dir = scratch("attach");
@@ -181,7 +182,7 @@ fn replies_attach_as_proposed_blocks_and_move_nothing_else() {
             )
         })
         .collect();
-    assert_eq!(pages, [("p1", "read", 2), ("p3", "read", 1)]);
+    assert_eq!(pages, [("p1", "read", 2), ("p3", "truncated", 1)]);
     assert_eq!(assist["pages"][1]["blocks"][0]["id"], "m3");
     assert_eq!(assist["pages"][1]["blocks"][0]["derivation"], "proposed");
     assert_eq!(assist["model"]["id"], "example/made-up-model");
@@ -403,6 +404,7 @@ fn under_ocr_the_pin_stacks_on_the_ocr_profile() {
     let record = json_of(&out);
     let pin: ethos_parser_core::AssistPin = serde_json::from_value(json!({
         "rule": ethos_parser_core::ASSIST_RULE_V1,
+        "guard": ethos_parser_core::ASSIST_GUARD_V1,
         "renderer": ASSIST_RENDERER,
         "request": ASSIST_REQUEST_V1,
         "model": "example/made-up-model",
@@ -414,6 +416,133 @@ fn under_ocr_the_pin_stacks_on_the_ocr_profile() {
         record["representation"]["identity"]["profile_sha256"],
         profile.profile_sha256().expect("hashes").to_string()
     );
+}
+
+/// **The guard drops exactly the planted wrong lines, on a page built here** (decision #146,
+/// design §8.3): a table read with four wrong values (a digit in an amount, an id and a date, and a
+/// comma for the page's point) loses those four cells and binds the rest, the amount the engine
+/// split by a space among them; a chart's bar values the page does not print are kept as
+/// estimates; an invented line is unsupported; a region the engine read nothing in, or only text
+/// it drew invisibly, stays unchecked. Page 2 prints the wrong values where page 1's table stands, so only page 1's runs
+/// may bind page 1's blocks; its reply was cut in a loop, which drops its last block.
+#[test]
+fn the_guard_drops_exactly_the_planted_wrong_lines() {
+    let at = |x: u32, y: u32, t: &str| format!("BT /F1 10 Tf {x} {y} Td ({t}) Tj ET\n");
+    let grid = |rows: &[[&str; 4]]| {
+        let mut s = String::new();
+        for (y, row) in (0..).map(|r| 700 - 20 * r).zip(rows) {
+            for (x, t) in (0..).map(|c| 72 + 120 * c).zip(row) {
+                s += &at(x, y, t);
+            }
+        }
+        s
+    };
+    let page1 = grid(&[
+        ["Item", "Amount", "Code", "Date"],
+        ["Alpha", "1,234", "A-113", "2024-03-01"],
+        ["Beta", "5.678", "B-220", "2024-04-15"],
+        ["Gamma", "9 012", "C-310", "2024-05-30"],
+    ]) + "0.5 g 100 400 30 60 re f 150 400 30 90 re f 200 400 30 100 re f 0 g\n"
+        + &at(100, 520, "Sales by quarter")
+        + &at(107, 465, "42")
+        + &at(105, 385, "Q1")
+        + &at(155, 385, "Q2")
+        + &at(205, 385, "Q3")
+        + &at(72, 300, "The made-up paragraph says nothing of note here.")
+        // Text drawn invisibly (render mode 3) where the page shows nothing: no reading.
+        + "BT 3 Tr /F1 10 Tf 72 100 Td (Figure 3 shows 99 trends) Tj ET\n";
+    let page2 = grid(&[
+        ["Item", "Amount", "Code", "Date"],
+        ["Alpha", "1,243", "A-118", "2024-03-07"],
+        ["Beta", "5,678", "B-220", "2024-04-15"],
+    ]);
+    let source = pdf(&[
+        ("/MediaBox [0 0 612 792]", &page1),
+        ("/MediaBox [0 0 612 792]", &page2),
+    ]);
+    let mut answers = replies(&source);
+    answers["pages"] = json!([
+        {
+            "page": 1, "points": [61200, 79200], "dpi": 200, "width": 1700, "height": 2200,
+            "pixels_sha256": Sha256Hex::of_bytes(b"made-up pixels").to_string(),
+            "finish_reason": "stop",
+            "reply": "![table](100,90,850,215) <table>\
+                <tr><th>Item</th><th>Amount</th><th>Code</th><th>Date</th></tr>\
+                <tr><td>Alpha</td><td>1,243</td><td>A-118</td><td>2024-03-07</td></tr>\
+                <tr><td>Beta</td><td>5,678</td><td>B-220</td><td>2024-04-15</td></tr>\
+                <tr><td>Gamma</td><td>9012</td><td>C-310</td><td>2024-05-30</td></tr></table>\n\n\
+                ![chart](140,320,460,530) <table><tr><th>Quarter</th><th>Sales</th></tr>\
+                <tr><td>Q1</td><td>42</td></tr><tr><td>Q2</td><td>57</td></tr>\
+                <tr><td>Q3</td><td>61</td></tr></table>\n\n\
+                ![text](100,600,900,640) The made-up paragraph says nothing of note here.\n\
+                Quarterly revenue rose sharply\n\n\
+                ![text](100,800,900,950) Figure 3 shows 12 trends"
+        },
+        {
+            "page": 2, "points": [61200, 79200], "dpi": 200, "width": 1700, "height": 2200,
+            "pixels_sha256": Sha256Hex::of_bytes(b"made-up pixels").to_string(),
+            "finish_reason": "length",
+            "reply": format!(
+                "![text](100,100,900,200) Item Amount\n\n![table](100,300,900,900) <table>{}",
+                "<tr><td>0</td></tr>\n".repeat(8)
+            )
+        }
+    ]);
+    let dir = scratch("guard");
+    let (pdf, file) = write(&dir, &source, &answers);
+    let record = json_of(&engine(&["extract", &pdf, "--assist-answers", &file]));
+    let pages = &record["representation"]["assist"]["pages"];
+
+    let verdict = |block: &Value| {
+        let g = &block["guard"];
+        (g["lines"].clone(), g["bound"].clone(), g["flagged"].clone())
+    };
+    let blocks = &pages[0]["blocks"];
+    assert_eq!(pages[0]["outcome"], "read");
+    assert_eq!(
+        verdict(&blocks[0]),
+        (
+            json!(16),
+            json!(12),
+            json!([
+                {"line": 6, "mark": "contradicted", "value": "1,243"},
+                {"line": 7, "mark": "contradicted", "value": "118"},
+                {"line": 8, "mark": "contradicted", "value": "2024-03-07"},
+                {"line": 10, "mark": "contradicted", "value": "5,678"}
+            ])
+        ),
+        "the table"
+    );
+    assert_eq!(
+        verdict(&blocks[1]),
+        (
+            json!(8),
+            json!(6),
+            json!([
+                {"line": 6, "mark": "estimate", "value": "57"},
+                {"line": 8, "mark": "estimate", "value": "61"}
+            ])
+        ),
+        "the chart"
+    );
+    assert_eq!(
+        verdict(&blocks[2]),
+        (
+            json!(2),
+            json!(1),
+            json!([{"line": 2, "mark": "unsupported"}])
+        ),
+        "the paragraph"
+    );
+    assert_eq!(
+        verdict(&blocks[3]),
+        (json!(1), json!(0), Value::Null),
+        "the region the engine read nothing in"
+    );
+    assert_eq!(blocks[3]["guard"]["engine_words"], 0);
+
+    assert_eq!(pages[1]["outcome"], "loop");
+    assert_eq!(pages[1]["blocks"].as_array().expect("blocks").len(), 2);
 }
 
 /// **The record names the renderer and request the assist binary uses** (decisions #143-#145):

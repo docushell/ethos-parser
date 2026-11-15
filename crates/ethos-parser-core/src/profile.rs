@@ -2996,16 +2996,20 @@ pub struct Profile {
 /// The drafting model an assisted record's `Proposed` blocks come from, and how its replies were
 /// asked for and read (decision #145).
 ///
-/// Pinned by what decides the blocks: the rule that reads a reply, the renderer that drew the
-/// page the model saw, the request that asked, and the model with its version as the replies file
-/// names them. Two assisted records are comparable only where all five agree, and never with an
-/// engine-only record (contract §6, rule 4). The replies file's own digest is per document, so it
-/// is in the record (`assist.answers_sha256`), not here.
+/// Pinned by what decides the blocks: the rule that reads a reply, the guard that checks it against
+/// the engine's runs (decision #146), the renderer that drew the page the model saw, the request
+/// that asked, and the model with its version as the replies file names them. Two assisted records
+/// are comparable only where all six agree, and never with an engine-only record (contract §6,
+/// rule 4). The replies file's own digest is per document, so it is in the record
+/// (`assist.answers_sha256`), not here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssistPin {
     /// The rule that reads a reply into blocks: [`crate::assist::ASSIST_RULE_V1`].
     pub rule: String,
+    /// The guard that checks each block against the engine's runs inside its box, and cuts a capped
+    /// reply's last block: [`crate::assist::ASSIST_GUARD_V1`] (decision #146).
+    pub guard: String,
     /// The renderer that drew each page: [`crate::assist::ASSIST_RENDERER`].
     pub renderer: String,
     /// The request each page was asked with: [`crate::assist::ASSIST_REQUEST_V1`].
@@ -3816,6 +3820,7 @@ mod tests {
     fn a_pin() -> AssistPin {
         AssistPin {
             rule: crate::assist::ASSIST_RULE_V1.into(),
+            guard: crate::assist::ASSIST_GUARD_V1.into(),
             renderer: crate::assist::ASSIST_RENDERER.into(),
             request: crate::assist::ASSIST_REQUEST_V1.into(),
             model: "example/made-up-model".into(),
@@ -3912,6 +3917,7 @@ mod tests {
             keys(&wire["assist"]),
             declared!(pin => AssistPin {
                 rule,
+                guard,
                 renderer,
                 request,
                 model,
