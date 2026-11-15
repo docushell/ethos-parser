@@ -325,7 +325,7 @@ fn type3_page(
     )
 }
 
-/// [`type3_page`] drawing `content` instead.
+/// [`type3_page`] drawing `content` instead, where `/F2` names Helvetica.
 fn type3_page_drawing(
     content: &str,
     font_matrix: &str,
@@ -339,7 +339,8 @@ fn type3_page_drawing(
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] \
-           /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+           /Resources << /Font << /F1 5 0 R /F2 << /Type /Font /Subtype /Type1 \
+           /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>"
             .to_vec(),
         stream(content).into_bytes(),
         format!(
@@ -6492,6 +6493,43 @@ fn a_text_clip_is_found_by_its_glyphs_and_ends_with_its_state() {
     assert_eq!(got, expected);
 }
 
+/// **A text object's clip is its glyphs in every clipping mode** (CodeRabbit's fifth review of
+/// decision #139): `Tr 4` to `7` each add the glyphs to the clip `ET` sets (32000-1 Table 106).
+/// `Seven` in mode 7 and `Four` in mode 4 clip together, so a fill over a later mode-7 run where
+/// `Four` lies shows it; with `Four` in mode 0 the two clips miss, and nothing shows it. Either
+/// way the later clip leaves out `Seven`, so a fill over it shows nothing (Ghostscript 10.06 draws
+/// all four so).
+#[test]
+fn a_text_objects_clip_is_its_glyphs_in_every_clipping_mode() {
+    use ethos_parser_core::TextFinding::InvisibleRenderMode;
+    let findings = |mode: &str| {
+        let a = layered_page(
+            "<< /OFF [6 0 R] >>",
+            "/BBox [0 0 300 400]",
+            "",
+            &format!(
+                "q BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (Seven) Tj {mode} Tr 1 0 0 1 160 300 Tm \
+                 (Four) Tj ET BT 7 Tr /F1 10 Tf 1 0 0 1 160 300 Tm (Later) Tj ET \
+                 0 g 155 295 40 15 re f 15 295 40 15 re f Q"
+            ),
+        );
+        let mut got = findings_of(&a);
+        got.sort();
+        got
+    };
+    let want = |later: &[ethos_parser_core::TextFinding]| {
+        let mut out = vec![
+            ("Seven".to_owned(), vec![InvisibleRenderMode]),
+            ("Four".to_owned(), vec![]),
+            ("Later".to_owned(), later.to_vec()),
+        ];
+        out.sort();
+        out
+    };
+    assert_eq!(findings("4"), want(&[]));
+    assert_eq!(findings("0"), want(&[InvisibleRenderMode]));
+}
+
 /// **A form's `/BBox` clips its paint whether its numbers are stated or referenced** (review of
 /// decision #139): `[0 0 300 7 0 R]` dropped the reference, read no box, and the form's black
 /// fill reached text above it, flagged as black on black.
@@ -6574,6 +6612,42 @@ fn type3_text_is_not_compared_with_its_background() {
     let d = Document::open_bytes(&pdf, &profile).expect("opens");
     let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
     assert_eq!(runs(&a)[0].findings, Vec::new());
+}
+
+/// **A Type 3 font's text in mode 7 is drawn, and sets no clip** (CodeRabbit's fifth review of
+/// decision #139): only mode 3 hides a Type 3 glyph (32000-1 §9.3.6). So `aa` is not hidden; its
+/// text object narrows no clip, and a fill shows the mode-7 run `Later` beside it; `aaa`, drawn
+/// over the clip `Under` sets, shows `Under`; `a`, in mode 3, is hidden. Ghostscript 10.06 agrees
+/// but on `Later`: it adds the glyphs to no clip, then clips away all paint after a text object of
+/// them alone. Read as the specification has it, `Later` is kept: the lenient side.
+#[test]
+fn type3_text_in_mode_7_is_drawn_and_sets_no_clip() {
+    use ethos_parser_core::TextFinding::InvisibleRenderMode;
+    let profile = Profile::default();
+    let pdf = type3_page_drawing(
+        "q BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (ab) Tj ET \
+         BT 7 Tr /F2 10 Tf 1 0 0 1 160 300 Tm (Later) Tj ET 0 g 155 295 40 15 re f Q \
+         q BT 7 Tr /F2 10 Tf 1 0 0 1 20 200 Tm (Under) Tj ET \
+         BT 7 Tr /F1 10 Tf 1 0 0 1 20 200 Tm (abc) Tj ET Q \
+         BT 3 Tr /F1 10 Tf 1 0 0 1 20 100 Tm (a) Tj ET",
+        "0.001 0 0 0.001 0 0",
+        "500",
+        700,
+        -200,
+        "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+    );
+    let d = Document::open_bytes(&pdf, &profile).expect("opens");
+    let mut got = findings_of(&ethos_parser_pdf::extract(&d, &profile).expect("extracts"));
+    got.sort();
+    let mut expected = vec![
+        ("aa".to_owned(), vec![]),
+        ("Later".to_owned(), vec![]),
+        ("Under".to_owned(), vec![]),
+        ("aaa".to_owned(), vec![]),
+        ("a".to_owned(), vec![InvisibleRenderMode]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
 }
 
 /// **What a layer is switched off by** (decision #139): `/BaseState /OFF` hides every group `/ON`

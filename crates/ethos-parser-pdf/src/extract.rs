@@ -3467,7 +3467,15 @@ fn run_findings(
     //
     // Decision #139: mode 7 only where nothing is painted through the clip it sets before the state
     // holding it is restored — a heading set as a clip and filled with a shading or an image shows.
-    if render_mode == 3 || (render_mode == 7 && !shown.clips_paint) {
+    // Not in a Type 3 font, whose glyphs mode 3 alone hides (32000-1 §9.3.6; fifth review).
+    let type3 = matches!(
+        shown.font.widths,
+        crate::fonts::WidthSource::Widths {
+            type3_scale_x: Some(_),
+            ..
+        }
+    );
+    if render_mode == 3 || (render_mode == 7 && !shown.clips_paint && !type3) {
         out.push(TextFinding::InvisibleRenderMode);
     }
     // Decision #139: three more, on a run that draws ink — whitespace draws nothing to hide. The

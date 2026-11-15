@@ -161,10 +161,15 @@ pub struct GraphicsState {
     /// none is. A clip path of any other shape leaves it as it was: text and paths are clipped
     /// away only where the clip is known.
     pub clip: Option<crate::content::PathRect>,
-    /// The box around the glyphs of each text object whose rendering-mode-7 runs set a clip still
-    /// in force, intersected, or `None` where none is (decision #139). Read only where paint shows
-    /// a mode-7 clip: a clip that has shown paint still clips what is painted after it (review).
+    /// The box around the glyphs of each text object whose runs set a clip still in force,
+    /// intersected, or `None` where none is (decision #139). Read only where paint shows a mode-7
+    /// clip: a clip that has shown paint still clips what is painted after it (review).
     pub text_clip: Option<crate::content::PathRect>,
+    /// The box around the glyphs the open text object has set as a clip, in modes 4 to 7 and any
+    /// font but a Type 3 one, or `None` where it has set none (decision #139, fifth review): `ET`
+    /// intersects it into [`Self::text_clip`]. Saved with the state, so a `Q` inside the text
+    /// object takes back the glyphs set since its `q`, as Ghostscript does.
+    pub text_clip_glyphs: Option<crate::content::PathRect>,
 }
 
 impl Default for GraphicsState {
@@ -183,6 +188,7 @@ impl Default for GraphicsState {
             dashed: false,
             clip: None,
             text_clip: None,
+            text_clip_glyphs: None,
         }
     }
 }

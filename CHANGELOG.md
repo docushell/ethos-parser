@@ -347,8 +347,11 @@ flagged run.
   switched off, or kept from the page by a known clip, paints nothing through it, and a spread
   string's glyph shows only what is painted over that glyph. A clip that has shown paint still
   clips (review): each `ET` intersects the clip in force with the box around its text object's
-  mode-7 glyphs, until the `Q` that restores the state, so a later mode-7 run painted over only
-  outside an earlier clip standing carries the finding.
+  glyphs set as a clip, in any of modes 4 to 7 (fifth review), until the `Q` that restores the
+  state, so a later mode-7 run painted over only outside an earlier clip standing carries the
+  finding. A Type 3 font's text, which mode 3 alone hides (32000-1 §9.3.6), carries no
+  `invisible-render-mode` in mode 7: it paints, showing a clip it is drawn through, and sets no
+  clip (fifth review).
 - **Operands, never contrast.** Grey at 0.99 on white, a colour in `rg` over the same in `g`,
   and transparency are not flagged; `low-contrast-not-detected` stays on every profile and says
   so. OpenDataLoader's filters are not matched: they render the page and test a contrast ratio

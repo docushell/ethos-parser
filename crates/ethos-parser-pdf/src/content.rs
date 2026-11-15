@@ -497,18 +497,9 @@ impl ClipTexts {
         }
     }
 
-    /// `ET`: every record shown so far takes effect. The box around those armed now, if any: the
-    /// clip their text object adds.
-    fn arm(&mut self) -> Option<PathRect> {
-        let added = self.records.range(self.armed..).map(|(_, c)| c.band);
-        let added = added.reduce(|a, b| PathRect {
-            x0: a.x0.min(b.x0),
-            y0: a.y0.min(b.y0),
-            x1: a.x1.max(b.x1),
-            y1: a.y1.max(b.y1),
-        });
+    /// `ET`: every record shown so far takes effect.
+    fn arm(&mut self) {
         self.armed = self.next;
-        added
     }
 
     /// Marks as clipping paint each record armed whose glyphs `area` touches, and forgets it.
@@ -1224,9 +1215,11 @@ impl<'a> Interpreter<'a> {
             // Decision #139: the clip a mode-7 run adds takes effect here. Records are numbered in
             // order, so those not yet armed are the last ones, armed at once: arming every record
             // at every `ET` was quadratic in a page's mode-7 objects.
-            // The clip intersects the one in force, and stands until `Q` (review).
+            // The clip intersects the one in force, and stands until `Q` (review); it is the
+            // glyphs set in every clipping mode, not the mode-7 records alone (fifth review).
             EndText => {
-                if let Some(added) = self.clip_text.arm() {
+                self.clip_text.arm();
+                if let Some(added) = self.gs.text_clip_glyphs.take() {
                     self.gs.text_clip =
                         Some(added.clip_to(self.gs.text_clip).unwrap_or(PathRect {
                             x0: f64::MAX,
@@ -2001,8 +1994,14 @@ impl<'a> Interpreter<'a> {
         // waits for the paint that would show it, and leaves the paint after it of no shape this
         // reader knows — as does a run set as a clip in mode 4, 5 or 6.
         // Text a layer switches off, or a clip keeps from the page, paints nothing (review).
+        // Fifth review: a Type 3 font's glyphs are hidden by mode 3 alone and join no clip
+        // (32000-1 §9.3.6), so in mode 7 they paint. They still leave the clip of no shape known:
+        // Ghostscript clips away all paint after a text object of them alone. A text object's
+        // clip is its glyphs in every clipping mode, not in mode 7 alone.
         let first = self.shown.len();
-        if !matches!(self.ts.render_mode, 3 | 7) && self.layer() != Some(crate::layers::Layer::Off)
+        let clips = (4..=7).contains(&self.ts.render_mode) && !type3;
+        let clip_only = clips && self.ts.render_mode == 7;
+        if self.ts.render_mode != 3 && !clip_only && self.layer() != Some(crate::layers::Layer::Off)
         {
             for &(_, _, band) in &bands {
                 if let Some(shown) = self.shown_part(band) {
@@ -2013,13 +2012,23 @@ impl<'a> Interpreter<'a> {
         if (4..=7).contains(&self.ts.render_mode) {
             self.gs.clip_unknown = true;
         }
+        if clips {
+            let boxes = bands.iter().map(|&(_, _, band)| band);
+            let boxes = boxes.chain(self.gs.text_clip_glyphs);
+            self.gs.text_clip_glyphs = boxes.reduce(|a, b| PathRect {
+                x0: a.x0.min(b.x0),
+                y0: a.y0.min(b.y0),
+                x1: a.x1.max(b.x1),
+                y1: a.y1.max(b.y1),
+            });
+        }
         if spread {
             self.push_glyphs(run, glyphs, &matches, scale);
         } else {
             self.last_run = Some(self.shown.len());
             self.shown.push(run);
         }
-        if self.ts.render_mode == 7 {
+        if clip_only {
             let (forms, states) = (self.form_stack.len(), self.gs_stack.len());
             for (index, &(_, _, band)) in (first..self.shown.len()).zip(&bands) {
                 self.clip_text.push(ClipText {
