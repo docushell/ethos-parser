@@ -57,6 +57,16 @@ refused. ONNX Runtime was not used: its bits change with the thread count.
 digital page; up to 1.85 GB peak. 12.7 MB of models (Apache-2.0). **Phase 1**, with a page's lines
 read in parallel: 1.9 s per page and 1.35 GB peak over the 22 fixture pages.
 
+**On two threads, the size of a small server** (measured 2026-11-16, Apple M4 Pro, 12 cores, an
+otherwise quiet machine). The recognizer runs two thread pools: `RTEN_NUM_THREADS` sizes rten's,
+which runs the models, and `RAYON_NUM_THREADS` sizes the one that reads a page's lines in parallel.
+The child inherits both from the engine's environment, so `RTEN_NUM_THREADS=2
+RAYON_NUM_THREADS=2 ethos-parser markdown --ocr …` holds it to two. Six full-page scans
+(`ocr/tests/data/nist-171r3-p55.png` and five of ParseBench's `text_ocr` scans) took 0.44 to 1.20 s
+a page at the default thread count and 0.92 to 3.92 s on two, about two to three times as long;
+peak memory barely moved, 0.27 to 0.74 GB a page either way, so memory, not threads, sizes the
+server. The output is byte-identical at the default count, two threads and one.
+
 ## 4. What is read
 
 - **The trigger is a reason code, not a score** (`docs/07-VERIFY-BOUNDARY.md` §7). A PDF page is
