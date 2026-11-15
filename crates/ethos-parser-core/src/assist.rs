@@ -61,7 +61,9 @@
 //! are joined as `ground` joins them into elements, with no table claiming its cells, so a page read
 //! glyph by glyph keeps its words; then read **line by line**: runs on one line, in a block, join
 //! into a piece unless more than a quarter of a run's height parts them, on either side; lines never
-//! join, and no value spans two pieces of a line, so two cells are never one value.
+//! join, and no value spans two pieces of a line, so two cells are never one value. Nor does one
+//! span two lines (`12` above `34` is not `1234`), but where the first ends in `. , : / -`, as a
+//! range or a link the page wraps does (`2007-` above `2023`); a table row's never does.
 //!
 //! **Words** are decision #123's: the distinct runs of letters, digits and `_`, two characters or
 //! more, lower-cased, from the model's text with its tags removed and its HTML character references
@@ -88,6 +90,10 @@
 //! side, where the cell also shows on its own line (another of its values, or a word of letters).
 //! Brackets a right-to-left line draws mirrored, `)x(`, read as `(x)` where they touch. A cell the page sets on two lines binds, and a swap
 //! between rows each on its own line is caught; one between rows whose lines interleave may pass.
+//! Two rows swapped whole, labels kept, are caught by their **labels**, a row's words of letters no
+//! other row holds: where each row's label lies on the other's own line and not on its own, neither
+//! row's values are found. A label alone on another row's line is no swap: a table centres a label
+//! over the rows it spans, and sets a header over two lines.
 //! A table cell's words bind on its row's lines; any other line's values and words anywhere in the
 //! box. **A box the model drew too small binds against the engine's table it overlaps**, or a
 //! leading-gap block region of the engine's, no larger than half the page, that it overlaps; never
@@ -876,8 +882,17 @@ fn guard_with(
         .map(|(r, _)| *r)
         .collect();
     let bands = bands_inside(grid, frame, ink, &union);
-    let texts: Vec<String> = bands.iter().map(|line| joined(line)).collect();
-    let all = Engine::new(&texts.join("\n"));
+    // Lines apart as pieces are, so `12` above `34` is not `1234` (review), but a line ending in a
+    // separator a value runs through goes on: `2007-` above `2023`, a link broken after a `/`.
+    let mut all = String::new();
+    for line in &bands {
+        if !all.is_empty() {
+            let on = all.trim_end().ends_with(['.', ',', ':', '/', '-']);
+            all.push_str(if on { "\n" } else { PIECE });
+        }
+        all.push_str(&joined(line));
+    }
+    let all = Engine::new(&all);
 
     // A box over half the page places nothing: no line binds by it alone.
     let [x0, y0, x1, y1] = grid;
@@ -1132,6 +1147,35 @@ fn rows_found(lines: &[(Option<u32>, String)], bands: &[Line]) -> RowsFound {
             own_lines.insert(number, best.1);
         }
     }
+    // Two rows swapped whole (review): each one's label — its words of letters no other row
+    // holds — lies on the other's own line and not on its own. Their values were each found on the
+    // other's line, so neither binds. A label alone on another row's line is no swap: a table
+    // centres a label over the rows it spans, and sets a header over two lines.
+    let mut holders: std::collections::BTreeMap<&str, usize> = Default::default();
+    for (_, own) in rows.values() {
+        for w in own.iter().filter(|w| !w.chars().any(is_digit)) {
+            *holders.entry(w).or_default() += 1;
+        }
+    }
+    let holds = |number: u32, line: usize| {
+        rows[&number].1.iter().any(|w| {
+            holders.get(w.as_str()) == Some(&1) && engines[line].words.contains(w.as_str())
+        })
+    };
+    let mut by_line: std::collections::BTreeMap<usize, Vec<u32>> = Default::default();
+    for (&number, &line) in &own_lines {
+        by_line.entry(line).or_default().push(number);
+    }
+    let swapped: std::collections::BTreeSet<u32> = own_lines
+        .iter()
+        .filter(|&(&a, &own_a)| {
+            !holds(a, own_a)
+                && by_line.iter().any(|(&line, others)| {
+                    holds(a, line) && others.iter().any(|&b| holds(b, own_a) && !holds(b, line))
+                })
+        })
+        .map(|(&a, _)| a)
+        .collect();
     let mut taken: Vec<usize> = own_lines.values().copied().collect();
     taken.sort_unstable();
     taken.dedup();
@@ -1155,6 +1199,10 @@ fn rows_found(lines: &[(Option<u32>, String)], bands: &[Line]) -> RowsFound {
         let texts: Vec<&str> = pieces.into_iter().map(|(_, _, t)| t).collect();
         let span = Engine::new(&texts.join(PIECE));
         let row = &rows[&number].0;
+        if swapped.contains(&number) {
+            spread.insert(number, span.words);
+            continue;
+        }
         // Each value found, by its place in the row, with its piece's left edge.
         let placed: std::collections::BTreeMap<usize, i64> = hits(&span, row)
             .into_iter()
@@ -3161,6 +3209,41 @@ mod tests {
             &[wrapped],
         );
         assert_eq!(tally(&g), (2, 2, vec![]));
+        // No value spans two lines: `Total 12` above `34` does not hold `1234` (review).
+        let stacked = vec![
+            ink(QRect::new(10000, 10000, 30000, 11000).unwrap(), "Total 12"),
+            ink(QRect::new(10000, 11200, 30000, 12200).unwrap(), "34"),
+        ];
+        let g = guard(
+            Some("text"),
+            "Total 1234",
+            [90, 90, 310, 130],
+            FRAME,
+            &[stacked],
+        );
+        assert_eq!(
+            tally(&g),
+            (1, 0, vec![flag(1, AssistMark::Contradicted, Some("1234"))])
+        );
+        // A line ending in a separator a value runs through goes on: `2007-` above `2023`.
+        let range = vec![
+            ink(
+                QRect::new(10000, 10000, 30000, 11000).unwrap(),
+                "over 2007-",
+            ),
+            ink(
+                QRect::new(10000, 11200, 30000, 12200).unwrap(),
+                "2023 it rose",
+            ),
+        ];
+        let g = guard(
+            Some("text"),
+            "over 2007-2023 it rose",
+            [90, 90, 310, 130],
+            FRAME,
+            &[range],
+        );
+        assert_eq!(tally(&g), (1, 1, vec![]));
         // A run of spaces joins a value the engine split inside one block.
         let split = vec![
             ink(QRect::new(10000, 10000, 10500, 11000).unwrap(), "1"),
@@ -3379,6 +3462,86 @@ mod tests {
                 vec![flag(6, c, Some("5.678")), flag(10, c, Some("1,234"))]
             )
         );
+        // Neighbouring rows that swap every value, labels kept, are both wrong (review): each
+        // row's values lie on the other's line, which does not hold its label.
+        let mut swapped = TRUE_TABLE;
+        swapped[1] = &["Alpha", "5.678", "B-220", "2024-04-15"];
+        swapped[2] = &["Beta", "1,234", "A-113", "2024-03-01"];
+        assert_eq!(
+            tally(&guard(
+                Some("table"),
+                &html(&swapped),
+                TABLE_BOX,
+                FRAME,
+                &table_runs()
+            )),
+            (
+                16,
+                8,
+                vec![
+                    flag(6, c, Some("5.678")),
+                    flag(7, c, Some("220")),
+                    flag(8, c, Some("2024-04-15")),
+                    flag(10, c, Some("1,234")),
+                    flag(11, c, Some("113")),
+                    flag(12, c, Some("2024-03-01")),
+                ]
+            )
+        );
+        // A label the page centres over the rows it spans lies on another row's line, and is no
+        // swap: that row's own label is not on this one's.
+        let centred: [&[&str]; 2] = [&["PaLM", "8B", "25.6"], &["", "62B", "59.5"]];
+        let runs = [
+            run(200, 110, "8B"),
+            run(300, 110, "25.6"),
+            run(100, 130, "PaLM"),
+            run(200, 130, "62B"),
+            run(300, 130, "59.5"),
+        ];
+        let g = guard(
+            Some("table"),
+            &html(&centred),
+            [80, 100, 400, 140],
+            FRAME,
+            &runs,
+        );
+        assert_eq!(tally(&g), (6, 4, vec![]));
+        // A label is the words of letters one row alone holds: a unit both rows show hides no swap.
+        let units: [&[&str]; 2] = [&["Alpha", "20 kg"], &["Beta", "10 kg"]];
+        let runs = [
+            run(100, 110, "Alpha"),
+            run(300, 110, "10 kg"),
+            run(100, 130, "Beta"),
+            run(300, 130, "20 kg"),
+        ];
+        let g = guard(
+            Some("table"),
+            &html(&units),
+            [80, 100, 400, 140],
+            FRAME,
+            &runs,
+        );
+        assert_eq!(
+            tally(&g),
+            (4, 0, vec![flag(2, c, Some("20")), flag(4, c, Some("10"))])
+        );
+        // A row whose label is on its own line is in place, though the page prints the label on
+        // another row's line too.
+        let both: [&[&str]; 2] = [&["Alpha", "10"], &["Beta", "20"]];
+        let runs = [
+            run(100, 110, "Alpha Beta"),
+            run(300, 110, "10"),
+            run(100, 130, "Alpha"),
+            run(300, 130, "20"),
+        ];
+        let g = guard(
+            Some("table"),
+            &html(&both),
+            [80, 100, 400, 140],
+            FRAME,
+            &runs,
+        );
+        assert_eq!(tally(&g), (4, 3, vec![]));
         // The last row's wrong value printed on the line below binds; two lines below, it does not.
         let mut wrong = TRUE_TABLE;
         wrong[3] = &["Gamma", "9,999", "C-310", "2024-05-30"];

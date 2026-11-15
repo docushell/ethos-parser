@@ -47,7 +47,9 @@ and so is every profile's hash.
   evidence. The runs are joined as `ground` joins them into elements, with no table claiming its
   cells, then read line by line: a page the engine reads glyph by glyph keeps its words, two lines
   are never glued, runs more than a quarter of their height apart on either side are two pieces,
-  two pieces are never one value, and a printed `<` and `>` hide nothing between them.
+  two pieces are never one value, nor two lines but where the first ends in `. , : / -` (a range or
+  a link the page wraps, `2007-` above `2023`; review: `12` above `34` held `1234`), and a printed
+  `<` and `>` hide nothing between them.
 - A block's lines are a table's or chart's cells, row by row, and the text outside them (a caption,
   words after the table), or else its text's lines; blank lines outside a cell do not count.
 - A value is decision #123's prototype token with any script's decimal digit: a run of ASCII
@@ -67,7 +69,10 @@ and so is every profile's hash.
   a cell's words bind on those lines. A cell set on two lines binds, its second line on a neighbouring row's line too when it lies in
   the cell's column and the cell shows on its own line, while a swapped cell, a row
   shifted a column or a wrong value printed nearby does not; a swap between rows whose lines
-  interleave may pass. **A box the model drew too small binds against the engine's table it
+  interleave may pass. Two rows swapped whole, labels kept, bind neither (review): each row's
+  label, its words of letters no other row holds, lies on the other's own line and not on its own.
+  A label alone on another row's line swaps nothing, since a table centres a label over the rows
+  it spans and sets a header over two lines. **A box the model drew too small binds against the engine's table it
   overlaps**, or an engine block region of no more than half the page; never against the page at
   large, so a value copied from elsewhere stays unfound. **A box over half the page places
   nothing**: no line binds by it alone, though a table row still binds on its lines.
@@ -93,8 +98,10 @@ and so is every profile's hash.
   `ASSIST_GUARD_V1`. Draft schemas: the block's `guard`, the two outcomes, the pin's `guard`.
 - Nothing projects the blocks yet; the projection reads these marks. ParseBench: measured with the projection (decisions to come).
 - Measured on decision #123's replies to 1,567 ParseBench pages, attached to this build's records:
-  98,046 lines bind, 1,751 are contradicted, 86 unsupported, 630 disputed (kept), 23,836 chart
-  values estimated and 31,555 unchecked; 19,985 lines sit in the 30 dropped last blocks. Of the
+  98,040 lines bind, 1,751 are contradicted, 86 unsupported, 629 disputed (kept), 23,847 chart
+  values estimated and 31,551 unchecked (the fourth review's line rule made 11 chart values the
+  engine reads a digit per line estimates and left one disputed line unchecked; its swap rule
+  fires on no row); 19,985 lines sit in the 30 dropped last blocks. Of the
   contradicted lines, 958 (273 table rows) are a row's values not on its engine lines in order,
   chiefly columns the model invents by repeating a value. The loop rule fires on 14 of the 30
   capped replies and on none of the 1,537 others. Engine-only output is byte-identical to decision
@@ -338,7 +345,10 @@ flagged run.
   nothing is painted, after `ET`, through the clip it sets and over its glyphs, so a heading
   filled with a shading is not hidden and a clip nothing paints through still is. Text in a layer
   switched off, or kept from the page by a known clip, paints nothing through it, and a spread
-  string's glyph shows only what is painted over that glyph.
+  string's glyph shows only what is painted over that glyph. A clip that has shown paint still
+  clips (review): each `ET` intersects the clip in force with the box around its text object's
+  mode-7 glyphs, until the `Q` that restores the state, so a later mode-7 run painted over only
+  outside an earlier clip standing carries the finding.
 - **Operands, never contrast.** Grey at 0.99 on white, a colour in `rg` over the same in `g`,
   and transparency are not flagged; `low-contrast-not-detected` stays on every profile and says
   so. OpenDataLoader's filters are not matched: they render the page and test a contrast ratio

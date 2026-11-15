@@ -497,9 +497,18 @@ impl ClipTexts {
         }
     }
 
-    /// `ET`: every record shown so far takes effect.
-    fn arm(&mut self) {
+    /// `ET`: every record shown so far takes effect. The box around those armed now, if any: the
+    /// clip their text object adds.
+    fn arm(&mut self) -> Option<PathRect> {
+        let added = self.records.range(self.armed..).map(|(_, c)| c.band);
+        let added = added.reduce(|a, b| PathRect {
+            x0: a.x0.min(b.x0),
+            y0: a.y0.min(b.y0),
+            x1: a.x1.max(b.x1),
+            y1: a.y1.max(b.y1),
+        });
         self.armed = self.next;
+        added
     }
 
     /// Marks as clipping paint each record armed whose glyphs `area` touches, and forgets it.
@@ -970,9 +979,12 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Marks as clipping paint each rendering-mode-7 run whose clip has taken effect, still stands,
-    /// and whose glyphs `area` touches (decision #139).
+    /// and whose glyphs `area` touches (decision #139), as much of `area` as the text clips in
+    /// force leave.
     fn through_clip_text(&mut self, area: &PathRect) {
-        self.clip_text.through(area, &mut self.shown);
+        if let Some(area) = area.clip_to(self.gs.text_clip) {
+            self.clip_text.through(&area, &mut self.shown);
+        }
     }
 
     /// Forgets the rendering-mode-7 runs whose clip the state just restored took away.
@@ -1212,7 +1224,18 @@ impl<'a> Interpreter<'a> {
             // Decision #139: the clip a mode-7 run adds takes effect here. Records are numbered in
             // order, so those not yet armed are the last ones, armed at once: arming every record
             // at every `ET` was quadratic in a page's mode-7 objects.
-            EndText => self.clip_text.arm(),
+            // The clip intersects the one in force, and stands until `Q` (review).
+            EndText => {
+                if let Some(added) = self.clip_text.arm() {
+                    self.gs.text_clip =
+                        Some(added.clip_to(self.gs.text_clip).unwrap_or(PathRect {
+                            x0: f64::MAX,
+                            y0: f64::MAX,
+                            x1: f64::MIN,
+                            y1: f64::MIN,
+                        }));
+                }
+            }
 
             // --- text state ---
             CharSpacing => self.ts.char_spacing = num(operands, 0)?,

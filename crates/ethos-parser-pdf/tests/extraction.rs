@@ -6460,7 +6460,10 @@ fn a_clip_with_a_hole_is_no_rectangle() {
 
 /// **A mode-7 clip is found where its glyphs lie, and ends with the state that set it** (review
 /// of decision #139, which indexed the clips standing by cell): a small fill shows a clip set in
-/// glyphs too large to list by cell, and one set before a `q`, but not one the `Q` took away.
+/// glyphs too large to list by cell, and one set before a `q`, but not one the `Q` took away. A
+/// clip that has shown paint still clips (review): the fill under `BIG` lies outside `Kept clip`,
+/// whose clip stands, so it paints nothing and shows `BIG` nothing. A text object's clip is all
+/// its mode-7 runs: a fill over `Two` alone shows it.
 #[test]
 fn a_text_clip_is_found_by_its_glyphs_and_ends_with_its_state() {
     use ethos_parser_core::TextFinding::InvisibleRenderMode;
@@ -6468,16 +6471,22 @@ fn a_text_clip_is_found_by_its_glyphs_and_ends_with_its_state() {
         "<< /OFF [6 0 R] >>",
         "/BBox [0 0 300 400]",
         "",
-        "BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (Kept clip) Tj ET \
+        "q BT 7 Tr /F1 10 Tf 1 0 0 1 20 360 Tm (Two) Tj 0 -12 Td (runs) Tj ET \
+         0 g 15 358 40 12 re f Q \
+         q BT 7 Tr /F1 400 Tf 1 0 0 1 10 20 Tm (WIDE) Tj ET 0 g 20 30 5 5 re f Q \
+         BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (Kept clip) Tj ET \
          q BT /F1 10 Tf 1 0 0 1 160 300 Tm (Gone clip) Tj ET Q 0 g 10 295 280 20 re f \
          q BT /F1 400 Tf 1 0 0 1 10 20 Tm (BIG) Tj ET 0 g 20 30 5 5 re f Q",
     );
     let mut got = findings_of(&a);
     got.sort();
     let mut expected = vec![
+        ("Two".to_owned(), vec![]),
+        ("runs".to_owned(), vec![InvisibleRenderMode]),
+        ("WIDE".to_owned(), vec![]),
         ("Kept clip".to_owned(), vec![]),
         ("Gone clip".to_owned(), vec![InvisibleRenderMode]),
-        ("BIG".to_owned(), vec![]),
+        ("BIG".to_owned(), vec![InvisibleRenderMode]),
     ];
     expected.sort();
     assert_eq!(got, expected);

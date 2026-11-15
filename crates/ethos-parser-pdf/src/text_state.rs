@@ -161,6 +161,10 @@ pub struct GraphicsState {
     /// none is. A clip path of any other shape leaves it as it was: text and paths are clipped
     /// away only where the clip is known.
     pub clip: Option<crate::content::PathRect>,
+    /// The box around the glyphs of each text object whose rendering-mode-7 runs set a clip still
+    /// in force, intersected, or `None` where none is (decision #139). Read only where paint shows
+    /// a mode-7 clip: a clip that has shown paint still clips what is painted after it (review).
+    pub text_clip: Option<crate::content::PathRect>,
 }
 
 impl Default for GraphicsState {
@@ -178,6 +182,7 @@ impl Default for GraphicsState {
             line_cap: 0,
             dashed: false,
             clip: None,
+            text_clip: None,
         }
     }
 }
