@@ -470,6 +470,7 @@ fn ask_sends_decision_123s_request_and_stores_the_reply() {
     assert_eq!(str_of(&v, "renderer"), str_of(&identity, "renderer"));
     assert_eq!(str_of(&v, "request"), Some(REQUEST));
     let model = v.get("model").unwrap();
+    assert_eq!(str_of(model, "asked"), Some("LightOnOCR-3-0.8B"));
     assert_eq!(str_of(model, "id"), Some("LightOnOCR-3-0.8B"));
     assert_eq!(str_of(model, "version"), Some("36d8636"));
     let p = page(&v, 1);
@@ -667,11 +668,12 @@ fn a_model_change_on_resume_is_refused() {
     assert_eq!(ask(&dir, &one.url(), "1", Some("m-one@v1"), &pdf).code, 0);
     let before = std::fs::read(dir.join("answers.json")).unwrap();
 
+    // The same name, served by another model.
     let two = serve(
         &[],
         vec![ok(completion("m-two", "stop", "![text](1,1,2,2) b"))],
     );
-    let r = ask(&dir, &two.url(), "1,2", Some("m-two@v1"), &pdf);
+    let r = ask(&dir, &two.url(), "1,2", Some("m-one@v1"), &pdf);
     assert_eq!(r.code, 5);
     assert!(
         r.stderr.contains("assist-answers-other-model"),
@@ -691,6 +693,48 @@ fn a_model_change_on_resume_is_refused() {
     );
     assert_eq!(three.posts(), 0, "refused before any page is asked");
     assert!(std::fs::read(dir.join("answers.json")).unwrap() == before);
+}
+
+/// Saved replies are kept only for the model they are from (review): another name is refused
+/// before any page is passed over as answered, even when every page asked is answered and no
+/// version is named. A server's alias resumes under the name asked or the id it reported.
+#[test]
+fn saved_replies_are_kept_only_for_their_model() {
+    let dir = scratch("model-asked");
+    let pdf = three_pages();
+    // `alias` served as `org/model`, as vLLM's `--served-model-name` or a cloud API may answer.
+    let one = serve(
+        &[],
+        vec![ok(completion("org/model", "stop", "![text](1,1,2,2) a"))],
+    );
+    assert_eq!(ask(&dir, &one.url(), "1", Some("alias"), &pdf).code, 0);
+    let model = answers(&dir).get("model").cloned().unwrap();
+    assert_eq!(str_of(&model, "asked"), Some("alias"));
+    assert_eq!(str_of(&model, "id"), Some("org/model"));
+    let before = std::fs::read(dir.join("answers.json")).unwrap();
+
+    let none = serve(&[], vec![]);
+    let r = ask(&dir, &none.url(), "1", Some("other"), &pdf);
+    assert_eq!(r.code, 5, "{}", r.stderr);
+    assert!(
+        r.stderr.contains("assist-answers-other-model"),
+        "{}",
+        r.stderr
+    );
+    assert!(std::fs::read(dir.join("answers.json")).unwrap() == before);
+    for name in ["alias", "org/model"] {
+        let r = ask(&dir, &none.url(), "1", Some(name), &pdf);
+        assert_eq!(r.code, 0, "{name}: {}", r.stderr);
+        assert!(r.stderr.contains("page 1: answered before; kept"));
+    }
+    assert_eq!(none.posts(), 0);
+
+    let two = serve(
+        &[],
+        vec![ok(completion("org/model", "stop", "![text](1,1,2,2) b"))],
+    );
+    assert_eq!(ask(&dir, &two.url(), "1,2", Some("alias"), &pdf).code, 0);
+    assert_eq!(two.posts(), 1);
 }
 
 /// A reply cut at `max_tokens` is kept as written, `finish_reason: length`, and named.
@@ -781,11 +825,75 @@ fn a_loopback_server_is_never_proxied() {
         assert_eq!(target.posts(), 1, "{var}");
         let _ = std::fs::remove_file(dir.join("answers.json"));
     }
+    // Nor any other address of 127.0.0.0/8 (review). Nothing listens at 127.0.0.2, so curl, gone
+    // there itself, finds no server: refused on Linux, timed out on macOS.
+    let env = [
+        ("http_proxy", to.as_str()),
+        ("ETHOS_PARSER_ASSIST_KEY", KEY),
+    ];
+    let server = format!("http://127.0.0.2:{}", dead_port());
+    let args = ["ask", &server, "answers.json", "1", "m"];
+    let r = run_with(&dir, &tools().curl, &env, &args, CHECK_PAGE);
+    assert!(matches!(r.code, 0 | 4), "{}", r.stderr);
+    assert!(
+        r.stderr.contains("server-unreachable") || r.stderr.contains("page 1: timeout"),
+        "{}",
+        r.stderr
+    );
     assert_eq!(
         proxy.requests.lock().unwrap().len(),
         0,
         "the proxy saw a request"
     );
+}
+
+/// The key never crosses the network unencrypted (review): with a key, an `http://` server off
+/// loopback is refused by name before curl runs, for the listing, a page and `check` alike. The
+/// addresses are this machine's by another name than loopback's, so a run that is not refused
+/// still sends nothing off it.
+#[test]
+fn a_key_is_never_sent_over_http_off_loopback() {
+    let dir = scratch("key-in-clear");
+    let port = dead_port();
+    for server in [
+        format!("http://0.0.0.0:{port}"),
+        format!("HTTP://[::]:{port}"),
+        format!("http://127.0.0.1@0.0.0.0:{port}"),
+    ] {
+        let server = server.as_str();
+        let page = run(
+            &dir,
+            Some(KEY),
+            &["ask", server, "answers.json", "1", "m"],
+            CHECK_PAGE,
+        );
+        let listing = run(
+            &dir,
+            Some(KEY),
+            &["ask", server, "answers.json", "1"],
+            CHECK_PAGE,
+        );
+        for r in [&page, &listing] {
+            assert_eq!(r.code, 5, "{server}: {}", r.stderr);
+            assert!(
+                r.stderr.contains("key-needs-https"),
+                "{server}: {}",
+                r.stderr
+            );
+        }
+        let c = run(&dir, Some(KEY), &["check", server], b"");
+        assert_eq!(c.code, 2, "{server}: {}", c.stdout);
+        assert!(
+            c.stdout.contains("key-needs-https"),
+            "{server}: {}",
+            c.stdout
+        );
+        for r in [&page, &listing, &c] {
+            assert!(r.argv.is_empty(), "{server}: curl ran");
+            assert!(!r.stdout.contains(KEY) && !r.stderr.contains(KEY));
+        }
+    }
+    assert!(!dir.join("answers.json").exists());
 }
 
 /// SERVER is a URL, never a curl glob: `{a,b}` is one address, asked once.

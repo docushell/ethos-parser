@@ -897,6 +897,58 @@ fn a_cells_runs_of_one_paragraph_join_as_they_stand() {
     assert!(html.html.contains(">Revenue FY2026<"), "{}", html.html);
 }
 
+/// **A line break parts a cell's runs** (review of decision #135): `North<a:br/>America` in one
+/// paragraph read `NorthAmerica` in the record, in Markdown and in HTML, once the runs of a
+/// paragraph joined as they stand. A shape's runs are blocks of their own, as before.
+#[test]
+fn a_line_break_in_a_cell_parts_its_runs() {
+    let para = "<a:p><a:r><a:t>North</a:t></a:r><a:br/><a:r><a:t>America</a:t></a:r></a:p>";
+    let body = format!(
+        r#"<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title 1"/></p:nvSpPr><p:txBody>{para}</p:txBody></p:sp>{}"#,
+        frame(
+            4,
+            &format!("<a:tr><a:tc><a:txBody>{para}</a:txBody></a:tc></a:tr>")
+        )
+    );
+    let sealed = ethos_parser_office::read(&deck(&body)).expect("reads");
+    assert_eq!(sealed.payload().tables[0].cells[0].text, "North America");
+    let breaks: Vec<_> = sealed
+        .payload()
+        .nodes
+        .iter()
+        .filter_map(|n| match &n.attributes {
+            NodeAttributes::OfficeSlideRun(a) => Some((n.text.as_str(), a.line_break_before)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        breaks,
+        vec![
+            ("North", false),
+            ("America", false),
+            ("North", false),
+            ("America", true)
+        ]
+    );
+    let profile = Profile::default();
+    let sha = profile.profile_sha256().unwrap();
+    let md = ethos_parser_core::to_markdown(
+        &sealed,
+        &profile.parser_version,
+        &sha,
+        &profile.markdown_rule,
+    )
+    .expect("projects");
+    assert_eq!(
+        md.markdown,
+        "North\n\nAmerica\n\n| North America |\n| --- |\n"
+    );
+    let html =
+        ethos_parser_core::to_html(&sealed, &profile.parser_version, &sha, &profile.html_rule)
+            .expect("projects");
+    assert!(html.html.contains(">North America<"), "{}", html.html);
+}
+
 /// **A row in a branch passed over is no row of the table** (review of decision #135): an
 /// `<mc:Fallback>` row beside the `<mc:Choice>` one read added an empty row. The locators still
 /// count it, as they count every `<a:tr>` the file holds.

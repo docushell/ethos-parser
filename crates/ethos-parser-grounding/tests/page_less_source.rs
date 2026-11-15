@@ -345,6 +345,7 @@ fn a_pptx_representation_is_refused_by_project() {
         attributes: NodeAttributes::OfficeSlideRun(OfficeSlideRunAttributes {
             shape_id: 2,
             shape_name: "Title 1".into(),
+            line_break_before: false,
         }),
     };
     let geometry = NodeGeometry {

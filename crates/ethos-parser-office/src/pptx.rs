@@ -134,6 +134,10 @@ pub struct SlideRun {
     pub row: Option<u32>,
     /// For a run in a table cell: 1-based `<a:tc>` within the `<a:tr>`, its grid column.
     pub column: Option<u32>,
+    /// For a run in a table cell: whether its paragraph holds an `<a:br>` before it, after any run
+    /// before it (review of decision #135), so the cell's text does not weld `North` and `America`
+    /// into one word. Always `false` in a shape, whose runs no projection joins.
+    pub line_break_before: bool,
     /// The text, concatenated from this run's `<a:t>` elements, verbatim.
     pub text: String,
 }
@@ -376,6 +380,8 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
     let mut paragraph: u32 = 0;
     let mut run_in_paragraph: u32 = 0;
     let mut open_run: Option<SlideRun> = None;
+    // An `<a:br>` read in a table cell's paragraph since its last run (review of decision #135).
+    let mut line_break = false;
     let mut in_text = false;
     let mut depth: i32 = 0;
     // `(shape, row, column, paragraph, run)`, row and column 0 outside a table: each is 1-based.
@@ -503,7 +509,9 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                     b"p" if in_body => {
                         paragraph += 1;
                         run_in_paragraph = 0;
+                        line_break = false;
                     }
+                    b"br" if in_body && cell.is_some() && skip_from.is_none() => line_break = true,
                     b"r" if in_body => {
                         run_in_paragraph += 1;
                         if skip_from.is_none() {
@@ -521,6 +529,7 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                                 run: run_in_paragraph,
                                 row: cell.map(|(r, _)| r),
                                 column: cell.map(|(_, c)| c),
+                                line_break_before: line_break,
                                 text: String::new(),
                             });
                         }
@@ -555,6 +564,7 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                         paragraph += 1;
                         run_in_paragraph = 0;
                     }
+                    b"br" if in_body && cell.is_some() && skip_from.is_none() => line_break = true,
                     b"r" if in_body => run_in_paragraph += 1,
                     b"cNvPr"
                         if (in_shape || in_frame) && shape.is_none() && skip_from.is_none() =>
@@ -642,6 +652,7 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                                     });
                                 }
                                 runs.push(run);
+                                line_break = false;
                             }
                         }
                     }
@@ -1223,6 +1234,63 @@ mod tests {
         format!(
             r#"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="{id}" name="Table"/></p:nvGraphicFramePr><a:graphic><a:graphicData><a:tbl>{tbl}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"#
         )
+    }
+
+    /// **A line break in a cell's paragraph is recorded on the run after it** (review of decision
+    /// #135): `North<a:br/>America` read as two runs of one paragraph with nothing between, and
+    /// the cell as `NorthAmerica`. A break with run properties counts, and so does one opening a
+    /// paragraph; one in a shape, or in a branch passed over, is not recorded, and neither the run
+    /// after the next nor a new paragraph has one.
+    #[test]
+    fn a_line_break_in_a_cell_is_recorded_on_the_run_after_it() {
+        let run = |t: &str| format!("<a:r><a:t>{t}</a:t></a:r>");
+        let para = |br: &str| format!("<a:p>{}{br}{}</a:p>", run("North"), run("America"));
+        let cell = |body: String| format!("<a:tc><a:txBody>{body}</a:txBody></a:tc>");
+        let skipped = r#"<mc:AlternateContent xmlns:mc="mc"><mc:Choice Requires="x"/><mc:Fallback><a:br/></mc:Fallback></mc:AlternateContent>"#;
+        let tbl = format!(
+            "<a:tr>{}{}{}{}</a:tr>",
+            cell(format!(
+                "<a:p>{}<a:br/>{}{}</a:p>",
+                run("a"),
+                run("b"),
+                run("c")
+            )),
+            cell(para(r#"<a:br><a:rPr lang="en-US"/></a:br>"#)),
+            cell(para(skipped)),
+            cell(format!(
+                "<a:p>{}<a:br/></a:p><a:p>{}</a:p><a:p><a:br/>{}</a:p>",
+                run("end"),
+                run("next"),
+                run("lead")
+            )),
+        );
+        let shaped = para("<a:br/>") + &para(r#"<a:br><a:rPr lang="en-US"/></a:br>"#);
+        let body = shape(2, "T", &shaped) + &frame(4, &tbl);
+        let out = read(&body).expect("well-formed");
+        let breaks: Vec<_> = out
+            .runs
+            .iter()
+            .map(|r| (r.text.as_str(), r.line_break_before))
+            .collect();
+        assert_eq!(
+            breaks,
+            vec![
+                ("North", false),
+                ("America", false),
+                ("North", false),
+                ("America", false),
+                ("a", false),
+                ("b", true),
+                ("c", false),
+                ("North", false),
+                ("America", true),
+                ("North", false),
+                ("America", false),
+                ("end", false),
+                ("next", false),
+                ("lead", true),
+            ]
+        );
     }
 
     #[test]

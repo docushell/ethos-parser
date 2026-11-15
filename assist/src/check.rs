@@ -18,7 +18,8 @@
 //!
 //! Exit 0 when the reply is read as [`REQUEST`]; 1 when it is not (`reply-format-not-read`: a
 //! general chat model) or the server answered with an error; 2 when the server cannot be
-//! reached, or curl cannot be run. It never prints the key or the server's address.
+//! reached, curl cannot be run, or the key would cross the network unencrypted. It never prints
+//! the key or the server's address.
 
 use std::collections::BTreeSet;
 use std::fmt::Display;
@@ -52,8 +53,8 @@ fn stop(code: u8, label: &str, text: impl Display) -> (u8, String) {
     (code, format!("{label:<10}{text}"))
 }
 
-/// A transport failure as `check` reports it: 2 when the server cannot be reached, or curl
-/// cannot be run.
+/// A transport failure as `check` reports it: 2 when the server cannot be reached, curl cannot be
+/// run, or the key would go unencrypted.
 fn failed(label: &str, f: &Failure) -> (u8, String) {
     match fatal(f) {
         Some(s) => stop(2, label, s.message),

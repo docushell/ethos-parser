@@ -764,17 +764,18 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
 }
 
 /// A DOCX or slide cell's text as both projections write it (decisions #135 and #136): its runs'
-/// text, each beside the paragraph it is in, concatenated, with one space where two of its
-/// paragraphs meet and neither holds whitespace at the seam, so `Line one` and `Line two` do not
-/// weld into `Line oneLine two` — but two runs of one paragraph are joined as they stand, so a word
+/// text, each beside the paragraph it is in and whether a slide's `<a:br>` stands before it,
+/// concatenated, with one space where two of its paragraphs meet, or a line break parts two runs
+/// of one, and neither holds whitespace at the seam, so `Line one` and `Line two` do not weld into
+/// `Line oneLine two` — but other runs of one paragraph are joined as they stand, so a word
 /// formatting cut into runs stays one word (review: a slide cell's `Rev` and `enue` read
-/// `Rev enue`).
-fn cell_text<'a>(runs: impl IntoIterator<Item = (u32, &'a str)>) -> String {
+/// `Rev enue`, and then `North`, a break and `America` read `NorthAmerica`).
+fn cell_text<'a>(runs: impl IntoIterator<Item = (u32, bool, &'a str)>) -> String {
     let mut text = String::new();
     let mut prev: Option<(u32, &str)> = None;
-    for (paragraph, run) in runs {
+    for (paragraph, line_break, run) in runs {
         if prev.is_some_and(|(p, before)| {
-            p != paragraph
+            (p != paragraph || line_break)
                 && !before.ends_with(char::is_whitespace)
                 && !run.starts_with(char::is_whitespace)
         }) {
@@ -967,7 +968,7 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     nodes: cell.runs.iter().map(|&i| run_ids[i].clone()).collect(),
                     text: cell_text(cell.runs.iter().map(|&i| {
                         let run = &read.runs[i];
-                        (run.paragraph, run.text.as_str())
+                        (run.paragraph, false, run.text.as_str())
                     })),
                 })
                 .collect();
@@ -2408,6 +2409,7 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 attributes: NodeAttributes::OfficeSlideRun(OfficeSlideRunAttributes {
                     shape_id: run.shape_id,
                     shape_name: run.shape_name.clone(),
+                    line_break_before: run.line_break_before,
                 }),
             });
         }
@@ -2421,11 +2423,13 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 held.entry((run.shape, row, column)).or_default().push(node);
             }
         }
-        // The paragraph a cell's run is in, as its locator states it (review).
+        // The paragraph a cell's run is in, as its locator states it, and whether a line break
+        // stands before it there (review).
         let paragraph = |n: &Node| match &n.native_locator {
             NativeLocator::Pptx(l) => l.paragraph,
             _ => 0,
         };
+        let line_break = |n: &Node| matches!(&n.attributes, NodeAttributes::OfficeSlideRun(a) if a.line_break_before);
         // An `<a:tbl>` with no `<a:tc>` states no cell, so there is no table to emit and nothing
         // left out.
         for table in content.tables.iter().filter(|t| !t.cells.is_empty()) {
@@ -2442,7 +2446,10 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     colspan: u64::from(cell.colspan),
                     covered: cell.covered,
                     nodes: held.iter().map(|n| n.id.clone()).collect(),
-                    text: cell_text(held.iter().map(|n| (paragraph(n), n.text.as_str()))),
+                    text: cell_text(
+                        held.iter()
+                            .map(|n| (paragraph(n), line_break(n), n.text.as_str())),
+                    ),
                 });
             }
             let made = stated_table(

@@ -457,8 +457,101 @@ struct ClipText {
     states: usize,
     /// Its glyphs: from its baseline to seven tenths of its em above, origin to pen end.
     band: PathRect,
-    /// Whether `ET` has made its clip take effect.
-    armed: bool,
+}
+
+/// The runs drawn in rendering mode 7 whose clip still stands (decision #139), numbered in the
+/// order shown.
+///
+/// **Indexed by where their glyphs lie** (review), as [`Backdrop`]'s paints are, so a paint or a
+/// glyph is compared with the records listed in the cells of [`BACKDROP_CELLS`]'s first side it
+/// spans, and with those in `wide`: a page of fifty thousand mode-7 runs no longer compares every
+/// later paint and glyph with all of them. A record's band spanning more than
+/// [`BACKDROP_CELLS_MAX`] cells is listed in `wide`, and an area spanning more is compared with
+/// every record. A list holds the number of a record gone since, passed over and dropped where it
+/// is next read.
+#[derive(Debug, Default)]
+struct ClipTexts {
+    records: std::collections::BTreeMap<usize, ClipText>,
+    /// The number the next record takes.
+    next: usize,
+    /// The records numbered below this have had their clip take effect at an `ET`.
+    armed: usize,
+    cells: std::collections::BTreeMap<(i64, i64), Vec<usize>>,
+    wide: Vec<usize>,
+}
+
+impl ClipTexts {
+    fn push(&mut self, c: ClipText) {
+        let k = self.next;
+        self.next += 1;
+        self.records.insert(k, c);
+        match Backdrop::cells_of(&c.band, BACKDROP_CELLS[0]) {
+            Some((i0, j0, i1, j1)) => {
+                for i in i0..=i1 {
+                    for j in j0..=j1 {
+                        self.cells.entry((i, j)).or_default().push(k);
+                    }
+                }
+            }
+            None => self.wide.push(k),
+        }
+    }
+
+    /// `ET`: every record shown so far takes effect.
+    fn arm(&mut self) {
+        self.armed = self.next;
+    }
+
+    /// Marks as clipping paint each record armed whose glyphs `area` touches, and forgets it.
+    fn through(&mut self, area: &PathRect, shown: &mut [ShownText]) {
+        let cells = Backdrop::cells_of(area, BACKDROP_CELLS[0]);
+        let all: Vec<usize> = match cells {
+            Some(_) => Vec::new(),
+            None => self.records.keys().copied().collect(),
+        };
+        let (records, armed) = (&mut self.records, self.armed);
+        let mut stands = |k: usize| match records.get(&k) {
+            Some(c) if k < armed && c.band.touches(area) => {
+                if let Some(run) = shown.get_mut(c.index) {
+                    run.clips_paint = true;
+                }
+                records.remove(&k);
+                false
+            }
+            other => other.is_some(),
+        };
+        self.wide.retain(|&k| stands(k));
+        let Some((i0, j0, i1, j1)) = cells else {
+            for k in all {
+                stands(k);
+            }
+            return;
+        };
+        for i in i0..=i1 {
+            for j in j0..=j1 {
+                if let Some(list) = self.cells.get_mut(&(i, j)) {
+                    list.retain(|&k| stands(k));
+                    if list.is_empty() {
+                        self.cells.remove(&(i, j));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Forgets the records shown at more forms, or as many and more saved states, than are open.
+    /// Each record is shown at a depth no shallower than any standing before it, since a state is
+    /// restored only by `Q` or a form's end, and each forgets those shown deeper: so the records to
+    /// forget are the last ones.
+    fn prune(&mut self, forms: usize, states: usize) {
+        while let Some(last) = self.records.last_entry() {
+            let c = last.get();
+            if c.forms <= forms && (c.forms < forms || c.states <= states) {
+                break;
+            }
+            last.remove();
+        }
+    }
 }
 
 /// A subpath under construction.
@@ -585,8 +678,8 @@ pub struct Interpreter<'a> {
     layers: std::collections::BTreeMap<Vec<u8>, crate::layers::Layer>,
     /// Runs drawn in rendering mode 7 whose clip still stands (decision #139): each one's index in
     /// [`Self::shown`], how many forms and saved states were open when it was shown, its glyph
-    /// band, and whether `ET` has made its clip take effect.
-    clip_text: Vec<ClipText>,
+    /// band, and whether `ET` has made its clip take effect, indexed by where it lies.
+    clip_text: ClipTexts,
     /// The names the page's `/ExtGState` gives graphics states that change no fill's colour
     /// (decision #139): no blend mode but `/Normal` or `/Compatible`, no soft mask, no fill alpha
     /// under one.
@@ -719,7 +812,7 @@ impl<'a> Interpreter<'a> {
             wedges: Vec::new(),
             backdrop: Backdrop::default(),
             layers: std::collections::BTreeMap::new(),
-            clip_text: Vec::new(),
+            clip_text: ClipTexts::default(),
             plain_states: std::collections::BTreeSet::new(),
             path_subpaths: 0,
             path_box: None,
@@ -879,21 +972,13 @@ impl<'a> Interpreter<'a> {
     /// Marks as clipping paint each rendering-mode-7 run whose clip has taken effect, still stands,
     /// and whose glyphs `area` touches (decision #139).
     fn through_clip_text(&mut self, area: &PathRect) {
-        let shown = &mut self.shown;
-        self.clip_text.retain(|c| {
-            let through = c.armed && c.band.touches(area);
-            if let (true, Some(run)) = (through, shown.get_mut(c.index)) {
-                run.clips_paint = true;
-            }
-            !through
-        });
+        self.clip_text.through(area, &mut self.shown);
     }
 
     /// Forgets the rendering-mode-7 runs whose clip the state just restored took away.
     fn prune_clip_text(&mut self) {
         let (forms, states) = (self.form_stack.len(), self.gs_stack.len());
-        self.clip_text
-            .retain(|c| c.forms <= forms && (c.forms < forms || c.states <= states));
+        self.clip_text.prune(forms, states);
     }
 
     /// Interpret a decoded content stream.
@@ -935,7 +1020,7 @@ impl<'a> Interpreter<'a> {
                 self.marks.clear();
                 self.wedges.clear();
                 self.backdrop = Backdrop::default();
-                self.clip_text.clear();
+                self.clip_text = ClipTexts::default();
                 self.subpath = Subpath::default();
                 self.dropped_runs = 0;
                 Err(e)
@@ -1124,14 +1209,10 @@ impl<'a> Interpreter<'a> {
                 self.ts.begin_text();
                 self.text_drawn_since_placement = false;
             }
-            // Decision #139: the clip a mode-7 run adds takes effect here. Records are added at the
-            // end and kept in order, so those not yet armed are the last ones: each is armed once,
-            // where arming every record at every `ET` was quadratic in a page's mode-7 objects.
-            EndText => {
-                for c in self.clip_text.iter_mut().rev().take_while(|c| !c.armed) {
-                    c.armed = true;
-                }
-            }
+            // Decision #139: the clip a mode-7 run adds takes effect here. Records are numbered in
+            // order, so those not yet armed are the last ones, armed at once: arming every record
+            // at every `ET` was quadratic in a page's mode-7 objects.
+            EndText => self.clip_text.arm(),
 
             // --- text state ---
             CharSpacing => self.ts.char_spacing = num(operands, 0)?,
@@ -1591,9 +1672,11 @@ impl<'a> Interpreter<'a> {
             // would find a grid in every document that clips to its margins.
             Clip | ClipEvenOdd => {
                 // Decision #105: a clip path that is one rectangle, and nothing else, narrows the
-                // clip to it. Any other shape leaves the clip as it was.
+                // clip to it. Any other shape leaves the clip as it was. One subpath, as a fill is
+                // read (review): a second may cut a hole in it, a rectangle drawn with each corner
+                // named twice among them.
                 self.flush_subpath();
-                if let ([r], Some(b)) = (&self.pending[..], self.path_box) {
+                if let ([r], Some(b), 1) = (&self.pending[..], self.path_box, self.path_subpaths) {
                     let same = |p: f64, q: f64| approx_eq(p, q);
                     if same(r.x0, b.x0) && same(r.y0, b.y0) && same(r.x1, b.x1) && same(r.y1, b.y1)
                     {
@@ -1915,18 +1998,14 @@ impl<'a> Interpreter<'a> {
         }
         if self.ts.render_mode == 7 {
             let (forms, states) = (self.form_stack.len(), self.gs_stack.len());
-            self.clip_text
-                .extend(
-                    (first..self.shown.len())
-                        .zip(&bands)
-                        .map(|(index, &(_, _, band))| ClipText {
-                            index,
-                            forms,
-                            states,
-                            band,
-                            armed: false,
-                        }),
-                );
+            for (index, &(_, _, band)) in (first..self.shown.len()).zip(&bands) {
+                self.clip_text.push(ClipText {
+                    index,
+                    forms,
+                    states,
+                    band,
+                });
+            }
         }
 
         Ok(())

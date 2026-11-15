@@ -589,7 +589,8 @@
           "required": ["shape_id", "shape_name"],
           "properties": {
             "shape_id": { "type": "integer", "minimum": 0, "$comment": "PPTX: the shape's own <p:cNvPr id>." },
-            "shape_name": { "type": "string", "$comment": "And its <p:cNvPr name>." }
+            "shape_name": { "type": "string", "$comment": "And its <p:cNvPr name>." },
+            "line_break_before": { "type": "boolean", "$comment": "Decision #135 (review). A run in a table cell: its paragraph holds an <a:br> before it, after any run before it. Absent where false." }
           }
         },
         "office_paragraph": {

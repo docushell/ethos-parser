@@ -5516,10 +5516,16 @@ pub(crate) fn cell_runs_abut(
     }
     // Decision #136: two runs of one DOCX paragraph abut where neither holds whitespace at the
     // seam, as `paragraph_seam` joins them outside a table. Decision #135 (review): and two runs of
-    // one paragraph of a slide's cell, as the record's cell text joins them.
+    // one paragraph of a slide's cell, as the record's cell text joins them, but not across an
+    // `<a:br>`.
     if docx_paragraph(prev).is_some() || slide_paragraph(prev).is_some() {
+        let line_break = matches!(
+            &node.attributes,
+            crate::NodeAttributes::OfficeSlideRun(a) if a.line_break_before
+        );
         return (docx_paragraph(prev), slide_paragraph(prev))
             == (docx_paragraph(node), slide_paragraph(node))
+            && !line_break
             && !prev.text.ends_with(char::is_whitespace)
             && !node.text.starts_with(char::is_whitespace);
     }

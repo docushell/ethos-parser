@@ -67,6 +67,14 @@ pub fn fatal(f: &Failure) -> Option<Stop> {
             "the assist lane sends its requests with the system `curl`; install it, or put it on PATH",
         )),
         Failure::NotRun(_) => Some(refused("curl-not-run", f.name())),
+        Failure::KeyInClear => Some(refused(
+            "key-needs-https",
+            format!(
+                "{KEY_VAR} is set, and SERVER is an http:// address off this machine, so the key \
+                 would cross the network unencrypted; name an https:// address, or a server on \
+                 loopback"
+            ),
+        )),
         _ => None,
     }
 }
@@ -191,6 +199,9 @@ struct Answers {
     source_sha256: String,
     model_id: String,
     model_version: String,
+    /// The id the request named (MODEL, or the one model the server listed): with `model_id`, the
+    /// names a later run may resume the file under (review).
+    model_asked: String,
     pages: BTreeMap<u32, Page>,
 }
 
@@ -252,6 +263,7 @@ impl Answers {
             (
                 "model",
                 obj([
+                    ("asked", text(&self.model_asked)),
                     ("id", text(&self.model_id)),
                     ("version", text(&self.model_version)),
                 ]),
@@ -291,11 +303,14 @@ impl Answers {
         }
         let model = v
             .get("model")
-            .filter(|m| fields(m, &["id", "version"]).is_some())
+            .filter(|m| fields(m, &["asked", "id", "version"]).is_some())
             .ok_or_else(|| unreadable("has no model"))?;
+        let model_id = s(model, "id").ok_or_else(|| unreadable("has no model id"))?;
         let mut answers = Answers {
             source_sha256: s(&v, "source_sha256").ok_or_else(|| unreadable("has no source"))?,
-            model_id: s(model, "id").ok_or_else(|| unreadable("has no model id"))?,
+            // A file that names no `asked` was asked by the id its server reported.
+            model_asked: s(model, "asked").unwrap_or_else(|| model_id.clone()),
+            model_id,
             model_version: s(model, "version").ok_or_else(|| unreadable("has no version"))?,
             pages: BTreeMap::new(),
         };
@@ -433,6 +448,7 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
             source_sha256: source_sha256.clone(),
             model_id: asked.clone(),
             model_version: version.clone(),
+            model_asked: asked.clone(),
             pages: BTreeMap::new(),
         },
         Err(e) => {
@@ -454,6 +470,22 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
             format!(
                 "FILE holds version `{}`'s replies, and `{version}` was named",
                 answers.model_version
+            ),
+        ));
+    }
+    // Replies are another model's unless the model named is the one they were asked by, or the
+    // one the server reported, so a server's alias resumes under either name (review). Checked
+    // before any page is passed over as answered: a run whose pages are all answered asks nothing.
+    let replied = |p: &Page| matches!(p.outcome, Outcome::Reply { .. });
+    if !answers.pages.values().any(replied) {
+        answers.model_id = asked.clone();
+        answers.model_asked = asked.clone();
+    } else if asked != answers.model_asked && asked != answers.model_id {
+        return Err(refused(
+            "assist-answers-other-model",
+            format!(
+                "FILE holds `{}`'s replies, asked as `{}`, and `{asked}` was named",
+                answers.model_id, answers.model_asked
             ),
         ));
     }
@@ -482,7 +514,6 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
                 None => Outcome::Error("reply-unreadable".into()),
                 Some(c) => {
                     let id = c.model.unwrap_or_else(|| asked.clone());
-                    let replied = |p: &Page| matches!(p.outcome, Outcome::Reply { .. });
                     if !answers.pages.values().any(replied) {
                         answers.model_id = id;
                     } else if id != answers.model_id {

@@ -22,8 +22,10 @@
 //! body goes in on a second pipe, curl's fd 2, read as `@/dev/fd/2`, so no file ever holds the
 //! page, even when the run is killed. `silent` writes nothing to curl's stderr.
 //!
-//! A loopback server is never reached through a proxy: `noproxy` always lists loopback, then the
-//! user's own `no_proxy`. Any other server is reached as the user's proxy settings say.
+//! A loopback server is never reached through a proxy: its `noproxy` is `*`. Any other server is
+//! reached as the user's proxy settings say, `noproxy` listing loopback's names, then the user's own
+//! `no_proxy`. The key goes to an `http://` server only on loopback: elsewhere it would cross the
+//! network unencrypted, and the request is refused before curl runs.
 
 use std::io::{Read as _, Write as _};
 use std::process::{Command, Stdio};
@@ -37,7 +39,7 @@ const CONNECT_SECONDS: u32 = 10;
 /// The largest reply taken: a page's reply is tens of kilobytes. curl stops at it
 /// (`max-filesize`; an unannounced length only since curl 8.4), and so does the read below.
 const MAX_REPLY_BYTES: u64 = 64 << 20;
-/// Hosts never reached through a proxy.
+/// Names never reached through a proxy, whatever the server.
 const LOOPBACK: &str = "localhost,127.0.0.1,::1";
 
 /// A server's answer: its status and body.
@@ -63,6 +65,8 @@ pub enum Failure {
     Curl(Option<i32>),
     /// The config or the body could not be handed to curl.
     NotSent(String),
+    /// A key was to go to an `http://` server off loopback, unencrypted: not sent.
+    KeyInClear,
 }
 
 impl Failure {
@@ -78,6 +82,7 @@ impl Failure {
             Failure::Curl(Some(code)) => format!("curl-exit-{code}"),
             Failure::Curl(None) => "curl-killed".into(),
             Failure::NotSent(e) => format!("body-not-written ({e})"),
+            Failure::KeyInClear => "key-needs-https".into(),
         }
     }
 }
@@ -100,9 +105,50 @@ fn quoted(v: &str) -> String {
     out
 }
 
-/// curl's `noproxy` list: loopback always, then the user's `no_proxy` (curl's own order), which
-/// the option would otherwise replace.
-fn noproxy(user: Option<&str>) -> String {
+/// Whether `url`'s host is this machine by its address alone: `localhost`, an IPv4 address of
+/// 127.0.0.0/8 in dotted decimal, or `[::1]`, at any port. Read strictly, so a host with a user
+/// part, or an address written any other way, is not loopback here.
+fn loopback(url: &str) -> bool {
+    let Some((_, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let (local, port) = match authority.strip_prefix('[') {
+        Some(v6) => match v6.split_once(']') {
+            Some((host, port)) => (
+                host.parse::<std::net::Ipv6Addr>()
+                    .is_ok_and(|a| a.is_loopback()),
+                port,
+            ),
+            None => (false, ""),
+        },
+        None => {
+            let (host, port) = authority.split_at(authority.find(':').unwrap_or(authority.len()));
+            let v4 = host
+                .parse::<std::net::Ipv4Addr>()
+                .is_ok_and(|a| a.is_loopback());
+            (v4 || host.eq_ignore_ascii_case("localhost"), port)
+        }
+    };
+    let digits = |p: &str| p.bytes().all(|b| b.is_ascii_digit());
+    local && (port.is_empty() || port.strip_prefix(':').is_some_and(digits))
+}
+
+/// Whether a key sent to `url` would cross a network unencrypted: an `http://` server off loopback.
+fn key_in_clear(url: &str) -> bool {
+    let https = url
+        .get(..8)
+        .is_some_and(|s| s.eq_ignore_ascii_case("https://"));
+    !https && !loopback(url)
+}
+
+/// curl's `noproxy` list: `*` for a loopback server (review: listing `127.0.0.1` left
+/// `127.0.0.2` to a proxy); else loopback's names, then the user's `no_proxy` (curl's own order),
+/// which the option would otherwise replace.
+fn noproxy(url: &str, user: Option<&str>) -> String {
+    if loopback(url) {
+        return "*".into();
+    }
     match user.map(str::trim) {
         Some("*") => "*".into(),
         Some(u) if !u.is_empty() => format!("{LOOPBACK},{u}"),
@@ -127,15 +173,20 @@ fn body_pipe(_: &mut Command, _: &mut String) -> Result<std::io::PipeWriter, Fai
     ))
 }
 
-/// `GET url`, or `POST url` with a JSON `body`. `key`, when given, is sent as a bearer token.
+/// `GET url`, or `POST url` with a JSON `body`. `key`, when given, is sent as a bearer token, and
+/// only over `https://` or to loopback (review): [`Failure::KeyInClear`] otherwise, before curl
+/// runs.
 pub fn request(url: &str, key: Option<&str>, body: Option<&[u8]>) -> Result<Response, Failure> {
+    if key.is_some() && key_in_clear(url) {
+        return Err(Failure::KeyInClear);
+    }
     let user = std::env::var("no_proxy").or_else(|_| std::env::var("NO_PROXY"));
     let mut config = format!(
         "url = {}\nproto = \"=http,https\"\ngloboff\nnoproxy = {}\nsilent\n\
          max-time = {MAX_SECONDS}\nconnect-timeout = {CONNECT_SECONDS}\n\
          max-filesize = {MAX_REPLY_BYTES}\nwrite-out = \"\\n%{{http_code}}\"\n",
         quoted(url),
-        quoted(&noproxy(user.ok().as_deref()))
+        quoted(&noproxy(url, user.ok().as_deref()))
     );
     if let Some(key) = key {
         config += &format!(
@@ -216,15 +267,74 @@ mod tests {
         assert_eq!(v, r#""a\"b\\c\nurl = \"file:///etc/passwd\"\r\t\v""#);
     }
 
-    /// Loopback is never proxied, and the user's own list is kept beside it.
+    /// A loopback server is never proxied, and any other server's list keeps loopback's names
+    /// beside the user's own.
     #[test]
     fn noproxy_always_lists_loopback() {
-        assert_eq!(noproxy(None), "localhost,127.0.0.1,::1");
-        assert_eq!(noproxy(Some(" ")), "localhost,127.0.0.1,::1");
+        let remote = "https://models.example/v1/models";
+        assert_eq!(noproxy(remote, None), "localhost,127.0.0.1,::1");
+        assert_eq!(noproxy(remote, Some(" ")), "localhost,127.0.0.1,::1");
         assert_eq!(
-            noproxy(Some("corp.example,10.0.0.0/8")),
+            noproxy(remote, Some("corp.example,10.0.0.0/8")),
             "localhost,127.0.0.1,::1,corp.example,10.0.0.0/8"
         );
-        assert_eq!(noproxy(Some("*")), "*");
+        assert_eq!(noproxy(remote, Some("*")), "*");
+        assert_eq!(
+            noproxy("http://127.0.0.2:8000/v1/models", Some("corp.example")),
+            "*"
+        );
+    }
+
+    /// A key goes over `https://` anywhere, and over `http://` to loopback alone.
+    #[test]
+    fn a_key_goes_in_clear_only_to_loopback() {
+        for url in [
+            "https://models.example/v1",
+            "HTTPS://10.0.0.5:8000",
+            "http://127.0.0.2:8000",
+        ] {
+            assert!(!key_in_clear(url), "{url}");
+        }
+        for url in [
+            "http://models.example/v1",
+            "http://10.0.0.5:8000",
+            "Http://0.0.0.0:1",
+        ] {
+            assert!(key_in_clear(url), "{url}");
+        }
+    }
+
+    /// Loopback is the whole of 127.0.0.0/8, `localhost` and `[::1]`, read strictly: a user part,
+    /// another notation or a lookalike name is not.
+    #[test]
+    fn loopback_is_read_from_the_address_alone() {
+        for url in [
+            "http://127.0.0.1:8089/v1/models",
+            "http://127.0.0.2:8000",
+            "http://127.255.255.254/",
+            "HTTP://LocalHost:1/x?y#z",
+            "http://[::1]:8000/v1",
+            "http://[0:0:0:0:0:0:0:1]",
+            "https://localhost",
+        ] {
+            assert!(loopback(url), "{url}");
+        }
+        for url in [
+            "http://128.0.0.1/",
+            "http://0127.0.0.1/",
+            "http://127.1/",
+            "http://2130706433/",
+            "http://localhost.example/",
+            "http://localhost./",
+            "http://127.0.0.1@models.example/",
+            "http://user@127.0.0.1/",
+            "http://127.0.0.1:80@models.example/",
+            "http://127.0.0.1:x/",
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::1/",
+            "127.0.0.1:8000",
+        ] {
+            assert!(!loopback(url), "{url}");
+        }
     }
 }

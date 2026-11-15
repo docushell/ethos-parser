@@ -25,7 +25,8 @@ bad usage.
   with the list; mlx-vlm lists the models in the Hugging Face cache too.
 - **FILE, the replies file.** Canonical JSON: keys sorted, no whitespace. It holds:
   - `ethos_assist_answers` 1, `source_sha256` (the PDF's bytes), `renderer`, `request`, and
-    `model`: `id` as the server reports it, and `version`, VERSION or `not-reported`;
+    `model`: `id` as the server reports it, `version`, VERSION or `not-reported`, and `asked`, the
+    ID the request named (the engine reads it and does not record it);
   - per page asked, in page order: `page`, `points` (the rendered box in centipoints), `dpi`,
     `width`, `height` and `pixels_sha256`, then `reply` with `finish_reason`, or `error`.
   - Digests are `sha256:<hex>`. `pixels_sha256` is the digest of the PNG sent: the bytes `render`
@@ -36,7 +37,9 @@ bad usage.
   `ask` again with the same
   arguments: a page with a reply is kept, and a page with an `error` is asked again. A file for
   another PDF is refused, as are a model the server reports differently and another VERSION
-  (`assist-answers-other-source`, `assist-answers-other-model`).
+  (`assist-answers-other-source`, `assist-answers-other-model`). Once FILE holds a reply, MODEL's
+  ID must be its `asked` or its `id`, so a server's alias resumes under either name; any other is
+  refused before a page is passed over as answered. A file without `asked` was asked by its `id`.
 - **Exit codes.**
   - 0: every page asked has a reply or a named error.
   - 4: the server cannot be reached (`server-unreachable`); FILE keeps the pages done.
@@ -46,7 +49,8 @@ bad usage.
 - **Names.** A page's `error` is `timeout`, `http N`, `reply-unreadable`, `reply-too-large` (over
   64 MiB), `curl-exit-N`, `curl-killed` or `body-not-written`. A reply cut at `max_tokens` is kept
   with `finish_reason: "length"`, and stderr names it `reply-capped`. The refusals are
-  `curl-not-found`, `curl-not-run`, `server-not-http`, `key-not-a-header-value`, `not-a-pdf`,
+  `curl-not-found`, `curl-not-run`, `server-not-http`, `key-not-a-header-value`,
+  `key-needs-https`, `not-a-pdf`,
   `pages-unreadable`, `page-not-in-document`, `page-not-rendered`, `model-not-chosen` and the
   `assist-answers-*` names the engine uses. Progress, one line a page, is on stderr.
 
@@ -66,7 +70,7 @@ ready     replies parse as lightonocr-3-grounding-v1
 ```
 - **Exit codes.** 0 when ready; 1 when the reply holds no block marker (`reply-format-not-read`:
   a general chat model) or the server answered with an error; 2 when the server cannot be
-  reached, or `curl` is missing or cannot run.
+  reached, `curl` is missing or cannot run, or the key would go unencrypted (`key-needs-https`).
 - **A path as the id.** mlx-vlm reports `--model` verbatim, and every output records the id, so
   `check` warns when the id starts with `/` or `~`.
 
@@ -77,13 +81,15 @@ That is the one exception to the engine's no-network rule, scoped to this binary
 [`docs/37-ASSIST-TRANSPORT.md`](../docs/37-ASSIST-TRANSPORT.md).
 - **The key.** A cloud API's key is read from `ETHOS_PARSER_ASSIST_KEY` and nowhere else. It reaches
   curl in its config, on its stdin. So it is never in argv, in curl's environment, on disk, in FILE
-  or in any output. A local server needs no key.
+  or in any output. A local server needs no key. It is sent only to an `https://` server or to
+  loopback: with a key set, an `http://` server elsewhere is refused `key-needs-https` before curl
+  runs. Without a key, `http://` to another machine is allowed.
 - **The page.** It reaches curl on a second pipe, as `/dev/fd/2`, so no file ever holds it, even
   when a run is killed. That makes `ask` and `check` Unix-only for now (macOS, Linux): elsewhere
   they are refused `curl-not-run`.
-- **Proxies.** A server on `localhost`, `127.0.0.1` or `::1` is never reached through a proxy,
-  whatever `http_proxy`, `HTTPS_PROXY` or `ALL_PROXY` say. Any other server is reached as your
-  proxy settings and `NO_PROXY` say.
+- **Proxies.** A loopback server — `localhost`, any address of 127.0.0.0/8 written in dotted
+  decimal, or `[::1]` — is never reached through a proxy, whatever `http_proxy`, `HTTPS_PROXY` or
+  `ALL_PROXY` say. Any other server is reached as your proxy settings and `NO_PROXY` say.
 - **Limits.** A reply over 64 MiB is refused `reply-too-large`. curl follows no redirect, and
   SERVER is never read as a curl glob.
 

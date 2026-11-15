@@ -1953,6 +1953,13 @@ pub struct OfficeSlideRunAttributes {
     /// What the authoring tool called the shape, which is what a person reading a citation
     /// recognises. It may be empty: the attribute is required by the schema, its content is not.
     pub shape_name: String,
+    /// For a run in a table cell (decision #135, review): whether its paragraph holds an `<a:br>`
+    /// before it, after any run before it. The break holds no text of its own, and without it two
+    /// runs of one paragraph join as they stand, so `North`, a break and `America` read
+    /// `NorthAmerica`. Absent where `false`, as it always is in a shape, whose runs no projection
+    /// joins.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub line_break_before: bool,
 }
 
 /// An OpenDocument paragraph's facts: what `content.xml` states about the block (v2-S5).

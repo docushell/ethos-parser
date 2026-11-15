@@ -31,7 +31,7 @@
 //! | `source_sha256` | `sha256:<hex>` of the source bytes the pages were rendered from |
 //! | `renderer` | [`ASSIST_RENDERER`]: the program and page rule that drew each page |
 //! | `request` | [`ASSIST_REQUEST_V1`]: how each page was asked, and the reply format read here |
-//! | `model` | `{"id", "version"}`: the id the server reported, and the version the caller named or `not-reported` |
+//! | `model` | `{"id", "version", "asked"}`: the id the server reported, the version the caller named or `not-reported`, and the id the request named (optional; `ethos-parser-assist` resumes a file under it, and the record does not keep it) |
 //! | `pages` | One object per page asked, in ascending page order, each page at most once |
 //!
 //! Each page holds `page` (1-based), `points` (the rendered box's width and height in centipoints,
@@ -178,8 +178,19 @@ struct Answers {
     source_sha256: Sha256Hex,
     renderer: String,
     request: String,
-    model: AssistModel,
+    model: AnswersModel,
     pages: Vec<AnswersPage>,
+}
+
+/// The replies file's `model`: the record's [`AssistModel`], and the id the request named, which
+/// `ethos-parser-assist` resumes the file under and the record does not keep (review).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnswersModel {
+    id: String,
+    version: String,
+    #[serde(default, rename = "asked")]
+    _asked: Option<String>,
 }
 
 /// One page of the replies file.
@@ -450,7 +461,10 @@ pub fn attach(
     payload.identity.profile_sha256 = profile_sha256;
     payload.assist = Some(AssistRecord {
         answers_sha256: Sha256Hex::of_bytes(answers),
-        model: file.model,
+        model: AssistModel {
+            id: file.model.id,
+            version: file.model.version,
+        },
         pages,
         pages_left_out,
     });
@@ -865,6 +879,23 @@ mod tests {
                 other => panic!("{why}: expected a refusal, got {other:?}"),
             }
         }
+    }
+
+    /// The id the model was asked by is read beside the one its server reported (review), for
+    /// `ethos-parser-assist` to resume the file under; the record keeps the id and version alone,
+    /// and any other key under `model` is refused.
+    #[test]
+    fn the_id_a_model_was_asked_by_is_read_and_not_recorded() {
+        let mut v = file();
+        v["model"]["asked"] = json!("made-up-alias");
+        let repr = attach_file(&v).unwrap();
+        let model = &repr.payload().assist.as_ref().unwrap().model;
+        assert_eq!(
+            (model.id.as_str(), model.version.as_str()),
+            ("example/made-up-model", "r1")
+        );
+        v["model"]["server"] = json!("http://x");
+        assert_eq!(refusal(&v, None), ASSIST_ANSWERS_UNREADABLE);
     }
 
     #[test]

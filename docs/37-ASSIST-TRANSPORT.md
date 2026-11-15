@@ -50,14 +50,16 @@ Every request runs `curl -q -K -`, and that argv never changes.
   - the URL, with `proto = "=http,https"`, so no other scheme is used, and `globoff`, so the URL
     is never a curl glob (`{a,b}` would be two requests). No redirect is followed, since
     `location` is not set;
-  - `noproxy`, which always lists `localhost,127.0.0.1,::1`, then the user's own `no_proxy` or
-    `NO_PROXY` (the option replaces them, so they are carried over; a lone `*` stays `*`);
+  - `noproxy`: `*` for a loopback server (below); for any other, `localhost,127.0.0.1,::1`, then
+    the user's own `no_proxy` or `NO_PROXY` (the option replaces them, so they are carried over; a
+    lone `*` stays `*`);
   - `max-time = 1800` (Phase 4a's per-page limit) and `connect-timeout = 10`;
   - `max-filesize` at 64 MiB: a page's reply is tens of kilobytes. curl stops an announced
     length at it; an unannounced one only since curl 8.4. So the binary also stops reading past
     the cap and stops curl, whatever its version;
   - `write-out` with the status code;
-  - the key's `Authorization: Bearer` header, when the key is set;
+  - the key's `Authorization: Bearer` header, when the key is set and the server is `https://` or
+    on loopback (below);
   - the body, as `data-binary = "@/dev/fd/2"`.
 - **Every config value is quoted** with curl's escapes, so no value can end its line and add an
   option. A key holding a control character is refused, `key-not-a-header-value`, before curl runs.
@@ -71,11 +73,28 @@ Every request runs `curl -q -K -`, and that argv never changes.
     curl's messages, which name the server's address, are never read.
 - **curl's environment** is the binary's, minus `ETHOS_PARSER_ASSIST_KEY`.
 
+**Loopback** is a server whose host is `localhost` (any case), an IPv4 address of 127.0.0.0/8
+written in dotted decimal, or `[::1]`, at any port. It is read strictly from SERVER as written: a
+host with a user part (`127.0.0.1@host`), another notation of an address (`127.1`, `0x7f.0.0.1`), a
+name ending `.localhost`, or `[::ffff:127.0.0.1]` is not loopback here, which errs toward
+refusing the key.
+
 **Proxies.** A loopback server is never reached through a proxy, whatever `http_proxy`,
-`HTTPS_PROXY` or `ALL_PROXY` say, so a page sent to a local model never leaves the machine. curl
-8.7.1 has no loopback exemption of its own. A server the user names elsewhere is reached as the
-user's proxy settings say, as curl applies them: naming a remote server is the user's choice to
-send the page there.
+`HTTPS_PROXY` or `ALL_PROXY` say, so a page sent to a local model never leaves the machine: its
+`noproxy` is `*`. curl 8.7.1 has no loopback exemption of its own, and matches an address in
+`noproxy` exactly unless a CIDR mask is given, so listing `127.0.0.1` sent a server on `127.0.0.2`
+through the proxy (review). A mask would cover the range only from curl 7.86.0 (its manual: "CIDR
+notation (added in 7.86.0)"), and Ubuntu 22.04 ships 7.81.0; `*` works in every curl. A server the
+user names elsewhere is reached as the user's proxy settings say, as curl applies them: naming a
+remote server is the user's choice to send the page there.
+
+**The key crosses no network unencrypted.** With `ETHOS_PARSER_ASSIST_KEY` set, a request to an
+`http://` server off loopback is refused `key-needs-https` before curl runs, the listing and
+`check` included (review: the header went in clear to any `http://` server). An `https://` server
+gets the key, and so does a loopback one, whose traffic never leaves the machine. **Without a key,
+plain `http://` to another machine is allowed**: no secret is in the request, a model server on
+the local network is commonly served so (vLLM on a GPU box), and naming that server is the user's
+choice to send the page there, as above.
 
 **Why the key goes in on stdin (`-K -`) and not from a header file (`-H @file`).**
 - Not argv: any local user can list a process's argv.
@@ -100,6 +119,7 @@ never share one. It is then renamed over FILE. A run killed during that write ca
 | `server-unreachable` | curl exits 5, 6 or 7: no name, no connection | exit 4; FILE keeps the pages done | exit 2 |
 | `curl-not-found` | no `curl` on `PATH` | exit 5 | exit 2 |
 | `curl-not-run` | curl could not be started, waited for or read from, or this platform has no `/dev/fd` | exit 5 | exit 2 |
+| `key-needs-https` | the key is set and SERVER is `http://` off loopback; curl is not run | exit 5 | exit 2 |
 | `timeout` | curl exits 28 | the page's `error`; asked again next run | exit 1 |
 | `http N` | the server answers N, not 200 | the page's `error`; asked again next run | exit 1 |
 | `reply-unreadable` | a 200 that is not an OpenAI chat completion | the page's `error`; asked again next run | exit 1 |
@@ -120,18 +140,23 @@ environment, then runs the system curl with a 3 s cap. The tests assert:
 - the key in the `Authorization` header, and nowhere in argv, curl's environment, the file,
   stdout or stderr;
 - a loopback server reached directly with `http_proxy`, `HTTPS_PROXY` or `ALL_PROXY` set, the
-  proxy given no request;
+  proxy given no request, at `127.0.0.2` too (nothing listens there, so curl, gone there itself,
+  finds no server);
+- a key refused for `http://` servers off loopback (`0.0.0.0`, `[::]`, `127.0.0.1@0.0.0.0`, this
+  machine under other names, so a run not refused still sends nothing off it), curl not run;
 - a redirect not followed, and a URL with `{a,b}` asked once;
 - no file left on disk when a run is killed (`SIGKILL`) mid-request;
 - a link planted at `FILE.0.part` not followed;
 - every name in §4 but `curl-not-run`, `curl-killed` and `body-not-written`, which need a broken
   system;
-- resume and the model checks;
+- resume and the model checks, a model named otherwise than FILE's replies refused before any
+  page is passed over, and a server's alias resuming under either name;
 - two runs giving identical files.
 
 A mutation sweep removed each guard in turn: `-q`, `globoff`, `noproxy`, `max-filesize`, the key's
 removal from curl's environment, `O_EXCL`, and the scheme's case. Adding `location` was swept too.
-Each change failed a test (2026-11-15).
+Each change failed a test (2026-11-15). So did each of the review's guards, removed in turn: `*` for
+loopback, the key's refusal, and the model check before resume.
 
 Nothing leaves loopback.
 

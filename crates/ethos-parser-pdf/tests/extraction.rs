@@ -6432,6 +6432,57 @@ fn hidden_text_holes_spread_glyphs_and_text_that_paints_nothing() {
     assert_eq!(got, expected);
 }
 
+/// **A clip with a hole is not its outer rectangle** (CodeRabbit's third review of decision
+/// #139): a rectangle and, inside it, one drawn with each corner named twice, clipped by `W*`,
+/// leave the hole unpainted, so black text in it after `Q` is not black on black. A clip of one
+/// rectangle still narrows the fill drawn through it.
+#[test]
+fn a_clip_with_a_hole_is_no_rectangle() {
+    use ethos_parser_core::TextFinding::FillMatchesBackground;
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "q 10 340 280 50 re 30 350 m 30 350 l 270 350 l 270 350 l 270 380 l 270 380 l 30 380 l \
+         30 380 l h W* n 0 g 0 330 300 70 re f Q BT /F1 10 Tf 1 0 0 1 40 360 Tm (In the hole) Tj ET \
+         q 10 240 280 50 re W n 0 g 0 230 300 70 re f Q BT /F1 10 Tf 1 0 0 1 40 260 Tm (In the \
+         clip) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let mut expected = vec![
+        ("In the hole".to_owned(), vec![]),
+        ("In the clip".to_owned(), vec![FillMatchesBackground]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **A mode-7 clip is found where its glyphs lie, and ends with the state that set it** (review
+/// of decision #139, which indexed the clips standing by cell): a small fill shows a clip set in
+/// glyphs too large to list by cell, and one set before a `q`, but not one the `Q` took away.
+#[test]
+fn a_text_clip_is_found_by_its_glyphs_and_ends_with_its_state() {
+    use ethos_parser_core::TextFinding::InvisibleRenderMode;
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (Kept clip) Tj ET \
+         q BT /F1 10 Tf 1 0 0 1 160 300 Tm (Gone clip) Tj ET Q 0 g 10 295 280 20 re f \
+         q BT /F1 400 Tf 1 0 0 1 10 20 Tm (BIG) Tj ET 0 g 20 30 5 5 re f Q",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let mut expected = vec![
+        ("Kept clip".to_owned(), vec![]),
+        ("Gone clip".to_owned(), vec![InvisibleRenderMode]),
+        ("BIG".to_owned(), vec![]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
 /// **A form's `/BBox` clips its paint whether its numbers are stated or referenced** (review of
 /// decision #139): `[0 0 300 7 0 R]` dropped the reference, read no box, and the form's black
 /// fill reached text above it, flagged as black on black.

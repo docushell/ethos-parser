@@ -45,9 +45,11 @@ Markdown and HTML byte is what it was, and so is every profile's hash.
   compared.
 - The replies file holds `ethos_assist_answers` (1), the source's digest, the renderer
   (`ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1`), the request
-  (`lightonocr-3-grounding-v1`), the model's `id` and `version`, and per page asked its number, its
-  rendered size in centipoints (`points`), its `dpi`, pixels and pixel digest, and either `reply`
-  with `finish_reason` or `error`. Unknown fields are refused.
+  (`lightonocr-3-grounding-v1`), the model's `id` and `version` and, optionally, `asked` (the id
+  the request named, which `ethos-parser-assist` resumes the file under and the record does not
+  keep), and per page asked its number, its rendered size in centipoints (`points`), its `dpi`,
+  pixels and pixel digest, and either `reply` with `finish_reason` or `error`. Unknown fields are
+  refused.
 - A file that does not answer this PDF is refused by name: `assist-answers-unreadable` (an empty
   model id too), `assist-answers-other-source`, `assist-answers-other-renderer`,
   `assist-answers-other-request`, `assist-answers-other-page` (a page past the document's last, or
@@ -90,24 +92,35 @@ subprocess, so no HTTP crate enters any lockfile ([`docs/37-ASSIST-TRANSPORT.md`
   `extract --assist-answers` reads, as canonical JSON with no address, key or timing, so the same
   replies give the same bytes. FILE is replaced after each page, so a stopped run resumes: replies
   are kept, and errors are asked again. Without MODEL, the one model `GET /v1/models` lists is used.
+  FILE keeps the id the request named (`model.asked`) beside the one the server reported; once it
+  holds a reply, a MODEL that is neither is refused `assist-answers-other-model` before any page
+  is passed over (review: another model's replies were kept, exit 0, where no version was named),
+  so a server's alias resumes under either name.
 - `ethos-parser-assist check SERVER [MODEL]` asks for a committed test page of made-up content and
   says whether the server's replies are read as `lightonocr-3-grounding-v1`: exit 0 ready,
   1 `reply-format-not-read`, 2 unreachable. It warns when the model id is a path.
 - The API key is read from `ETHOS_PARSER_ASSIST_KEY` only, and reaches curl on its stdin, never in
-  argv, curl's environment, on disk or in any output.
+  argv, curl's environment, on disk or in any output. It goes only to an `https://` server or to
+  loopback: to an `http://` server elsewhere the request is refused `key-needs-https` before curl
+  runs (review: the header crossed the network in clear). Without a key, plain `http://` to
+  another machine stays allowed: the request holds no secret, and a model server on the local
+  network is commonly served so.
 - The page reaches curl on a pipe, so no file holds it, even when a run is killed. `ask` and
   `check` are therefore Unix-only for now; elsewhere they are refused `curl-not-run`.
-- A server on loopback is never reached through a proxy, whatever the proxy variables say. Any
-  other server is reached as the user's proxy settings say. curl follows no redirect, reads
-  SERVER as no glob, and takes a reply of 64 MiB at most.
-- Failures are named: `server-unreachable` (exit 4), `curl-not-found`, `curl-not-run`, `timeout`,
+- A server on loopback — `localhost`, any address of 127.0.0.0/8 in dotted decimal, or `[::1]` — is
+  never reached through a proxy, whatever the proxy variables say: its `noproxy` is `*` (review:
+  `127.0.0.1` was listed, which curl matches exactly, so `127.0.0.2` went through the proxy; a CIDR
+  mask needs curl 7.86.0). Any other server is reached as the user's proxy settings say. curl
+  follows no redirect, reads SERVER as no glob, and takes a reply of 64 MiB at most.
+- Failures are named: `server-unreachable` (exit 4), `curl-not-found`, `curl-not-run`,
+  `key-needs-https`, `timeout`,
   `http N`, `reply-unreadable`, `reply-too-large`, `curl-exit-N`, `curl-killed`,
   `body-not-written`, and `reply-capped`, where a reply cut at `max_tokens` is kept with
   `finish_reason: "length"`.
 - `docs/37-ASSIST-TRANSPORT.md` scopes the exception to the no-network rule to this binary's
   subprocess `curl`; both `deny.toml` files keep every network ban. `assist/README.md` gives the
   setup: the Mac (MLX) steps Phase 4a ran, and Linux (vLLM) steps not yet run here.
-- Tested, not yet measured on a server: 30 tests against a fake server on 127.0.0.1 (request bytes, the key in neither argv nor curl's environment, proxy variables bypassed for loopback, no redirect followed, globs off, a 64 MiB reply cap, every page error, resume, two runs identical); a fresh security review's findings are fixed. `ask` and `check` need `/dev/fd` (macOS, Linux); elsewhere they are refused `curl-not-run`.
+- Tested, not yet measured on a server: 34 tests against a fake server on 127.0.0.1 (request bytes, the key in neither argv nor curl's environment and refused for `http://` off loopback, proxy variables bypassed for loopback, `127.0.0.2` too, no redirect followed, globs off, a 64 MiB reply cap, every page error, resume, another model's name refused before resume, two runs identical); a fresh security review's findings are fixed. `ask` and `check` need `/dev/fd` (macOS, Linux); elsewhere they are refused `curl-not-run`.
 
 ### The assist lane's binary, `ethos-parser-assist`, renders pages (decision #143)
 
@@ -231,7 +244,8 @@ flagged run.
   nothing was painted beneath them. Any other paint touching them — an image, a shading, an
   unresolved XObject, a stroke of any shape widened by half its width, a fill of any other path,
   or a fill under a `gs` (not resolved; PowerPoint lays a fully transparent black box under its
-  text), under a clip that is not one rectangle or under text set as a clip (`Tr 4` to `7`) —
+  text), under a clip that is not one rectangle — a clip path of a second subpath, which may cut a
+  hole, among them (review) — or under text set as a clip (`Tr 4` to `7`) —
   makes the background unknown, and nothing is flagged; nor is a run under a `gs` that blends,
   masks, sets a fill alpha or is not resolved. Paint in a layer switched off is not paint; paint
   is cut to the known clip and to each form's `/BBox`; a run the page clips away is not
@@ -245,8 +259,13 @@ flagged run.
   What was painted is indexed by 32-point and 512-point cells, so a page of many paths is not
   compared path by path with every run; many large paints in the cells a run's glyphs lie in are
   still each looked at. Each `ET` gives effect only to the clips set since the one before it, so
-  a page of 100,000 mode-7 text objects reads in 0.7 s, where it took 14.3; each paint still
-  reads every mode-7 clip standing, so 50,000 of them then 50,000 fills beside them take 15 s.
+  a page of 100,000 mode-7 text objects reads in 0.7 s, where it took 14.3. The mode-7 clips
+  standing are indexed by the same 32-point cells (review), so a paint or a spread glyph reads
+  only those in its own cells, and a `Q` or a form's end forgets the last ones set: after 100,000
+  mode-7 objects, a string of 100,000 glyphs spread a glyph a run elsewhere reads in 1.2 s where it
+  took 20.3, and 100,000 `q Q` pairs in 0.8 s where they took 15.4; after 50,000, 50,000 small
+  fills elsewhere take 5.7 s where they took 11.9, as long as beside 50,000 runs that set no clip.
+  An area spanning more than 64 cells still reads every clip standing.
 - **`invisible-render-mode` narrows for mode 7**: a run set in `Tr 7` carries it only where
   nothing is painted, after `ET`, through the clip it sets and over its glyphs, so a heading
   filled with a shading is not hidden and a clip nothing paints through still is. Text in a layer
@@ -418,7 +437,10 @@ byte for byte what it was, profiles included.
   SmartArt or an object still is, and so is a cell before any `<a:tr>`. A cell's record text is
   its paragraphs joined by one space where neither holds whitespace at the seam, and a paragraph's
   runs as they stand, as the projections write them (`Revenue FY2026`; `Rev` and `enue` are
-  `Revenue`). A row or cell in an `<mc:AlternateContent>` branch passed over is no row or cell of
+  `Revenue`), but for an `<a:br>` between two runs, which parts them as a paragraph's end does
+  (`North<a:br/>America` is `North America`, where it read `NorthAmerica`). The break holds no
+  text, so the run after it records it: `OfficeSlideRunAttributes.line_break_before`, written only
+  where true, on a run in a table cell (a shape's runs are blocks of their own). A row or cell in an `<mc:AlternateContent>` branch passed over is no row or cell of
   the table, though the locators count it.
 - **A cell under a merge takes no slot**: one the file marks `hMerge`/`vMerge`, or whose slot an
   earlier cell's span covers, or that a sheet's `<mergeCells>` range covers and does not open,
