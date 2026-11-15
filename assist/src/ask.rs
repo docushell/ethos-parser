@@ -419,7 +419,8 @@ fn page_list(pages: &str, count: usize) -> Result<BTreeSet<u32>, Stop> {
     Ok(list)
 }
 
-pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Result<(), Stop> {
+/// The pages not rendered (exit 3 when any), or why the run stopped.
+pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Result<usize, Stop> {
     let named = |message| Stop { code: 5, message };
     let base = server_base(server).map_err(named)?;
     let key = key().map_err(named)?;
@@ -491,6 +492,7 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
     }
 
     let url = format!("{base}/v1/chat/completions");
+    let mut skipped = 0;
     for n in wanted {
         if let Some(Page {
             outcome: Outcome::Reply { .. },
@@ -500,7 +502,15 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
             eprintln!("page {n}: answered before; kept");
             continue;
         }
-        let page = render_page(&pdf, n as usize).map_err(|e| refused("page-not-rendered", e))?;
+        let page = match render_page(&pdf, n as usize) {
+            Ok(page) => page,
+            Err(e) => {
+                // A page the renderer cannot draw has no image to record or send; the run goes on.
+                eprintln!("page {n}: page-not-rendered: {e}; skipped, and not in FILE");
+                skipped += 1;
+                continue;
+            }
+        };
         let started = Instant::now();
         let sent = transport::request(&url, key.as_deref(), Some(&request_body(&asked, &page.png)));
         let secs = started.elapsed().as_secs_f64();
@@ -555,5 +565,5 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
         );
         answers.save(file)?;
     }
-    Ok(())
+    Ok(skipped)
 }

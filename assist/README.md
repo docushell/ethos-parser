@@ -42,6 +42,8 @@ bad usage.
   refused before a page is passed over as answered. A file without `asked` was asked by its `id`.
 - **Exit codes.**
   - 0: every page asked has a reply or a named error.
+  - 3: done, but some pages could not be rendered (`page-not-rendered` on stderr, one line a
+    page); they are not in FILE, and the rest are.
   - 4: the server cannot be reached (`server-unreachable`); FILE keeps the pages done.
   - 5: refused, by name.
   - 1: FILE cannot be written.
@@ -51,7 +53,7 @@ bad usage.
   with `finish_reason: "length"`, and stderr names it `reply-capped`. The refusals are
   `curl-not-found`, `curl-not-run`, `server-not-http`, `key-not-a-header-value`,
   `key-needs-https`, `not-a-pdf`,
-  `pages-unreadable`, `page-not-in-document`, `page-not-rendered`, `model-not-chosen` and the
+  `pages-unreadable`, `page-not-in-document`, `model-not-chosen` and the
   `assist-answers-*` names the engine uses. Progress, one line a page, is on stderr.
 
 ## `check`

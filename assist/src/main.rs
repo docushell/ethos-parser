@@ -86,8 +86,20 @@ pub struct Rendered {
     pub png: Vec<u8>,
 }
 
-/// Page `number` (from 1) of `pdf`, by the page rule.
+/// Page `number` (from 1) of `pdf`, by the page rule. A panic inside the renderer (hayro's
+/// JPEG 2000 decoder divides by zero on one ParseBench page) is this page's failure, not the
+/// run's: it comes back as an error naming the page.
 fn render_page(pdf: &Pdf, number: usize) -> Result<Rendered, String> {
+    unpanicked(number, || render_unguarded(pdf, number))
+}
+
+/// `f`'s result, or an error naming page `number` where `f` panicked.
+fn unpanicked<T>(number: usize, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .unwrap_or_else(|_| Err(format!("page {number}: the renderer failed on this page")))
+}
+
+fn render_unguarded(pdf: &Pdf, number: usize) -> Result<Rendered, String> {
     let pages = pdf.pages();
     let page = number
         .checked_sub(1)
@@ -150,7 +162,9 @@ fn main() -> ExitCode {
         }
         ["ask", server, file, pages, model @ ..] if model.len() <= 1 => {
             return match ask::ask(server, Path::new(file), pages, model.first().copied()) {
-                Ok(()) => ExitCode::SUCCESS,
+                Ok(0) => ExitCode::SUCCESS,
+                // Done, but some pages were not rendered: they are not in FILE.
+                Ok(_) => ExitCode::from(3),
                 Err(stop) => {
                     eprintln!("ethos-parser-assist: {}", stop.message);
                     ExitCode::from(stop.code)
@@ -189,6 +203,21 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A panic in the renderer is the page's error, and a result passes through untouched.
+    #[test]
+    fn a_renderer_panic_is_the_page_error() {
+        let caught: Result<u8, String> = unpanicked(7, || panic!("divide by zero"));
+        assert_eq!(
+            caught,
+            Err("page 7: the renderer failed on this page".into())
+        );
+        assert_eq!(unpanicked(7, || Ok(1u8)), Ok(1));
+        assert_eq!(
+            unpanicked::<u8>(7, || Err("no page 7".into())),
+            Err("no page 7".into())
+        );
+    }
 
     /// The renderer's name moves with what renders: this package's version and hayro's locked one.
     #[test]
