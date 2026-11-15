@@ -196,6 +196,17 @@ unchanged, then:
    for byte, the `--ocr` row included. Under a Rosetta that ignores the variable the `--ocr` row is
    refused and the run fails by that row; build without `x86_64-apple-darwin` (`--target`).
 
+   **And a third, `ethos-parser-assist`** (decision #148, the owner's call of 2026-11-15): the
+   assist lane's own process (`assist/README.md`), built in `assist/` on its own pinned compiler
+   (`assist/rust-toolchain.toml`, 1.98.0), which the script installs and asserts as it does the
+   recognizer's. Its fingerprint row is `identity` — the build, hayro's version and the page rule —
+   so every runner must print the same one; its `render` pixels are not compared, being unmeasured
+   on other CPUs. **No model file ships.** Before packaging, the script requires the staged
+   directory to hold exactly the three binaries, `LICENSE`, `NOTICE` and `README.md`, and fails
+   the target on any other file, whatever its name. `NOTICE` carries the assist binary's section:
+   hayro's built-in fonts and CMaps, and every crate `assist/Cargo.lock` locks, held to that
+   lockfile by a test in `assist/`.
+
 2. **Push the tag**, then create the release from those files and nothing else:
 
    ```bash
@@ -208,7 +219,10 @@ unchanged, then:
    platform from its absence. They also say that the Linux binaries need glibc 2.35 or newer, and
    that on an x86-64 CPU without AVX2 and FMA `ethos-parser-ocr` refuses by name
    (`cpu-lacks-avx2-fma`), so there `extract --ocr` fails by name on any document with a scanned
-   page (decision #120). Pushing the tag also starts the workflow below; a release that is to carry
+   page (decision #120). They say that every archive carries `ethos-parser-assist` and no model,
+   and that on Windows its `ask` and `check` are refused `curl-not-run`, since the page reaches
+   `curl` through `/dev/fd` (decision #144), while `render` and `identity` work.
+   Pushing the tag also starts the workflow below; a release that is to carry
    its binaries waits for its `verify` job.
 
    **Amended 2026-09-20, measured on GitHub at 0.60.0: a published release is immutable here, so
@@ -261,10 +275,11 @@ release, so that is a fact about the workflow rather than a promise in it.
 - **What each runner does.** Checks out the ref, installs the pinned 1.88.0 and asserts the pin,
   asserts it is the machine its matrix entry names, then runs
   `ci/release-artifacts.sh --native --tag v0.58.0` — the script from step 1, restricted to the
-  runner's own target. That installs the recognizer's 1.98.0 and asserts that pin too, builds the
-  engine and the recognizer, stages them side by side, EXECUTES the pair over all eight gate
-  documents and one scan read with `--ocr`, writes its `.fingerprint`, refuses if any of those was
-  refused, packages the tarball with `LICENSE`, `NOTICE` and `README.md`, and uploads it as
+  runner's own target. That installs the recognizer's and the assist binary's 1.98.0 and asserts
+  both pins too, builds the engine, the recognizer and the assist binary, stages them side by
+  side, EXECUTES them over all eight gate documents, one scan read with `--ocr` and the assist
+  binary's `identity`, writes its `.fingerprint`, refuses if any of those was refused, packages the
+  tarball with `LICENSE`, `NOTICE` and `README.md` and nothing else, and uploads it as
   `built-<target>`. `--tag` refuses a tag that does not name Cargo.toml's version. Four runners,
   each native: `ubuntu-22.04` → `x86_64-unknown-linux-gnu`, `windows-latest` →
   `x86_64-pc-windows-msvc`, `macos-latest` → `aarch64-apple-darwin`, `macos-15-intel` →

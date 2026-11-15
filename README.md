@@ -112,9 +112,11 @@ Every release carries a prebuilt binary for Linux, Windows and macOS (Apple sili
 plus a `SHA256SUMS.txt`. A release is assembled only when all four binaries print byte-identical
 artifacts over the gate documents. The Linux binary needs glibc 2.39 or newer (Ubuntu 24.04 and
 later) up to 0.65.0, and 2.35 or newer (Ubuntu 22.04, Debian 12 and later) from 0.66.0. From
-0.66.0 every archive also carries the recognizer `--ocr` runs, `ethos-parser-ocr`, beside
-`ethos-parser`; on an x86-64 CPU without AVX2 and FMA it refuses by name. The Windows binary needs
-the Microsoft Visual C++ runtime. On macOS or Linux, set `T` to your platform and run:
+0.66.0 every archive also carries, beside `ethos-parser`, the recognizer `--ocr` runs,
+`ethos-parser-ocr`, and the assist lane's own process, `ethos-parser-assist`, and no model. On an
+x86-64 CPU without AVX2 and FMA the recognizer refuses by name; on Windows the assist binary's
+`ask` and `check` are refused `curl-not-run`, while `render` and `identity` work. The Windows
+binary needs the Microsoft Visual C++ runtime. On macOS or Linux, set `T` to your platform and run:
 
 ```bash
 T=aarch64-apple-darwin   # or x86_64-apple-darwin, x86_64-unknown-linux-gnu
@@ -145,7 +147,14 @@ cargo build --release --locked
 
 The recognizer `--ocr` runs builds in `ocr/`, with the toolchain `ocr/rust-toolchain.toml` pins:
 `cd ocr && cargo build --release --locked`. Put `ocr/target/release/ethos-parser-ocr` beside
-`ethos-parser`, or name it with `ETHOS_PARSER_OCR`.
+`ethos-parser`, or name it with `ETHOS_PARSER_OCR`. The assist binary builds the same way in
+`assist/`: `cd assist && cargo build --release --locked`.
+
+**The assist lane** is opt-in: a model you run reads the pages you choose, and its text reaches
+Markdown and HTML labelled `Proposed`, never as evidence. `ethos-parser-assist` renders the pages
+and asks your model server, through the system `curl`; `extract --assist-answers` attaches the
+replies. Setup, commands and limits are in [`assist/README.md`](assist/README.md); the network
+exception is [`docs/37-ASSIST-TRANSPORT.md`](docs/37-ASSIST-TRANSPORT.md).
 
 Then, with the binary on your `PATH`:
 

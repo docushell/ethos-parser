@@ -4,6 +4,12 @@ The assist lane's own process (decisions #143 and #144). It renders a PDF's page
 model server you run, and writes the replies to a file. The engine reads that file; it does not
 call this binary yet.
 
+**Install.** From 0.66.0 every release archive carries this binary beside `ethos-parser`, built
+for Linux, Windows and both macOS architectures, and no model: the model runs in a server you
+start (below). On Windows `ask` and `check` are refused `curl-not-run`, because the page reaches
+`curl` through `/dev/fd` (see the transport); `render` and `identity` work. To build it yourself,
+see the last section.
+
 ```text
 ethos-parser-assist identity                             one JSON line: {"assist","version","renderer","request"}
 ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF   asks for pages PAGES (`1,3,7`); writes the replies to FILE
@@ -173,5 +179,6 @@ The tests need `curl` on `PATH` and nothing beyond loopback: `tests/transport.rs
 Unicode-3.0, has no GPL or AGPL, and copies the root's network bans.
 
 hayro embeds data that is not a crate: the Foxit standard-14 fonts from PDFium (BSD-3-Clause),
-Adobe's CMaps (BSD-3-Clause), a CGATS ICC profile (CC0) and LAB.icc (LCMS2). Their notices go in
-`NOTICE` when the binary is released.
+Adobe's CMaps (BSD-3-Clause), a CGATS ICC profile (CC0) and LAB.icc (LCMS2). Their notices are in
+`NOTICE`, which every release archive carries, with every crate `Cargo.lock` locks and its licence;
+a unit test holds that list to the lockfile, so a dependency change updates `NOTICE` too.

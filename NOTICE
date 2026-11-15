@@ -147,12 +147,249 @@ under Apache-2.0), with the changes recorded in
 ocr/vendor/rten-vecmath/ETHOS-PATCH.md.
 
 --------------------------------------------------------------------------------
+ethos-parser-assist: hayro's data and the crates it is built from
+--------------------------------------------------------------------------------
+
+ethos-parser-assist, the assist lane's own process (assist/README.md), is built
+from its own lockfile, assist/Cargo.lock, and each release archive carries it
+beside ethos-parser. It holds no model, and no release carries a model file:
+the model runs in a server the user starts.
+
+Its renderer, hayro, builds in data that is not a crate:
+
+- hayro-interpret 0.7.0's standard-14 fonts, extracted from PDFium, under this
+  notice:
+
+  Copyright 2014 PDFium Authors. All rights reserved.
+  Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+
+     * Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above
+  copyright notice, this list of conditions and the following disclaimer
+  in the documentation and/or other materials provided with the
+  distribution.
+     * Neither the name of Google Inc. nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+- hayro-cmap 0.1.0's predefined CMaps, Copyright 1990-2023 Adobe. All rights
+  reserved. Their licence is, word for word, the BSD-3-Clause notice
+  reproduced above for Adobe's mapping resources.
+
+- hayro-interpret 0.7.0's CMYK profile, from saucecontrol/Compact-ICC-Profiles
+  under CC0-1.0, which asks for no notice, and LAB.icc, which hayro's authors
+  generated with LCMS2.
+
+brotli 8.0.4, brotli-decompressor 5.0.3, alloc-no-stdlib 2.0.4 and
+alloc-stdlib 0.2.4, which decode those CMaps, are used under this notice:
+
+  Copyright (c) 2016 Dropbox, Inc. All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+  3. Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from this
+  software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+phf 0.13.1 and phf_shared 0.13.1 (Copyright (c) 2014-2022 Steven Fackler, Yuki
+Okushi), simd-adler32 0.3.10 (Copyright (c) 2021 Marvin Countryman) and brotli
+8.0.4, which is also MIT (Copyright (c) 2009, 2010, 2013-2016 by the Brotli
+Authors), are under the MIT licence:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of
+  this software and associated documentation files (the "Software"), to deal in
+  the Software without restriction, including without limitation the rights to
+  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+  the Software, and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+  FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+yoke 0.8.4 and zerofrom 0.1.8 are under the Unicode licence:
+
+  UNICODE LICENSE V3
+
+  COPYRIGHT AND PERMISSION NOTICE
+
+  Copyright © 2020-2024 Unicode, Inc.
+
+  NOTICE TO USER: Carefully read the following legal agreement. BY
+  DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
+  SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+  TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
+  DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of data files and any associated documentation (the "Data Files") or
+  software and any associated documentation (the "Software") to deal in the
+  Data Files or Software without restriction, including without limitation
+  the rights to use, copy, modify, merge, publish, distribute, and/or sell
+  copies of the Data Files or Software, and to permit persons to whom the
+  Data Files or Software are furnished to do so, provided that either (a)
+  this copyright and permission notice appear with all copies of the Data
+  Files or Software, or (b) this copyright and permission notice appear in
+  associated Documentation.
+
+  THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+  KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+  THIRD PARTY RIGHTS.
+
+  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+  BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+  OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+  WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+  FILES OR SOFTWARE.
+
+  Except as contained in this notice, the name of a copyright holder shall
+  not be used in advertising or otherwise to promote the sale, use or other
+  dealings in these Data Files or Software without prior written
+  authorization of the copyright holder.
+
+  SPDX-License-Identifier: Unicode-3.0
+
+  —
+
+  Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
+  ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
+
+Every crate assist/Cargo.lock locks, with the licence it declares. Some only
+build others (proc macros and their parsers), and a few are locked but not
+built. A crate that offers Apache-2.0 is used under Apache-2.0, whose text is
+./LICENSE; the notices above cover the rest, and Zlib, 0BSD and the Unlicense
+ask for none in a binary. A test in assist/ holds this list to its lockfile.
+
+  adler2@2.0.1  0BSD OR MIT OR Apache-2.0
+  alloc-no-stdlib@2.0.4  BSD-3-Clause
+  alloc-stdlib@0.2.4  BSD-3-Clause
+  arrayvec@0.7.8  MIT OR Apache-2.0
+  autocfg@1.5.1  Apache-2.0 OR MIT
+  bitflags@2.13.2  MIT OR Apache-2.0
+  brotli@8.0.4  BSD-3-Clause AND MIT
+  brotli-decompressor@5.0.3  BSD-3-Clause/MIT
+  bytemuck@1.25.2  Zlib OR Apache-2.0 OR MIT
+  bytemuck_derive@1.12.1  Zlib OR Apache-2.0 OR MIT
+  byteorder-lite@0.1.0  Unlicense OR MIT
+  cfg-if@1.0.5  MIT OR Apache-2.0
+  color@0.3.3  Apache-2.0 OR MIT
+  crc32fast@1.5.5  MIT OR Apache-2.0
+  euclid@0.22.14  MIT OR Apache-2.0
+  fastrand@2.5.0  Apache-2.0 OR MIT
+  fdeflate@0.3.7  MIT OR Apache-2.0
+  fearless_simd@0.4.1  Apache-2.0 OR MIT
+  flate2@1.1.11  MIT OR Apache-2.0
+  foldhash@0.2.0  Zlib
+  font-types@0.11.3  MIT OR Apache-2.0
+  glifo@0.1.1  Apache-2.0 OR MIT
+  guillotiere@0.7.0  MIT/Apache-2.0
+  hashbrown@0.17.1  MIT OR Apache-2.0
+  hayro@0.7.1  Apache-2.0 OR MIT
+  hayro-ccitt@0.3.0  Apache-2.0 OR MIT
+  hayro-cmap@0.1.0  Apache-2.0 OR MIT
+  hayro-interpret@0.7.0  Apache-2.0 OR MIT
+  hayro-jbig2@0.3.0  Apache-2.0 OR MIT
+  hayro-jpeg2000@0.3.5  Apache-2.0 OR MIT
+  hayro-postscript@0.1.0  Apache-2.0 OR MIT
+  hayro-syntax@0.7.2  Apache-2.0 OR MIT
+  image@0.25.10  MIT OR Apache-2.0
+  kurbo@0.13.1  Apache-2.0 OR MIT
+  linebender_resource_handle@0.1.1  Apache-2.0 OR MIT
+  log@0.4.35  MIT OR Apache-2.0
+  memchr@2.8.3  Unlicense OR MIT
+  miniz_oxide@0.8.9  MIT OR Zlib OR Apache-2.0
+  miniz_oxide@0.9.1  MIT OR Zlib OR Apache-2.0
+  moxcms@0.8.1  BSD-3-Clause OR Apache-2.0
+  num-traits@0.2.19  MIT OR Apache-2.0
+  peniko@0.6.1  Apache-2.0 OR MIT
+  phf@0.13.1  MIT
+  phf_generator@0.13.1  MIT
+  phf_macros@0.13.1  MIT
+  phf_shared@0.13.1  MIT
+  pic-scale@0.7.11  BSD-3-Clause OR Apache-2.0
+  png@0.18.1  MIT OR Apache-2.0
+  polycool@0.4.0  MIT OR Apache-2.0
+  proc-macro2@1.0.107  MIT OR Apache-2.0
+  pxfm@0.1.30  BSD-3-Clause OR Apache-2.0
+  quote@1.0.47  MIT OR Apache-2.0
+  read-fonts@0.39.2  MIT OR Apache-2.0
+  rustc-hash@2.1.3  Apache-2.0 OR MIT
+  simd-adler32@0.3.10  MIT
+  siphasher@1.0.3  MIT/Apache-2.0
+  skrifa@0.42.1  MIT OR Apache-2.0
+  smallvec@1.16.5  MIT OR Apache-2.0
+  stable_deref_trait@1.2.1  MIT OR Apache-2.0
+  syn@2.0.119  MIT OR Apache-2.0
+  syn@3.0.10  MIT OR Apache-2.0
+  synstructure@0.14.0  MIT
+  thiserror@2.0.21  MIT OR Apache-2.0
+  thiserror-impl@2.0.21  MIT OR Apache-2.0
+  unicode-ident@1.0.27  (MIT OR Apache-2.0) AND Unicode-3.0
+  vello_common@0.0.8  Apache-2.0 OR MIT
+  vello_common@0.0.9  Apache-2.0 OR MIT
+  vello_cpu@0.0.8  Apache-2.0 OR MIT
+  yoke@0.8.4  Unicode-3.0
+  yoke-derive@0.8.4  Unicode-3.0
+  zerofrom@0.1.8  Unicode-3.0
+  zerofrom-derive@0.1.8  Unicode-3.0
+  zlib-rs@0.6.8  Zlib
+  zune-core@0.5.3  MIT OR Apache-2.0 OR Zlib
+  zune-jpeg@0.5.15  MIT OR Apache-2.0 OR Zlib
+
+--------------------------------------------------------------------------------
 Adobe CMap resources: NOT PRESENT
 --------------------------------------------------------------------------------
 
 No Adobe predefined CMap resource files (.bcmap or otherwise) are present in
 this repository, so no notice for them is currently required (the Adobe Glyph
 List and the CID-to-Unicode mapping resources above carry their own).
+ethos-parser-assist's renderer builds Adobe's CMaps in from its own crate,
+hayro-cmap, under the notice in that binary's section above.
 
 The M3 plan called for vendoring the ~168 predefined CJK CMaps. They are not
 here, and that is a declared decision rather than an oversight: nothing in the

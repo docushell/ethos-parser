@@ -238,6 +238,36 @@ mod tests {
         assert!(identity().contains(&format!("\"renderer\":\"{RENDERER}\"")));
     }
 
+    /// NOTICE, which every release archive carries, lists exactly the crates `Cargo.lock` locks.
+    #[test]
+    fn notice_lists_every_locked_crate() {
+        let locked: std::collections::BTreeSet<String> = include_str!("../Cargo.lock")
+            .split("[[package]]")
+            .skip(1)
+            .filter_map(|p| {
+                let field = |k: &str| p.lines().find_map(|l| l.strip_prefix(k)?.strip_suffix('"'));
+                Some(format!(
+                    "{}@{}",
+                    field("name = \"")?,
+                    field("version = \"")?
+                ))
+            })
+            .filter(|c| !c.starts_with("ethos-parser-assist@"))
+            .collect();
+        let (_, list) = include_str!("../../NOTICE")
+            .split_once("Every crate assist/Cargo.lock locks")
+            .expect("NOTICE lists the assist binary's crates");
+        let listed = list
+            .split("\n---")
+            .next()
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| l.strip_prefix("  ")?.split_once("  "))
+            .map(|(c, _)| c.to_string())
+            .collect();
+        assert_eq!(locked, listed);
+    }
+
     /// Ghostscript's sizes for decision #123's pages, which hayro's floor would make 1 px short.
     #[test]
     fn sizes_are_rounded_as_ghostscript_rounds_them() {

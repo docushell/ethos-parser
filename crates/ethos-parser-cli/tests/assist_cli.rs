@@ -655,3 +655,47 @@ fn the_record_names_what_the_assist_binary_writes() {
         );
     }
 }
+
+/// **No model file in the repository** (the owner, 2026-11-15; Phase 4b design, test 8.6): the
+/// assist lane's model runs in a server the user starts. The recognizer's models in `ocr/models/`,
+/// built into its binary (decision #120), are the one exception. `ci/release-artifacts.sh` holds
+/// each release archive to its three binaries, LICENSE, NOTICE and README.md.
+#[test]
+fn the_repository_tracks_no_model_file() {
+    let out = Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(repo_root())
+        .output()
+        .expect("git runs");
+    assert!(out.status.success(), "git ls-files: {}", stderr(&out));
+    let files = String::from_utf8(out.stdout).expect("UTF-8 paths");
+    let files: Vec<&str> = files.split('\0').filter(|f| !f.is_empty()).collect();
+    assert!(
+        files.len() > 100,
+        "git ls-files listed {} files",
+        files.len()
+    );
+    let weights = [
+        "onnx",
+        "safetensors",
+        "gguf",
+        "npz",
+        "mlx",
+        "pt",
+        "pth",
+        "ckpt",
+    ];
+    let models: Vec<&str> = files
+        .into_iter()
+        .filter(|f| {
+            let ext = Path::new(f).extension().and_then(|e| e.to_str());
+            let big = || std::fs::metadata(repo_root().join(f)).is_ok_and(|m| m.len() > 1 << 20);
+            match ext {
+                Some(e) if weights.contains(&e) => !f.starts_with("ocr/models/"),
+                Some("bin") => big(),
+                _ => false,
+            }
+        })
+        .collect();
+    assert!(models.is_empty(), "model files are tracked: {models:?}");
+}

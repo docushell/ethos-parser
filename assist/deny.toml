@@ -32,7 +32,7 @@ confidence-threshold = 0.93
 
 # hayro embeds data that is not a crate and so not in this graph: the Foxit standard-14 fonts
 # from PDFium (BSD-3-Clause), Adobe's CMaps (BSD-3-Clause), a CGATS ICC profile (CC0) and LAB.icc
-# (LCMS2). Their notices are owed with the binary, in NOTICE, when it is released.
+# (LCMS2). Their notices are in NOTICE, which every release archive carries.
 
 [bans]
 multiple-versions = "warn"

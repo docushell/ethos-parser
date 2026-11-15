@@ -6,7 +6,8 @@
 #   ci/release-artifacts.sh --native                 # only the host's own target: what each CI runner runs
 #   ci/release-artifacts.sh --tag v0.58.0            # and refuse unless Cargo.toml says 0.58.0
 #   ci/release-artifacts.sh --fingerprint-only BIN   # print BIN's fingerprint over the gate corpus; build nothing
-#                                                    # (BIN's recognizer: beside it, or at ETHOS_PARSER_OCR)
+#                                                    # (BIN's recognizer: beside it, or at ETHOS_PARSER_OCR;
+#                                                    # its assist binary: beside it)
 #   ci/release-artifacts.sh --assemble DIR           # CI's verify job: one set of bytes from every runner's
 #                                                    # output under DIR/*/, or no SHA256SUMS.txt at all
 #   ci/release-artifacts.sh --allow-dirty            # for trying it out; never for a release
@@ -54,6 +55,18 @@
 # AVX2 and FMA, which Rosetta 2 reports only when ROSETTA_ADVERTISE_AVX is set; this script sets it.
 # A recognizer that still refuses the CPU leaves its `--ocr` row empty, and `require_produced`
 # fails the target by that row.
+#
+# # So does the assist binary, and no model file ever does
+#
+# `ethos-parser-assist`, the assist lane's own process (assist/README.md), is a third workspace on
+# its own pinned compiler (assist/rust-toolchain.toml), built and staged beside the engine in the
+# same way. Its fingerprint row is `identity`, which names the build, hayro's version and the page
+# rule, so every runner must print the same one. Its `render` pixels are not compared: vello_cpu
+# picks SIMD paths at run time, and pixels on other CPUs are unmeasured (assist/README.md). Its
+# `ask` and `check` need a model server. An archive holds the three binaries, LICENSE, NOTICE and
+# README.md and nothing else (`archive_holds_only`), so no model file ships, whatever its name
+# (the owner, 2026-11-15). The lane's model runs in a server the user starts, and the
+# recognizer's models are built into its binary.
 #
 # # What this does NOT check
 #
@@ -169,6 +182,12 @@ fingerprint() {
   # One scan through the recognizer `$bin` finds, so the archive's second binary is compared too.
   printf '%s %s ' "$(basename "$OCR_FIXTURE")" extract--ocr
   "$bin" extract --ocr "$OCR_FIXTURE" 2>/dev/null | sha256 || true
+  # And the third, beside `$bin`, by its identity line.
+  local assist
+  assist="$(dirname "$bin")/ethos-parser-assist"
+  [ -x "$assist" ] || assist="$assist.exe"
+  printf '%s %s ' ethos-parser-assist identity
+  "$assist" identity 2>/dev/null | sha256 || true
 }
 
 # **Identical is not enough.** Two binaries that refuse every document agree perfectly, and so do
@@ -183,15 +202,16 @@ require_produced() {
     projected "$doc" || skipped=$((skipped + 1))
   done
   [ "$docs" -gt 0 ] || fail "fixtures/gate holds no PDF; nothing could have been fingerprinted."
-  # The last 1 is the scan read with `extract --ocr`.
-  expected=$(( 2 * docs + 3 * (docs - skipped) + 1 ))
+  # The last 2: the scan read with `extract --ocr`, and the assist binary's `identity`.
+  expected=$(( 2 * docs + 3 * (docs - skipped) + 2 ))
   produced="$(printf '%s\n' "$fp" | awk -v empty="$EMPTY" 'NF == 3 && $3 != empty { n++ } END { print n + 0 }')"
   if [ "$produced" -ne "$expected" ]; then
     refused="$(printf '%s\n' "$fp" | awk -v empty="$EMPTY" 'NF == 3 && $3 == empty { print "  refused: " $1 " " $2 }')"
     fail "$what produced $produced non-empty artifact(s) over the gate corpus; all $expected are required." \
          "Every gate document must extract and classify, every projected one must project, and" \
          "$OCR_FIXTURE must extract with --ocr through the recognizer beside the engine (or at" \
-         "ETHOS_PARSER_OCR), which refuses an x86-64 CPU without AVX2 and FMA by name." \
+         "ETHOS_PARSER_OCR), which refuses an x86-64 CPU without AVX2 and FMA by name, and" \
+         "ethos-parser-assist beside the engine must print its identity." \
          "A row digesting to the empty digest is a refusal; a missing row is a document whose" \
          "extract failed. Find out which and why. Do not release." "$refused"
   fi
@@ -202,6 +222,18 @@ require_produced() {
 sums() {
   local f
   for f in ./*.tar.gz; do printf '%s  %s\n' "$(sha256 < "$f")" "$f"; done
+}
+
+# **No model file ships** (the owner, 2026-11-15). Staged directory $1 must hold exactly the files
+# named after it. An allowlist rather than a list of weight suffixes, which a `.bin` or the next
+# format would slip past.
+archive_holds_only() {
+  local stage="$1" want got
+  shift
+  want="$(printf '%s\n' "$@" | LC_ALL=C sort)"
+  got="$(cd "$stage" && LC_ALL=C ls -A)"
+  [ "$got" = "$want" ] || fail "$(basename "$stage") does not hold exactly the release's files." \
+    "No model file ships in a release, whatever its name. Expected:" "$want" "Found:" "$got"
 }
 
 # --- --fingerprint-only: one binary's fingerprint, and nothing built or removed ------------------
@@ -297,8 +329,8 @@ assemble() {
   {
     echo "# ethos-parser $version — release artifacts, assembled from ${#targets[@]} runners"
     echo "#"
-    echo "# state 'verified' means the archive's binaries, ethos-parser and ethos-parser-ocr, were EXECUTED"
-    echo "# on the runner that built them and every artifact"
+    echo "# state 'verified' means the archive's binaries, ethos-parser, ethos-parser-ocr and"
+    echo "# ethos-parser-assist, were EXECUTED on the runner that built them and every artifact"
     echo "# digest over the gate corpus equalled every other runner's: one fingerprint on every system"
     echo "# below. That is plan item 6.1's operating-system axis, measured on these binaries. Nothing"
     echo "# here is 'compiled' — a fingerprint that differed would have failed the assembly, and this"
@@ -347,12 +379,14 @@ host_arch="$(uname -m)"
 NATIVE="$(rustc -vV | sed -n 's/^host: //p')"
 [ -n "$NATIVE" ] || fail "could not read the host target from rustc -vV"
 
-# The recognizer's own compiler, which no runner image carries: installed, then held to its pin,
-# as ci/ocr.sh does in the gate.
-ocr_want="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ocr/rust-toolchain.toml | head -1)"
-rustup toolchain install "$ocr_want" --profile minimal >/dev/null
-ocr_got="$(cd ocr && cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-[ "$ocr_want" = "$ocr_got" ] || fail "ocr/rust-toolchain.toml wants $ocr_want; cargo in ocr/ reports $ocr_got"
+# The recognizer's and the assist binary's own compilers, which no runner image carries: each
+# installed, then held to its pin, as ci/ocr.sh and ci/assist.sh do in the gate.
+for ws in ocr assist; do
+  want="$(grep -E '^channel' "$ws/rust-toolchain.toml" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+  rustup toolchain install "$want" --profile minimal >/dev/null
+  got="$(cd "$ws" && cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  [ "$want" = "$got" ] || fail "$ws/rust-toolchain.toml wants $want; cargo in $ws/ reports $got"
+done
 
 # The archive's own recognizer, found beside its engine, is the one fingerprinted.
 unset ETHOS_PARSER_OCR
@@ -401,18 +435,19 @@ native_fp=""
 for target in "${TARGETS[@]}"; do
   echo "[$target]"
 
-  if ! has_target . "$target" || ! has_target ocr "$target"; then
-    note "rustup cannot install this target here for both compilers — skipped"
+  if ! has_target . "$target" || ! has_target ocr "$target" || ! has_target assist "$target"; then
+    note "rustup cannot install this target here for every compiler — skipped"
     echo; continue
   fi
 
   # `--locked`, as every cargo invocation in ci.yml: the lockfile the gate tested is the one built.
-  # The engine, then the recognizer in ocr/ on its own compiler. The compilers' output goes to a
-  # log — noise on success locally, the only record of what was built on a runner, and the
-  # diagnosis on failure either way.
+  # The engine, then the recognizer in ocr/ and the assist binary in assist/, each on its own
+  # compiler. The compilers' output goes to a log — noise on success locally, the only record of
+  # what was built on a runner, and the diagnosis on failure either way.
   log="$OUT/build-$target.log"
   if ! { cargo build --release --locked --target "$target" -p ethos-parser-cli &&
-         (cd ocr && cargo build --release --locked --target "$target"); } >"$log" 2>&1; then
+         (cd ocr && cargo build --release --locked --target "$target") &&
+         (cd assist && cargo build --release --locked --target "$target"); } >"$log" 2>&1; then
     if [ "$target" = "$NATIVE" ]; then
       tail -n 40 "$log" >&2
       fail "the native build failed; the full log is $log" \
@@ -431,18 +466,22 @@ for target in "${TARGETS[@]}"; do
   ocr="ocr/target/$target/release/ethos-parser-ocr"
   [ -x "$ocr" ] || ocr="$ocr.exe"
   [ -x "$ocr" ] || { note "no recognizer produced at ocr/target/$target/release — skipped"; echo; continue; }
-  ok "built  $(wc -c < "$bin" | tr -d ' ') bytes, recognizer $(wc -c < "$ocr" | tr -d ' ') bytes"
+  assist="assist/target/$target/release/ethos-parser-assist"
+  [ -x "$assist" ] || assist="$assist.exe"
+  [ -x "$assist" ] || { note "no assist binary produced at assist/target/$target/release — skipped"; echo; continue; }
+  ok "built  $(wc -c < "$bin" | tr -d ' ') bytes, recognizer $(wc -c < "$ocr" | tr -d ' ') bytes, assist $(wc -c < "$assist" | tr -d ' ') bytes"
 
-  # Staged before anything runs, so what is fingerprinted is the archive's own pair, the engine
-  # finding the recognizer beside itself as it will wherever the archive is unpacked.
+  # Staged before anything runs, so what is fingerprinted is the archive's own binaries, the
+  # engine finding the recognizer beside itself as it will wherever the archive is unpacked.
   stage="$OUT/ethos-parser-$version-$target"
   mkdir -p "$stage"
-  cp "$bin" "$ocr" "$stage/"
+  cp "$bin" "$ocr" "$assist" "$stage/"
   cp LICENSE "$stage/" 2>/dev/null || true
   cp NOTICE "$stage/" 2>/dev/null || true
   cp README.md "$stage/" 2>/dev/null || true
   bin="$stage/$(basename "$bin")"
   ocr="$stage/$(basename "$ocr")"
+  assist="$stage/$(basename "$assist")"
 
   # The glibc floor, so it cannot creep up unnoticed: a gnu binary loads only on a glibc at least
   # as new as every GLIBC_ version it references, weak symbols included (0.65.0's 2.39 came from
@@ -450,7 +489,7 @@ for target in "${TARGETS[@]}"; do
   case "$target" in
     *-linux-gnu)
       command -v objdump >/dev/null || fail "objdump is not on PATH, so the glibc floor of $target cannot be checked."
-      for f in "$bin" "$ocr"; do
+      for f in "$bin" "$ocr" "$assist"; do
         need="$(glibc_need "$f" || true)"
         [ -n "$need" ] || fail "objdump -T found no GLIBC_ version in $f."
         [ "$(printf '%s\n' "$GLIBC_FLOOR" "$need" | sort -V | tail -n 1)" = "$GLIBC_FLOOR" ] || \
@@ -483,6 +522,9 @@ for target in "${TARGETS[@]}"; do
     note "this host cannot execute $target — packaged as 'compiled', not 'verified'"
   fi
 
+  archive_holds_only "$stage" "$(basename "$bin")" "$(basename "$ocr")" "$(basename "$assist")" \
+    LICENSE NOTICE README.md
+  ok "holds the three binaries, LICENSE, NOTICE and README.md, and no other file"
   tar -czf "$OUT/ethos-parser-$version-$target.tar.gz" -C "$OUT" "$(basename "$stage")"
   rm -rf "$stage"
   ok "packaged ethos-parser-$version-$target.tar.gz"
@@ -496,11 +538,11 @@ done
 {
   echo "# ethos-parser $version — release artifacts"
   echo "#"
-  echo "# state 'verified' means the archive's binaries, ethos-parser and ethos-parser-ocr, were"
-  echo "# EXECUTED on the build host and every artifact digest over the gate corpus equalled the"
-  echo "# native build's. State 'compiled' means they were built and never run: this host could not"
-  echo "# execute them. A compiled artifact is not evidence"
-  echo "# of anything about the platform it targets. See plan item 6.1."
+  echo "# state 'verified' means the archive's binaries, ethos-parser, ethos-parser-ocr and"
+  echo "# ethos-parser-assist, were EXECUTED on the build host and every artifact digest over the"
+  echo "# gate corpus equalled the native build's. State 'compiled' means they were built and never"
+  echo "# run: this host could not execute them. A compiled artifact is not evidence of anything"
+  echo "# about the platform it targets. See plan item 6.1."
   echo "#"
   for i in "${!built[@]}"; do
     echo "# ${built[$i]}  ->  ${states[$i]}"

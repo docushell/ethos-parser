@@ -32,6 +32,29 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Every release archive carries the assist binary, and no model file (decision #148)
+
+The owner's call (2026-11-15): `ethos-parser-assist` ships in every release, beside
+`ethos-parser-ocr`, and no model file goes in the repository or a release. **The engine is
+unchanged**: no root crate, lockfile or output moves (a local dry run on aarch64-apple-darwin built and verified the six-file archive).
+
+- `ci/release-artifacts.sh` builds the assist binary in `assist/` on its own pinned toolchain
+  (1.98.0) for Linux, Windows and both macOS architectures, and packages it beside the engine. Its
+  `identity` line is one more fingerprint row every runner must print alike; its `render` pixels
+  are not compared, being unmeasured on other CPUs.
+- **No model file ships.** An archive must hold exactly the three binaries, `LICENSE`, `NOTICE` and
+  `README.md`, or the script fails that target. A test fails on a tracked model file
+  (`.onnx`, `.safetensors`, `.gguf`, `.npz`, `.mlx`, `.pt`, `.pth`, `.ckpt`) outside the
+  recognizer's `ocr/models/`, or a `.bin` over 1 MiB.
+- `NOTICE` gains the assist binary's section: hayro's built-in fonts (PDFium, BSD-3-Clause) and
+  Adobe CMaps (BSD-3-Clause), the notices its BSD-3-Clause, MIT and Unicode-3.0 crates ask for, and
+  every crate `assist/Cargo.lock` locks with its licence, which a unit test holds to the lockfile.
+- On Windows the binary ships, and `ask` and `check` are refused `curl-not-run`, since the page
+  reaches `curl` through `/dev/fd`; `render` and `identity` work. README, `assist/README.md` and
+  `docs/RELEASING.md`'s release notes say so.
+- Measured on this Mac (`--target aarch64-apple-darwin`): `verified`, 36 fingerprint rows, and an
+  archive of the six files, the assist binary 6.9 MB. The workflow has not run with it yet.
+
 ### A drafting model's blocks reach Markdown and HTML, labelled `Proposed` (decision #147)
 
 The third step of the assist lane: `markdown` and `html` read the record's `assist` key, place the
