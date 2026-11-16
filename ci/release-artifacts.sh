@@ -534,6 +534,11 @@ for target in "${TARGETS[@]}"; do
 done
 
 [ ${#built[@]} -gt 0 ] || fail "nothing was built"
+# The native target, where it is asked for, is built first; a run without its archive has no
+# reference to verify against, whichever binary was missing (review). `--target` another skips it.
+[ "${TARGETS[0]}" != "$NATIVE" ] || [ "${built[0]}" = "$NATIVE" ] || \
+  fail "the native target $NATIVE produced no archive" \
+       "Each binary it lacked is named above. A release needs the native archive."
 
 {
   echo "# ethos-parser $version — release artifacts"

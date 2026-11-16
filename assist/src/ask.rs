@@ -465,10 +465,16 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
             "FILE answers another PDF",
         ));
     }
+    // Replies are another model's unless the model named is the one they were asked by, or the
+    // one the server reported, so a server's alias resumes under either name (review). Checked
+    // before any page is passed over as answered: a run whose pages are all answered asks nothing.
+    // A FILE of errors only holds no reply to keep, and takes the model named, its version too.
+    let replied = |p: &Page| matches!(p.outcome, Outcome::Reply { .. });
+    let has_replies = answers.pages.values().any(replied);
     // A version left out is not compared, as the engine's `--assist-model ID` does not compare
-    // it: FILE's is kept.
+    // it: FILE's is kept where FILE holds a reply.
     let version_named = model.is_some_and(|m| m.contains('@'));
-    if version_named && answers.model_version != version {
+    if has_replies && version_named && answers.model_version != version {
         return Err(refused(
             "assist-answers-other-model",
             format!(
@@ -477,13 +483,10 @@ pub fn ask(server: &str, file: &Path, pages: &str, model: Option<&str>) -> Resul
             ),
         ));
     }
-    // Replies are another model's unless the model named is the one they were asked by, or the
-    // one the server reported, so a server's alias resumes under either name (review). Checked
-    // before any page is passed over as answered: a run whose pages are all answered asks nothing.
-    let replied = |p: &Page| matches!(p.outcome, Outcome::Reply { .. });
-    if !answers.pages.values().any(replied) {
+    if !has_replies {
         answers.model_id = asked.clone();
         answers.model_asked = asked.clone();
+        answers.model_version = version.clone();
     } else if asked != answers.model_asked && asked != answers.model_id {
         return Err(refused(
             "assist-answers-other-model",

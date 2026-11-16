@@ -7,9 +7,9 @@ page 1, the page those answers are of, with its reply and finish reason, under t
 
 Each page is drawn again by `ethos-parser-assist render`, and the file stamps that renderer only where the new
 PNG is byte for byte the one the model read (KEPT_PNGS/<group dir>/<stem>.png) at the stored dpi and size; any
-other page, and a page whose answer is an error, gets no file and is listed. `points` is the rendered size in
-centipoints, read back from the pixels (`render` prints the dpi and the pixel size, not the points): within
-36 / dpi points of hayro's, well inside the 1 pt the record checks it against.
+other page, and a page whose answer is an error, gets no file, an earlier run's removed, and is listed.
+`points` is the rendered size in centipoints, read back from the pixels (`render` prints the dpi and the pixel
+size, not the points): within 36 / dpi points of hayro's, well inside the 1 pt the record checks it against.
 
 Run from the ParseBench checkout:
   python3 -I assist_replies.py ANSWERS.json KEPT_PNGS OUT_DIR ASSIST_BIN
@@ -33,10 +33,11 @@ def sha256(data: bytes) -> str:
 
 
 def convert(key: str, answer: dict, kept: Path, out: Path, assist: str, scratch: Path):
-    """Write `key`'s replies file; or say why there is none."""
+    """Write `key`'s replies file; or say why there is none, and leave none from an earlier run."""
+    group, name = key.split("/", 1)
+    (out / f"{group}__{Path(name).stem}.json").unlink(missing_ok=True)
     if answer.get("error"):
         return f"answer is an error: {answer['error'][:120]}"
-    group, name = key.split("/", 1)
     pdf = Path("data/docs") / key
     png = scratch / f"{group}__{Path(name).stem}.png"
     proc = subprocess.run([assist, "render", str(pdf), "1", str(png)], capture_output=True, text=True)

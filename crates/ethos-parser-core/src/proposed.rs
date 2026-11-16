@@ -25,7 +25,8 @@
 //!   `10 * shared < 3 * model` and `2 * model >= engine`, counted in decision #123's words (the
 //!   distinct runs of letters, digits and `_`, two characters or more, lower-cased, tags removed).
 //!   `model` counts the words of the blocks a swap would write — not a reply's cut last block, not
-//!   furniture `drop_furniture` leaves out, not a table's text outside its cells — so no page is
+//!   furniture `drop_furniture` leaves out, not a table's text outside its cells, not a line the
+//!   guard leaves out — so no page is
 //!   swapped for words it would not show, nor to nothing; `engine` the page's share of the
 //!   engine-only Markdown. The engine's runs and tables on the page are left out, counted under
 //!   [`REPLACED_BY_PROPOSED_PAGE`], and where its first node stood the model's blocks follow, in
@@ -58,7 +59,8 @@
 //! `<blockquote>` inside it, their text escaped by [`html_text`], U+0000 left out, a `&#0;` too;
 //! the model's name is escaped as its text is, in both. A table is read into cells and written by this engine: a GFM
 //! grid in Markdown, its spans flattened and counted, a `<table>` keeping them in HTML; one with no
-//! cell is left out ([`PROPOSED_TABLE_UNPARSED`]). In any text, tags other than `<sub>`, `<sup>`
+//! cell, or spans laying it out on more than [`TABLE_SLOTS`] slots, is left out
+//! ([`PROPOSED_TABLE_UNPARSED`]). In any text, tags other than `<sub>`, `<sup>`
 //! and `<br>` are removed and those three written by this engine. A block's bytes are `proposed`
 //! segments of the anchor map naming its `m` id, escaped as written: readable, never citable.
 
@@ -81,7 +83,8 @@ pub const PROPOSED_VALUE_CONTRADICTED: &str = "proposed-value-contradicted-v1";
 pub const PROPOSED_LINE_UNSUPPORTED: &str = "proposed-line-unsupported-v1";
 /// The last block of a reply the server cut at its cap: left out.
 pub const PROPOSED_BLOCK_TRUNCATED: &str = "proposed-block-truncated-v1";
-/// A model `table` block holding no cell this engine reads: left out.
+/// A model `table` block holding no cell this engine reads, or spans laying it out on more than
+/// 100,000 slots: left out.
 pub const PROPOSED_TABLE_UNPARSED: &str = "proposed-table-unparsed-v1";
 /// A model block the rule does not project — off a swapped page, any but a table, a chart and the
 /// caption before one; or empty — kept in the record.
@@ -180,8 +183,8 @@ pub(crate) enum Shown<'a> {
 /// What a group of blocks is, for its label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum What {
-    /// A swapped page, by its number.
-    Page(u32),
+    /// A swapped page, by its number, `true` where a chart's value on it is an estimate.
+    Page(u32, bool),
     /// A table.
     Table,
     /// A chart, `true` where a value is an estimate.
@@ -191,7 +194,8 @@ pub(crate) enum What {
 impl What {
     fn label(self) -> String {
         match self {
-            What::Page(n) => format!("page {n} as read"),
+            What::Page(n, false) => format!("page {n} as read"),
+            What::Page(n, true) => format!("page {n} as read, chart values estimated"),
             What::Table => "table".into(),
             What::Chart(false) => "chart".into(),
             What::Chart(true) => "chart values estimated".into(),
@@ -322,15 +326,19 @@ impl<'a> Plan<'a> {
             );
             let mut taken = usize::from(cut.is_some());
             if swapped {
-                let mut blocks = Vec::new();
+                let (mut blocks, mut estimates) = (Vec::new(), false);
                 for (k, b) in (0..).zip(&page.blocks) {
-                    if kept(k, b) {
-                        blocks.extend(shown(b, &mut line, &mut taken));
+                    if !kept(k, b) {
+                        continue;
+                    }
+                    if let Some(s) = shown(b, &mut line, &mut taken) {
+                        estimates |= estimated(b);
+                        blocks.push(s);
                     }
                 }
                 plan.start.entry(at.index).or_default().push(Group {
                     census,
-                    what: What::Page(at.index),
+                    what: What::Page(at.index, estimates),
                     blocks,
                 });
                 plan.replaced.extend(
@@ -345,9 +353,7 @@ impl<'a> Plan<'a> {
                 for (k, b) in page.blocks.iter().enumerate() {
                     let what = match b.label.as_deref() {
                         Some("table") => What::Table,
-                        Some("chart") => What::Chart(b.guard.as_ref().is_some_and(|g| {
-                            g.flagged.iter().any(|f| f.mark == AssistMark::Estimate)
-                        })),
+                        Some("chart") => What::Chart(estimated(b)),
                         _ => continue,
                     };
                     if Some(k) == cut {
@@ -372,7 +378,7 @@ impl<'a> Plan<'a> {
                     if let Some(c) = k.checked_sub(1) {
                         let before = &page.blocks[c];
                         let caption = matches!(before.label.as_deref(), Some("title" | "caption"))
-                            && !crate::assist::words(&crate::assist::untagged(&before.text))
+                            && !crate::assist::words(&crate::assist::untagged(&written(before)))
                                 .is_subset(ours);
                         if caption {
                             blocks.extend(shown(before, &mut line, &mut taken));
@@ -440,17 +446,67 @@ fn shown<'a>(b: &'a AssistBlock, line: &mut ProposedPage, taken: &mut usize) -> 
     }
 }
 
-/// The text of `b` a projection writes, as the swap test reads it: a table's cells, not what lies
-/// outside them; any other block whole.
+/// The text of `b` a projection writes, as the swap test and the caption test read it: a table's
+/// cells, not what lies outside them; any other block whole; neither a line the guard leaves out
+/// (review). The model's text as written, so it is read as the engine's Markdown is.
 fn written(b: &AssistBlock) -> String {
-    if !is_table(b) {
-        return b.text.clone();
+    let dropped = dropped(b);
+    if is_table(b) {
+        let cells: Vec<&str> = numbered(&b.text)
+            .filter(|(line, ..)| !dropped.contains(line))
+            .map(|(.., part)| part)
+            .collect();
+        cells.join("\n")
+    } else if dropped.is_empty() {
+        b.text.clone()
+    } else {
+        kept_lines(b, &dropped)
     }
-    let cells: Vec<&str> = crate::assist::cells_of(&b.text)
+}
+
+/// The lines of `b` the guard leaves out: `contradicted` and `unsupported`.
+fn dropped(b: &AssistBlock) -> BTreeSet<u32> {
+    b.guard
+        .iter()
+        .flat_map(|g| &g.flagged)
+        .filter(|f| matches!(f.mark, AssistMark::Contradicted | AssistMark::Unsupported))
+        .map(|f| f.line)
+        .collect()
+}
+
+/// A table block's cells, `(line, row, tag, text)`, each line numbered as the guard numbers it:
+/// text outside every cell counts its own lines, and is no cell.
+fn numbered(text: &str) -> impl Iterator<Item = (u32, u32, &str, &str)> {
+    let mut line = 0u32;
+    crate::assist::cells_of(text)
         .into_iter()
-        .filter_map(|(row, _, part)| row.map(|_| part))
+        .filter_map(move |(row, tag, part)| {
+            let Some(row) = row else {
+                line += u32::try_from(crate::assist::text_lines(part).len()).unwrap_or(u32::MAX);
+                return None;
+            };
+            line += 1;
+            Some((line, row, tag, part))
+        })
+}
+
+/// `b`'s lines as the guard read them, references decoded, but those in `dropped`.
+fn kept_lines(b: &AssistBlock, dropped: &BTreeSet<u32>) -> String {
+    let kept: Vec<String> = crate::assist::block_lines(b.label.as_deref(), &b.text)
+        .into_iter()
+        .zip(1u32..)
+        .filter(|(_, line)| !dropped.contains(line))
+        .map(|((_, text), _)| text)
         .collect();
-    cells.join("\n")
+    kept.join("\n")
+}
+
+/// Whether `b` is a chart a value of which is an estimate.
+fn estimated(b: &AssistBlock) -> bool {
+    b.label.as_deref() == Some("chart")
+        && b.guard
+            .as_ref()
+            .is_some_and(|g| g.flagged.iter().any(|f| f.mark == AssistMark::Estimate))
 }
 
 /// Whether `b` is written as a table: a `table` or `chart` holding one.
@@ -622,12 +678,7 @@ fn render(b: &AssistBlock) -> Rendered<'_> {
         .flat_map(|g| &g.flagged)
         .map(|f| (f.line, f.mark))
         .collect();
-    let gone = |mark: Option<&AssistMark>| {
-        matches!(
-            mark,
-            Some(AssistMark::Contradicted | AssistMark::Unsupported)
-        )
-    };
+    let dropped = dropped(b);
     let tally = |mark: AssistMark| marks.values().filter(|m| **m == mark).count();
     let (contradicted, unsupported) = (
         tally(AssistMark::Contradicted),
@@ -638,13 +689,8 @@ fn render(b: &AssistBlock) -> Rendered<'_> {
         // A cell is one of the guard's lines; text outside every cell counts its own lines and is
         // not written: decision #123's replies hold none outside a closed table.
         let mut rows: Vec<Vec<Cell>> = Vec::new();
-        let (mut last, mut line) = (None, 0u32);
-        for (row, tag, part) in crate::assist::cells_of(&b.text) {
-            let Some(row) = row else {
-                line += u32::try_from(crate::assist::text_lines(part).len()).unwrap_or(u32::MAX);
-                continue;
-            };
-            line += 1;
+        let mut last = None;
+        for (line, row, tag, part) in numbered(&b.text) {
             if last != Some(row) {
                 rows.push(Vec::new());
                 last = Some(row);
@@ -654,7 +700,7 @@ fn render(b: &AssistBlock) -> Rendered<'_> {
                 header: tag.to_ascii_lowercase().starts_with("<th"),
                 rowspan: span(tag, "rowspan"),
                 colspan: span(tag, "colspan"),
-                text: if gone(mark.as_ref()) {
+                text: if dropped.contains(&line) {
                     Vec::new()
                 } else {
                     pieces(part, true)
@@ -665,10 +711,10 @@ fn render(b: &AssistBlock) -> Rendered<'_> {
                 cells.push(cell);
             }
         }
-        return if rows.iter().all(Vec::is_empty) {
+        rows.retain(|r| !r.is_empty());
+        return if rows.is_empty() || !fits(&rows) {
             Rendered::Unparsed
         } else {
-            rows.retain(|r| !r.is_empty());
             Rendered::Shown(Shown::Table(id, rows), contradicted, unsupported)
         };
     }
@@ -676,15 +722,7 @@ fn render(b: &AssistBlock) -> Rendered<'_> {
         return Rendered::Unparsed;
     }
     // Lines the guard left out: the rest, as it read them, references decoded.
-    let plain = (contradicted + unsupported > 0).then(|| {
-        let kept: Vec<String> = crate::assist::block_lines(label, &b.text)
-            .into_iter()
-            .zip(1u32..)
-            .filter(|(_, line)| !gone(marks.get(line)))
-            .map(|((_, text), _)| text)
-            .collect();
-        vec![Piece::Text(kept.join("\n"))]
-    });
+    let plain = (!dropped.is_empty()).then(|| vec![Piece::Text(kept_lines(b, &dropped))]);
     // Code and a formula are not read for tags: they are written whole, references decoded.
     let mut text = match (label, plain) {
         (_, Some(plain)) => plain,
@@ -704,8 +742,12 @@ fn render(b: &AssistBlock) -> Rendered<'_> {
             *first = after.trim_start_matches([' ', '\t']).to_string();
         }
     }
-    text.retain(|p| !matches!(p, Piece::Text(t) if t.trim().is_empty()));
-    if text.iter().all(|p| matches!(p, Piece::Tag(_))) {
+    // A space between two tags stays: `x<sup>2</sup> <sup>3</sup>` (review).
+    text.retain(|p| !matches!(p, Piece::Text(t) if t.is_empty()));
+    if text
+        .iter()
+        .all(|p| !matches!(p, Piece::Text(t) if !t.trim().is_empty()))
+    {
         return Rendered::Blank;
     }
     let shown = match label {
@@ -1051,6 +1093,27 @@ impl<'p, 'a> Cursor<'p, 'a> {
 /// covers it, `None` where nothing is; with the grid's width and how many slots spans covered.
 type Slots<'c> = Vec<Vec<Option<Option<&'c Cell>>>>;
 
+/// The most slots a model table's grid may hold. Past it the table is not written (review): its
+/// spans could ask gigabytes of [`layout`] and of Markdown. ParseBench's largest holds 3,326.
+const TABLE_SLOTS: usize = 100_000;
+
+/// Whether `rows` lay out on at most [`TABLE_SLOTS`] slots. No row of the grid is wider than the
+/// columns its own cells and the spans from above reaching it ask for together, so the rows times
+/// the widest of those bound it, with nothing allocated.
+fn fits(rows: &[Vec<Cell>]) -> bool {
+    let mut ends = vec![0usize; rows.len() + 1];
+    let (mut width, mut widest) = (0usize, 0usize);
+    for (r, row) in rows.iter().enumerate() {
+        width -= ends[r];
+        for cell in row {
+            width += cell.colspan;
+            ends[(r + cell.rowspan).min(rows.len())] += cell.colspan;
+        }
+        widest = widest.max(width);
+    }
+    rows.len().saturating_mul(widest) <= TABLE_SLOTS
+}
+
 /// Lay a model table's cells out on a grid, as an HTML table lays out: each row's cells from the
 /// left, past slots a span from above already holds; a row span reaching past the last row stops
 /// there.
@@ -1116,9 +1179,16 @@ fn md_pieces(e: &mut Emit, pieces: &[Piece], id: &str, at: In) {
 /// each line escaped by [`md_escaped`].
 fn md_text(e: &mut Emit, text: &str, id: &str, at: In) {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    let last = text.matches('\n').count();
     for (k, line) in text.split('\n').enumerate() {
+        // A blank line inside the text is `> >` alone; its last line opens with `> > ` even when
+        // empty, so a tag written after it stays at the model's depth (review).
         if k > 0 {
-            e.syntax(if line.is_empty() { "\n> >" } else { INNER });
+            e.syntax(if line.is_empty() && k < last {
+                "\n> >"
+            } else {
+                INNER
+            });
         }
         e.proposed(&md_escaped(line, at), id);
     }
@@ -1830,7 +1900,7 @@ mod tests {
             &[(
                 1,
                 "stop",
-                "![caption](100,85,700,140) Revenue 2023 rose &lt;!--&#0;\nTotal 999\n\n\
+                "![caption](100,85,700,140) Revenue 2023 rose sharply &lt;!--&#0;\nTotal 999\n\n\
                  ![table](100,200,700,300) <table><tr><td>Q</td><td>9</td></tr></table>",
             )],
         );
@@ -1841,7 +1911,10 @@ mod tests {
                 "Revenue 2023 rose\n\nTotal 998\n\n{}\n",
                 quoted(
                     "table",
-                    &["Revenue 2023 rose &lt;!--", "| Q | 9 |\n> | --- | --- |"]
+                    &[
+                        "Revenue 2023 rose sharply &lt;!--",
+                        "| Q | 9 |\n> | --- | --- |"
+                    ]
                 )
             )
         );
@@ -1851,7 +1924,7 @@ mod tests {
         );
         assert!(html(&repr)
             .html
-            .contains("<p>Revenue 2023 rose &lt;!--</p>\n<table>"));
+            .contains("<p>Revenue 2023 rose sharply &lt;!--</p>\n<table>"));
     }
 
     /// **A chart's values not in the page's text are kept and labelled estimates**, in the label
@@ -2296,6 +2369,233 @@ mod tests {
                 (false, 1, vec![])
             ]
         );
+    }
+
+    /// **The swap counts the words the guard leaves** (review): thirty blocks of the engine's words,
+    /// each with a line or a cell of a value the page does not hold, write only the engine's
+    /// words, and do not swap the page; text on page 1, tables on page 2.
+    #[test]
+    fn the_swap_counts_the_words_the_guard_leaves() {
+        let shared = "alpha bravo charlie delta echo foxtrot golf hotel india juliet";
+        let runs = lines_of(&[shared, "Total 500"]);
+        let text: Vec<String> = (0..30)
+            .map(|k| format!("![text](100,50,900,300) {shared}\nTotal {}", 9001 + k))
+            .collect();
+        let tables: Vec<String> = (0..30)
+            .map(|k| {
+                format!(
+                    "![table](100,50,900,300) <table><tr><td>{shared}</td></tr>\
+                     <tr><td>Total</td><td>{}</td></tr></table>",
+                    9001 + k
+                )
+            })
+            .collect();
+        let repr = assisted(
+            record(&[&runs, &runs], None),
+            &[
+                (1, "stop", &text.join("\n\n")),
+                (2, "stop", &tables.join("\n\n")),
+            ],
+        );
+        for page in &repr.payload().assist.as_ref().unwrap().pages {
+            let contradicted = page
+                .blocks
+                .iter()
+                .flat_map(|b| &b.guard.as_ref().unwrap().flagged)
+                .filter(|f| f.mark == AssistMark::Contradicted)
+                .count();
+            assert_eq!(
+                contradicted, 30,
+                "{}: each value is contradicted",
+                page.page
+            );
+        }
+        let md = markdown(&repr);
+        let counts: Vec<(usize, usize, usize, bool)> = md
+            .proposed
+            .as_ref()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|p| (p.model_words, p.engine_words, p.shared_words, p.swapped))
+            .collect();
+        assert_eq!(counts, [(10, 12, 10, false), (11, 12, 11, false)]);
+    }
+
+    /// **The swap reads the model's text as it reads the engine's** (review): a `<` and a `>` in
+    /// running text hide the same words on both sides, so a page read right is not swapped.
+    #[test]
+    fn the_swap_reads_the_model_as_it_reads_the_engine() {
+        let text =
+            "Results p < 0.05 alpha bravo charlie delta echo foxtrot golf hotel india juliet \
+                    where n > 30";
+        let runs = lines_of(&[text]);
+        let reply = format!("![text](100,50,900,300) {text}");
+        let md = markdown(&assisted(record(&[&runs], None), &[(1, "stop", &reply)]));
+        let page = &md.proposed.as_ref().unwrap().pages[0];
+        assert_eq!(
+            (
+                page.model_words,
+                page.engine_words,
+                page.shared_words,
+                page.swapped
+            ),
+            (2, 2, 2, false)
+        );
+    }
+
+    /// **A caption is added for the words it writes** (review): one whose words not the engine's
+    /// stand on a line the guard leaves out writes only the engine's, and is left out.
+    #[test]
+    fn a_caption_is_judged_by_what_it_writes() {
+        let runs = [
+            ("Revenue 2023 rose", [7200, 7200, 40000, 8400]),
+            ("Total 998", [7200, 9600, 40000, 10800]),
+        ];
+        let repr = assisted(
+            record(&[&runs], None),
+            &[(
+                1,
+                "stop",
+                "![caption](100,85,700,140) Revenue 2023 rose\nTotal 999\n\n\
+                 ![table](100,200,700,300) <table><tr><td>Q</td><td>9</td></tr></table>",
+            )],
+        );
+        let md = markdown(&repr);
+        assert_eq!(
+            md.markdown,
+            format!(
+                "Revenue 2023 rose\n\nTotal 998\n\n{}\n",
+                quoted("table", &["| Q | 9 |\n> | --- | --- |"])
+            )
+        );
+        assert_eq!(
+            lines(&md.proposed),
+            [(false, 1, left(&[(PROPOSED_BLOCK_NOT_PROJECTED, 1)]))]
+        );
+    }
+
+    /// **A line break before a tag stays inside its quote** (review): the next line opens with
+    /// `> > `, as every model line does.
+    #[test]
+    fn a_line_break_before_a_tag_stays_inside_its_quote() {
+        let runs = lines_of(&["zz"]);
+        let repr = assisted(
+            record(&[&runs], None),
+            &[(
+                1,
+                "stop",
+                "![text](100,100,900,200) Made-up words<sup>1</sup>\n<sup>2</sup> and<br>\n<br>end",
+            )],
+        );
+        let md = markdown(&repr).markdown;
+        assert!(contained(&md), "{md}");
+        assert_eq!(
+            md,
+            format!(
+                "{}\n",
+                quoted(
+                    "page 1 as read",
+                    &["Made-up words<sup>1</sup>\n> <sup>2</sup> and<br>\n> <br>end"]
+                )
+            )
+        );
+    }
+
+    /// **A swapped page's chart estimates are named in its label** (review), as a chart added to a
+    /// page has them named: the Markdown table writes no cell's mark.
+    #[test]
+    fn a_swapped_pages_chart_estimates_are_labelled() {
+        let runs = lines_of(&["zz"]);
+        let repr = assisted(
+            record(&[&runs], None),
+            &[(
+                1,
+                "stop",
+                "![chart](100,200,900,500) <table><tr><th>Year</th><th>Revenue</th></tr>\
+                 <tr><td>2023</td><td>41</td></tr></table>",
+            )],
+        );
+        let what = "page 1 as read, chart values estimated";
+        assert_eq!(
+            markdown(&repr).markdown,
+            format!(
+                "{}\n",
+                quoted(
+                    what,
+                    &["| Year | Revenue |\n> | --- | --- |\n> | 2023 | 41 |"]
+                )
+            )
+        );
+        assert!(html(&repr).html.starts_with(&html_label(what)));
+    }
+
+    /// **A space between two inline elements stays** (review), in both projections; a block of
+    /// tags and spaces only writes nothing; the swap reads a tag as a space.
+    #[test]
+    fn a_space_between_inline_elements_stays() {
+        let runs = lines_of(&["zz"]);
+        let repr = assisted(
+            record(&[&runs], None),
+            &[(
+                1,
+                "stop",
+                "![text](100,100,900,200) Made-up words<br>here (x)<sup>2</sup> <sup>3</sup>\n\n\
+                 ![text](100,300,900,400) <br> <br>",
+            )],
+        );
+        let md = markdown(&repr);
+        assert_eq!(
+            md.markdown,
+            format!(
+                "{}\n",
+                quoted(
+                    "page 1 as read",
+                    &["Made-up words<br>here (x)<sup>2</sup> <sup>3</sup>"]
+                )
+            )
+        );
+        assert_eq!(md.proposed.as_ref().unwrap().pages[0].model_words, 4);
+        assert!(html(&repr)
+            .html
+            .contains("<p>Made-up words<br>here (x)<sup>2</sup> <sup>3</sup></p>"));
+    }
+
+    /// **A model table too large to lay out is not written** (review): spans that would lay it
+    /// out on more than [`TABLE_SLOTS`] slots, here each row's starting past the last one's, count
+    /// it unparsed.
+    #[test]
+    fn a_table_too_large_to_lay_out_is_not_written() {
+        let runs = lines_of(&["One Two engine words"]);
+        let rows = "<tr><td rowspan=1000 colspan=1000>x</td></tr>".repeat(12);
+        let reply = format!("![table](100,300,900,400) <table>{rows}</table>");
+        let md = markdown(&assisted(record(&[&runs], None), &[(1, "stop", &reply)]));
+        assert_eq!(md.markdown, "One Two engine words\n");
+        assert_eq!(
+            lines(&md.proposed),
+            [(false, 0, left(&[(PROPOSED_TABLE_UNPARSED, 1)]))]
+        );
+    }
+
+    /// **The grid's bound is its rows times its widest row**, a span counted on every row it
+    /// covers and on none after.
+    #[test]
+    fn the_grid_bound_is_the_rows_times_the_widest_row() {
+        let cell = |rowspan, colspan| Cell {
+            header: false,
+            rowspan,
+            colspan,
+            text: Vec::new(),
+            mark: None,
+        };
+        let wide = |n: usize| -> Vec<Vec<Cell>> { (0..n).map(|_| vec![cell(1, 1000)]).collect() };
+        assert!(fits(&wide(100)));
+        assert!(!fits(&wide(101)));
+        let mut rows = vec![vec![cell(1, 500)]];
+        rows.extend((1..200).map(|_| vec![cell(1, 1)]));
+        assert!(fits(&rows), "200 rows, the widest 500");
+        rows[0][0].rowspan = 2;
+        assert!(!fits(&rows), "200 rows, the widest 501");
     }
 
     /// **A block is placed on the page's visible box, turned as the record's sizes are** (design

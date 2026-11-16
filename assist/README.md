@@ -44,7 +44,8 @@ bad usage.
   arguments: a page with a reply is kept, and a page with an `error` is asked again. A file for
   another PDF is refused, as are a model the server reports differently and another VERSION
   (`assist-answers-other-source`, `assist-answers-other-model`); a MODEL with no `@VERSION` keeps
-  FILE's, since a version left out is not compared. Once FILE holds a reply, MODEL's
+  FILE's, since a version left out is not compared. A FILE of errors only holds no reply, and
+  takes MODEL, its version too. Once FILE holds a reply, MODEL's
   ID must be its `asked` or its `id`, so a server's alias resumes under either name; any other is
   refused before a page is passed over as answered. A file without `asked` was asked by its `id`.
 - **Exit codes.**

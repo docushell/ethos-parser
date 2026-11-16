@@ -727,6 +727,33 @@ fn a_version_left_out_is_not_compared_on_resume() {
     );
 }
 
+/// **A file of errors only holds no reply to keep** (review): it resumes under another version
+/// or another model named, and takes that model's id and version.
+#[test]
+fn a_file_of_errors_only_takes_the_model_named() {
+    let dir = scratch("errors-only");
+    let pdf = three_pages();
+    let busy = || Answer::Status(503, "{\"error\": \"busy\"}".into());
+    let one = serve(&[], vec![busy()]);
+    assert_eq!(ask(&dir, &one.url(), "1", Some("m-one@v1"), &pdf).code, 0);
+
+    let two = serve(&[], vec![busy()]);
+    let r = ask(&dir, &two.url(), "1", Some("m-one@v2"), &pdf);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    let model = answers(&dir).get("model").cloned().unwrap();
+    assert_eq!(str_of(&model, "version"), Some("v2"));
+
+    let three = serve(
+        &[],
+        vec![ok(completion("m-two", "stop", "![text](1,1,2,2) a"))],
+    );
+    let r = ask(&dir, &three.url(), "1", Some("m-two"), &pdf);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    let model = answers(&dir).get("model").cloned().unwrap();
+    assert_eq!(str_of(&model, "id"), Some("m-two"));
+    assert_eq!(str_of(&model, "version"), Some("not-reported"));
+}
+
 /// Saved replies are kept only for the model they are from (review): another name is refused
 /// before any page is passed over as answered, even when every page asked is answered and no
 /// version is named. A server's alias resumes under the name asked or the id it reported.

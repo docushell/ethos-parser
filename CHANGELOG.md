@@ -95,7 +95,9 @@ PDF and FILE: a later `--assist-answers FILE` gives the same bytes, and a stoppe
   which are attached with the new ones; only a page with no reply is asked.
 - **A version left out is not compared**, on either path (review): `ethos-parser-assist ask` with
   a MODEL of no `@VERSION` now resumes a FILE recorded under a version, and keeps it, as the merge
-  under `--assist-model ID` already did; another version named is still refused.
+  under `--assist-model ID` already did; another version named is still refused. A FILE of error
+  pages only holds no reply to keep: it takes the model named, and its version (review: it kept
+  the version it was first asked under).
 - Tested: six CLI tests against `tests/fake-assist.sh` (argv, stdin, the key, every exit, a
   missing binary, another renderer or request, a bare name beside a planted one for both binaries,
   200 KB of stderr before a 200 KB PDF is read, a line not UTF-8), one resume test of the assist
@@ -122,7 +124,8 @@ unchanged**: no root crate, lockfile or output moves (a local dry run on aarch64
   `identity` line is one more fingerprint row every runner must print alike; its `render` pixels
   are not compared, being unmeasured on other CPUs.
 - **No model file ships.** An archive must hold exactly the three binaries, `LICENSE`, `NOTICE` and
-  `README.md`, or the script fails that target. A test fails on a tracked model file
+  `README.md`, or the script fails that target. A run whose native target produced no archive, a
+  binary missing after its build, fails (review: it went on and could exit 0). A test fails on a tracked model file
   (`.onnx`, `.safetensors`, `.gguf`, `.npz`, `.mlx`, `.pt`, `.pth`, `.ckpt`) outside the
   recognizer's `ocr/models/`, or a `.bin` over 1 MiB.
 - `NOTICE` gains the assist binary's section: hayro's built-in fonts (PDFium, BSD-3-Clause) and
@@ -145,21 +148,24 @@ changes) and say what they wrote and left out. **Engine-only output does not mov
   #123's words (distinct runs of letters, digits and `_`, two characters or more, lower-cased, tags
   removed) and in integers: `10 * shared < 3 * model` and `2 * model >= engine`, `model` counting
   the words of the blocks a swap would write — not a reply's cut last block, not furniture
-  `--drop-furniture` leaves out, not a table's text outside its cells, so no page is swapped for
-  words it would not show, nor to nothing — and `engine` the page's share of the engine-only
-  Markdown. The engine's runs and tables there are left out, counted in `coverage.dropped` under
+  `--drop-furniture` leaves out, not a table's text outside its cells, not a line the guard leaves
+  out (review: thirty blocks each with a contradicted value swapped a page for words it did not
+  show), so no page is swapped for words it would not show, nor to nothing — and `engine` the
+  page's share of the engine-only Markdown. The engine's runs and tables there are left out, counted in `coverage.dropped` under
   `replaced-by-proposed-page-v1`, and the census balances; a table the next page goes on with is
   not joined across such a page (decision #142's join held off), so no row is written that no cell
   holds. Where the page's first node stood, the model's blocks follow in reply order.
 - **Every other page gains the model's tables and charts at their reading position**: each with the
-  `title` or `caption` just before it, unless every word of that is the engine's on the page,
+  `title` or `caption` just before it, unless every word of that is the engine's on the page
+  (a line the guard leaves out not counted, review),
   after the last run of the page, in reading order, that overlaps it across and starts above its
   foot, at the next block boundary (never inside a paragraph, a list or a table), or before the
   page's first node where no run does. Every other block stays in the record, counted.
 - **Model text is labelled, and cannot leave its label.** Each insertion — a swapped page, or a
   table or chart with its caption — is one Markdown block quote: first `> **Proposed:** WHAT by
   ID@VERSION; model text, not read from the document.` (WHAT `page N as read`, `table`, `chart`,
-  or `chart values estimated` where the guard marked a value an estimate), last `> **End of
+  or `chart values estimated` where the guard marked a value an estimate; on a swapped page
+  `page N as read, chart values estimated`, since its Markdown table writes no cell's mark (review)), last `> **End of
   proposed text.**`, and between them the model's blocks one quote deeper, every line opening
   with `> >`, the model's blank lines too, so no model text stands where the label or the end line
   stands, whatever it writes. The model's text reaches it only through one escape: references
@@ -185,9 +191,12 @@ changes) and say what they wrote and left out. **Engine-only output does not mov
   `header`, `footer`, `page_number`, `header_image` and `footer_image` blocks go too.
 - **Model HTML never passes through.** A table is read into its cells and written by this engine:
   a GFM grid in Markdown, its spans flattened and counted, and a `<table>` keeping its spans and
-  header cells in HTML; a `table` block holding no cell is left out. In any text, tags other than
+  header cells in HTML; a `table` block holding no cell is left out, as is one whose spans would lay
+  it out on more than 100,000 slots, both counted `proposed-table-unparsed-v1` (review: rows each
+  starting past the spans above asked gigabytes; ParseBench's largest table lays out on 3,326). In any text, tags other than
   `<sub>`, `<sup>` and `<br>` are removed (an inline one with nothing in its place, any other with
-  a space) and those three written by this engine, balanced. A character reference is decoded,
+  a space) and those three written by this engine, balanced, a space between two of them kept
+  (review). A character reference is decoded,
   `&dollar;` too, then escaped. A title keeps the model's own `#` level, or is level 1; a formula
   loses one outer `$$` or `$` and is fenced in `$$`; code is fenced; as ParseBench's
   `_render_block` writes them, but for the language guess on code, which is not ported.
