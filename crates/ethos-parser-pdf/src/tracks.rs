@@ -241,11 +241,16 @@
 //!    any columns, so three columns of a scanned newsletter passed it as a table of their lines.
 //!    There a grid stands only on the waiver's clauses — three rows and three columns or more, no
 //!    column of running text — and no column of numbers is asked, since with no order to read a
-//!    list of names and marks is a table as much as a table of values is. **Nor is it evidence where
-//!    every column is running text** (decision #127, [`columns_of_prose`]): a two-column article
-//!    whose stream writes each left line, then the right line level with it, passed it as a table of
-//!    interleaved lines. Such a grid is refused, and its lines passed over down to the last that opens
-//!    a line lower-case, since a shorter run of them may open fewer lines lower-case, while a table set
+//!    list of names and marks is a table as much as a table of values is. **But a form's fields
+//!    stand there in any order** (decision #152, [`form_fields`]): two columns whose every label
+//!    holds one colon and ends in it, no two alike, beside values that are no running text and
+//!    name no label, as `Invoice No:` beside its number. A recognizer reads such a form down its
+//!    labels and then down its values. A form has no header: its rows stand as they are, and a
+//!    line above them is none of them. **Nor is it evidence where every column is running text**
+//!    (decision #127, [`columns_of_prose`]): a two-column article whose stream writes each left
+//!    line, then the right line level with it, passed it as a table of interleaved lines. Such a
+//!    grid is refused, and its lines passed over down to the last that opens a line lower-case,
+//!    since a shorter run of them may open fewer lines lower-case, while a table set
 //!    right under them, which grew into them, is read — unless its first column is labels
 //!    ([`label_column`]), as a model's settings or a data dictionary set in lower case are. A table
 //!    with any other column keeps its row order, and one side of two tables drawn side by side is
@@ -485,7 +490,17 @@ fn detect_within(
                 floor = end;
                 continue;
             }
-            if stand {
+            // Decision #152 (review): a recognized form's fields are its rows as they stood. A form
+            // has no header: a line above it is no row or header of it, and its first field no
+            // header line.
+            if stand && is_form(&rows, runs, recognized) {
+                if let Some(table) = build(page, &rows, &[], runs, alloc)? {
+                    tables.push(table);
+                    i = end;
+                    floor = end;
+                    continue;
+                }
+            } else if stand {
                 let mut first = rows_above(&lines, floor, i, &mut rows, runs);
                 let tracks = tracks_of(&rows);
                 let mut top = header_band(&lines, floor, first, &tracks, &rows, runs);
@@ -1978,6 +1993,10 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool
     if ordered || (!recognized && written_row_by_row(rows, 0..columns)) {
         return true;
     }
+    // But a recognized form's fields are a table in any order (decision #152).
+    if is_form(rows, runs, recognized) {
+        return true;
+    }
     // A grid of three rows and three columns or more with a column of numbers and no column of
     // running text needs no row order: the clause above tells prose from a table, and a table of
     // values exported cell by cell is written down its columns. **Unless its columns divide into
@@ -2107,6 +2126,42 @@ fn label_column(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
         let text = text.trim();
         !text.is_empty() && text.chars().count() < PROSE_LINE_CHARS
     })
+}
+
+/// Whether `rows`, on a page of recognized text, are a form's two columns of [`form_fields`]
+/// (decision #152): a table in any order, and its rows as they stood, with no header.
+fn is_form(rows: &[Row], runs: &[TrackRun<'_>], recognized: bool) -> bool {
+    recognized && rows[0].cells.len() == 2 && form_fields(rows, runs)
+}
+
+/// Whether two columns are a form's fields (decision #152): in every row a label holding one colon
+/// and ending in it, no two labels alike, beside values that are no running text and hold no word
+/// ending in a colon. A recognizer reads such a form down its labels and then down its values, as
+/// it reads two columns; a column of prose ends no line in a colon in every row. One colon, since
+/// a label with no value beside it goes on the cell above, as a wrapped line does, and two labels
+/// in one cell are no field; one that heads the grid with no value stands above the table. And
+/// (review) a blank form's second column of labels is no column of values, a column of prose
+/// beside labels is a flow of its own, as decision #125 reads it, and a transcript names its
+/// speakers again where a form names each field once.
+fn form_fields(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|r| cell_text(&r.cells[0], runs).trim_end().to_string())
+        .collect();
+    let values: Vec<String> = rows
+        .iter()
+        .map(|r| cell_text(&r.cells[1], runs))
+        .filter(|t| !t.trim().is_empty())
+        .collect();
+    let named: std::collections::BTreeSet<&str> = labels.iter().map(String::as_str).collect();
+    labels
+        .iter()
+        .all(|l| l.ends_with(':') && l.matches(':').count() == 1)
+        && named.len() == labels.len()
+        && !running_text(&values)
+        && !values
+            .iter()
+            .any(|v| v.split_whitespace().any(|w| w.ends_with(':')))
 }
 
 /// Whether the rows are columns of prose (decision #127): every column [`running_text`], and the
@@ -5523,6 +5578,138 @@ mod tests {
         ];
         let found = tables(&grid(&dictionary, &[72, 200, 330]));
         assert_eq!((found[0].rows, found[0].columns), (6, 3));
+    }
+
+    /// A made-up order form as a recognizer reads it: each word a run of its own, `fields` down the
+    /// labels, then down the values, 16 points apart, as one reads two columns.
+    fn recognized_form(fields: &[(&[&'static str], &[&'static str])]) -> Vec<TrackRun<'static>> {
+        let words = |x: i64, y: i64, words: &[&'static str]| -> Vec<TrackRun<'static>> {
+            let mut x = x;
+            words
+                .iter()
+                .map(|&w| {
+                    let r = run(x, y, 6 * w.len() as i64, w);
+                    x += 6 * w.len() as i64;
+                    r
+                })
+                .collect()
+        };
+        let y = |r: usize| 100 + 16 * r as i64;
+        let labels = fields
+            .iter()
+            .enumerate()
+            .flat_map(|(r, f)| words(60, y(r), f.0));
+        let values = fields
+            .iter()
+            .enumerate()
+            .flat_map(|(r, f)| words(220, y(r), f.1));
+        labels.chain(values).collect()
+    }
+
+    const FORM: [(&[&str], &[&str]); 5] = [
+        (&["Order ", "No:"], &["AB-1042"]),
+        (&["Order ", "Date:"], &["02/03/2027 ", "10:30"]),
+        (&["Account:"], &["77-0091"]),
+        (&["Ship ", "To:"], &["Harbour ", "Depot ", "(4)"]),
+        (&["Terms: "], &["Net ", "30"]),
+    ];
+
+    /// **A recognized form's fields are a table** (decision #152): a label ending in its one colon
+    /// in every row, beside a value, read down the labels and then down the values. A label without
+    /// its colon, or with one inside it, or a label with no value beside it, which goes on the
+    /// label above, leaves two columns, as decision #125 reads every other recognized grid of two;
+    /// a first label with no value, or a line with no colon, stands above the table.
+    #[test]
+    fn a_recognized_form_of_labels_and_values_is_a_table() {
+        let found = detect(1, &recognized_form(&FORM), &[], true, &mut alloc()).expect("detects");
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].rows, found[0].columns), (5, 2));
+        assert_eq!(texts(&found[0])[3], ["Ship To:", "Harbour Depot (4)"]);
+
+        let mut bare = FORM;
+        bare[2].0 = &["Account"];
+        let found = detect(1, &recognized_form(&bare), &[], true, &mut alloc()).expect("detects");
+        assert!(found.is_empty(), "a label without its colon");
+        let mut empty = FORM;
+        empty[2].1 = &[];
+        let found = detect(1, &recognized_form(&empty), &[], true, &mut alloc()).expect("detects");
+        assert!(found.is_empty(), "a row without its value");
+        let mut mid = FORM;
+        mid[1].0 = &["Re: ", "Order:"];
+        let found = detect(1, &recognized_form(&mid), &[], true, &mut alloc()).expect("detects");
+        assert!(found.is_empty(), "a colon inside a label");
+        mid[1].0 = &["Re: ", "Order"];
+        let found = detect(1, &recognized_form(&mid), &[], true, &mut alloc()).expect("detects");
+        assert!(found.is_empty(), "a label whose one colon does not end it");
+        let mut first = FORM;
+        first[0].1 = &[];
+        let found = detect(1, &recognized_form(&first), &[], true, &mut alloc()).expect("detects");
+        assert_eq!(
+            found.len(),
+            1,
+            "a first label without its value stands above the table"
+        );
+        assert_eq!(texts(&found[0])[0], ["Order Date:", "02/03/2027 10:30"]);
+        // A third column, of running text, read after the values: two columns only.
+        let mut three = recognized_form(&FORM);
+        for (r, note) in [
+            "paid in full",
+            "see the letter",
+            "on account",
+            "by road",
+            "net",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            three.push(run(380, 100 + 16 * r as i64, 6 * note.len() as i64, note));
+        }
+        let found = detect(1, &three, &[], true, &mut alloc()).expect("detects");
+        assert!(found.is_empty(), "three columns, one of running text");
+        // A blank form's two columns of labels; labels beside a column of prose; a transcript's
+        // speakers, named again (review).
+        let blank: [(&[&str], &[&str]); 5] = [
+            (&["Name:"], &["Date ", "of ", "birth:"]),
+            (&["Address:"], &["Telephone:"]),
+            (&["City:"], &["Postcode:"]),
+            (&["Employer:"], &["Signature:"]),
+            (&["Occupation:"], &["Witness:"]),
+        ];
+        let prose: [(&[&str], &[&str]); 5] = [
+            (&["Name:"], &["please ", "print ", "clearly ", "in"]),
+            (&["Address:"], &["black ", "ink ", "and ", "sign ", "the"]),
+            (&["City:"], &["form ", "where ", "it ", "is"]),
+            (&["Employer:"], &["marked ", "with ", "a ", "cross"]),
+            (&["Occupation:"], &["before ", "you ", "return ", "it"]),
+        ];
+        let transcript: [(&[&str], &[&str]); 5] = [
+            (&["Q:"], &["Where ", "were ", "you?"]),
+            (&["A:"], &["At ", "the ", "depot."]),
+            (&["Q:"], &["At ", "what ", "time?"]),
+            (&["A:"], &["Nine ", "or ", "so."]),
+            (&["Q:"], &["Alone?"]),
+        ];
+        // A line with no colon just above the fields is no header of them (review): the fields
+        // are rows as they stood.
+        let mut above = vec![(&["Supplier"][..], &["Harbour ", "Co"][..])];
+        above.extend(FORM);
+        let found = detect(1, &recognized_form(&above), &[], true, &mut alloc()).expect("detects");
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].rows, found[0].columns), (5, 2));
+        assert_eq!(texts(&found[0])[0], ["Order No:", "AB-1042"]);
+        for (fields, why) in [
+            (&blank, "two columns of labels"),
+            (&prose, "labels beside running text"),
+            (&transcript, "a label named again"),
+        ] {
+            let found =
+                detect(1, &recognized_form(fields), &[], true, &mut alloc()).expect("detects");
+            assert!(found.is_empty(), "{why}");
+        }
+        assert!(
+            tables(&recognized_form(&FORM)).is_empty(),
+            "a drawn page written down each column"
+        );
     }
 
     /// **And a recognized grid with no running text stands without a column of numbers**

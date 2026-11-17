@@ -32,6 +32,25 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A scanned form's fields read as a table (decision #152)
+
+On a page read with `--ocr`, a form's labels and values — `Invoice No:` beside its number — came
+out as every label, then every value: the recognizer reads two columns down each, and decision #125
+takes its order as no evidence, so a recognized grid of two columns never stood as a table.
+
+- `whitespace-tracks` now reads one as a table where every label holds one colon and ends in it, no
+  two labels alike, beside values that are no running text and hold no word ending in a colon. A
+  blank form's two columns of labels, labels beside a column of prose and a transcript naming its
+  speakers again stay columns (review). A form has no header row: a line just above its fields is
+  none of them.
+- Folded into `whitespace-tracks-v16`, which no release carries yet; no `profile_sha256` moves.
+  Measured: a made-up invoice scanned three ways reads as its drawn copy's table; ParseBench
+  (`--ocr` too), opendataloader-bench and the private real-document set unchanged on every page.
+- Known limits: all or nothing. A short line on the labels' track just under the last field, or a
+  label with no value between two fields, folds into a label and the form stays columns; a field
+  named twice, values a third or more of which open lower-case, a full-width colon and a colon
+  misread as `;` are not read as fields.
+
 ### A table's header row the next page repeats is left out of the joined table (decision #151)
 
 Where a table goes on onto the next page under a repeat of its header (decision #142, below),

@@ -1171,6 +1171,12 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// two on one track, gives each the first track ending at or past its own end, where they come out
 /// left to right and each stays clear of its track's neighbours. Measured: no ParseBench or
 /// opendataloader-bench page moves.
+///
+/// **And a recognized form's fields are a table** (decision #152, folded in): on a page of
+/// recognized text, two columns whose every label holds one colon and ends in it, no two alike,
+/// beside values that are no running text and hold no word ending in a colon, stand in any order.
+/// A scanned invoice's fields read as its drawn copy's table where they read every label, then
+/// every value. Measured: no ParseBench (`--ocr` too) or opendataloader-bench page moves.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

@@ -179,7 +179,10 @@ orientation within an upright image is not turned; a recognized word has no font
 
 `tag` writes no structure for recognized text and says so. `overlay` draws recognized runs like any
 others, and their derivation says what they are. The table, heading and reading-order rules read
-recognized runs as runs; a rule that reads a font reads none.
+recognized runs as runs; a rule that reads a font reads none. A recognizer's order is no evidence
+of a table (decision #125), but a form's fields — labels each ending in their one colon beside
+their values — are one in any order (decision #152), so a scanned invoice's fields read as the
+drawn invoice's do.
 
 ## 9. What the owner decided
 
