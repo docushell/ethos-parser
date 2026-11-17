@@ -151,6 +151,9 @@ pub struct GraphicsState {
     /// The colour the next stroke paints in (`point-labels-v1`), set and compared as
     /// [`Self::fill`] is: a line chart's series are told apart by it.
     pub stroke: Fill,
+    /// Whether [`Self::stroke`] was set in a device colour space, as [`Self::fill_device`] says
+    /// of the fill (decision #154): only there is a white stroke known to be white.
+    pub stroke_device: bool,
     /// The width the next stroke paints, in user space (`w`; 1 to begin with, 32000-1 Table 52).
     pub line_width: f64,
     /// The cap the next stroke ends in (`J`): 0 butt, 1 round, 2 projecting square.
@@ -183,6 +186,7 @@ impl Default for GraphicsState {
             text_blends: false,
             form_clip: None,
             stroke: Fill::BLACK,
+            stroke_device: true,
             line_width: 1.0,
             line_cap: 0,
             dashed: false,

@@ -152,6 +152,13 @@ pub struct TextRun {
     /// representation's `text_run.script`. Absent on a run set on its line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<ethos_parser_core::Script>,
+    /// A line the page drew strikes the run through (decision #154, `crate::decorations`) — as
+    /// the representation's `text_run.strikeout`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strikeout: bool,
+    /// A line the page drew underlines the run (decision #154) — as `text_run.underline`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underline: bool,
     /// The run's line is page furniture (decision #41, `crate::furniture`) — as the
     /// representation's `text_run.furniture`. Set after layout units, on an undeclared document's
     /// lines; absent elsewhere.
@@ -353,6 +360,8 @@ mod tests {
             italic: false,
             weight: None,
             script: None,
+            strikeout: false,
+            underline: false,
             furniture: None,
             reading: None,
             text: text.to_string(),

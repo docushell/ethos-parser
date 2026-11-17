@@ -308,6 +308,9 @@ pub fn to_representation(
                     bold: run.bold,
                     italic: run.italic,
                     script: run.script,
+                    // Decision #154: set after scripts, from the page's drawn lines.
+                    strikeout: run.strikeout,
+                    underline: run.underline,
                     // Decision #41: set after layout units, on an undeclared document's lines.
                     furniture: run.furniture,
                     // Decision #54: set before reading order, on a right-to-left line's runs.

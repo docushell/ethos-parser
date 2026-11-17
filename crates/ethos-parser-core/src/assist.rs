@@ -3154,6 +3154,8 @@ mod tests {
                         bold: false,
                         italic: false,
                         script: None,
+                        strikeout: false,
+                        underline: false,
                         furniture: None,
                         reading: None,
                     },

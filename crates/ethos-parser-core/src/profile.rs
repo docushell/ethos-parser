@@ -280,6 +280,16 @@ pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
 /// everything else. A reader of `-v4` refuses an artifact carrying the new findings, which is why
 /// the id moves. And `invisible-render-mode` narrows: a run set in mode 7 carries it only where
 /// nothing is painted through the clip it sets before the state holding that clip is restored.
+///
+/// **And strikeout and underline from the page's own lines** (decision #154, folded in before any
+/// release carried this id): a run is `strikeout` or `underline` where a thin level line drawn
+/// solid — stroked undashed in a colour not known to be white, or painted no taller than a fifth
+/// of an em — runs 0.15 to 0.5 em above its baseline or from it to 0.3 em below, over three
+/// quarters of the run, with no stretch of it longer than an em marking no run and no vertical
+/// line ending at its ends (`crate::markdown` writes `~~` and `<u>`). ParseBench-2's engine lane
+/// 51.97 → 53.46 (strikeout 14.1 → 76.8, underline 20.0 → 89.2); opendataloader-bench's NID
+/// 0.8922 → 0.8911 and MHS 0.6378 → 0.6372, its scorer reading the `<u>` tags of real underlines
+/// as text — a trade the owner took.
 pub const OBSERVATION_RULE_V5: &str = "page-observations-v5";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.

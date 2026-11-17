@@ -1839,6 +1839,18 @@ pub struct TextRunAttributes {
     /// and `<sub>`. PDF only. **Absent** on a run set on its line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<Script>,
+    /// A thin line the page drew solid runs through the run's middle, over three quarters of it,
+    /// with no stretch of it longer than an em marking no run (decision #154): a strikeout, as a
+    /// word processor draws one. Never on a superscript or subscript. `Computed` from the page's
+    /// own ink under the profile's `observation_rule`; the Markdown projection writes it as `~~`
+    /// (not around a run holding a `~` or set against one), the HTML one as `<s>`. PDF only.
+    /// **Absent where false.**
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strikeout: bool,
+    /// A thin line the page drew runs just under the run's baseline, on the same terms (decision
+    /// #154): an underline. Written as `<u>` in both projections. PDF only. **Absent where false.**
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underline: bool,
     /// The run's line is page furniture (decision #41): set apart from the rest of its page at the
     /// top or the bottom edge, inside the page's outer tenth — a running head, a folio.
     ///
@@ -3614,6 +3626,8 @@ mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
             }),

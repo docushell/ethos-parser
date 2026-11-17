@@ -975,6 +975,8 @@ fn extract_page(
                 italic: shown.font.italic,
                 weight: shown.font.weight,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
                 locator: PdfLocator {
@@ -1030,6 +1032,8 @@ fn extract_page(
                 italic: false,
                 weight: None,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
                 locator: PdfLocator {
@@ -1165,16 +1169,22 @@ fn extract_page(
         // on its Closing Disclosure pages — see `crate::stroke_ruled`.
         let mut stroke_rules = Vec::new();
         let mut uprights = Vec::new();
+        // Decision #154: the level rules stroked solid, which alone draw a strikeout or underline.
+        let mut solid_rules = Vec::new();
         for seg in &interp.segments {
             let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
             let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
             let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
             if seg.is_horizontal() {
-                stroke_rules.push(crate::stroke_ruled::Rule {
+                let rule = crate::stroke_ruled::Rule {
                     y: r.y0,
                     x0: r.x0,
                     x1: r.x1,
-                });
+                };
+                if seg.solid {
+                    solid_rules.push(rule);
+                }
+                stroke_rules.push(rule);
             } else {
                 uprights.push(crate::stroke_ruled::Upright {
                     x: r.x0,
@@ -1544,6 +1554,20 @@ fn extract_page(
         // Decision #40: superscripts and subscripts, from where each run sits beside its line.
         // Here, on the page's runs in content order, so `ems` still lines up with them.
         crate::scripts::assign(&mut runs, &ems);
+        // Decision #154: strikeout and underline, from the thin lines the page drew through and
+        // under its runs.
+        let wide = interp
+            .stroked
+            .iter()
+            .map(|(f, _)| {
+                let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
+                let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
+                crate::tables::quantize_rect(ax, ay, bx, by)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let ink =
+            crate::decorations::Ink::of(&solid_rules, &uprights, &table_rects, &table_white, &wide);
+        crate::decorations::assign(&mut runs, &ems, &ink);
 
         // v1-S5. **Reading order, and the only order there is.**
         //
@@ -4438,6 +4462,8 @@ mod tests {
                 italic: false,
                 weight: None,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
                 text: text.to_string(),

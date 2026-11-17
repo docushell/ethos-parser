@@ -3937,12 +3937,15 @@ pub(crate) struct Emit {
     emphasis: Emphasis,
 }
 
-/// Whether a run's font declares itself bold and italic (decision #38), and whether the run is
-/// set as a superscript or a subscript.
+/// Whether a run's font declares itself bold and italic (decision #38), whether a drawn line
+/// strikes it through or underlines it (decision #154), and whether it is set as a superscript or
+/// a subscript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Style {
     bold: bool,
     italic: bool,
+    strike: bool,
+    under: bool,
     script: Option<crate::Script>,
 }
 
@@ -3961,6 +3964,8 @@ impl Style {
             crate::NodeAttributes::TextRun(a) => Self {
                 bold: a.bold,
                 italic: a.italic,
+                strike: a.strikeout,
+                under: a.underline,
                 script: a.script,
             },
             _ => Self::default(),
@@ -3969,8 +3974,20 @@ impl Style {
 
     /// The opening and closing markers, empty for unstyled text. A script nests inside the
     /// emphasis — `**x<sup>2</sup>**` — and is written as an HTML element in both projections,
-    /// since Markdown has no syntax of its own for one.
+    /// since Markdown has no syntax of its own for one. A strikeout (`~~`, `<s>`) holds the
+    /// emphasis, and an underline (`<u>` in both, Markdown having none) holds the strikeout
+    /// (decision #154): `<u>~~**x**~~</u>`.
     fn markers(self, markup: Markup) -> (String, String) {
+        let (uopen, uclose) = if self.under {
+            ("<u>", "</u>")
+        } else {
+            ("", "")
+        };
+        let (xopen, xclose) = match (markup, self.strike) {
+            (_, false) => ("", ""),
+            (Markup::Markdown, true) => ("~~", "~~"),
+            (Markup::Html, true) => ("<s>", "</s>"),
+        };
         let (open, close) = match (markup, self.bold, self.italic) {
             (_, false, false) => ("", ""),
             (Markup::Markdown, true, true) => ("***", "***"),
@@ -3985,7 +4002,10 @@ impl Style {
             Some(crate::Script::Superscript) => ("<sup>", "</sup>"),
             Some(crate::Script::Subscript) => ("<sub>", "</sub>"),
         };
-        (format!("{open}{sopen}"), format!("{sclose}{close}"))
+        (
+            format!("{uopen}{xopen}{open}{sopen}"),
+            format!("{sclose}{close}{xclose}{uclose}"),
+        )
     }
 }
 
@@ -4040,7 +4060,20 @@ impl Emit {
     pub(crate) fn with_emphasis(nodes: &[crate::Node], markup: Markup) -> Self {
         let styles: std::collections::BTreeMap<String, Style> = nodes
             .iter()
-            .map(|n| (n.id.as_str().to_owned(), Style::of(n)))
+            .enumerate()
+            .map(|(i, n)| {
+                let mut style = Style::of(n);
+                // Decision #154 (review): a run holding a `~`, or set against one, is not written
+                // struck in Markdown, where the tilde could run into the marker — closing the span
+                // or opening a fence.
+                let before = i.checked_sub(1).and_then(|k| nodes.get(k));
+                let against = before.is_some_and(|b| b.text.ends_with('~'))
+                    || nodes.get(i + 1).is_some_and(|a| a.text.starts_with('~'));
+                if markup == Markup::Markdown && (n.text.contains('~') || against) {
+                    style.strike = false;
+                }
+                (n.id.as_str().to_owned(), style)
+            })
             .filter(|(_, style)| *style != Style::default())
             .collect();
         let mut e = Self::new();
@@ -4094,7 +4127,10 @@ impl Emit {
     /// would escape the closing marker, and a `` ` `` could open a code span across it.
     fn holds_mark(&self, node: &str, s: &str) -> bool {
         let open = self.emphasis.open;
+        // Decision #154 (review): not after a strikeout or an underline, which the mark is not.
         open.bold
+            && !open.strike
+            && !open.under
             && open.script.is_none()
             && !self.emphasis.styles.contains_key(node)
             && s.chars()
@@ -4118,8 +4154,16 @@ impl Emit {
         let Some(markup) = self.emphasis.markup else {
             return;
         };
-        let style = if self.emphasis.heading || self.emphasis.table {
+        let style = if self.emphasis.table {
             Style::default()
+        } else if self.emphasis.heading {
+            // Decision #154: a heading is marked already, but not struck or underlined.
+            let s = self.emphasis.styles.get(node).copied().unwrap_or_default();
+            Style {
+                strike: s.strike,
+                under: s.under,
+                ..Style::default()
+            }
         } else {
             self.emphasis.styles.get(node).copied().unwrap_or_default()
         };
@@ -4132,13 +4176,31 @@ impl Emit {
         // stays open and only the script's element closes and opens: `*U<sub>t</sub>*`, where
         // closing it wrote `*U**<sub>t</sub>*`, which CommonMark reads with its asterisks as text.
         let open = self.emphasis.open;
-        if self.emphasis.held.is_empty() && (style.bold, style.italic) == (open.bold, open.italic) {
+        if self.emphasis.held.is_empty()
+            && (style.bold, style.italic, style.strike, style.under)
+                == (open.bold, open.italic, open.strike, open.under)
+        {
             let script = |script| Style {
                 script,
                 ..Style::default()
             };
             self.write_syntax(&script(open.script).markers(markup).1);
             self.write_syntax(&script(style.script).markers(markup).0);
+            self.emphasis.open = style;
+            return;
+        }
+        // Decision #154 (review): where a strikeout or an underline goes on and only what is
+        // inside it changes, it stays open and only the emphasis inside it closes and opens:
+        // `~~old**Act**now~~`, where closing it wrote `~~~~`, which is no strikeout.
+        if (open.strike || open.under) && (style.strike, style.under) == (open.strike, open.under) {
+            let inner = |s: Style| Style {
+                strike: false,
+                under: false,
+                ..s
+            };
+            self.write_syntax(&inner(open).markers(markup).1);
+            self.flush_held();
+            self.write_syntax(&inner(style).markers(markup).0);
             self.emphasis.open = style;
             return;
         }
@@ -6011,6 +6073,8 @@ pub(crate) mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
             }),
@@ -6083,6 +6147,22 @@ pub(crate) mod tests {
             if let NodeAttributes::TextRun(a) = &mut node.attributes {
                 a.bold = bold.contains(&i);
                 a.italic = italic.contains(&i);
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// `repr` with the runs at `struck` struck through and those at `under` underlined.
+    pub(crate) fn with_marks(
+        repr: DocumentRepresentation,
+        struck: &[usize],
+        under: &[usize],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for (i, node) in payload.nodes.iter_mut().enumerate() {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.strikeout = struck.contains(&i);
+                a.underline = under.contains(&i);
             }
         }
         DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
@@ -7805,6 +7885,8 @@ pub(crate) mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
             }),
@@ -9414,6 +9496,77 @@ pub(crate) mod tests {
 
         let both = artifact_of(with_styles(styled_line(), &[6], &[6]));
         assert_eq!(both.markdown, "Total revenue rose ***sharply***\n");
+    }
+
+    /// **A run a drawn line strikes through is `~~`, one it underlines is `<u>`** (decision #154):
+    /// a span covers the runs that share the mark, a space the reader marked with them included;
+    /// the markers are syntax, outside any emphasis; and in a heading, where no emphasis opens,
+    /// both still do.
+    #[test]
+    fn struck_and_underlined_runs_are_marked() {
+        let a = artifact_of(with_marks(styled_line(), &[0, 1, 2], &[6]));
+        assert_eq!(a.markdown, "~~Total revenue~~ rose <u>sharply</u>\n");
+        let at = |needle: &str| a.markdown.find(needle).unwrap();
+        assert!(a.anchor_map.is_invertible(at("Total"), at("Total") + 5));
+        assert!(!a.anchor_map.is_invertible(0, 2), "the marker is syntax");
+        assert!(a.coverage.balances());
+
+        let all = artifact_of(with_styles(
+            with_marks(styled_line(), &[6], &[6]),
+            &[6],
+            &[],
+        ));
+        assert_eq!(all.markdown, "Total revenue rose <u>~~**sharply**~~</u>\n");
+
+        let heading = artifact_of(with_marks(
+            with_styles(
+                with_inferred_headings(repr_of_lines(&["Title", "Body"]), &[0]),
+                &[0],
+                &[],
+            ),
+            &[],
+            &[0],
+        ));
+        assert_eq!(heading.markdown, "# <u>Title</u>\n\nBody\n");
+
+        // A run struck between two set right against it, as a redline replaces a date's part.
+        let date = artifact_of(with_marks(
+            line_of_words(&["2024-", "02-27", "07-09"]),
+            &[1],
+            &[],
+        ));
+        assert_eq!(date.markdown, "2024-~~02-27~~07-09\n");
+    }
+
+    /// **A strikeout stays one span where only the emphasis inside it changes** (review of
+    /// decision #154): `~~~~` is no strikeout. A mark the line strikes stays in its span; one it
+    /// does not stays out of it. A struck run holding a `~` is not written struck, since its
+    /// tilde could close the span or open a fence.
+    #[test]
+    fn a_strike_span_stays_whole_and_holds_only_what_is_struck() {
+        let words = |w: &[&str], struck: &[usize], bold: &[usize]| {
+            artifact_of(with_styles(
+                with_marks(line_of_words(w), struck, &[]),
+                bold,
+                &[],
+            ))
+            .markdown
+        };
+        assert_eq!(
+            words(&["old", "Act", "now"], &[0, 1, 2], &[1]),
+            "~~old**Act**now~~\n"
+        );
+        assert_eq!(
+            words(&["necessary", "?"], &[0, 1], &[0]),
+            "~~**necessary**?~~\n"
+        );
+        assert_eq!(
+            words(&["necessary", "?"], &[0], &[0]),
+            "~~**necessary**~~?\n"
+        );
+        assert_eq!(words(&["~5", "km"], &[0], &[]), "~5km\n");
+        assert_eq!(words(&["~", "5 km"], &[0, 1], &[]), "~5 km\n");
+        assert_eq!(words(&["500", "~"], &[0], &[]), "500~\n");
     }
 
     /// **A run set as a superscript or a subscript is written `<sup>` or `<sub>`** (decision

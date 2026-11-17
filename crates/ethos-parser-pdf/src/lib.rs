@@ -67,6 +67,7 @@ pub(crate) mod cid_unicode;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;
+pub(crate) mod decorations;
 pub(crate) mod document;
 pub(crate) mod encoding;
 pub(crate) mod extract;

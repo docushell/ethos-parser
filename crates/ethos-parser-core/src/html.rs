@@ -1389,6 +1389,19 @@ mod tests {
         assert_eq!(a.html, "<p>develop-</p>\n<p>ment</p>\n");
     }
 
+    /// **A struck run is `<s>` and an underlined one `<u>`** (decision #154), as in Markdown.
+    #[test]
+    fn struck_and_underlined_runs_are_s_and_u() {
+        use crate::markdown::tests::with_marks;
+        let a = artifact_of(with_marks(styled_line(), &[0, 1, 2], &[6]));
+        assert!(
+            a.html
+                .contains("<p><s>Total revenue</s> rose <u>sharply</u></p>"),
+            "{}",
+            a.html
+        );
+    }
+
     /// **A superscript and a subscript are `<sup>` and `<sub>`** (decision #40), as in Markdown.
     #[test]
     fn superscript_and_subscript_runs_are_sup_and_sub() {

@@ -32,6 +32,27 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Strikeout and underline, from the lines a page draws (decision #154)
+
+A PDF has no strikeout or underline: a word processor draws a thin line through or under the
+words, and the engine wrote them plain, so a redline's deletions read as text still in force.
+
+- A run is `strikeout` or `underline` in the record where a thin, level line drawn solid runs
+  through its middle (0.15 to 0.5 em above the baseline) or just under it (to 0.3 em below), over
+  three quarters of the run, with no stretch of the line longer than an em marking no run and no
+  vertical line ending at its ends. A table's rule, a running head's rule, a box, a thick stroke
+  painting a background, a dashed guide and a white or unstroked line mark nothing; a superscript
+  or subscript is never struck. Under `page-observations-v5`, which no release carries yet.
+- Markdown writes `~~` and `<u>`, HTML `<s>` and `<u>`, in headings too but never in a table
+  cell; a space between two marked runs keeps the span whole, and a strikeout stays open where
+  only the emphasis inside it changes. A run holding a `~`, or set against one, is not written
+  struck in Markdown.
+- Measured: ParseBench-2's engine lane 51.97 → 53.46 (strikeout 14.1 → 76.8, underline 20.0 →
+  89.2); ParseBench's `--ocr` lane 54.67 → 54.68; opendataloader-bench's NID 0.8922 → 0.8911 and
+  MHS 0.6378 → 0.6372, its scorer reading `<u>` as text — the owner kept underline on by default.
+- Known limits: a run is the grain (a line through part of a run marks none of it); rotated text
+  is read as if level; PDF only.
+
 ### A page scanned on its side or upside down is read upright (decision #153)
 
 `--ocr` read a page fed to the scanner sideways or upside down as it stood, which is mostly

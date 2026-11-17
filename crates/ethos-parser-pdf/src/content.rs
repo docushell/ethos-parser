@@ -255,6 +255,10 @@ pub struct PathSegment {
     pub x1: f64,
     /// Larger y.
     pub y1: f64,
+    /// Stroked solid in a colour other than white (decision #154): a line a reader sees, which
+    /// alone draws a strikeout or an underline. A dash pattern is a guide line's; a fill paints
+    /// no line; a white one shows nothing on a white page.
+    pub solid: bool,
 }
 
 impl PathSegment {
@@ -1152,6 +1156,7 @@ impl<'a> Interpreter<'a> {
                     y0: a.1.min(b.1),
                     x1: a.0.max(b.0),
                     y1: a.1.max(b.1),
+                    solid: false,
                 });
             }
             return;
@@ -1384,9 +1389,18 @@ impl<'a> Interpreter<'a> {
             }
             // `point-labels-v1`: the stroke colour, read as the fill colour is.
             StrokeColor | StrokeColorN | StrokeGray | StrokeRgb | StrokeCmyk => {
-                self.gs.stroke = crate::text_state::Fill::of(operands)
+                self.gs.stroke = crate::text_state::Fill::of(operands);
+                // Decision #154: as `fill_device` for the fill.
+                self.gs.stroke_device |= matches!(op, StrokeGray | StrokeRgb | StrokeCmyk);
             }
-            StrokeColorSpace => self.gs.stroke = crate::text_state::Fill::UNKNOWN,
+            StrokeColorSpace => {
+                self.gs.stroke = crate::text_state::Fill::UNKNOWN;
+                self.gs.stroke_device = matches!(
+                    operands.first(),
+                    Some(lopdf::Object::Name(n))
+                        if matches!(n.as_slice(), b"DeviceGray" | b"DeviceRGB" | b"DeviceCMYK")
+                );
+            }
             // Decision #42: the fill colour, which a chart's bars are told apart by. Operands that
             // are not numbers set a colour this reader does not know rather than stopping the parse:
             // a page that parsed before still parses. Naming a space resets the colour to one not
@@ -1667,7 +1681,15 @@ impl<'a> Interpreter<'a> {
                     self.rects.append(&mut self.pending_rules);
                 }
                 self.pending_rules.clear();
-                self.segments.append(&mut self.pending_segments);
+                // Decision #154: whether the paint draws its segments as lines a reader sees.
+                let solid = strokes
+                    && !self.gs.dashed
+                    && !(self.gs.stroke_device && self.gs.stroke.is_white());
+                self.segments.extend(
+                    self.pending_segments
+                        .drain(..)
+                        .map(|s| PathSegment { solid, ..s }),
+                );
             }
             // `n` ends a path **without painting it**. Nothing was drawn, so nothing is a ruling
             // line — this is also the operator that ends a clip-only path.

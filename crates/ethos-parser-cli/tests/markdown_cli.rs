@@ -427,6 +427,59 @@ fn pdf_of_pages(streams: &[String]) -> Vec<u8> {
     out
 }
 
+/// **A phrase a painted line strikes through is `~~`, one a stroked line underlines is `<u>`**
+/// (decision #154), on a made-up page, and the record says so of each run; a rule under a line
+/// of text that reaches far past it, a box drawn round a word, a dashed guide, a white line and a
+/// filled path of no area through one, mark nothing; and a subscript over its line's underline
+/// is not struck (review).
+#[test]
+fn drawn_strikeout_and_underline_are_marked() {
+    let dir = scratch("decorations");
+    let stream = "BT /F1 12 Tf 1 0 0 1 40 300 Tm (Old fee) Tj ET 40 303.5 42 0.8 re f \
+                  BT /F1 12 Tf 1 0 0 1 40 270 Tm (New fee) Tj ET 0.6 w 40 268.5 m 82 268.5 l S \
+                  BT /F1 12 Tf 1 0 0 1 40 240 Tm (Plain row) Tj ET 20 238.5 m 280 238.5 l S \
+                  BT /F1 12 Tf 1 0 0 1 40 210 Tm (Boxed) Tj ET 38 208.5 34 14 re S \
+                  BT /F1 12 Tf 1 0 0 1 40 180 Tm (Guide) Tj ET [3 3] 0 d 40 183.5 m 70 183.5 l S [] 0 d \
+                  BT /F1 12 Tf 1 0 0 1 40 150 Tm (White) Tj ET 1 1 1 RG 40 153.5 m 70 153.5 l S 0 0 0 RG \
+                  BT /F1 12 Tf 1 0 0 1 40 120 Tm (Ghost) Tj ET 40 123.5 m 70 123.5 l f \
+                  BT /F1 12 Tf 1 0 0 1 40 90 Tm (H) Tj /F1 7 Tf 1 0 0 1 48 87 Tm (2) Tj \
+                  /F1 12 Tf 1 0 0 1 52 90 Tm (O) Tj ET 40 88.5 m 46 88.5 l S 48 88.5 m 51.5 88.5 l S \
+                  52 88.5 m 58 88.5 l S \
+                  BT /F1 12 Tf 1 0 0 1 40 60 Tm (Spot) Tj ET /CS0 CS 1 SCN 40 63.5 m 64 63.5 l S";
+    let pdf = dir.join("marks.pdf");
+    std::fs::write(&pdf, pdf_of_pages(&[stream.to_string()])).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let record: Value = serde_json::from_slice(&std::fs::read(&repr).unwrap()).unwrap();
+    let flag = |text: &str, key: &str| {
+        record["representation"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["text"] == text)
+            .map(|n| n["attributes"]["text_run"][key] == true)
+    };
+    assert_eq!(flag("Old fee", "strikeout"), Some(true));
+    assert_eq!(flag("New fee", "underline"), Some(true));
+    assert_eq!(flag("Plain row", "underline"), Some(false));
+    let md = markdown_of(&repr)["markdown"].as_str().unwrap().to_string();
+    assert!(md.contains("~~Old fee~~"), "{md}");
+    assert!(md.contains("<u>New fee</u>"), "{md}");
+    assert!(md.contains("Plain row") && !md.contains("<u>Plain"), "{md}");
+    assert!(md.contains("Boxed") && !md.contains("<u>Boxed"), "{md}");
+    assert!(md.contains("Guide") && !md.contains("~~Guide"), "{md}");
+    assert!(md.contains("White") && !md.contains("~~White"), "{md}");
+    assert!(md.contains("Ghost") && !md.contains("~~Ghost"), "{md}");
+    assert!(
+        md.contains("~~Spot~~"),
+        "a full tint in a named space is no white: {md}"
+    );
+    assert!(
+        md.contains("<sub>2</sub>") && !md.contains("~~<sub>"),
+        "{md}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **`--drop-furniture` leaves out a running head and a folio repeated on every page, and counts
 /// them** (decision #134). The record and `--source` give one artifact, `html` leaves out the same
 /// runs under the same count, and without the flag the head is on every page.

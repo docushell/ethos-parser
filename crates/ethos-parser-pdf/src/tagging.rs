@@ -5272,6 +5272,8 @@ mod tests {
             italic: false,
             weight: None,
             script: None,
+            strikeout: false,
+            underline: false,
             furniture: None,
             reading: None,
             mcid: None,

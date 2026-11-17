@@ -274,6 +274,14 @@
           "enum": ["superscript", "subscript"],
           "$comment": "Decision #40, as on the representation's text_run. Absent on a run set on its line."
         },
+        "strikeout": {
+          "const": true,
+          "$comment": "Decision #154, as on the representation's text_run. Absent where false."
+        },
+        "underline": {
+          "const": true,
+          "$comment": "Decision #154, as on the representation's text_run. Absent where false."
+        },
         "furniture": {
           "enum": ["header", "footer"],
           "$comment": "Decision #41, as on the representation's text_run. Absent on every line that is not page furniture."

@@ -137,6 +137,8 @@ fn run(alloc: &mut IdAllocator, parent: &NodeId, line: i64, text: String) -> (No
             bold: false,
             italic: false,
             script: None,
+            strikeout: false,
+            underline: false,
             furniture: None,
             reading: None,
         }),
