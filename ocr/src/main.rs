@@ -49,6 +49,7 @@ pub const RULE: &str = "ppocrv5-mobile-v1";
 pub const DET_SHA256: &str = "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae";
 pub const REC_SHA256: &str = "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8";
 pub const DICT_SHA256: &str = "e025a66d31f327ba0c232e03f407ae8d105e1e709e7ccb3f408aa778c24e70d6";
+pub const ORI_SHA256: &str = "af9a0a4f317ff0709ce752067807f819cb15d883f8ecad89f28df1c6ee2d9c92";
 pub const RUNTIME: &str = "rten 0.26.0; rten-vecmath 0.26.0 with fixed-order sums";
 
 #[derive(Serialize, Clone)]
@@ -59,6 +60,7 @@ struct Identity {
     det_sha256: &'static str,
     rec_sha256: &'static str,
     dict_sha256: &'static str,
+    ori_sha256: &'static str,
     runtime: &'static str,
 }
 
@@ -70,6 +72,7 @@ fn identity() -> Identity {
         det_sha256: DET_SHA256,
         rec_sha256: REC_SHA256,
         dict_sha256: DICT_SHA256,
+        ori_sha256: ORI_SHA256,
         runtime: RUNTIME,
     }
 }
@@ -124,6 +127,12 @@ fn refusal_for_cpu() -> Option<&'static str> {
     None
 }
 
+/// The orientation that stands a raster upright where `orientation` stands it `found` quarter
+/// turns clockwise from upright (decision #153): `4 - found` more, the mirror kept.
+fn turned_back(orientation: u8, found: u8) -> u8 {
+    (orientation & 4) | ((orientation % 4 + (4 - found % 4)) % 4)
+}
+
 /// Stand `img` upright as `orientation` says.
 fn upright(img: &Bgr, orientation: u8) -> Bgr {
     let m = if orientation >= 4 {
@@ -165,9 +174,21 @@ fn answer(rec: &Recognizer, id: String, stored: Result<Bgr, String>, orientation
     let mut lines = Vec::new();
     let mut refused = refused;
     if let Some(img) = img {
-        match rec.read(&upright(&img, orientation)) {
-            Ok(read) => {
-                let back = |q: Quad| q.map(|p| stored_point(p, orientation, w, h));
+        // Decision #153: stood as the request says, then as the page's orientation says.
+        let up = upright(&img, orientation);
+        let read = rec.orientation(&up).and_then(|found| {
+            let o = turned_back(orientation, found);
+            let up = if o == orientation {
+                up
+            } else {
+                drop(up);
+                upright(&img, o)
+            };
+            rec.read(&up).map(|read| (o, read))
+        });
+        match read {
+            Ok((o, read)) => {
+                let back = |q: Quad| q.map(|p| stored_point(p, o, w, h));
                 for Line { text, quad, words } in read {
                     let words = words
                         .into_iter()
@@ -294,6 +315,7 @@ mod tests {
         assert_eq!(hex(pipeline::DET), DET_SHA256);
         assert_eq!(hex(pipeline::REC), REC_SHA256);
         assert_eq!(hex(pipeline::DICT.as_bytes()), DICT_SHA256);
+        assert_eq!(hex(pipeline::ORI), ORI_SHA256);
     }
 
     #[test]
@@ -322,6 +344,20 @@ mod tests {
                 "orientation {o}"
             );
         }
+    }
+
+    /// The classifier's turn is undone on top of the stored one (decision #153): a page found
+    /// `k` quarters clockwise from upright is turned `4 - k` more, a mirror kept.
+    #[test]
+    fn the_found_turn_is_undone_on_the_stored_one() {
+        assert_eq!(turned_back(0, 0), 0);
+        assert_eq!(turned_back(0, 1), 3);
+        assert_eq!(turned_back(0, 2), 2);
+        assert_eq!(turned_back(1, 1), 0);
+        assert_eq!(turned_back(3, 3), 0);
+        assert_eq!(turned_back(3, 1), 2);
+        assert_eq!(turned_back(5, 1), 4);
+        assert_eq!(turned_back(4, 3), 5);
     }
 
     #[test]

@@ -371,6 +371,7 @@
             "det_sha256",
             "rec_sha256",
             "dict_sha256",
+            "ori_sha256",
             "runtime"
           ],
           "additionalProperties": false,
@@ -395,6 +396,11 @@
             "dict_sha256": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
+            },
+            "ori_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "Decision #153. SHA-256 of the page-orientation model the recognizer holds."
             },
             "runtime": {
               "type": "string"

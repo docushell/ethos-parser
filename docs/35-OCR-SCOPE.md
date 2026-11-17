@@ -100,7 +100,8 @@ server. The output is byte-identical at the default count, two threads and one.
 - **`ocr/` is its own workspace** with its own `rust-toolchain.toml` (1.98.0; rten needs 1.94).
   The engine's pin (1.88) does not move, so nothing the engine writes without `--ocr` moves.
   `ocr/vendor/rten-vecmath` is rten-vecmath 0.26.0 with its sums order-fixed. `ocr/models` holds the
-  three model files, built into the binary.
+  four model files — detection, recognition, its alphabet and, since decision #153, the
+  page-orientation classifier (§13) — built into the binary.
 - **`ethos-parser-ocr` speaks over stdin and stdout**: one JSON header line and the image's raw
   bytes per request; one JSON line per answer, carrying the recognizer's identity (its version, the
   models' SHA-256, the runtime and the pipeline rule id) and the lines with their words, or a named
@@ -171,9 +172,11 @@ is counted; one whose centre is on the page and whose box runs past its edge is 
 box (`measured_off_page`), as a drawn run is; and one whose box encloses nothing — read in the
 padding past a short line's end, a lone `−`, so both its edges fall on the line's last column — keeps
 its text and reports no box (`not_reported_by_reader`), as a drawn run without an advance does,
-where it refused the whole document (decision #125). Two declared limitations ride on every OCR artifact: text in a rotated or upside-down
-orientation within an upright image is not turned; a recognized word has no font, so emphasis
-(bold, italic) and a font's own size are not read on recognized pages.
+where it refused the whole document (decision #125). Two declared limitations ride on every OCR
+artifact: text turned against the rest of its page is not turned (since decision #153 a whole page
+turned a quarter or a half is, where the orientation model reads it so in every view, §13); a
+recognized word has no font, so emphasis (bold, italic) and a font's own size are not read on
+recognized pages.
 
 ## 8. What it does to `tag`, `overlay`, `ground` and the table rules
 
@@ -197,6 +200,9 @@ drawn invoice's do.
 - Toolchain: "Install it".
 - Releases, 2026-11-14: every release archive carries `ethos-parser-ocr` beside `ethos-parser`,
   built on its own toolchain and fingerprinted with one `--ocr` read (`docs/RELEASING.md` §8).
+- Orientation, 2026-11-16, "as per your recommendation": a small dedicated page-orientation model,
+  its Apache-2.0 licence checked, pinned and built into the recognizer, not the recognizer's
+  scores (North Star row 11 stands); 2026-11-17, its download approved (§13).
 
 ## 10. The acceptance bar, set before the code
 
@@ -237,7 +243,51 @@ drawn invoice's do.
 
 ## 12. What this scope does not decide
 
-Photos (perspective, lighting, orientation); composite pages (mixed raster content, strips, soft
+Photos (perspective, lighting, a photo's own orientation; a scanned page's quarter and half turns
+are decided, §13); composite pages (mixed raster content, strips, soft
 masks); CCITT, JPEG 2000 and JBIG2; grounding an image file; pages with a stray text layer (contract §6 as it stands); tables,
 headings and emphasis on recognized pages; languages other than English. How the recognizer is
 released is decided (§9): beside `ethos-parser` in every release archive.
+
+## 13. A page scanned on its side or upside down (2026-11-17, decision #153)
+
+A page fed to the scanner sideways or upside down was read as it stood: a NIST page turned a
+quarter came out as `uoecn pssi ploin iud`. The recognizer now stands each page upright first.
+
+**The model**: PaddleOCR's document-orientation classifier PP-LCNet_x1_0_doc_ori, in the ONNX
+export PaddlePaddle publishes on Hugging Face (`PaddlePaddle/PP-LCNet_x1_0_doc_ori_onnx`, commit
+`7330ab7`, Apache-2.0 on its card as on the Paddle original, SHA-256 `af9a0a4f…`; 6.8 MB). Its
+digest is the recognizer identity's new `ori_sha256`, which the engine pins as it pins the others.
+It reads the page as PaddleX's image classifier does — RGB, the short side resized to 256 as cv2's
+INTER_LINEAR does, the centre 224-pixel square, ImageNet's normalisation — and labels it `0`, `90`,
+`180` or `270`: how many quarter turns clockwise the page stands. The recognizer turns it back on
+top of the turn the request declares, reads it, and maps every box back to the stored raster.
+
+**Labels only, and only where every view agrees.** Taken alone, as PaddleOCR's own pipeline
+takes it, the top label turned four upright pages of ParseBench's OCR lane — a line chart
+(180°), a folded typed letter (270°), a handwritten page and a Japanese page — and the lane fell
+54.66 → 54.63. Each of those reads otherwise in some view. So a page whose centre square reads
+upright is read as it stands, and any other is turned by `k` only where the centre square and the
+whole page squeezed to the same square, each turned 0 to 3 quarters more, read `k` and then each
+quarter more: eight labels. No score is kept or compared (row 11).
+
+**Measured**: the fixture page turned 0 to 3 quarters is found so in every view, and a stored
+turned page sent with no turn declared reads as the declared one does, its quads in the stored
+grid; every other fixture answer is unchanged but for the identity. ParseBench's `--ocr` lane
+54.66 → 54.67: one page up (+0.16, a layout page scanned turned), none down. Opendataloader-bench
+reads no image. The private real-document set: no Markdown changed (250 runs), resume scores
+identical. A review's made-up pages — blank, black, gradients, pictures over the centre — stay as
+they stand, and so does a body turned between an upright head and foot that only the centre
+square reads turned; inverted, dark, yellowed, landscape and rescaled text pages are found, a
+narrow column strip turned is not. An upright page
+costs one classification (about 6 ms); a page that looks turned costs eight and three turned
+copies (under 120 ms at 2550 × 3300 and 670 ms at 5100 × 6600, against 1.3 and 1.9 s to read it).
+
+**Known limits**: a page the model does not read so in every view is read as it stands. A body
+turned under an upright header — a landscape table printed on a portrait page — is turned whole,
+so the header and folio are then read sideways. A turned page keeps its own frame: its runs lie as
+the stored raster places them, each line one run with no advance, so the engine's layout reads
+fewer of its paragraphs and none of its tables (a turned invoice reads its fields in order, not as
+the table its upright copy makes). The rule id stays `ppocrv5-mobile-v1`, which no release
+carries yet; `ori_sha256` tells a recognizer before this decision from one after it.
+

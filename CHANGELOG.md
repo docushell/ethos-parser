@@ -32,6 +32,26 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A page scanned on its side or upside down is read upright (decision #153)
+
+`--ocr` read a page fed to the scanner sideways or upside down as it stood, which is mostly
+nonsense. `ethos-parser-ocr` now holds a fourth model, PaddleOCR's page-orientation classifier
+PP-LCNet_x1_0_doc_ori (Apache-2.0; source and SHA-256 in `ocr/models/MODELS.md`), stands each
+page upright before reading it, and maps every box back to the page as stored.
+
+- A page is turned only where every view agrees: the model's centre square and the whole page,
+  each turned 0 to 3 quarters more, read the same turn. Taken alone, its top label turned four
+  upright ParseBench pages (a chart, a folded letter, handwriting, Japanese). Labels only; no score
+  is kept.
+- The recognizer's identity gains `ori_sha256`, pinned by the engine (profile draft schema
+  updated); an engine and a recognizer from either side of this change refuse each other.
+- The declared limitation `recognized-text-orientation-not-corrected` now says what is and is not
+  turned: text turned against the rest of its page is not; a body turned under an upright header
+  turns the page, its header then read sideways.
+- Measured: ParseBench's `--ocr` lane 54.66 → 54.67, one page up, none down; the private
+  real-document set and its resumes unchanged. Known limits (`docs/35-OCR-SCOPE.md` §13): a turned
+  page keeps its own frame, so its tables are not read.
+
 ### A scanned form's fields read as a table (decision #152)
 
 On a page read with `--ocr`, a form's labels and values — `Invoice No:` beside its number — came

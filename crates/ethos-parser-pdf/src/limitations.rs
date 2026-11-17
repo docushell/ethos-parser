@@ -939,9 +939,12 @@ pub fn recognized_text_limitations() -> Vec<Limitation> {
     vec![
         Limitation::profile(
             ethos_parser_core::codes::RECOGNIZED_TEXT_ORIENTATION_NOT_CORRECTED,
-            "A scanned image is stood upright as its page shows it before it is read, but text \
-             turned WITHIN an upright image — a sideways table header, an upside-down stamp — is \
-             read as it stands, which is usually not at all.",
+            "A scanned image is stood upright as its page shows it, then turned a quarter or a \
+             half where an orientation model reads the whole page so in every view. Text turned \
+             against the rest of its page — a sideways table header, an upside-down stamp — is \
+             read as it stands, which is usually not at all; so is a turned page the model does \
+             not read so in every view; and a body turned under an upright header is turned \
+             whole, its header then read sideways.",
         ),
         Limitation::profile(
             ethos_parser_core::codes::RECOGNIZED_TEXT_HAS_NO_FONT,

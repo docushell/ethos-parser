@@ -3071,6 +3071,8 @@ pub struct RecognizerIdentity {
     pub rec_sha256: String,
     /// SHA-256 of the recognition model's alphabet.
     pub dict_sha256: String,
+    /// SHA-256 of the page-orientation model it holds (decision #153).
+    pub ori_sha256: String,
     /// The runtime that runs the models.
     pub runtime: String,
 }
@@ -3086,6 +3088,7 @@ impl RecognizerIdentity {
             det_sha256: "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae".into(),
             rec_sha256: "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8".into(),
             dict_sha256: "e025a66d31f327ba0c232e03f407ae8d105e1e709e7ccb3f408aa778c24e70d6".into(),
+            ori_sha256: "af9a0a4f317ff0709ce752067807f819cb15d883f8ecad89f28df1c6ee2d9c92".into(),
             runtime: "rten 0.26.0; rten-vecmath 0.26.0 with fixed-order sums".into(),
         }
     }
@@ -3997,6 +4000,7 @@ mod tests {
                 det_sha256,
                 rec_sha256,
                 dict_sha256,
+                ori_sha256,
                 runtime,
             })
         );
@@ -4024,6 +4028,7 @@ mod tests {
         assert_eq!(id.det_sha256, constant("DET_SHA256"));
         assert_eq!(id.rec_sha256, constant("REC_SHA256"));
         assert_eq!(id.dict_sha256, constant("DICT_SHA256"));
+        assert_eq!(id.ori_sha256, constant("ORI_SHA256"));
         assert_eq!(id.runtime, constant("RUNTIME"));
         assert!(main.contains(&format!("recognizer: \"{}\",", id.recognizer)));
         assert!(manifest

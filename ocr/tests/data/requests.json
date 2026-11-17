@@ -16,6 +16,14 @@
   "orientation": 1
  },
  {
+  "id": "png-file-turned-undeclared",
+  "file": "nist-171r3-p55-turned.png",
+  "image": {
+   "kind": "file"
+  },
+  "orientation": 0
+ },
+ {
   "id": "pdf-dct-gray",
   "file": "nist-37r2-p157.jpg",
   "orientation": 0,
