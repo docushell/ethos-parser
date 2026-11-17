@@ -709,9 +709,6 @@ fn extract_page(
                 })?;
 
         let geom = PageGeometry::resolve(doc, page_dict)?;
-        // v1-S6. The frame an off-page finding is measured against, in the same coordinate system
-        // the runs end up in. Computed once per page rather than per run.
-        let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc, page_dict)?;
         describe_fonts(fonts.values(), &mut composite_fonts, &mut font_limitations);
 
@@ -772,6 +769,13 @@ fn extract_page(
         // run text was the largest allocation in extraction to clone. The other
         // interpreter fields (rects, segments, counters) are read below and stay put.
         let shown_runs = std::mem::take(&mut interp.shown);
+        // Decision #155: a page whose text is drawn turned is read in the turn its text is set in,
+        // before any of it is measured, so every box, rule and table below is upright.
+        let turn = page_turn(&shown_runs, geom.rotation);
+        let geom = geom.turned(turn);
+        // v1-S6. The frame an off-page finding is measured against, in the same coordinate system
+        // the runs end up in. Computed once per page rather than per run.
+        let visible = geom.visible_in_display_space();
         let mut runs = Vec::with_capacity(shown_runs.len());
         // Decision #105: which runs the page clips away, for the chart rules.
         let mut clipped = Vec::with_capacity(shown_runs.len());
@@ -1978,6 +1982,7 @@ fn extract_page(
             width,
             height,
             rotation: geom.rotation,
+            turn: geom.turn,
             visible: (shown.x0 > 0 || shown.y0 > 0 || shown.x1 < width || shown.y1 < height)
                 .then_some(shown),
             runs,
@@ -3262,6 +3267,9 @@ pub(crate) fn per_page_table_diagnostics(
             }
             outcome => outcome?,
         }
+        // Read in the turn `extract` reads the page in (decision #155).
+        let turn = page_turn(&interp.shown, geom.rotation);
+        let geom = geom.turned(turn);
 
         // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
         // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
@@ -3826,6 +3834,65 @@ impl PageBox {
     }
 }
 
+/// A page reads turned where this many characters or more travel one way (decision #155).
+pub const TURN_MIN_CHARS: usize = 40;
+
+/// ...on this many lines or more: a stamp or a caption down the margin is a line or three.
+pub const TURN_MIN_LINES: usize = 4;
+
+/// Quarter turns clockwise beyond `rotation` in which a page's `shown` text reads upright
+/// (decision #155): where nine tenths of its characters that are not spaces, or more, travel one
+/// way in user space — right, up, left or down — that a declared rotation other than `rotation`
+/// would stand upright, on [`TURN_MIN_LINES`] lines or more, and [`TURN_MIN_CHARS`] or more travel
+/// that way. A run that says no way counts against every way: one of no known travel, one that
+/// does not move (a font whose widths are 0), one more than a hundredth off an axis (a diagonal
+/// watermark) and one mirrored, its glyphs standing on its right. 0 otherwise: a page with a few
+/// turned labels, a vertical axis title or a sideways stamp, reads as declared.
+pub(crate) fn page_turn(shown: &[crate::content::ShownText], rotation: i64) -> i64 {
+    turn_of(
+        shown.iter().map(|s| {
+            let n = s.text.chars().filter(|c| !c.is_whitespace()).count();
+            (s.displacement, s.glyph_up, s.origin, n)
+        }),
+        rotation,
+    )
+}
+
+/// One run for [`turn_of`]: its user-space travel, its glyphs' up, its origin, its characters.
+type TurnRun = (Option<(f64, f64)>, (f64, f64), (f64, f64), usize);
+
+/// [`page_turn`] over each run's travel, glyph up, origin and characters.
+fn turn_of(runs: impl Iterator<Item = TurnRun>, rotation: i64) -> i64 {
+    // Characters, and the lines they are on, by the rotation that stands their travel upright:
+    // 0, 90, 180, 270.
+    let mut by = [0usize; 4];
+    let mut lines: [std::collections::BTreeSet<i64>; 4] = Default::default();
+    let mut total = 0usize;
+    for (travel, (ux, uy), (ox, oy), n) in runs {
+        total += n;
+        let Some((dx, dy)) = travel else { continue };
+        // Off the axes, or its glyphs not on its left: a run that does not move is neither.
+        let along_an_axis = dx.abs().min(dy.abs()) * 100.0 <= dx.abs().max(dy.abs());
+        if !along_an_axis || dx * uy - dy * ux <= 0.0 {
+            continue;
+        }
+        let (k, line) = if dx.abs() > dy.abs() {
+            (if dx > 0.0 { 0 } else { 2 }, oy)
+        } else {
+            (if dy > 0.0 { 1 } else { 3 }, ox)
+        };
+        by[k] += n;
+        lines[k].insert(line.round() as i64);
+    }
+    let Some((k, &most)) = by.iter().enumerate().max_by_key(|&(_, n)| n) else {
+        return 0;
+    };
+    if most < TURN_MIN_CHARS || 10 * most < 9 * total || lines[k].len() < TURN_MIN_LINES {
+        return 0;
+    }
+    (90 * k as i64 - rotation).rem_euclid(360)
+}
+
 /// Page boxes and rotation, and the transform into the declared coordinate system.
 pub(crate) struct PageGeometry {
     /// The page's `/MediaBox`, normalised. **Its origin is load-bearing** — see
@@ -3840,6 +3907,9 @@ pub(crate) struct PageGeometry {
     /// than no finding at all.
     visible: PageBox,
     rotation: i64,
+    /// Quarter turns clockwise beyond `rotation` in which the page is read (decision #155): 0
+    /// where its text reads as declared. Every transform below takes the two together.
+    turn: i64,
     display_width: f64,
     display_height: f64,
 }
@@ -3911,6 +3981,7 @@ impl PageGeometry {
             media,
             visible,
             rotation,
+            turn: 0,
             display_width,
             display_height,
         })
@@ -3984,7 +4055,7 @@ impl PageGeometry {
     /// of a page as off-page, and a **fabricated** security finding is worse than no finding.
     fn to_top_left(&self, x: f64, y: f64) -> (f64, f64) {
         let b = self.media;
-        match self.rotation {
+        match self.read_as() {
             90 => (y - b.y0, x - b.x0),
             180 => (b.x1 - x, y - b.y0),
             270 => (b.y1 - y, b.x1 - x),
@@ -3998,7 +4069,7 @@ impl PageGeometry {
     ///
     /// For a run's travel and its glyphs' y axis, which are directions rather than places.
     fn to_top_left_linear(&self, dx: f64, dy: f64) -> (f64, f64) {
-        match self.rotation {
+        match self.read_as() {
             90 => (dy, dx),
             180 => (-dx, dy),
             270 => (-dy, -dx),
@@ -4039,11 +4110,32 @@ impl PageGeometry {
     /// them is the identity.
     pub(crate) fn to_user_space(&self, x: f64, y: f64) -> (f64, f64) {
         let b = self.media;
-        match self.rotation {
+        match self.read_as() {
             90 => (y + b.x0, x + b.y0),
             180 => (b.x1 - x, y + b.y0),
             270 => (b.x1 - y, b.y1 - x),
             _ => (x + b.x0, b.y1 - y),
+        }
+    }
+
+    /// The rotation the page is read in: its declared `/Rotate` and its turn (decision #155).
+    fn read_as(&self) -> i64 {
+        (self.rotation + self.turn) % 360
+    }
+
+    /// This page read `turn` quarter turns clockwise beyond its declared rotation (decision #155):
+    /// its display width and height exchange where the turn is odd.
+    pub(crate) fn turned(self, turn: i64) -> Self {
+        let (display_width, display_height) = if turn % 180 == 0 {
+            (self.display_width, self.display_height)
+        } else {
+            (self.display_height, self.display_width)
+        };
+        Self {
+            turn,
+            display_width,
+            display_height,
+            ..self
         }
     }
 
@@ -4103,6 +4195,7 @@ mod tests {
             media,
             visible: media,
             rotation: rot,
+            turn: 0,
             display_width: dw,
             display_height: dh,
         }
@@ -4256,6 +4349,106 @@ mod tests {
         );
     }
 
+    /// **A page reads turned where nine tenths of its characters travel one way** (decision #155):
+    /// right reads as declared; up, left and down a quarter, half and three-quarter turn; a few
+    /// turned labels, under nine tenths, or too few characters, read as declared; and a page whose
+    /// rotation already stands its text upright needs no turn.
+    #[test]
+    fn a_page_reads_turned_where_its_text_travels_one_way() {
+        // `n` characters travelling `d`, their glyphs standing on its left, over `lines` lines,
+        // beside `rest` characters set upright.
+        let up_of = |(dx, dy): (f64, f64)| (-dy, dx);
+        let runs = |d: (f64, f64), up: (f64, f64), n: usize, lines: usize, rest: usize| {
+            // Each line 12 points further across the travel than the last.
+            let across = |i: usize| (12.0 * i as f64 * d.1.abs(), 12.0 * i as f64 * d.0.abs());
+            let mut v: Vec<_> = (0..lines)
+                .map(|i| (Some(d), up, across(i), n / lines))
+                .collect();
+            v.push((Some((1.0, 0.0)), (0.0, 1.0), (0.0, 0.0), rest));
+            v
+        };
+        let page = |d: (f64, f64), n: usize, rest: usize, rotation: i64| {
+            turn_of(runs(d, up_of(d), n, 4, rest).into_iter(), rotation)
+        };
+        assert_eq!(page((1.0, 0.0), 100, 0, 0), 0);
+        assert_eq!(page((0.0, 1.0), 100, 0, 0), 90);
+        assert_eq!(page((-1.0, 0.0), 100, 0, 0), 180);
+        assert_eq!(page((0.0, -1.0), 100, 0, 0), 270);
+        assert_eq!(page((0.0, 1.0), 180, 20, 0), 90, "nine tenths");
+        assert_eq!(page((0.0, 1.0), 176, 24, 0), 0, "under nine tenths");
+        assert_eq!(page((0.0, 1.0), 36, 0, 0), 0, "too few characters");
+        assert_eq!(page((0.0, 1.0), 40, 0, 0), 90);
+        assert_eq!(page((0.0, 1.0), 100, 0, 90), 0, "declared already");
+        assert_eq!(page((0.0, -1.0), 100, 0, 90), 180);
+
+        // A run that says no way counts against a turn: one that does not move (a font whose
+        // widths are 0), one off the axes (a diagonal watermark), one mirrored (its glyphs on
+        // its right) and one of no known travel.
+        let still = (0..4).map(|i| (Some((0.0, 0.0)), (0.0, 1.0), (12.0 * i as f64, 0.0), 25));
+        assert_eq!(turn_of(still, 0), 0, "runs that do not move");
+        let mirror = runs((-1.0, 0.0), (0.0, 1.0), 100, 4, 0);
+        assert_eq!(turn_of(mirror.into_iter(), 0), 0, "a page mirrored");
+        let diagonal = (Some((1.0, 1.0)), (-1.0, 1.0), (0.0, 0.0), 100);
+        let mirrored = (Some((-1.0, 0.0)), (0.0, 1.0), (0.0, 0.0), 100);
+        let unknown = (None, (0.0, 1.0), (0.0, 0.0), 100);
+        for (name, other) in [
+            ("diagonal", diagonal),
+            ("mirrored", mirrored),
+            ("unknown", unknown),
+        ] {
+            let mut v = runs((0.0, 1.0), (-1.0, 0.0), 100, 4, 0);
+            v.push(other);
+            assert_eq!(turn_of(v.into_iter(), 0), 0, "{name}");
+        }
+        let skewed = |d| turn_of(runs(d, up_of(d), 100, 4, 0).into_iter(), 0);
+        assert_eq!(skewed((0.009, 0.999)), 90, "within a hundredth of the axis");
+        assert_eq!(skewed((0.02, 0.999)), 0, "off the axis");
+
+        // A stamp or a running caption down the margin is a line or three, not a page.
+        let lined = |lines| turn_of(runs((0.0, 1.0), (-1.0, 0.0), 120, lines, 0).into_iter(), 0);
+        assert_eq!(lined(3), 0, "three lines");
+        assert_eq!(lined(4), 90, "four lines");
+    }
+
+    /// **A turned page's boxes map back to the declared frame through the record** (decision
+    /// #155): at every declared rotation and every turn, a box measured on the turned page and
+    /// mapped back by `PageRecord::to_declared` is the box the declared page measures.
+    #[test]
+    fn a_turned_page_maps_back_through_its_record() {
+        let q = |v: f64| (v * 100.0).round() as i64;
+        for rotation in [0i64, 90, 180, 270] {
+            for turn in [0i64, 90, 180, 270] {
+                let declared = geom(300.0, 400.0, rotation);
+                let turned = geom(300.0, 400.0, rotation).turned(turn);
+                let rect = |g: &PageGeometry| {
+                    let (ax, ay) = g.to_top_left(30.0, 50.0);
+                    let (bx, by) = g.to_top_left(120.0, 70.0);
+                    ethos_parser_core::QRect::new(
+                        q(ax.min(bx)),
+                        q(ay.min(by)),
+                        q(ax.max(bx)),
+                        q(ay.max(by)),
+                    )
+                    .unwrap()
+                };
+                let page = ethos_parser_core::PageRecord {
+                    id: ethos_parser_core::NodeId::from_parts(ethos_parser_core::IdKind::Page, 1),
+                    index: 1,
+                    width: q(turned.display_width),
+                    height: q(turned.display_height),
+                    rotation,
+                    turn,
+                    visible: None,
+                };
+                assert_eq!(
+                    page.to_declared(rect(&turned)),
+                    Some(rect(&declared)),
+                    "rotation {rotation}, turn {turn}"
+                );
+            }
+        }
+    }
+
     /// A vector lands where the difference of its two endpoints lands, at every rotation and on a
     /// box whose origin is not (0, 0) — so the translation really is what was left out.
     #[test]
@@ -4266,6 +4459,7 @@ mod tests {
                 media,
                 visible: media,
                 rotation,
+                turn: 0,
                 display_width: 300.0,
                 display_height: 400.0,
             };

@@ -114,9 +114,18 @@
             270
           ]
         },
+        "turn": {
+          "type": "integer",
+          "enum": [
+            90,
+            180,
+            270
+          ],
+          "$comment": "Decision #155, as on the representation's page. Absent where 0."
+        },
         "visible": {
           "$ref": "#/$defs/quant_rect",
-          "$comment": "Decision #62. The box a viewer shows, {x0, y0, x1, y1} in integer centipoints, the declared top-left system: the /CropBox clipped to the media box, where it is narrower than the page. OMITTED where the page shows the whole of its media box."
+          "$comment": "Decision #62. The box a viewer shows, {x0, y0, x1, y1} in integer centipoints, the page's top-left frame (the declared one, turned by `turn`, decision #155): the /CropBox clipped to the media box, where it is narrower than the page. OMITTED where the page shows the whole of its media box."
         },
         "runs": {
           "type": "array",

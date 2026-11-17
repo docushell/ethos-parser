@@ -6745,6 +6745,125 @@ fn the_overlay_is_byte_identical_and_leaves_the_source_alone() {
     );
 }
 
+/// **The overlay draws a turned page's boxes where a viewer sees its text** (decision #155): a
+/// made-up page whose four lines are drawn upside down (and invisible, so the overlay marks them),
+/// read half a turn, has their boxes drawn back in user space around the text — under the declared
+/// transform alone they would land mirrored — and its page note on the page.
+#[test]
+fn the_overlay_draws_a_turned_page_where_its_text_is() {
+    let content = "q -1 0 0 -1 300 400 cm BT 3 Tr /F1 10 Tf 20 300 Td \
+                   (Upside down text drawn to try the overlay) Tj 0 -15 Td \
+                   (A second made-up line of it) Tj 0 -15 Td (A third made-up line of it) Tj \
+                   0 -15 Td (A fourth made-up line of it) Tj ET Q";
+    let mut stream = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+    stream.extend_from_slice(content.as_bytes());
+    stream.extend_from_slice(b"\nendstream");
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_vec(),
+        stream,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ]);
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+    assert_eq!(extract.pages[0].turn, 180);
+    let overlay = ethos_parser_pdf::build_overlay(&doc, &extract, &profile).expect("overlays");
+    let out = lopdf::Document::load_mem(&overlay).expect("the overlay is a PDF");
+    let page = out.get_pages()[&1];
+    let annots = out
+        .get_dictionary(page)
+        .unwrap()
+        .get(b"Annots")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone();
+    let rects: Vec<[f64; 4]> = annots
+        .iter()
+        .filter_map(|a| {
+            let d = out.dereference(a).ok()?.1.as_dict().ok()?.clone();
+            let r = d.get(b"Rect").ok()?.as_array().ok()?.clone();
+            let n: Vec<f64> = r
+                .iter()
+                .filter_map(|v| {
+                    v.as_float()
+                        .ok()
+                        .map(f64::from)
+                        .or(v.as_i64().ok().map(|i| i as f64))
+                })
+                .collect();
+            (n.len() == 4).then(|| [n[0], n[1], n[2], n[3]])
+        })
+        .collect();
+    // The text starts at user space (280, 100) and runs left, its glyphs below that baseline.
+    let around = |x: f64, y: f64| {
+        rects
+            .iter()
+            .any(|r| r[0] <= x && x <= r[2] && r[1] <= y && y <= r[3])
+    };
+    assert!(around(270.0, 97.0), "{rects:?}");
+    assert!(!around(30.0, 303.0), "not mirrored: {rects:?}");
+    for r in &rects {
+        assert!(
+            0.0 <= r[0]
+                && r[0] < r[2]
+                && r[2] <= 300.0
+                && 0.0 <= r[1]
+                && r[1] < r[3]
+                && r[3] <= 400.0,
+            "on the page: {rects:?}"
+        );
+    }
+}
+
+/// **A page read turned keeps its upright running head and folio as furniture** (decision #155): a
+/// made-up page whose lines run up it, read a quarter turn round, with a running head and foot set
+/// upright along its declared top and bottom edges, which in the turned frame run down its sides.
+/// They are still a header and a footer; the turned lines are not furniture.
+#[test]
+fn a_page_read_turned_keeps_its_upright_head_and_folio_as_furniture() {
+    let mut content = String::from("q 0 1 -1 0 612 0 cm BT /F1 10 Tf 72 540 Td ");
+    for row in 1..=25 {
+        content += &format!("(Made-up row {row} of the turned table) Tj 0 -14 Td ");
+    }
+    content += "ET Q BT /F1 9 Tf 90 30 Td (Made-up Annual Report 2026) Tj ET \
+                BT /F1 9 Tf 520 30 Td (Page 1) Tj ET \
+                BT /F1 9 Tf 300 726 Td (Made-up running head) Tj ET";
+    let mut stream = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+    stream.extend_from_slice(content.as_bytes());
+    stream.extend_from_slice(b"\nendstream");
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_vec(),
+        stream,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ]);
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+    let page = &extract.pages[0];
+    assert_eq!(page.turn, 90);
+    let flagged: Vec<(&str, Option<ethos_parser_core::Furniture>)> = page
+        .runs
+        .iter()
+        .filter(|r| r.furniture.is_some() || !r.text.starts_with("Made-up row"))
+        .map(|r| (r.text.as_str(), r.furniture))
+        .collect();
+    let foot = Some(ethos_parser_core::Furniture::Footer);
+    let head = Some(ethos_parser_core::Furniture::Header);
+    assert_eq!(
+        flagged,
+        [
+            ("Made-up Annual Report 2026", foot),
+            ("Made-up running head", head),
+            ("Page 1", foot)
+        ]
+    );
+}
+
 /// **Earlier slices are untouched by images and findings** (v1-S6).
 #[test]
 fn observing_images_changes_no_earlier_slices_answer() {

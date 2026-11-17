@@ -427,6 +427,45 @@ fn pdf_of_pages(streams: &[String]) -> Vec<u8> {
     out
 }
 
+/// **A page whose text is drawn upside down is read upright, and the record says so** (decision
+/// #155): a made-up price list drawn turned half a turn on a page that declares no rotation. The
+/// page records `turn: 180`, the frame its boxes are in, and the list reads as a table in its own
+/// order; the same list drawn upright records no turn.
+#[test]
+fn a_page_drawn_upside_down_is_read_upright() {
+    let dir = scratch("turned-page");
+    let rows = [
+        ["Item", "Price", "Qty"],
+        ["Widget", "$3.50", "2"],
+        ["Gadget", "$4.50", "3"],
+        ["Sprocket", "$1.25", "9"],
+        ["Flange", "$7.00", "1"],
+    ];
+    let page = ruled_page("", &rows, 1);
+    let read = |label: &str, stream: String| {
+        let pdf = dir.join(format!("{label}.pdf"));
+        std::fs::write(&pdf, pdf_of_pages(&[stream])).expect("write PDF");
+        let repr = extract_to(&dir, &pdf);
+        let record: Value = serde_json::from_slice(&std::fs::read(&repr).unwrap()).unwrap();
+        let turn = record["representation"]["pages"][0]["turn"].clone();
+        (
+            turn,
+            markdown_of(&repr)["markdown"].as_str().unwrap().to_string(),
+        )
+    };
+    let (turn, md) = read("upright", page.clone());
+    assert!(turn.is_null(), "{turn}");
+    assert!(md.contains("| Widget | $3.50 | 2 |"), "{md}");
+    let (turn, md) = read("upside-down", format!("q -1 0 0 -1 300 400 cm {page} Q"));
+    assert_eq!(turn, 180);
+    assert!(md.contains("| Item | Price | Qty |"), "{md}");
+    assert!(
+        md.contains("| Widget | $3.50 | 2 |\n| Gadget | $4.50 | 3 |"),
+        "{md}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **A phrase a painted line strikes through is `~~`, one a stroked line underlines is `<u>`**
 /// (decision #154), on a made-up page, and the record says so of each run; a rule under a line
 /// of text that reaches far past it, a box drawn round a word, a dashed guide, a white line and a

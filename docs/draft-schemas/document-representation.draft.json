@@ -162,7 +162,7 @@
                       "minItems": 4,
                       "maxItems": 4,
                       "items": { "type": "integer", "minimum": 0, "maximum": 1000 },
-                      "$comment": "[x0, y0, x1, y1] on the image's 0-1000 grid, clamped to it and ordered (x0 <= x1, y0 <= y1). Absent where the model gave no box."
+                      "$comment": "[x0, y0, x1, y1] on the image's 0-1000 grid, clamped to it and ordered (x0 <= x1, y0 <= y1). Absent where the model gave no box. The image shows the page as its rotation declares it, so on a page read turned (decision #155) the grid is turned from the page's frame by its `turn`."
                     },
                     "text": { "type": "string" },
                     "derivation": { "const": "proposed" },
@@ -227,12 +227,13 @@
         "width": { "type": "integer", "minimum": 1, "$comment": "Integer centipoints, AFTER rotation." },
         "height": { "type": "integer", "minimum": 1 },
         "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
+        "turn": { "type": "integer", "enum": [90, 180, 270], "$comment": "Decision #155. Quarter turns clockwise beyond `rotation` in which the page was read, its text drawn turned with no rotation declaring it: width, height and every coordinate on the page are in that frame, the declared one turned clockwise by this much (`PageRecord::to_declared` maps a box back). Computed from the text's direction under the profile's observation_rule `page-observations-v5`. Absent where 0." },
         "visible": {
           "type": "array",
           "items": { "type": "integer" },
           "minItems": 4,
           "maxItems": 4,
-          "$comment": "Decision #62. The box a viewer shows, [x0, y0, x1, y1] in the declared system: the page's /CropBox clipped to its media box, where it is narrower than the page. width and height are the media box's, the frame every coordinate is in; a consumer that draws the page shows this box alone and places boxes on its picture by it. OMITTED where the page shows the whole of its media box."
+          "$comment": "Decision #62. The box a viewer shows, [x0, y0, x1, y1] in the page's frame (the declared one, turned by `turn`, decision #155): the page's /CropBox clipped to its media box, where it is narrower than the page. width and height are the media box's, the frame every coordinate is in; a consumer that draws the page shows this box alone and places boxes on its picture by it, turned back where `turn` says. OMITTED where the page shows the whole of its media box."
         }
       }
     },

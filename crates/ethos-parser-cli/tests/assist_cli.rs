@@ -237,6 +237,54 @@ fn replies_attach_as_proposed_blocks_and_move_nothing_else() {
     }
 }
 
+/// **A page read turned takes the replies to the page as drawn** (decision #155): the renderer
+/// draws a page in the frame its rotation declares, so a page whose text runs up it, read a quarter
+/// turn round, is answered at its declared 300 x 400 points, and a block the model boxed where the
+/// picture shows the text binds the engine's runs there. The record's own 400 x 300 is another
+/// page.
+#[test]
+fn a_page_read_turned_takes_replies_to_the_page_as_drawn() {
+    let lines = "BT /F1 12 Tf 40 250 Td (The first made-up line) Tj 0 -15 Td \
+                 (The second made-up line) Tj 0 -15 Td (The third made-up line) Tj 0 -15 Td \
+                 (The fourth made-up line) Tj ET";
+    let source = pdf(&[(
+        "/MediaBox [0 0 300 400]",
+        &format!("q 0 1 -1 0 300 0 cm {lines} Q"),
+    )]);
+    let mut answers = replies(&source);
+    answers["pages"] = json!([{
+        "page": 1, "points": [30000, 40000], "dpi": 200, "width": 833, "height": 1111,
+        "pixels_sha256": Sha256Hex::of_bytes(b"made-up pixels").to_string(),
+        "finish_reason": "stop",
+        "reply": "![text](100,450,350,920) The first made-up line\nThe second made-up line\n\
+                  The third made-up line\nThe fourth made-up line"
+    }]);
+    let dir = scratch("turned");
+    let (pdf, file) = write(&dir, &source, &answers);
+    let record = json_of(&engine(&["extract", &pdf, "--assist-answers", &file]));
+    let page = &record["representation"]["pages"][0];
+    assert_eq!(
+        (&page["turn"], &page["width"], &page["height"]),
+        (&json!(90), &json!(40000), &json!(30000))
+    );
+    let guard = &record["representation"]["assist"]["pages"][0]["blocks"][0]["guard"];
+    assert_eq!(
+        (&guard["lines"], &guard["bound"], &guard["engine_words"]),
+        (&json!(4), &json!(4), &json!(8)),
+        "{guard}"
+    );
+
+    answers["pages"][0]["points"] = json!([40000, 30000]);
+    let (pdf, file) = write(&dir, &source, &answers);
+    let out = engine(&["extract", &pdf, "--assist-answers", &file]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("assist-answers-other-page"),
+        "{}",
+        stderr(&out)
+    );
+}
+
 /// **Two runs with one PDF and one replies file give identical bytes.**
 #[test]
 fn the_same_pdf_and_replies_give_identical_bytes() {

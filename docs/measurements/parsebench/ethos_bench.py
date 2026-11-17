@@ -182,8 +182,35 @@ def _layout(extract: dict, grounding: dict) -> dict:
         if geometry.get("state") == "measured":
             inside = text_inside(figure["runs_inside"])
             items.append({"page": page_of.get(figure.get("page"), 1), "bbox": geometry["value"], "label": "Picture", "text": inside})
-    pages = [{"index": p["index"], "width": p["width"], "height": p["height"], "visible": p.get("visible")} for p in rep["pages"]]
+    # Decision #155: a page read turned states its turn; its boxes go back to the frame its rotation
+    # declares, the one the page's picture is in, as `PageRecord::to_declared` maps them.
+    turned = {p["index"]: p for p in rep["pages"] if p.get("turn")}
+    for item in items:
+        page = turned.get(item["page"])
+        if page:
+            item["bbox"] = _declared(item["bbox"], page["width"], page["height"], page["turn"])
+    pages = []
+    for p in rep["pages"]:
+        width, height, visible = p["width"], p["height"], p.get("visible")
+        if p.get("turn"):
+            visible = visible and _declared(visible, width, height, p["turn"])
+            if p["turn"] % 180:
+                width, height = height, width
+        pages.append({"index": p["index"], "width": width, "height": height, "visible": visible})
     return {"pages": pages, "items": items}
+
+
+def _declared(box: list, width: int, height: int, turn: int) -> list:
+    """Decision #155: `box` on a page read `turn` quarter turns clockwise beyond its declared rotation,
+    `width` by `height` in that frame, in the frame the rotation declares (`PageRecord::to_declared`)."""
+    x0, y0, x1, y1 = box
+    if turn == 90:
+        return [y0, width - x1, y1, width - x0]
+    if turn == 180:
+        return [width - x1, height - y1, width - x0, height - y0]
+    if turn == 270:
+        return [height - y1, x0, height - y0, x1]
+    return list(box)
 
 
 

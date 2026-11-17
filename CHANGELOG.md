@@ -32,6 +32,33 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A page drawn turned is read upright (decision #155)
+
+A page can set all its text a quarter or half turn round with no `/Rotate` declaring it — a
+landscape table on a portrait page, a page placed upside down. The engine laid it out as declared,
+so its lines ran down the page and its tables and reading order fell apart.
+
+- Where nine tenths or more of a page's characters, and 40 or more, on four lines or more, travel
+  one way other than the one the declared rotation stands upright, the page is read in that way's
+  upright frame: runs, rules, images, tables, figures and reading order alike. A run that does not
+  move, runs off the axes (a diagonal watermark) or is mirrored counts against every way; a stamp
+  down the margin is too few lines. The page record states `turn` (90, 180 or 270, quarter turns
+  clockwise beyond `rotation`), its `width`, `height` and `visible` are the turned page's, and
+  `PageRecord::to_declared` maps a box back. Under `page-observations-v5`, which no release
+  carries yet.
+- A running head or folio set upright on a turned page is still furniture; a table joins across
+  pages read in the same frame; the overlay draws where the text is; `elements` carries `turn`;
+  `ground`, whose page has no `turn`, states the frame as its `rotation`. `--assist` answers a
+  turned page at the size the renderer draws it and turns the model's boxes onto the record's
+  frame.
+- Measured: ParseBench-2's engine lane 53.46 → 53.91 (tables 47.27 → 49.98, its tables subset
+  57.33 → 62.69); ParseBench's `--ocr` lane, opendataloader-bench and the private real-document set
+  unchanged.
+- Known limits: a page that mixes ways (a turned table under an upright running head and foot
+  can fall short of nine tenths) is read as declared; invisible text counts, so a scan's text
+  layer drawn turned turns its page; a scan `--ocr` stands upright (decision #153) is recorded as
+  declared; PDF only.
+
 ### Strikeout and underline, from the lines a page draws (decision #154)
 
 A PDF has no strikeout or underline: a word processor draws a thin line through or under the

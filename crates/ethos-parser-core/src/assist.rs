@@ -271,6 +271,8 @@ pub struct AssistBlock {
     /// Whether its label ended `+`: it goes on from the page or column before.
     pub continues: bool,
     /// Its box on the image's 0-1000 grid, `[x0, y0, x1, y1]`. Absent where the model gave none.
+    /// The image shows the page as its rotation declares it, so on a page read turned (decision
+    /// #155) the grid is turned from the record's frame by the page's `turn`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grid: Option<[u32; 4]>,
     /// Its text, trimmed.
@@ -625,6 +627,12 @@ pub fn attach(
             return Err(other_page("which this document does not have".into()));
         };
         let frame @ [_, _, width, height] = frame_of(page);
+        // The renderer draws the page as its rotation declares it, whatever turn it was read in.
+        let (width, height) = if page.turn % 180 == 0 {
+            (width, height)
+        } else {
+            (height, width)
+        };
         let off = |rendered: i64, shown: i64| {
             rendered.abs_diff(shown) > u64::from(crate::geom::QUANTUM_PER_POINT)
         };
@@ -668,7 +676,7 @@ pub fn attach(
                 guard_with(
                     b.label.as_deref(),
                     &b.text,
-                    grid,
+                    upright(grid, page.turn),
                     frame,
                     on_page,
                     in_regions,
@@ -854,6 +862,20 @@ pub(crate) fn frame_of(page: &crate::representation::PageRecord) -> [i64; 4] {
     match page.visible {
         Some(v) => [v.x0(), v.y0(), v.x1() - v.x0(), v.y1() - v.y0()],
         None => [0, 0, page.width, page.height],
+    }
+}
+
+/// A block's box on the grid of the picture the renderer drew, which shows the page as its
+/// rotation declares it, on the grid of the page as the record reads it, `turn` (its
+/// [`PageRecord::turn`](crate::representation::PageRecord::turn)) further round (decision #155).
+pub(crate) fn upright(grid: [u32; 4], turn: i64) -> [u32; 4] {
+    let [x0, y0, x1, y1] = grid;
+    let m = |g: u32| 1000 - g.min(1000);
+    match turn {
+        90 => [m(y1), x0, m(y0), x1],
+        180 => [m(x1), m(y1), m(x0), m(y0)],
+        270 => [y0, m(x1), y1, m(x0)],
+        _ => grid,
     }
 }
 
@@ -1837,6 +1859,7 @@ mod tests {
                 width: 30000,
                 height: 40000,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             },
             PageRecord {
@@ -1845,6 +1868,7 @@ mod tests {
                 width: 30000,
                 height: 40000,
                 rotation: 0,
+                turn: 0,
                 visible: Some(QRect::new(5000, 5000, 25000, 35000).unwrap()),
             },
         ];
@@ -3335,6 +3359,40 @@ mod tests {
         assert_eq!(at([0, 0, 1000, 501]), (3, 0, vec![flag(2, c, Some("43"))]));
     }
 
+    /// **A block's box turns with the page it is placed on** (decision #155): at every turn, the
+    /// box [`upright`] gives, placed on the page as the record reads it and mapped back to the
+    /// declared frame, is the box as placed on the picture the renderer drew.
+    #[test]
+    fn a_grid_box_turns_with_the_page() {
+        let at = |grid: [u32; 4], frame: [i64; 4]| {
+            let [x0, y0, x1, y1] = placed(grid, frame).map(|v| i64::try_from(v / 1000).unwrap());
+            QRect::new(x0, y0, x1, y1).unwrap()
+        };
+        let grid = [100, 200, 300, 650];
+        for turn in [0, 90, 180, 270] {
+            let (width, height) = if turn % 180 == 0 {
+                (30000, 40000)
+            } else {
+                (40000, 30000)
+            };
+            let page = PageRecord {
+                id: NodeId::from_parts(IdKind::Page, 1),
+                index: 1,
+                width,
+                height,
+                rotation: 0,
+                turn,
+                visible: None,
+            };
+            let read = at(upright(grid, turn), frame_of(&page));
+            assert_eq!(
+                page.to_declared(read),
+                Some(at(grid, [0, 0, 30000, 40000])),
+                "turn {turn}"
+            );
+        }
+    }
+
     /// The runs bound to a block are those whose box centre lies in its box, mapped onto the
     /// visible box and widened by ten grid units on every side, edges included; on a page of any
     /// size.
@@ -4172,6 +4230,7 @@ mod tests {
                 width: 40000,
                 height: 50000,
                 rotation: 0,
+                turn: 0,
                 // The last page shows a 200 x 250 point crop: a quarter of it is a sixteenth of
                 // the page.
                 visible: (index == 10).then(|| QRect::new(0, 0, 20000, 25000).unwrap()),

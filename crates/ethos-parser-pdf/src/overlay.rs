@@ -143,7 +143,8 @@ pub fn build_overlay(
                     detail: e.to_string(),
                 })?
                 .clone();
-            PageGeometry::resolve(doc, &dict)?
+            // Decision #155: in the frame the page was read in, its turn and all.
+            PageGeometry::resolve(doc, &dict)?.turned(page.turn)
         };
 
         let mut annots: Vec<lopdf::Object> = Vec::new();
@@ -281,17 +282,19 @@ fn square(
 /// is precisely what is unknown — so it says so in its own text rather than being anchored
 /// somewhere that could be mistaken for a claim.
 fn page_note(geom: &PageGeometry, page: &crate::nodes::PageExtract, without: u32) -> lopdf::Object {
-    let (cx, cy) = geom.to_user_space(0.0, 0.0);
+    // 20 points square from that corner, whichever way the page was read.
+    let (ax, ay) = geom.to_user_space(0.0, 0.0);
+    let (bx, by) = geom.to_user_space(20.0, 20.0);
     let mut d = lopdf::Dictionary::new();
     d.set("Type", lopdf::Object::Name(b"Annot".to_vec()));
     d.set("Subtype", lopdf::Object::Name(b"Text".to_vec()));
     d.set(
         "Rect",
         int_rect(
-            cx.floor(),
-            (cy - 20.0).floor(),
-            (cx + 20.0).ceil(),
-            cy.ceil(),
+            ax.min(bx).floor(),
+            ay.min(by).floor(),
+            ax.max(bx).ceil(),
+            ay.max(by).ceil(),
         ),
     );
     d.set("F", lopdf::Object::Integer(0));

@@ -168,11 +168,40 @@ pub(crate) fn assign(page: &mut PageExtract) {
             text: false,
         });
     }
-    let read = furniture(&pieces, page.height, body_line(&page.runs));
+    let body = body_line(&page.runs);
+    let mut read = furniture(&pieces, page.height, body);
+    // A page read turned (decision #155) is read again as its rotation declares it, so a running
+    // head or folio set upright on it, which the turn stands along a side, is still furniture.
+    if page.turn != 0 {
+        let (w, h) = (page.width, page.height);
+        let declared: Vec<Piece> = pieces
+            .iter()
+            .map(|p| Piece {
+                rect: declared(p.rect, w, h, page.turn),
+                ..*p
+            })
+            .collect();
+        let height = if page.turn % 180 == 0 { h } else { w };
+        for (mine, theirs) in read.iter_mut().zip(furniture(&declared, height, body)) {
+            *mine = mine.or(theirs);
+        }
+    }
     for (line, furniture) in lines.iter().zip(read) {
         for &i in line {
             page.runs[i].furniture = furniture;
         }
+    }
+}
+
+/// `r`, on a page `width` by `height` read `turn` beyond its rotation, in the frame the rotation
+/// declares — as `ethos_parser_core::PageRecord::to_declared` maps it.
+fn declared(r: Rect, width: i64, height: i64, turn: i64) -> Rect {
+    let (x0, y0, x1, y1) = r;
+    match turn {
+        90 => (y0, width - x1, y1, width - x0),
+        180 => (width - x1, height - y1, width - x0, height - y0),
+        270 => (height - y1, x0, height - y0, x1),
+        _ => r,
     }
 }
 
@@ -182,6 +211,37 @@ mod tests {
 
     const HEADER: Option<Furniture> = Some(Furniture::Header);
     const FOOTER: Option<Furniture> = Some(Furniture::Footer);
+
+    /// **A box goes back to the declared frame as the record maps it** (decision #155).
+    #[test]
+    fn a_box_goes_back_as_the_record_maps_it() {
+        use ethos_parser_core::{IdKind, NodeId, PageRecord, QRect};
+        let r = (1000, 2000, 3000, 5000);
+        for turn in [0, 90, 180, 270] {
+            let (width, height) = if turn % 180 == 0 {
+                (30000, 40000)
+            } else {
+                (40000, 30000)
+            };
+            let page = PageRecord {
+                id: NodeId::from_parts(IdKind::Page, 1),
+                index: 1,
+                width,
+                height,
+                rotation: 0,
+                turn,
+                visible: None,
+            };
+            let q = page
+                .to_declared(QRect::new(r.0, r.1, r.2, r.3).unwrap())
+                .unwrap();
+            assert_eq!(
+                declared(r, width, height, turn),
+                (q.x0(), q.y0(), q.x1(), q.y1()),
+                "turn {turn}"
+            );
+        }
+    }
 
     /// A line of text from `top` to `bottom` points, across the page.
     fn line(top: i64, bottom: i64) -> Piece {

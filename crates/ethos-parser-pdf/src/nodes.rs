@@ -248,8 +248,13 @@ pub struct PageExtract {
     pub height: i64,
     /// Page rotation as declared: 0, 90, 180 or 270.
     pub rotation: i64,
-    /// The box a viewer shows, in the declared system, where it is narrower than the page
-    /// (decision #62): the `/CropBox` clipped to the media box.
+    /// Quarter turns clockwise beyond `rotation` in which the page is read (decision #155): 0
+    /// where its text reads as declared. Width, height and every box are in that frame. Absent
+    /// where 0, as on the representation's page.
+    #[serde(default, skip_serializing_if = "is_no_turn")]
+    pub turn: i64,
+    /// The box a viewer shows, in the page's frame (the declared one, turned by [`Self::turn`]),
+    /// where it is narrower than the page (decision #62): the `/CropBox` clipped to the media box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<crate::tables::QuantRect>,
     /// Runs in reading order.
@@ -340,6 +345,10 @@ pub(crate) fn runs_inside(runs: &[TextRun], (x0, y0, x1, y1): (i64, i64, i64, i6
         })
         .map(|r| r.id.clone())
         .collect()
+}
+
+fn is_no_turn(turn: &i64) -> bool {
+    *turn == 0
 }
 
 #[cfg(test)]

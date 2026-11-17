@@ -100,6 +100,7 @@ fn pages(alloc: &mut IdAllocator, n: u32) -> Vec<PageRecord> {
             width: 60000,
             height: 80000,
             rotation: 0,
+            turn: 0,
             visible: None,
         })
         .collect()

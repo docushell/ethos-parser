@@ -290,6 +290,13 @@ pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
 /// 51.97 → 53.46 (strikeout 14.1 → 76.8, underline 20.0 → 89.2); opendataloader-bench's NID
 /// 0.8922 → 0.8911 and MHS 0.6378 → 0.6372, its scorer reading the `<u>` tags of real underlines
 /// as text — a trade the owner took.
+///
+/// **And a page read turned** (decision #155, folded in before any release carried this id): where
+/// nine tenths of a page's characters or more, 40 or more on four lines or more, travel one way
+/// other than the one its declared rotation stands upright, the page is read in that way's upright
+/// frame, every box with it, and its record states `turn`; a run that does not move, runs off the
+/// axes or is mirrored counts against every way. ParseBench-2's engine lane 53.46 → 53.91 (tables
+/// 47.27 → 49.98); ParseBench's `--ocr` lane and opendataloader-bench unchanged.
 pub const OBSERVATION_RULE_V5: &str = "page-observations-v5";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.

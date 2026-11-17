@@ -86,9 +86,14 @@
             "minimum": 1,
             "description": "Page height in integer centipoints, after rotation."
           },
+          "turn": {
+            "type": "integer",
+            "enum": [90, 180, 270],
+            "description": "Decision #155. Quarter turns clockwise beyond the declared rotation in which the page was read, its text drawn turned: the frame width, height and every `bbox` are in. Absent where 0."
+          },
           "visible": {
             "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect",
-            "description": "The box a viewer shows (decision #62), where it is narrower than the page. A consumer drawing the page shows this box alone and places every `bbox` on its picture by it. Absent where the page shows the whole of its media box."
+            "description": "The box a viewer shows (decision #62), where it is narrower than the page. In the page's frame, turned by `turn` where the page was read turned (decision #155). A consumer drawing the page shows this box alone and places every `bbox` on its picture by it, turned back where `turn` says. Absent where the page shows the whole of its media box."
           }
         }
       }

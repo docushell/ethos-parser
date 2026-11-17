@@ -128,9 +128,18 @@ pub struct ElementPage {
     pub width: i64,
     /// Height in integer centipoints, after rotation.
     pub height: i64,
+    /// Quarter turns clockwise beyond the declared rotation in which the page was read, its text
+    /// drawn turned (decision #155): the frame width, height and every `bbox` are in. Absent where
+    /// 0; see `PageRecord::to_declared`.
+    #[serde(default, skip_serializing_if = "is_no_turn")]
+    pub turn: i64,
     /// The box a viewer shows, where narrower than the page (decision #62).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<QRect>,
+}
+
+fn is_no_turn(turn: &i64) -> bool {
+    *turn == 0
 }
 
 /// What an element is, as the record states it.
@@ -710,6 +719,7 @@ pub fn to_elements(
                 index: p.index,
                 width: p.width,
                 height: p.height,
+                turn: p.turn,
                 visible: p.visible,
             })
             .collect(),
@@ -1098,6 +1108,7 @@ mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let (p1, p2) = (page(&mut alloc, 1), page(&mut alloc, 2));

@@ -2359,13 +2359,44 @@ pub struct PageRecord {
     pub height: i64,
     /// Page rotation as declared: 0, 90, 180 or 270.
     pub rotation: i64,
+    /// **Quarter turns clockwise, beyond [`Self::rotation`], in which the page is read**
+    /// (decision #155): 90, 180 or 270 where the page's text is drawn turned and no rotation
+    /// declares it, so the page is read upright. [`Self::width`], [`Self::height`] and every
+    /// coordinate on the page are then in that frame — the declared one turned clockwise by this
+    /// much — and a consumer placing a box on the page as a viewer shows it maps it back with
+    /// [`Self::to_declared`]. `Computed` from the text's own direction under the profile's
+    /// `observation_rule`. **Absent where 0**, so a page read as declared states nothing new.
+    #[serde(default, skip_serializing_if = "is_no_turn")]
+    pub turn: i64,
     /// **The box a viewer shows** (decision #62): the page's `/CropBox` clipped to its media box,
-    /// in the declared system, wherever it is narrower than the page. [`Self::width`] and
-    /// [`Self::height`] are the media box's, the frame every coordinate here is in; a consumer that
-    /// draws the page shows this box alone, and places this representation's boxes on its picture
-    /// by it. Absent where the page shows the whole of its media box.
+    /// in the page's frame (the declared one, turned by [`Self::turn`]), wherever it is narrower
+    /// than the page. [`Self::width`] and [`Self::height`] are the media box's, the frame every
+    /// coordinate here is in; a consumer that draws the page shows this box alone, and places this
+    /// representation's boxes on its picture by it, turned back by [`Self::to_declared`] where the
+    /// page was read turned. Absent where the page shows the whole of its media box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<QRect>,
+}
+
+fn is_no_turn(turn: &i64) -> bool {
+    *turn == 0
+}
+
+impl PageRecord {
+    /// A box in this page's frame, in the frame its rotation declares (decision #155): the
+    /// identity where the page is read as declared, and the turn undone where
+    /// [`Self::turn`] says it was read turned. `None` where the box does not fit the page.
+    pub fn to_declared(&self, r: QRect) -> Option<QRect> {
+        let (w, h) = (self.width, self.height);
+        let (x0, y0, x1, y1) = (r.x0(), r.y0(), r.x1(), r.y1());
+        let (a, b, c, d) = match self.turn {
+            90 => (y0, w - x1, y1, w - x0),
+            180 => (w - x1, h - y1, w - x0, h - y0),
+            270 => (h - y1, x0, h - y0, x1),
+            _ => (x0, y0, x1, y1),
+        };
+        QRect::new(a, b, c, d).ok()
+    }
 }
 
 /// One ordered, typed node.
@@ -2893,6 +2924,14 @@ impl DocumentRepresentation {
         for page in &p.pages {
             if pages_by_id.insert(page.id.as_str(), page).is_some() {
                 return Err(Self::malformed(format!("duplicate page id `{}`", page.id)));
+            }
+            // Decision #155: a page is read as declared or a quarter turn round, or two, or three.
+            if !matches!(page.turn, 0 | 90 | 180 | 270) {
+                return Err(Self::malformed(format!(
+                    "page `{}` states turn {}; a page is read 0, 90, 180 or 270 degrees beyond \
+                     its rotation",
+                    page.id, page.turn
+                )));
             }
             // Decision #62: the box a viewer shows is part of the page, never past it.
             if let Some(v) = page.visible {
@@ -3522,6 +3561,37 @@ impl DocumentRepresentation {
 }
 
 #[cfg(test)]
+mod turn_tests {
+    use super::*;
+
+    /// **A box on a turned page maps back to the declared frame** (decision #155): a page
+    /// declared 300 by 400 points and read a quarter turn clockwise is 400 by 300 in its own
+    /// frame; a box near its top-left corner lies along the declared page's left edge, near the
+    /// bottom. Half and three-quarter turns, and no turn, as their geometry says.
+    #[test]
+    fn a_box_on_a_turned_page_maps_back_to_the_declared_frame() {
+        let page = |turn: i64, width: i64, height: i64| PageRecord {
+            id: NodeId::from_parts(crate::IdKind::Page, 1),
+            index: 1,
+            width,
+            height,
+            rotation: 0,
+            turn,
+            visible: None,
+        };
+        let r = QRect::new(1000, 2000, 3000, 5000).unwrap();
+        let back = |p: PageRecord| {
+            let q = p.to_declared(r).unwrap();
+            (q.x0(), q.y0(), q.x1(), q.y1())
+        };
+        assert_eq!(back(page(0, 30000, 40000)), (1000, 2000, 3000, 5000));
+        assert_eq!(back(page(90, 40000, 30000)), (2000, 37000, 5000, 39000));
+        assert_eq!(back(page(180, 30000, 40000)), (27000, 35000, 29000, 38000));
+        assert_eq!(back(page(270, 40000, 30000)), (25000, 1000, 28000, 3000));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::assurance::{PageState, PageStateEntry};
@@ -3592,6 +3662,7 @@ mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         }
     }
@@ -3758,6 +3829,28 @@ mod tests {
             GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
         );
         seal(vec![n], vec![p], vec![g]).unwrap()
+    }
+
+    /// **A page is read as declared or a quarter, half or three-quarter turn beyond it** (decision
+    /// #155): any other turn is refused.
+    #[test]
+    fn a_turn_other_than_a_quarter_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let mut p = page(&mut alloc, 1);
+        let n = node(&mut alloc, &p.id, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+        );
+        for turn in [0, 90, 180, 270] {
+            p.turn = turn;
+            seal(vec![n.clone()], vec![p.clone()], vec![g.clone()]).expect("a quarter turn");
+        }
+        for turn in [45, 360, -90] {
+            p.turn = turn;
+            let err = seal(vec![n.clone()], vec![p.clone()], vec![g.clone()]).unwrap_err();
+            assert!(err.to_string().contains("states turn"), "{err}");
+        }
     }
 
     /// **A reading is the run's own characters, and flags the ones it inserted** (decision #54).

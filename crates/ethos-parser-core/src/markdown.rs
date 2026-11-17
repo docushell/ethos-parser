@@ -689,7 +689,8 @@ pub(crate) fn continued_tables(repr: &crate::DocumentRepresentation) -> Vec<Opti
             && a.columns > 0
             && a.columns == b.columns
             && pa.index.checked_add(1) == Some(pb.index)
-            && (pa.width, pa.height, pa.rotation) == (pb.width, pb.height, pb.rotation)
+            && (pa.width, pa.height, (pa.rotation + pa.turn) % 360)
+                == (pb.width, pb.height, (pb.rotation + pb.turn) % 360)
             && last < next
             && payload.nodes[last + 1..next].iter().all(furniture)
             && sides_one(&a.page, &b.page)
@@ -6089,6 +6090,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = specs
@@ -6230,6 +6232,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = specs
@@ -6312,6 +6315,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = specs
@@ -6385,6 +6389,7 @@ pub(crate) mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = texts
@@ -7990,6 +7995,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = specs
@@ -8959,6 +8965,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             };
             let mut nodes = Vec::new();
@@ -9119,6 +9126,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             };
             let mut nodes = Vec::new();
@@ -9358,6 +9366,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             };
             let mut nodes = Vec::new();
@@ -10039,6 +10048,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             };
             // Median glyph 250, so a word gap of 62: `M` and `ission` abut, `ready` is 300 on.
@@ -10182,6 +10192,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             };
             let mut specs = corroborating(2);
@@ -10246,6 +10257,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let mut nodes = Vec::new();
@@ -10295,6 +10307,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let mut nodes = Vec::new();
@@ -10347,6 +10360,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let mut nodes = Vec::new();
@@ -10578,6 +10592,7 @@ pub(crate) mod tests {
                 width: 61200,
                 height: 79200,
                 rotation: 0,
+                turn: 0,
                 visible: None,
             })
             .collect();
@@ -11425,6 +11440,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let mut nodes: Vec<Node> = Vec::new();
@@ -11482,6 +11498,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = specs
@@ -11604,6 +11621,7 @@ pub(crate) mod tests {
             width: 61200,
             height: 79200,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let nodes: Vec<Node> = [("Yar", 7200i64), ("row", 8200)]
@@ -12036,6 +12054,20 @@ pub(crate) mod tests {
             edited(&repr, &|p| p.pages[1].rotation = 90),
             "a turned page",
         );
+        two(
+            edited(&repr, &|p| p.pages[1].turn = 90),
+            "a page read turned",
+        );
+        two(
+            edited(&repr, &|p| p.pages[0].turn = 90),
+            "a first page read turned",
+        );
+        // A page declared turned and read turned back is in the frame of one declared upright.
+        let back = edited(&repr, &|p| {
+            p.pages[1].rotation = 90;
+            p.pages[1].turn = 270;
+        });
+        assert_eq!(joins_in(back), 1, "read back upright");
         // Three columns on the next page.
         let lines = staff(&[("x", 2, None), ("y", 2, None), ("z", 2, None)]);
         let wide = Grid {

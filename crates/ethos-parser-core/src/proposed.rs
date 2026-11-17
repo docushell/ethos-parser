@@ -366,7 +366,9 @@ impl<'a> Plan<'a> {
                     if Some(k) == cut {
                         continue;
                     }
-                    let model_box = b.grid.map(|g| crate::assist::placed(g, frame));
+                    let model_box = b
+                        .grid
+                        .map(|g| crate::assist::placed(crate::assist::upright(g, at.turn), frame));
                     let duplicate = model_box.is_some_and(|m| {
                         let model = model_grid(&b.text);
                         engine_grids
@@ -1313,7 +1315,7 @@ mod tests {
     }
 
     /// A page's `[width, height]` after its turn, its rotation and its visible box.
-    type Frame = ([i64; 2], i64, Option<QRect>);
+    type Frame = ([i64; 2], i64, i64, Option<QRect>);
 
     /// [`record`], each page framed as `frames` says; a page past its end upright, 612 x 792
     /// points, uncropped.
@@ -1325,16 +1327,17 @@ mod tests {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let records: Vec<PageRecord> = (1..=pages.len() as u32)
             .map(|index| {
-                let ([width, height], rotation, visible) = frames
+                let ([width, height], rotation, turn, visible) = frames
                     .get(index as usize - 1)
                     .copied()
-                    .unwrap_or(([61200, 79200], 0, None));
+                    .unwrap_or(([61200, 79200], 0, 0, None));
                 PageRecord {
                     id: alloc.next(IdKind::Page).unwrap(),
                     index,
                     width,
                     height,
                     rotation,
+                    turn,
                     visible,
                 }
             })
@@ -1414,14 +1417,18 @@ mod tests {
         (id, version): (&str, &str),
     ) -> DocumentRepresentation {
         let pixels = Sha256Hex::of_bytes(b"made-up pixels").to_string();
-        // Each page rendered at its visible box's size, turned.
+        // Each page rendered at its visible box's size, turned as its rotation declares.
         let sizes: Vec<[i64; 2]> = repr
             .payload()
             .pages
             .iter()
             .map(|p| {
                 let [_, _, width, height] = crate::assist::frame_of(p);
-                [width, height]
+                if p.turn % 180 == 0 {
+                    [width, height]
+                } else {
+                    [height, width]
+                }
             })
             .collect();
         let pages: Vec<serde_json::Value> = replies
@@ -2676,18 +2683,24 @@ mod tests {
 
     /// **A block is placed on the page's visible box, turned as the record's sizes are** (design
     /// §4.3): on a cropped page the grid spans the crop, not the media box; on a turned page it
-    /// spans the turned width and height, with no rotation term.
+    /// spans the turned width and height, with no rotation term. On a page read turned (decision
+    /// #155) the picture shows the page as declared, so the grid turns with the page.
     #[test]
     fn a_block_is_placed_on_a_cropped_and_a_turned_page() {
         let run = |text, y: i64| (text, [21000, y, 59000, y + 1000]);
         let cropped = [run("Top run", 11000), run("Middle run", 26000)];
         let turned = [run("Second top", 5000), run("Second middle", 20000)];
+        let read_turned = [run("Third top", 5000), run("Third middle", 20000)];
         let crop = QRect::new(20000, 10000, 60000, 50000).unwrap();
         let repr = assisted(
             record_with(
-                &[&cropped, &turned],
+                &[&cropped, &turned, &read_turned],
                 None,
-                &[([61200, 79200], 0, Some(crop)), ([79200, 61200], 90, None)],
+                &[
+                    ([61200, 79200], 0, 0, Some(crop)),
+                    ([79200, 61200], 90, 0, None),
+                    ([79200, 61200], 0, 90, None),
+                ],
             ),
             &[
                 (
@@ -2701,14 +2714,22 @@ mod tests {
                     "![table](100,250,900,300) <table><tr><td>Second</td><td>top</td></tr>\
                      </table>",
                 ),
+                (
+                    3,
+                    "stop",
+                    "![table](250,100,300,900) <table><tr><td>Third</td><td>top</td></tr>\
+                     </table>",
+                ),
             ],
         );
         assert_eq!(
             markdown(&repr).markdown,
             format!(
-                "Top run\n\n{}\n\nMiddle run\n\nSecond top\n\n{}\n\nSecond middle\n",
+                "Top run\n\n{}\n\nMiddle run\n\nSecond top\n\n{}\n\nSecond middle\n\n\
+                 Third top\n\n{}\n\nThird middle\n",
                 quoted("table", &["| Top | run |\n> | --- | --- |"]),
-                quoted("table", &["| Second | top |\n> | --- | --- |"])
+                quoted("table", &["| Second | top |\n> | --- | --- |"]),
+                quoted("table", &["| Third | top |\n> | --- | --- |"])
             )
         );
     }
