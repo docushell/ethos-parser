@@ -28,7 +28,7 @@
 //!   furniture `drop_furniture` leaves out, not a table's text outside its cells, not a line the
 //!   guard leaves out — so no page is
 //!   swapped for words it would not show, nor to nothing; `engine` the page's share of the
-//!   engine-only Markdown. The engine's runs and tables on the page are left out, counted under
+//!   engine-only Markdown, a table's repeated header kept (decision #151). The engine's runs and tables on the page are left out, counted under
 //!   [`REPLACED_BY_PROPOSED_PAGE`], and where its first node stood the model's blocks follow, in
 //!   reply order.
 //! - **Added to**: each `table` and `chart` block, with the `title` or `caption` block just before
@@ -111,7 +111,8 @@ pub struct ProposedPage {
     pub page: NodeId,
     /// How many distinct words the blocks a swap would write hold.
     pub model_words: usize,
-    /// How many the engine-only Markdown holds of this page.
+    /// How many the engine-only Markdown holds of this page, a table's header row the next page
+    /// repeats kept (decision #151).
     pub engine_words: usize,
     /// How many are in both.
     pub shared_words: usize,
@@ -242,16 +243,22 @@ impl<'a> Plan<'a> {
     /// As [`crate::to_markdown`], whose engine-only projection the swap test reads.
     pub(crate) fn of(
         repr: &'a DocumentRepresentation,
-        drop_furniture: bool,
+        options: crate::ProjectionOptions,
     ) -> Result<Option<Self>, EngineError> {
         let p = repr.payload();
         let Some(record) = &p.assist else {
             return Ok(None);
         };
         let engine = engine_words(repr)?;
-        // The engine's tables as the projections write them, with their boxes, by page.
+        // The engine's tables as the projection writes them, with their boxes, by page: a
+        // repeated header left out unless kept (decision #151, review).
         let mut erasures = BTreeMap::new();
-        let tables = crate::markdown::plan_tables(repr, &mut erasures, &BTreeSet::new(), false);
+        let tables = crate::markdown::plan_tables(
+            repr,
+            &mut erasures,
+            &BTreeSet::new(),
+            !options.keep_repeated_header,
+        );
         let pitch = crate::markdown::pitch_reference(&p.nodes);
         let stretches = crate::markdown::read_stretches(&p.nodes, &pitch);
         let mut grids: BTreeMap<&str, Vec<(QRect, Grid)>> = BTreeMap::new();
@@ -296,7 +303,7 @@ impl<'a> Plan<'a> {
             // The blocks a swap would write: not the cut one, nor furniture left out on request.
             let kept = |k: usize, b: &AssistBlock| {
                 Some(k) != cut
-                    && !(drop_furniture
+                    && !(options.drop_furniture
                         && b.label.as_deref().is_some_and(|l| FURNITURE.contains(&l)))
             };
             let texts: Vec<String> = (0..)
@@ -618,7 +625,9 @@ fn decoded(text: &str) -> String {
 }
 
 /// The page's words in the engine-only Markdown, by page id: its `source` segments of that page's
-/// runs and the syntax after them, read as decision #123 read the Markdown.
+/// runs and the syntax after them, read as decision #123 read the Markdown. A table's header row
+/// the next page repeats is kept there, as #123's Markdown kept it: the engine read it, whether or
+/// not a projection writes it (decision #151, review).
 fn engine_words(
     repr: &DocumentRepresentation,
 ) -> Result<BTreeMap<&str, BTreeSet<String>>, EngineError> {
@@ -628,7 +637,10 @@ fn engine_words(
         &p.identity.parser_version,
         &p.identity.profile_sha256,
         "",
-        crate::ProjectionOptions::default(),
+        crate::ProjectionOptions {
+            keep_repeated_header: true,
+            ..crate::ProjectionOptions::default()
+        },
         None,
     )?;
     let page_of: BTreeMap<&str, &str> = p
@@ -2442,6 +2454,70 @@ mod tests {
             ),
             (2, 2, 2, false)
         );
+    }
+
+    /// **A repeated header the joined table leaves out still counts as read** (decision #151,
+    /// review): the swap test reads every row the engine read, so a continuation page is not
+    /// given to the model because its header no longer stands in the table, kept or not.
+    #[test]
+    fn a_left_out_repeated_header_counts_as_read() {
+        use crate::markdown::tests::{paged_tables, staff, FIRST, SECOND};
+        let reply = "![text](100,50,900,300) Name Dept Bob alpha bravo charlie delta echo foxtrot \
+                     golf";
+        let repr = assisted(
+            paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14),
+            &[(2, "stop", reply)],
+        );
+        for keep_repeated_header in [false, true] {
+            let options = ProjectionOptions {
+                keep_repeated_header,
+                ..ProjectionOptions::default()
+            };
+            let md = markdown_with(&repr, options);
+            let page = &md.proposed.as_ref().unwrap().pages[0];
+            assert_eq!(
+                (
+                    page.model_words,
+                    page.engine_words,
+                    page.shared_words,
+                    page.swapped
+                ),
+                (10, 7, 3, false)
+            );
+        }
+    }
+
+    /// **A model table is a duplicate of the joined table as the projection writes it**
+    /// (decision #151, review): its repeated header left out, or kept on request.
+    #[test]
+    fn a_duplicate_is_judged_against_the_joined_table_as_written() {
+        use crate::markdown::tests::{paged_tables, staff, Grid, FIRST, SECOND};
+        let header_only = Grid {
+            cells: &[7, 8],
+            ..SECOND
+        };
+        let runs: Vec<_> = staff(&[])
+            .into_iter()
+            .filter(|l| !matches!(l.0, "Bob" | "Tax" | "Cy" | "Legal"))
+            .collect();
+        let reply = table_at("0,0,1000,1000", &[["Name", "Dept"], ["Ann", "Audit"]]);
+        let repr = assisted(
+            paged_tables(&runs, &[FIRST, header_only], crate::TABLE_DETECTION_V14),
+            &[(1, "stop", &reply)],
+        );
+        let duplicate = |keep_repeated_header| {
+            let options = ProjectionOptions {
+                keep_repeated_header,
+                ..ProjectionOptions::default()
+            };
+            let md = markdown_with(&repr, options);
+            let counted = lines(&md.proposed)[0]
+                .2
+                .contains(&(PROPOSED_TABLE_DUPLICATE.to_string(), 1));
+            (counted, md.markdown.contains("**Proposed:**"))
+        };
+        assert_eq!(duplicate(false), (true, false));
+        assert_eq!(duplicate(true), (false, true));
     }
 
     /// **A caption is added for the words it writes** (review): one whose words not the engine's

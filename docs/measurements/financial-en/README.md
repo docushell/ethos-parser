@@ -136,8 +136,10 @@ header row at the top of each, citing it by the same `/TH` elements as the first
 
 - **c9b364c reads four tables**, one a page, each opening with the header row.
 - **Since decision #142 it reads one**: the next page's piece goes on with the table, by the tree's
-  own header elements cited again (3 joins, `tables-joined-across-pages-v1`). The three repeated
-  header rows stay rows; `--drop-furniture` leaves them out, counted.
+  own header elements cited again (3 joins, `tables-joined-across-pages-v1`). Since decision
+  #151 the three repeated header rows are left out, counted under
+  `repeated-table-header-not-projected-v1`; `--keep-repeated-header` keeps them. Every check
+  below scores the same either way.
 - Its own checks, the same at c9b364c and after the join: `table_rows` and `table_rows_exact`
   91/95 (the summary's four pairs fail, as on every statement), `amounts` 183/183, `dates` 13/13.
 

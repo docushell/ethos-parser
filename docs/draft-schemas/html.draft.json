@@ -284,7 +284,7 @@
               "engine_words": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Distinct words of this page in the engine-only Markdown."
+                "description": "Distinct words of this page in the engine-only Markdown, a table's header row the next page repeats kept (decision #151)."
               },
               "shared_words": {
                 "type": "integer",

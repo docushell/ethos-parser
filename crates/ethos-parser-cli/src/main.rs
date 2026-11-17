@@ -542,6 +542,11 @@ struct HtmlArgs {
     #[arg(long)]
     drop_furniture: bool,
 
+    /// Keep a table's header row that the next page repeats as a row of the joined table, as
+    /// `markdown --keep-repeated-header` does (decision #151).
+    #[arg(long)]
+    keep_repeated_header: bool,
+
     /// On a document that declares no author structure (an untagged PDF), write a list item for
     /// each layout unit opening with a list marker, two or more in a row, counted, as
     /// `markdown --infer-lists` does.
@@ -594,11 +599,16 @@ struct MarkdownArgs {
     /// and a folio go, a whole line at a time; a numbered chapter title at the top of each
     /// chapter's page goes too. A Word document's header and footer parts go whole, their tables
     /// with them (decision #136) — so a resume whose name sits only in its page header loses it. Counted under the census bucket `page-furniture-not-projected-v1`; the
-    /// representation keeps every run (decision #134). A table's header row that the next page
-    /// repeats, where the table goes on there as one, goes too, counted under
-    /// `repeated-table-header-not-projected-v1` (decision #142).
+    /// representation keeps every run (decision #134).
     #[arg(long)]
     drop_furniture: bool,
+
+    /// Keep a table's header row that the next page repeats, where the table goes on there as
+    /// one (decision #142), as a row of the joined table. By default it is left out, as a reader
+    /// skips it, counted under `repeated-table-header-not-projected-v1`; the representation keeps
+    /// it (decision #151). Wins over `--drop-furniture`.
+    #[arg(long)]
+    keep_repeated_header: bool,
 
     /// On a document that declares no author structure (an untagged PDF), write a list item for
     /// each layout unit opening with a list marker — a bullet, or a number or a letter closed by
@@ -1398,7 +1408,12 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.markdown_rule,
-        projection_options(args.drop_furniture, args.infer_lists, args.drop_hidden),
+        projection_options(
+            args.drop_furniture,
+            args.infer_lists,
+            args.drop_hidden,
+            args.keep_repeated_header,
+        ),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
@@ -1455,16 +1470,18 @@ fn run_elements(args: ElementsArgs) -> ExitCode {
 }
 
 /// The projection options a `markdown` or `html` command line asks for (decisions #134, #138,
-/// #139).
+/// #139, #151).
 fn projection_options(
     drop_furniture: bool,
     infer_lists: bool,
     drop_hidden: bool,
+    keep_repeated_header: bool,
 ) -> ethos_parser_core::ProjectionOptions {
     let mut options = ethos_parser_core::ProjectionOptions::default();
     options.drop_furniture = drop_furniture;
     options.infer_lists = infer_lists;
     options.drop_flagged = drop_hidden;
+    options.keep_repeated_header = keep_repeated_header;
     options
 }
 
@@ -1538,7 +1555,12 @@ fn run_html(args: HtmlArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.html_rule,
-        projection_options(args.drop_furniture, args.infer_lists, args.drop_hidden),
+        projection_options(
+            args.drop_furniture,
+            args.infer_lists,
+            args.drop_hidden,
+            args.keep_repeated_header,
+        ),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),

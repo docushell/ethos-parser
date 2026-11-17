@@ -554,8 +554,51 @@ fn a_table_whose_next_page_repeats_its_header_is_one_table_and_a_heading_keeps_t
     let (joined, grids, markdown) = joins("goes-on", "", &more);
     assert_eq!((joined, grids), (1, 1), "{markdown}");
     assert!(
-        markdown.contains("| Widget | $3.50 | 2 |\n| Item | Price | Qty |\n| Gadget | $4.50 | 3 |"),
+        markdown.contains("| Widget | $3.50 | 2 |\n| Gadget | $4.50 | 3 |"),
         "{markdown}"
+    );
+    assert_eq!(markdown.matches("| Item | Price | Qty |").count(), 1);
+    // Decision #151: the repeat goes, counted; `--keep-repeated-header` keeps it a row.
+    let repr = dir.join("repr.json");
+    let repr = repr.to_str().unwrap();
+    let a = markdown_of(Path::new(repr));
+    let repeated = |a: &Value| {
+        a["coverage"]["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["code"] == "repeated-table-header-not-projected-v1")
+            .map(|b| (b["chars"].as_u64().unwrap(), b["nodes"].as_u64().unwrap()))
+    };
+    assert_eq!(repeated(&a), Some((12, 3)));
+    let kept = |command: &str| -> Value {
+        let out = engine(&[command, "--keep-repeated-header", repr]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).expect("canonical JSON")
+    };
+    let k = kept("markdown");
+    assert!(
+        k["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("| Widget | $3.50 | 2 |\n| Item | Price | Qty |\n| Gadget | $4.50 | 3 |"),
+        "{k}"
+    );
+    assert_eq!(repeated(&k), None);
+    let h = kept("html");
+    assert_eq!(
+        h["html"].as_str().unwrap().matches("<td>Item</td>").count(),
+        2
+    );
+    assert_eq!(repeated(&h), None);
+    assert_eq!(
+        repeated(&serde_json::from_slice(&engine(&["html", repr]).stdout).unwrap()),
+        Some((12, 3))
     );
 
     let heading = "BT /F1 14 Tf 1 0 0 1 36 368 Tm (February) Tj ET";
@@ -1011,6 +1054,7 @@ fn no_cli_path_emits_markdown_without_its_map() {
                 | "--source"
                 | "--ocr"
                 | "--drop-furniture"
+                | "--keep-repeated-header"
                 | "--infer-lists"
                 | "--drop-hidden"
         )),

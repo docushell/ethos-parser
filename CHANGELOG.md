@@ -32,6 +32,31 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A table's header row the next page repeats is left out of the joined table (decision #151)
+
+Where a table goes on onto the next page under a repeat of its header (decision #142, below),
+Markdown and HTML wrote that repeat as a row of the joined table, so a grid read from them held a
+row of column names between two rows of values. **The representation is unchanged**: it keeps the
+row, as it keeps both tables.
+
+- By default the repeat is left out, counted under the census bucket
+  `repeated-table-header-not-projected-v1`. `markdown --keep-repeated-header` and
+  `html --keep-repeated-header` (`ProjectionOptions::keep_repeated_header`) keep it a row; the
+  flag wins over `--drop-furniture`, which no longer decides it. The MCP `markdown` tool writes
+  the default, the row left out and counted in its summary.
+- Only a first row that repeats the header cell for cell, every cell one row tall, goes, as
+  before; a header two rows deep joins and stays a row. The element view is unchanged: it gives
+  the record's cells, every row with its page.
+- A drafting model's page (decision #147) is swapped as before: the swap test counts the
+  repeated header among the words the engine read, kept or not. A model table is a duplicate where
+  it equals the joined table as the projection writes it, so one equal to a table whose only
+  continuation row was the repeat is now a duplicate (review).
+- Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet; no
+  `profile_sha256` moves. Measured: ParseBench and opendataloader-bench byte-identical (every
+  document one page but one of three, with no join); on the gate's eight PDFs with their structure
+  trees stripped, three change, 28 joins each losing one row and nothing else, and
+  `--keep-repeated-header` gives the earlier bytes on all eight.
+
 ### `--assist-pages`: a trigger chooses the pages a model reads (decision #150)
 
 `extract --assist` asks for a page only where the engine's own record says a model could help. The
@@ -151,7 +176,7 @@ changes) and say what they wrote and left out. **Engine-only output does not mov
   `--drop-furniture` leaves out, not a table's text outside its cells, not a line the guard leaves
   out (review: thirty blocks each with a contradicted value swapped a page for words it did not
   show), so no page is swapped for words it would not show, nor to nothing — and `engine` the
-  page's share of the engine-only Markdown. The engine's runs and tables there are left out, counted in `coverage.dropped` under
+  page's share of the engine-only Markdown, a table's repeated header kept (decision #151). The engine's runs and tables there are left out, counted in `coverage.dropped` under
   `replaced-by-proposed-page-v1`, and the census balances; a table the next page goes on with is
   not joined across such a page (decision #142's join held off), so no row is written that no cell
   holds. Where the page's first node stood, the model's blocks follow in reply order.
@@ -457,8 +482,9 @@ as two. **The representation is unchanged**: both table records stay as read.
   Each join is counted under `tables-joined-across-pages-v1` in the structural census. The
   element view gives one table element: cells on a later page carry `page` and their own box,
   and `continued` names the records joined in (draft schema updated).
-- A repeated header row stays a row. `--drop-furniture` leaves it out, counted under the census
-  bucket `repeated-table-header-not-projected-v1`.
+- A repeated header row is left out, counted under the census bucket
+  `repeated-table-header-not-projected-v1`; `--keep-repeated-header` keeps it (decision #151,
+  above).
 - Folded into `markdown-blocks-v14`, `html-blocks-v14` and `elements-units-v1`, which no release
   carries yet; no `profile_sha256` moves. Measured: ParseBench and opendataloader-bench byte-identical (every page of both is one page); on the gate's documents with their structure trees stripped, 50 joins in five NIST publications, each read and each a real continuation, none false; the review probe and the made-up four-page statement read as one table; three rounds of review with made-up PDFs found no false join left in the cases the known limits do not name.
 - Known limits: **a continuation that does not repeat its header stays a table of its own** —

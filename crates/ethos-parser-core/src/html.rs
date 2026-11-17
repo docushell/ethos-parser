@@ -182,7 +182,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// decision #131's: a raised or lowered mark stays on its line, as in Markdown. And decision
 /// #136's: a DOCX heading, list item and table as the file declares them, and a layout table as
 /// its blocks, as in Markdown. And decision #142's: a table the next page goes on with is one
-/// `<table>`, as in Markdown.
+/// `<table>`, as in Markdown, and decision #151's: the header row the next page repeats is left
+/// out of it, counted, as in Markdown.
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -464,7 +465,7 @@ pub fn to_html_with(
         Default::default()
     };
     // Decision #147, as in `crate::markdown`: a page a drafting model's reading replaces.
-    let plan = crate::proposed::Plan::of(repr, options.drop_furniture)?;
+    let plan = crate::proposed::Plan::of(repr, options)?;
     let replaced = plan.as_ref().map(|p| &p.replaced);
     let tables_left_out = match replaced {
         Some(replaced) => office.union(replaced).copied().collect(),
@@ -474,7 +475,7 @@ pub fn to_html_with(
         repr,
         &mut erasures,
         &tables_left_out,
-        options.drop_furniture,
+        !options.keep_repeated_header,
     );
     // Decision #139, as in `crate::markdown`.
     let flagged = if options.drop_flagged {
@@ -2655,17 +2656,17 @@ mod tests {
     }
 
     /// **A table the next page goes on with is one `<table>`** (decision #142), counted as
-    /// Markdown counts it, and a second page's repeat of its header row is a row of it unless
-    /// furniture is left out on request, as in Markdown.
+    /// Markdown counts it, and a second page's repeat of its header row goes, as in Markdown
+    /// (decision #151), unless asked to stay a row of it.
     #[test]
     fn a_table_the_next_page_goes_on_with_is_one_table_element() {
         use crate::markdown::tests::{paged_tables, staff, FIRST, SECOND};
         let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
         let profile = Profile::default();
         let sha = profile.profile_sha256().unwrap();
-        let with = |drop_furniture| {
+        let with = |keep_repeated_header| {
             let options = ProjectionOptions {
-                drop_furniture,
+                keep_repeated_header,
                 ..ProjectionOptions::default()
             };
             let html = to_html_with(
@@ -2684,7 +2685,7 @@ mod tests {
             );
             (html.expect("projects"), md.expect("projects"))
         };
-        let (a, md) = with(false);
+        let (a, md) = with(true);
         assert_eq!(
             a.html,
             "<p>Staff</p>\n<table>\n<tr>\n<td>Name</td>\n<td>Dept</td>\n</tr>\n<tr>\n<td>Ann</td>\n\
@@ -2702,13 +2703,30 @@ mod tests {
         assert_eq!(joins(&md.coverage), Some(1));
         assert!(a.coverage.balances());
 
-        let (a, md) = with(true);
+        let (a, md) = with(false);
         assert_eq!(a.html.matches("<td>Name</td>").count(), 1);
         assert_eq!(a.coverage.dropped, md.coverage.dropped);
         assert!(a.coverage.dropped.iter().any(|b| b.code
             == crate::markdown::REPEATED_TABLE_HEADER_NOT_PROJECTED
             && (b.chars, b.nodes) == (8, 2)));
         assert!(a.coverage.balances());
+
+        // Kept, furniture left out or not.
+        let options = ProjectionOptions {
+            drop_furniture: true,
+            keep_repeated_header: true,
+            ..ProjectionOptions::default()
+        };
+        let both = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(both.html.matches("<td>Name</td>").count(), 2);
+        assert!(both.coverage.balances());
     }
 
     /// **A unit opening with a marker is an `<li>`, on request** (decision #138), nested inside

@@ -298,7 +298,8 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// ([`script_continues`]), where `-v13` wrote a line break either side of a mark inside a line,
 /// and emphasis stays open where only the script changes between two runs with nothing between.
 /// And so is decision #142's: a table the next page goes on with is one table
-/// ([`continued_tables`]), where `-v13` wrote one a page.
+/// ([`continued_tables`]), where `-v13` wrote one a page; and decision #151's: the header row
+/// the next page repeats is left out of it, counted.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -425,9 +426,9 @@ pub(crate) fn layout_tables(
 /// a page (decision #142), counted once per join. The record keeps both tables as read.
 pub(crate) const TABLES_JOINED_ACROSS_PAGES: &str = "tables-joined-across-pages-v1";
 
-/// The runs of a continuation's first row where it repeats its table's header cell for cell,
-/// left out on request ([`ProjectionOptions::drop_furniture`]), as a running head is (decision
-/// #142). Kept, as a row of the table, by default.
+/// The runs of a continuation's first row where it repeats its table's header cell for cell
+/// (decision #142), left out by default (decision #151); kept, as a row of the table, on request
+/// ([`ProjectionOptions::keep_repeated_header`]).
 pub(crate) const REPEATED_TABLE_HEADER_NOT_PROJECTED: &str =
     "repeated-table-header-not-projected-v1";
 
@@ -3494,12 +3495,14 @@ pub(crate) const PAGE_FURNITURE_NOT_PROJECTED: &str = "page-furniture-not-projec
 /// [`PAGE_FURNITURE_NOT_PROJECTED`] is, and only with the option.
 pub(crate) const FLAGGED_TEXT_NOT_PROJECTED: &str = "flagged-text-not-projected-v1";
 
-/// What a projection leaves out beyond its rule, on its caller's request (decision #134).
+/// What a projection leaves out beyond its rule, or keeps that its rule leaves out, on its
+/// caller's request (decision #134).
 ///
 /// **Off by default, and off is [`to_markdown`] and [`crate::to_html`] byte for byte.** No option
 /// moves a rule id. What one leaves out is counted under a code of its own, so an artifact shows
 /// where the option acted; where it found nothing to leave out, the artifact is the default one,
-/// byte for byte, and either call reproduces it.
+/// byte for byte, and either call reproduces it. `keep_repeated_header` keeps what the rule
+/// leaves out and counts (decision #151): where it acts, that count is gone.
 ///
 /// **Non-exhaustive**, so a later option is no breaking change: a caller outside this crate starts
 /// from `ProjectionOptions::default()` and sets the fields it wants.
@@ -3520,11 +3523,14 @@ pub struct ProjectionOptions {
     /// left out ends there, and the list around it, as the furniture's own block ended them.
     /// Since decision #136, a Word document's header and footer parts go too, whole: a section
     /// sets them on its pages by declaration, and the record reads each once.
-    /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`]. Since decision
-    /// #142, a table's header row the next page repeats, where the table goes on there as one
-    /// ([`continued_tables`]), goes too, counted as `repeated-table-header-not-projected-v1`; by
-    /// default it stays a row of the table.
+    /// Counted as `page-furniture-not-projected-v1`. See [`repeated_furniture`].
     pub drop_furniture: bool,
+    /// Keep a table's header row that the next page repeats, where the table goes on there as
+    /// one ([`continued_tables`], decision #142), as a row of the joined table. By default it goes
+    /// (decision #151), as a reader of the page skips it, counted as
+    /// `repeated-table-header-not-projected-v1`; the record keeps it. This wins over
+    /// [`Self::drop_furniture`].
+    pub keep_repeated_header: bool,
     /// Write a list item for each layout unit opening with a list marker, on a document that
     /// declares no author structure (decision #138): a bullet, or a number of up to three digits
     /// or one letter closed by `.` or `)` — `1.`, `a)`, `(3)` — followed by its text. The
@@ -4414,7 +4420,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 /// 3. **A GFM table** for every table on the representation, at the position of the first run one
 ///    of its cells claims. A run emitted inside a table is **not** also emitted as a paragraph —
 ///    the characters move from linear source to cell source, they are not duplicated and they are
-///    not dropped.
+///    not dropped — but for a header row the next page repeats where the table goes on there,
+///    left out and counted unless kept (decision #151).
 /// 4. **A list item** for a run the structure tree places in an `/L`; nothing for a bullet
 ///    glyph, a hanging indent or a font name — unless the caller asks [`to_markdown_with`] to read
 ///    a unit opening with a marker as one, counted (decision #138).
@@ -4489,7 +4496,7 @@ pub fn to_markdown_with(
     markdown_rule: &str,
     options: ProjectionOptions,
 ) -> Result<MarkdownArtifact, EngineError> {
-    let plan = crate::proposed::Plan::of(repr, options.drop_furniture)?;
+    let plan = crate::proposed::Plan::of(repr, options)?;
     markdown_of(
         repr,
         parser_version,
@@ -4552,7 +4559,7 @@ pub(crate) fn markdown_of(
         repr,
         &mut erasures,
         &tables_left_out,
-        options.drop_furniture,
+        !options.keep_repeated_header,
     );
     // Decision #139: flagged runs leave their cells, so no table writes them.
     let flagged = if options.drop_flagged {
@@ -5342,8 +5349,9 @@ pub(crate) struct TablePlan<'a> {
     /// (decision #135). `None` for every table whose cells are not workbook cells.
     pub(crate) caption: Option<&'a str>,
     /// Decision #142: the runs of each continuation's first row that repeats this table's
-    /// header, left out on request and counted under [`REPEATED_TABLE_HEADER_NOT_PROJECTED`].
-    /// Empty by default, where that row stays a row of the table.
+    /// header, left out unless kept on request, counted under
+    /// [`REPEATED_TABLE_HEADER_NOT_PROJECTED`]. Empty where that row is kept a row of the table
+    /// (decision #151).
     pub(crate) repeated: Vec<&'a crate::Node>,
 }
 
@@ -11698,8 +11706,8 @@ pub(crate) mod tests {
 
     /// **A table whose next page repeats its header is one table** (decision #142): that page's
     /// rows follow the first page's, the furniture between the two goes after it, and the join is
-    /// counted. The repeated header stays a row unless furniture is left out on request, where it
-    /// goes too, counted under its own code. The record keeps both tables.
+    /// counted. The repeated header goes, counted under its own code (decision #151), and stays a
+    /// row on request, furniture left out or not. The record keeps both tables.
     #[test]
     fn a_table_whose_next_page_repeats_its_header_is_one_table() {
         let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
@@ -11707,12 +11715,15 @@ pub(crate) mod tests {
         let a = artifact_of(repr.clone());
         assert_eq!(
             a.markdown,
-            "Staff\n\n| Name | Dept |\n| --- | --- |\n| Ann | Audit |\n| Name | Dept |\n\
-             | Bob | Tax |\n| Cy | Legal |\n\nPage 1\n\nPage 2\n"
+            "Staff\n\n| Name | Dept |\n| --- | --- |\n| Ann | Audit |\n| Bob | Tax |\n\
+             | Cy | Legal |\n\nPage 1\n\nPage 2\n"
         );
         assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 1);
         assert_eq!(erasure(&a, GFM_ROW_ZERO_SEPARATOR), 1, "one delimiter row");
-        assert_eq!(bucket(&a, REPEATED_TABLE_HEADER_NOT_PROJECTED), None);
+        assert_eq!(
+            bucket(&a, REPEATED_TABLE_HEADER_NOT_PROJECTED),
+            Some((8, 2))
+        );
         assert!(a.coverage.balances());
 
         let d = artifact_with(&repr, DROP_FURNITURE);
@@ -11727,9 +11738,35 @@ pub(crate) mod tests {
         );
         assert_eq!(erasure(&d, TABLES_JOINED_ACROSS_PAGES), 1);
         assert!(d.coverage.balances());
+
+        let keep = |drop_furniture| {
+            artifact_with(
+                &repr,
+                ProjectionOptions {
+                    drop_furniture,
+                    keep_repeated_header: true,
+                    ..ProjectionOptions::default()
+                },
+            )
+        };
+        let k = keep(false);
+        assert_eq!(
+            k.markdown,
+            "Staff\n\n| Name | Dept |\n| --- | --- |\n| Ann | Audit |\n| Name | Dept |\n\
+             | Bob | Tax |\n| Cy | Legal |\n\nPage 1\n\nPage 2\n"
+        );
+        assert_eq!(erasure(&k, TABLES_JOINED_ACROSS_PAGES), 1);
+        assert_eq!(bucket(&k, REPEATED_TABLE_HEADER_NOT_PROJECTED), None);
+        assert!(k.coverage.balances());
+        let k = keep(true);
+        assert!(k
+            .markdown
+            .contains("| Ann | Audit |\n| Name | Dept |\n| Bob | Tax |"));
+        assert_eq!(bucket(&k, REPEATED_TABLE_HEADER_NOT_PROJECTED), None);
+        assert!(k.coverage.balances());
     }
 
-    /// A table of three pages goes on twice, and is one table.
+    /// A table of three pages goes on twice, and is one table; both repeats of its header go.
     #[test]
     fn a_table_of_three_pages_is_one_table() {
         let lines = staff(&[
@@ -11752,8 +11789,13 @@ pub(crate) mod tests {
         assert_eq!(grids_in(&a.markdown), 1, "{}", a.markdown);
         assert!(a
             .markdown
-            .contains("| Cy | Legal |\n| Name | Dept |\n| Dee | Ops |\n"));
+            .contains("| Ann | Audit |\n| Bob | Tax |\n| Cy | Legal |\n| Dee | Ops |\n"));
+        assert_eq!(a.markdown.matches("| Name | Dept |").count(), 1);
         assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 2);
+        assert_eq!(
+            bucket(&a, REPEATED_TABLE_HEADER_NOT_PROJECTED),
+            Some((16, 4))
+        );
         assert!(a.coverage.balances());
     }
 
@@ -12311,7 +12353,7 @@ pub(crate) mod tests {
             p.nodes[3].text = " ".into();
             p.nodes[9].text = " ".into();
         });
-        let a = artifact_with(&reaching, DROP_FURNITURE);
+        let a = artifact_of(reaching.clone());
         assert!(a.coverage.balances());
         assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 1);
         assert_eq!(bucket(&a, REPEATED_TABLE_HEADER_NOT_PROJECTED), None);
@@ -12470,12 +12512,14 @@ pub(crate) mod tests {
         drop_furniture: true,
         infer_lists: false,
         drop_flagged: false,
+        keep_repeated_header: false,
     };
 
     const DROP_FLAGGED: ProjectionOptions = ProjectionOptions {
         drop_furniture: false,
         infer_lists: false,
         drop_flagged: true,
+        keep_repeated_header: false,
     };
 
     /// `repr` with the runs at `at` carrying a finding, resealed.
@@ -12991,6 +13035,7 @@ pub(crate) mod tests {
         drop_furniture: false,
         infer_lists: true,
         drop_flagged: false,
+        keep_repeated_header: false,
     };
 
     /// **A unit opening with a marker is a list item, on request, and counted** (decision #138):
