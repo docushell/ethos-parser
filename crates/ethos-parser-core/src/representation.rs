@@ -2389,6 +2389,9 @@ impl PageRecord {
     pub fn to_declared(&self, r: QRect) -> Option<QRect> {
         let (w, h) = (self.width, self.height);
         let (x0, y0, x1, y1) = (r.x0(), r.y0(), r.x1(), r.y1());
+        if x0 < 0 || y0 < 0 || x1 > w || y1 > h {
+            return None;
+        }
         let (a, b, c, d) = match self.turn {
             90 => (y0, w - x1, y1, w - x0),
             180 => (w - x1, h - y1, w - x0, h - y0),
@@ -3588,6 +3591,11 @@ mod turn_tests {
         assert_eq!(back(page(90, 40000, 30000)), (2000, 37000, 5000, 39000));
         assert_eq!(back(page(180, 30000, 40000)), (27000, 35000, 29000, 38000));
         assert_eq!(back(page(270, 40000, 30000)), (25000, 1000, 28000, 3000));
+        // A box past the page's edge does not fit it; one on its edges does.
+        let off = QRect::new(-100, 0, 100, 100).unwrap();
+        assert_eq!(page(0, 30000, 40000).to_declared(off), None);
+        let whole = QRect::new(0, 0, 40000, 30000).unwrap();
+        assert!(page(90, 40000, 30000).to_declared(whole).is_some());
     }
 }
 

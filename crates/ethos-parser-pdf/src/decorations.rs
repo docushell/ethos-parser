@@ -79,7 +79,8 @@ pub(crate) struct Ink {
 
 impl Ink {
     /// The page's stroked level `rules` and vertical `uprights`, and the `rects` it painted in a
-    /// colour of its own (`white` are those a fill painted white, which draw no line). A rule
+    /// colour of its own (`white` are those that draw no line: a fill painted white, and an outline
+    /// stroked white or dashed). A rule
     /// inside one of the `wide` bars a line stroked a point wide or more draws (decision #105) is
     /// as tall as its bar: a thick stroke painting a box is no thin line.
     pub(crate) fn of(
@@ -151,12 +152,34 @@ pub(crate) struct Marks {
 /// Each run's marks, in `seen`'s order.
 pub(crate) fn marks(seen: &[Seen], ink: &Ink) -> Vec<Marks> {
     let mut out = vec![Marks::default(); seen.len()];
+    // The placed runs by baseline (review): a stroke reads those whose band the biggest em can
+    // reach it from, where reading every run for every stroke was quadratic in a page's lines.
+    let mut by_y: Vec<(i64, usize)> = seen
+        .iter()
+        .enumerate()
+        .filter_map(|(i, run)| match *run {
+            Seen::Placed { y, .. } => Some((y, i)),
+            _ => None,
+        })
+        .collect();
+    by_y.sort_unstable();
+    let big = seen
+        .iter()
+        .filter_map(|run| match *run {
+            Seen::Placed { em, .. } => Some(em),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
     for stroke in ink.strokes.iter().filter(|s| !boxed(s, &ink.posts)) {
+        let lo = by_y.partition_point(|&(y, _)| 100 * (stroke.y - y) > UNDER_DEPTH * big);
+        let hi = by_y.partition_point(|&(y, _)| 100 * (y - stroke.y) <= STRIKE_HIGH * big);
+        let near = &by_y[lo..hi];
         for strike in [true, false] {
             // The runs it lies across, in the band it marks.
-            let across: Vec<(usize, i64, i64, i64)> = seen
+            let across: Vec<(usize, i64, i64, i64)> = near
                 .iter()
-                .enumerate()
+                .map(|&(_, i)| (i, &seen[i]))
                 .filter_map(|(i, run)| match *run {
                     Seen::Placed { x0, x1, y, em }
                         if in_band(stroke, y, em, strike)
@@ -218,27 +241,36 @@ fn boxed(stroke: &Stroke, posts: &[Post]) -> bool {
 
 /// A space whose runs either side on its line carry a mark carries it too.
 fn carry(seen: &[Seen], out: &mut [Marks]) {
-    let placed = |k: usize| match seen[k] {
-        Seen::Placed { y, em, .. } => Some((y, em)),
+    let placed = |k: usize| match seen.get(k) {
+        Some(&Seen::Placed { y, em, .. }) => Some((y, em)),
         _ => None,
     };
-    for i in 0..seen.len() {
-        if seen[i] != Seen::Space {
+    // Each stretch of spaces once, between the runs either side of it (review): a space at a time
+    // searched its whole stretch again.
+    let mut i = 0;
+    while i < seen.len() {
+        let start = i;
+        while i < seen.len() && seen[i] == Seen::Space {
+            i += 1;
+        }
+        if i == start {
+            i += 1;
             continue;
         }
-        let before = (0..i).rev().find(|&k| seen[k] != Seen::Space);
-        let after = (i + 1..seen.len()).find(|&k| seen[k] != Seen::Space);
-        let (Some(b), Some(a)) = (before, after) else {
+        let Some(b) = start.checked_sub(1) else {
             continue;
         };
-        let (Some((yb, em)), Some((ya, _))) = (placed(b), placed(a)) else {
+        let (Some((yb, em)), Some((ya, _))) = (placed(b), placed(i)) else {
             continue;
         };
         if 10 * (ya - yb).abs() > em {
             continue;
         }
-        out[i].strike = out[b].strike && out[a].strike;
-        out[i].under = out[b].under && out[a].under;
+        let marks = Marks {
+            strike: out[b].strike && out[i].strike,
+            under: out[b].under && out[i].under,
+        };
+        out[start..i].fill(marks);
     }
 }
 
@@ -349,6 +381,10 @@ mod tests {
         ];
         let got = marks(&seen, &ink(&[line(97.0, 50, 133)], &[]));
         assert_eq!(got, [STRUCK, STRUCK, STRUCK, NONE, NONE]);
+        // Two spaces between them, both.
+        let seen = [at(50, 100, 40), Seen::Space, Seen::Space, at(93, 100, 40)];
+        let got = marks(&seen, &ink(&[line(97.0, 50, 133)], &[]));
+        assert_eq!(got, [STRUCK, STRUCK, STRUCK, STRUCK]);
         // Two struck runs on two lines: the space between them is on neither's line.
         let seen = [at(50, 100, 40), Seen::Space, at(50, 114, 40)];
         let got = marks(&seen, &ink(&[line(97.0, 50, 90), line(111.0, 50, 90)], &[]));

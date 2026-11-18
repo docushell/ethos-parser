@@ -643,6 +643,10 @@ pub struct Interpreter<'a> {
     /// [`Interpreter::rects`]. On white paper they draw no line a reader sees, so a grid's merged
     /// cells are never read from their edges. Dropped with a form's ink, as `rects` is.
     pub white: Vec<PathRect>,
+    /// The rectangles a stroke outlined white or dashed, over no fill or a white one (decision
+    /// #154, review), also in [`Interpreter::rects`]: no line a reader sees, so no strikeout or
+    /// underline is read from them.
+    pub faint: Vec<PathRect>,
     /// The rectangles a fill alone painted over paint of their own colour (`ruled-rects-v12`) —
     /// the last fill beneath that contains them, which since decision #105 the page does not clip
     /// away — also in [`Interpreter::rects`]: a cell's padding
@@ -808,6 +812,7 @@ impl<'a> Interpreter<'a> {
             undecodable: Vec::new(),
             rects: Vec::new(),
             white: Vec::new(),
+            faint: Vec::new(),
             filled_alone: Vec::new(),
             inset: Vec::new(),
             painted: Vec::new(),
@@ -1675,16 +1680,21 @@ impl<'a> Interpreter<'a> {
                 self.pending_filled.clear();
                 self.pending_rounded.clear();
                 self.pending_wedges.clear();
+                // Decision #154: whether the paint draws its segments as lines a reader sees.
+                let solid = strokes
+                    && !self.gs.dashed
+                    && !(self.gs.stroke_device && self.gs.stroke.is_white());
+                // And (review) its rectangles: outlined white or dashed, over no fill or a white
+                // one, they draw no line a reader sees either.
+                if strokes && !solid && (!fills || self.gs.fill.is_white()) {
+                    self.faint.extend_from_slice(&self.pending);
+                }
                 self.rects.append(&mut self.pending);
                 // Decision #113: a rule outlined as a polygon is drawn by its fill.
                 if fills {
                     self.rects.append(&mut self.pending_rules);
                 }
                 self.pending_rules.clear();
-                // Decision #154: whether the paint draws its segments as lines a reader sees.
-                let solid = strokes
-                    && !self.gs.dashed
-                    && !(self.gs.stroke_device && self.gs.stroke.is_white());
                 self.segments.extend(
                     self.pending_segments
                         .drain(..)

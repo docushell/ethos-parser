@@ -87,6 +87,12 @@ main() {
   "$from/ethos-parser" --version >/dev/null 2>&1 || fail "the ethos-parser in $archive does not start on this machine; nothing was installed"
 
   mkdir -p "$dir"
+  # Copy every binary beside its target first, so a copy that fails (a full disk) replaces none.
+  for name in ethos-parser ethos-parser-ocr ethos-parser-assist; do
+    [ -f "$from/$name" ] || continue
+    cp "$from/$name" "$dir/.$name.$$"
+    chmod 755 "$dir/.$name.$$"
+  done
   installed=
   for name in ethos-parser ethos-parser-ocr ethos-parser-assist; do
     if [ ! -f "$from/$name" ]; then
@@ -94,9 +100,7 @@ main() {
       rm -f "$dir/$name"
       continue
     fi
-    # Copy beside the target, then rename over it, so a running copy is never half written.
-    cp "$from/$name" "$dir/.$name.$$"
-    chmod 755 "$dir/.$name.$$"
+    # Then rename each over its target, so a running copy is never half written.
     mv -f "$dir/.$name.$$" "$dir/$name"
     installed="$installed $name"
   done

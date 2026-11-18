@@ -52,8 +52,9 @@ found every one permissively licensed, but nothing kept it so.
 - `install.sh` installs a release on macOS or Linux in one line: it picks this machine's archive,
   checks it against the release's `SHA256SUMS.txt` and that its engine starts, and copies the
   binaries into `~/.local/bin` (`ETHOS_PARSER_VERSION`, `ETHOS_PARSER_INSTALL_DIR` and
-  `ETHOS_PARSER_RELEASE_URL` change that). Nothing is installed if either check fails. It is fetched from the repository, so the
-  release assets are unchanged.
+  `ETHOS_PARSER_RELEASE_URL` change that). Nothing is installed if either check fails, nor where
+  a copy fails (review): every binary is copied beside its target before any is renamed over
+  one. It is fetched from the repository, so the release assets are unchanged.
 - `docs/sample.pdf`, a made-up one-page report with a ruled table, an image and one line drawn
   invisible, for the quick start. `docs/images/overlay.png` is its `overlay`, rendered.
 - The README leads with what the parser is for, the one-line install and three commands on the
@@ -74,10 +75,12 @@ so its lines ran down the page and its tables and reading order fell apart.
   one way other than the one the declared rotation stands upright, the page is read in that way's
   upright frame: runs, rules, images, tables, figures and reading order alike. A run that does not
   move, runs off the axes (a diagonal watermark) or is mirrored counts against every way; a stamp
-  down the margin is too few lines. The page record states `turn` (90, 180 or 270, quarter turns
-  clockwise beyond `rotation`), its `width`, `height` and `visible` are the turned page's, and
-  `PageRecord::to_declared` maps a box back. Under `page-observations-v5`, which no release
-  carries yet.
+  down the margin is too few lines, and a run of spaces inks no line (review). A line is level
+  or upright as the page is read (review): on a page read a quarter turn round, a line drawn up
+  the declared page is a level rule. The page record states `turn` (90, 180 or 270, quarter
+  turns clockwise beyond `rotation`), its `width`, `height` and `visible` are the turned page's,
+  and `PageRecord::to_declared` maps a box back, `None` for one past the page's edge (review).
+  Under `page-observations-v5`, which no release carries yet.
 - A running head or folio set upright on a turned page is still furniture; a table joins across
   pages read in the same frame; the overlay draws where the text is; `elements` carries `turn`;
   `ground`, whose page has no `turn`, states the frame as its `rotation`. `--assist` answers a
@@ -100,12 +103,14 @@ words, and the engine wrote them plain, so a redline's deletions read as text st
   through its middle (0.15 to 0.5 em above the baseline) or just under it (to 0.3 em below), over
   three quarters of the run, with no stretch of the line longer than an em marking no run and no
   vertical line ending at its ends. A table's rule, a running head's rule, a box, a thick stroke
-  painting a background, a dashed guide and a white or unstroked line mark nothing; a superscript
+  painting a background, a dashed guide and a white or unstroked line mark nothing, outlined as
+  a rectangle too (review); a superscript
   or subscript is never struck. Under `page-observations-v5`, which no release carries yet.
 - Markdown writes `~~` and `<u>`, HTML `<s>` and `<u>`, in headings too but never in a table
   cell; a space between two marked runs keeps the span whole, and a strikeout stays open where
   only the emphasis inside it changes. A run holding a `~`, or set against one, is not written
-  struck in Markdown.
+  struck in Markdown, nor one whose `~~` would open between a letter or digit and punctuation,
+  which GFM reads as text (review).
 - Measured: ParseBench-2's engine lane 51.97 → 53.46 (strikeout 14.1 → 76.8, underline 20.0 →
   89.2); ParseBench's `--ocr` lane 54.67 → 54.68; opendataloader-bench's NID 0.8922 → 0.8911 and
   MHS 0.6378 → 0.6372, its scorer reading `<u>` as text — the owner kept underline on by default.
@@ -141,8 +146,8 @@ takes its order as no evidence, so a recognized grid of two columns never stood 
 - `whitespace-tracks` now reads one as a table where every label holds one colon and ends in it, no
   two labels alike, beside values that are no running text and hold no word ending in a colon. A
   blank form's two columns of labels, labels beside a column of prose and a transcript naming its
-  speakers again stay columns (review). A form has no header row: a line just above its fields is
-  none of them.
+  speakers again stay columns (review). Values rising like page numbers are no table of
+  contents (review). A form has no header row: a line just above its fields is none of them.
 - Folded into `whitespace-tracks-v16`, which no release carries yet; no `profile_sha256` moves.
   Measured: a made-up invoice scanned three ways reads as its drawn copy's table; ParseBench
   (`--ocr` too), opendataloader-bench and the private real-document set unchanged on every page.

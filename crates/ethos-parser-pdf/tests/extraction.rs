@@ -1136,6 +1136,49 @@ fn text_turned_upright_on_a_turned_page_advances_along_its_line() {
     assert_eq!(md.trim(), "ABCD", "one line, its runs abutting");
 }
 
+/// Markdown for one [`helvetica_page`].
+fn page_markdown(rotate: u32, stream: &[u8]) -> String {
+    let profile = Profile::default();
+    let rep = ethos_parser_pdf::to_representation(&helvetica_page(rotate, stream), &profile)
+        .expect("projects");
+    ethos_parser_core::to_markdown(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects")
+    .markdown
+}
+
+/// **A line drawn through text on a page read a quarter turn round strikes it** (review of
+/// decision #155): read in its text's frame, a line drawn up the declared page is level.
+#[test]
+fn a_line_through_text_on_a_quarter_turned_page_strikes_it() {
+    // Four lines set up the page, 48 characters: the page is read turned a quarter.
+    let mut stream = String::from("BT /F1 10 Tf");
+    for x in [100, 120, 140, 160] {
+        stream.push_str(&format!(" 0 1 -1 0 {x} 50 Tm (Struck words) Tj"));
+    }
+    stream.push_str(" ET 97 49 m 97 111 l S");
+    let md = page_markdown(0, stream.as_bytes());
+    assert!(md.starts_with("~~Struck words~~"), "{md}");
+    assert_eq!(md.matches("~~").count(), 2, "{md}");
+}
+
+/// **An outline stroked white or dashed strikes nothing** (review of decision #154): only a solid
+/// line a reader sees marks a run, as a stroked segment does.
+#[test]
+fn an_outline_stroked_white_or_dashed_strikes_nothing() {
+    let page = |paint: &str| {
+        let stream = format!("BT /F1 10 Tf 50 100 Td (Struck) Tj ET {paint} 49 103 32 0.5 re S");
+        page_markdown(0, stream.as_bytes())
+    };
+    assert_eq!(page("0 0 0 RG").trim(), "~~Struck~~", "solid black");
+    assert_eq!(page("1 1 1 RG").trim(), "Struck", "white");
+    assert_eq!(page("0 0 0 RG [2 2] 0 d").trim(), "Struck", "dashed");
+}
+
 /// **A travel off the declared x, or backward along it, keeps the value measured before any
 /// rotation** (decision #61): text turned 30° on a quarter-turned page, which advances 5 pt along
 /// the declared x and 8.66 along the text matrix's, and text mirrored by its CTM, which runs back.

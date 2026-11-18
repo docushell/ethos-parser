@@ -4207,6 +4207,21 @@ impl Emit {
         }
         self.close_emphasis();
         self.flush_held();
+        // Decision #154 (review): GFM opens no `~~` set between a letter or digit and punctuation,
+        // so `cost~~-~~effective` is text: a run whose `~~` would stand so is not written struck.
+        let mut style = style;
+        if markup == Markup::Markdown && style.strike && !style.under {
+            let inner = Style {
+                strike: false,
+                ..style
+            };
+            let next = inner.markers(markup).0.chars().next().or(s.chars().next());
+            if self.markdown.ends_with(char::is_alphanumeric)
+                && next.is_some_and(|c| !c.is_alphanumeric())
+            {
+                style.strike = false;
+            }
+        }
         self.write_syntax(&style.markers(markup).0);
         self.emphasis.open = style;
     }
@@ -9545,6 +9560,14 @@ pub(crate) mod tests {
             &[],
         ));
         assert_eq!(date.markdown, "2024-~~02-27~~07-09\n");
+
+        // A hyphen struck alone between two letters: GFM opens no `~~` there, so it is not struck.
+        let hyphen = artifact_of(with_marks(
+            line_of_words(&["cost", "-", "effective"]),
+            &[1],
+            &[],
+        ));
+        assert_eq!(hyphen.markdown, "cost-effective\n");
     }
 
     /// **A strikeout stays one span where only the emphasis inside it changes** (review of

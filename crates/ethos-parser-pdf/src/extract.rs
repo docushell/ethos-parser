@@ -1179,7 +1179,7 @@ fn extract_page(
             let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
             let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
             let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
-            if seg.is_horizontal() {
+            if geom.level(seg) {
                 let rule = crate::stroke_ruled::Rule {
                     y: r.y0,
                     x0: r.x0,
@@ -1569,8 +1569,15 @@ fn extract_page(
                 crate::tables::quantize_rect(ax, ay, bx, by)
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // And (review) those a stroke outlined white or dashed, which draw no line either.
+        let mut unseen = table_white.clone();
+        for r in &interp.faint {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            unseen.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
         let ink =
-            crate::decorations::Ink::of(&solid_rules, &uprights, &table_rects, &table_white, &wide);
+            crate::decorations::Ink::of(&solid_rules, &uprights, &table_rects, &unseen, &wide);
         crate::decorations::assign(&mut runs, &ems, &ink);
 
         // v1-S5. **Reading order, and the only order there is.**
@@ -3334,7 +3341,7 @@ pub(crate) fn per_page_table_diagnostics(
             let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
             let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
             let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
-            if seg.is_horizontal() {
+            if geom.level(seg) {
                 stroke_rules.push(crate::stroke_ruled::Rule {
                     y: r.y0,
                     x0: r.x0,
@@ -3870,7 +3877,10 @@ fn turn_of(runs: impl Iterator<Item = TurnRun>, rotation: i64) -> i64 {
     let mut total = 0usize;
     for (travel, (ux, uy), (ox, oy), n) in runs {
         total += n;
-        let Some((dx, dy)) = travel else { continue };
+        // A run of spaces inks no line (review).
+        let Some((dx, dy)) = travel.filter(|_| n > 0) else {
+            continue;
+        };
         // Off the axes, or its glyphs not on its left: a run that does not move is neither.
         let along_an_axis = dx.abs().min(dy.abs()) * 100.0 <= dx.abs().max(dy.abs());
         if !along_an_axis || dx * uy - dy * ux <= 0.0 {
@@ -4121,6 +4131,17 @@ impl PageGeometry {
     /// The rotation the page is read in: its declared `/Rotate` and its turn (decision #155).
     fn read_as(&self) -> i64 {
         (self.rotation + self.turn) % 360
+    }
+
+    /// Whether `seg` is level as this page is read (review of decision #155): on a page read a
+    /// quarter turn round, a line drawn up the page as declared. A page whose `/Rotate` alone
+    /// turns it keeps the reading `stroke-ruled-v2` released, user space's.
+    fn level(&self, seg: &crate::content::PathSegment) -> bool {
+        if self.turn == 0 {
+            seg.is_horizontal()
+        } else {
+            seg.is_horizontal() == (self.read_as() % 180 == 0)
+        }
     }
 
     /// This page read `turn` quarter turns clockwise beyond its declared rotation (decision #155):
@@ -4408,6 +4429,13 @@ mod tests {
         let lined = |lines| turn_of(runs((0.0, 1.0), (-1.0, 0.0), 120, lines, 0).into_iter(), 0);
         assert_eq!(lined(3), 0, "three lines");
         assert_eq!(lined(4), 90, "four lines");
+        let mut spaced = runs((0.0, 1.0), (-1.0, 0.0), 120, 1, 0);
+        spaced.extend((1..4).map(|i| (Some((0.0, 1.0)), (-1.0, 0.0), (12.0 * i as f64, 0.0), 0)));
+        assert_eq!(
+            turn_of(spaced.into_iter(), 0),
+            0,
+            "one line, three of spaces"
+        );
     }
 
     /// **A turned page's boxes map back to the declared frame through the record** (decision

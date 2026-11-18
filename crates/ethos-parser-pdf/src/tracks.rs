@@ -1954,7 +1954,11 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool
         // `-v16` (decision #119): small numbers beside a column of numbers key a table of values —
         // ages beside their premiums — and are no list's labels; a list's items are words.
         let values = column(1).iter().all(|t| is_number(t.trim()));
-        if (labels(&column(0)) && !values) || is_contents(&column(1)) {
+        // A recognized form's fields are no table of contents (decision #152, review): its values
+        // may be small numbers rising down the page.
+        if (labels(&column(0)) && !values)
+            || (is_contents(&column(1)) && !is_form(rows, runs, recognized))
+        {
             return false;
         }
     }
@@ -5615,7 +5619,8 @@ mod tests {
     ];
 
     /// **A recognized form's fields are a table** (decision #152): a label ending in its one colon
-    /// in every row, beside a value, read down the labels and then down the values. A label without
+    /// in every row, beside a value, read down the labels and then down the values — small numbers
+    /// rising down the page too, which are no table of contents (review). A label without
     /// its colon, or with one inside it, or a label with no value beside it, which goes on the
     /// label above, leaves two columns, as decision #125 reads every other recognized grid of two;
     /// a first label with no value, or a line with no colon, stands above the table.
@@ -5625,6 +5630,16 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (5, 2));
         assert_eq!(texts(&found[0])[3], ["Ship To:", "Harbour Depot (4)"]);
+        let numbers: [(&[&str], &[&str]); 4] = [
+            (&["Order:"], &["10"]),
+            (&["Account:"], &["20"]),
+            (&["Quantity:"], &["30"]),
+            (&["Total:"], &["40"]),
+        ];
+        let found =
+            detect(1, &recognized_form(&numbers), &[], true, &mut alloc()).expect("detects");
+        assert_eq!(found.len(), 1, "values rising like page numbers");
+        assert_eq!((found[0].rows, found[0].columns), (4, 2));
 
         let mut bare = FORM;
         bare[2].0 = &["Account"];
