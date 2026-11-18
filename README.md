@@ -84,8 +84,8 @@ LangChain tools behind an optional install: see [`packages/python/`](packages/py
 - **Layout.** Reading order across columns, headings, lists, tables split across pages, strikeout
   and underline, running heads and page numbers, and pages drawn sideways or upside down.
 - **A licence you can approve.** Apache-2.0, and every dependency is under a permissive licence.
-  For the engine and the assist binary, `deny.toml` enforces that, and CI proves the rule fires by
-  flipping a crate to AGPL and requiring the build to reject it.
+  For the engine, the recognizer and the assist binary, `deny.toml` enforces that, and CI proves
+  the rule fires by flipping a crate to AGPL and requiring the build to reject it.
 
 ## Benchmarks
 
@@ -202,5 +202,5 @@ the tracked hooks add and check it. Start with [`docs/README.md`](docs/README.md
 ## Licence
 
 Apache-2.0. `NOTICE` records the encoding data, models and dependencies that ship. No AGPL
-dependencies: `deny.toml` enforces it for the engine and the assist binary, and CI proves the rule
-fires. The recognizer's dependencies are permissive too, but are not yet checked by CI.
+dependencies: `deny.toml` enforces it for the engine, the recognizer and the assist binary, and CI
+proves the rule fires.

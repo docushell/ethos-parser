@@ -45,6 +45,7 @@ found every one permissively licensed, but nothing kept it so.
   `deny ocr` step.
 - CI's `deny rejects AGPL` job flips `ocr/Cargo.toml` to AGPL-3.0 as well and requires cargo-deny
   to refuse it, by exit code 4 and by the crate's name.
+- The README's licence notes name the recognizer beside the engine and the assist binary.
 
 ### An install script, a sample page, and a README that starts with trying it
 
