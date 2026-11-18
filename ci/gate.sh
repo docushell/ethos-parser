@@ -60,10 +60,10 @@
 #   * **`v0-fuzz-smoke`.** Needs a nightly toolchain and `cargo-fuzz` for `-Z sanitizer=address`.
 #     The workspace MSRV is 1.88 and no other job installs nightly.
 #
-#   * **`deny-policy-is-enforced`.** It flips `crates/ethos-parser-core/Cargo.toml` to AGPL and restores
-#     it with `git checkout --`, which silently discards uncommitted work in that file. Its own
-#     step comment says not to run it by hand in a dirty tree, and a gate a developer runs *while
-#     working* is exactly a dirty tree.
+#   * **`deny-policy-is-enforced`.** It flips `crates/ethos-parser-core/Cargo.toml` and
+#     `ocr/Cargo.toml` to AGPL and restores them with `git checkout --`, which silently discards
+#     uncommitted work in those files. Its own step comment says not to run it by hand in a dirty
+#     tree, and a gate a developer runs *while working* is exactly a dirty tree.
 #
 #   * **Every matrix entry in `v0-exit-criteria`, `v01-gates`, `v1s1-gates`, `v1s7-table-gate`,
 #     and the `v0-office-mutation` job.** These re-run subsets of `cargo test --workspace` under a
@@ -184,9 +184,10 @@ cargo build --workspace --locked
 announce 'test'
 cargo test --workspace --locked
 
-announce 'deny — the engine, then the assist binary in its own workspace'
+announce 'deny — the engine, then the assist binary and the recognizer in their own workspaces'
 cargo deny check
 cargo deny --manifest-path assist/Cargo.toml check
+cargo deny --manifest-path ocr/Cargo.toml check
 
 announce 'sdk suites — node and python, the version guards that had never run'
 ci/sdk-suites.sh

@@ -225,6 +225,11 @@ jobs:
       - name: deny assist
         run: cargo deny --manifest-path assist/Cargo.toml check
 
+      # The recognizer behind `--ocr` (docs/35-OCR-SCOPE.md), likewise: its own workspace,
+      # lockfile and deny.toml.
+      - name: deny ocr
+        run: cargo deny --manifest-path ocr/Cargo.toml check
+
       # The recognizer behind `--ocr` (docs/35-OCR-SCOPE.md): its own workspace and its own
       # pinned toolchain, which the script installs and asserts. `ocr-platforms` below runs its
       # fixture test on every supported CPU family; this step keeps it in the gate.
@@ -891,7 +896,9 @@ jobs:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
       - name: Baseline — the gate passes as committed
-        run: cargo deny check licenses
+        run: |
+          cargo deny check licenses
+          cargo deny --manifest-path ocr/Cargo.toml check licenses
 
       - name: Flip a crate to AGPL-3.0 and require rejection for the right reason
         run: |
@@ -915,13 +922,35 @@ jobs:
             echo "::error::cargo-deny failed, but not about ethos-parser-core's licence"; exit 1; }
           echo "cargo deny correctly rejected AGPL-3.0 on ethos-parser-core (exit 4)."
 
+      # The recognizer (ocr/) is a workspace of its own with its own deny.toml, a second policy
+      # file that can drift on its own, so it gets the same proof. cargo-deny reads its metadata
+      # from inside ocr/, on ocr/rust-toolchain.toml's compiler, which rustup fetches on demand.
+      - name: Flip the recognizer to AGPL-3.0 and require rejection for the right reason
+        run: |
+          set -euo pipefail
+          sed -i 's/^license = "Apache-2.0"/license = "AGPL-3.0"/' ocr/Cargo.toml
+          grep -q 'AGPL-3.0' ocr/Cargo.toml || {
+            echo "::error::probe did not apply; the recognizer's licence gate was never exercised"; exit 1; }
+
+          set +e
+          out="$(cargo deny --manifest-path ocr/Cargo.toml check licenses 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+
+          [ "$code" -eq 4 ] || {
+            echo "::error::expected cargo-deny exit 4 (licence rejection), got $code"; exit 1; }
+          echo "$out" | grep -q 'ethos-parser-ocr' || {
+            echo "::error::cargo-deny failed, but not about ethos-parser-ocr's licence"; exit 1; }
+          echo "cargo deny correctly rejected AGPL-3.0 on ethos-parser-ocr (exit 4)."
+
       # Safe in CI because the runner checks out a clean tree. Do NOT run this probe by hand in a
       # working tree with uncommitted changes: `git checkout --` restores the COMMITTED file and
       # silently discards them. To reproduce locally, stash first or copy the file aside.
       - name: Restore and confirm the tree is clean
         if: always()
         run: |
-          git checkout -- crates/ethos-parser-core/Cargo.toml
+          git checkout -- crates/ethos-parser-core/Cargo.toml ocr/Cargo.toml
           git diff --exit-code
 
   # DCO (mirrors the Ethos rule): every commit in the pushed or proposed range carries a

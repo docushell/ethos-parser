@@ -32,6 +32,20 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### cargo-deny checks the recognizer's dependencies
+
+`ethos-parser-ocr`, which every release archive carries, builds in its own workspace (`ocr/`) with
+its own lockfile, and the root's `cargo deny check` never saw those crates. A review on 2026-11-18
+found every one permissively licensed, but nothing kept it so.
+
+- `ocr/deny.toml` applies the root's policy to that workspace: a licence allowlist of Apache-2.0,
+  MIT and Unicode-3.0 (each one the graph needs, measured with `cargo deny list`), the root's
+  network bans copied whole, and crates.io as the only source.
+- `cargo deny --manifest-path ocr/Cargo.toml check` runs in `ci/gate.sh`'s `deny` step and as CI's
+  `deny ocr` step.
+- CI's `deny rejects AGPL` job flips `ocr/Cargo.toml` to AGPL-3.0 as well and requires cargo-deny
+  to refuse it, by exit code 4 and by the crate's name.
+
 ### An install script, a sample page, and a README that starts with trying it
 
 - `install.sh` installs a release on macOS or Linux in one line: it picks this machine's archive,

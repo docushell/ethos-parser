@@ -1,0 +1,58 @@
+# cargo-deny policy for `ethos-parser-ocr`, the recognizer behind `--ocr` (docs/35-OCR-SCOPE.md),
+# the root's (../deny.toml) applied to this workspace's own lockfile. `cargo deny --manifest-path
+# ocr/Cargo.toml check` reads this file, from the manifest's directory; the root's `cargo deny
+# check` never sees these crates.
+#
+# Exceptions require an ADR before merge.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# An allowlist, as the root's: GPL, AGPL, LGPL and anything not named here fail (forced decision
+# #14). Each entry is a licence this graph needs, measured with `cargo deny list`: every other
+# licence in it (0BSD, BSD-3-Clause, Unlicense, Zlib) is offered only beside Apache-2.0 or MIT.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    # `unicode-ident`'s "(MIT OR Apache-2.0) AND Unicode-3.0": the AND makes it non-optional.
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+# The models built into the recognizer are data, not crates, and so not in this graph: PaddleOCR's
+# PP-OCRv5 mobile and PP-LCNet_x1_0_doc_ori, and RapidOCR's conversion, all Apache-2.0
+# (ocr/models/MODELS.md). Their notices are in NOTICE, which every release archive carries.
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The root's list, copied whole: the recognizer reads its stdin and the files it is named, and
+# reaches no network.
+deny = [
+    { crate = "reqwest", reason = "no network without its ADR" },
+    { crate = "hyper", reason = "no network without its ADR" },
+    { crate = "hyper-util", reason = "no network without its ADR" },
+    { crate = "ureq", reason = "no network without its ADR" },
+    { crate = "curl", reason = "no network without its ADR" },
+    { crate = "curl-sys", reason = "no network without its ADR" },
+    { crate = "isahc", reason = "no network without its ADR" },
+    { crate = "attohttpc", reason = "no network without its ADR" },
+    { crate = "surf", reason = "no network without its ADR" },
+    { crate = "socket2", reason = "socket-bearing" },
+    { crate = "mio", reason = "socket-bearing" },
+    { crate = "tokio", reason = "async runtime implies a network surface" },
+    { crate = "openssl-sys", reason = "TLS stack implies network use" },
+    { crate = "native-tls", reason = "TLS stack implies network use" },
+    { crate = "rustls", reason = "TLS stack implies network use" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
