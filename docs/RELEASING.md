@@ -207,6 +207,11 @@ unchanged, then:
    hayro's built-in fonts and CMaps, and every crate `assist/Cargo.lock` locks, held to that
    lockfile by a test in `assist/`.
 
+   **`install.sh` reads these names.** It finds its archive in `SHA256SUMS.txt` by the line
+   `<digest>  ./ethos-parser-<version>-<target>.tar.gz`, expects one directory of that name inside,
+   and installs whichever of the three binaries it holds. A change to the archive's name, layout or
+   manifest line changes `install.sh` in the same commit.
+
 2. **Push the tag**, then create the release from those files and nothing else:
 
    ```bash

@@ -32,6 +32,23 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### An install script, a sample page, and a README that starts with trying it
+
+- `install.sh` installs a release on macOS or Linux in one line: it picks this machine's archive,
+  checks it against the release's `SHA256SUMS.txt` and that its engine starts, and copies the
+  binaries into `~/.local/bin` (`ETHOS_PARSER_VERSION`, `ETHOS_PARSER_INSTALL_DIR` and
+  `ETHOS_PARSER_RELEASE_URL` change that). Nothing is installed if either check fails. It is fetched from the repository, so the
+  release assets are unchanged.
+- `docs/sample.pdf`, a made-up one-page report with a ruled table, an image and one line drawn
+  invisible, for the quick start. `docs/images/overlay.png` is its `overlay`, rendered.
+- The README leads with what the parser is for, the one-line install and three commands on the
+  sample, then one install line per kind of user, tested: the CLI, Claude Code's MCP, Python 3.10+
+  from a git subdirectory, and Node 18+ from a shallow clone.
+- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `26244de`: ParseBench
+  52.15 for the engine (placed 2nd among the 10 open-source local parsers on its leaderboard at the
+  pinned `1f5b37a`), 54.68 with `--ocr`, 65.35 with the assist model as written;
+  opendataloader-bench 0.813 (placed 9th of 13). The long install notes move to `docs/INSTALL.md`.
+
 ### A page drawn turned is read upright (decision #155)
 
 A page can set all its text a quarter or half turn round with no `/Rotate` declaring it — a

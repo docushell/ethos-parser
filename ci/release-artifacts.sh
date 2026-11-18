@@ -132,7 +132,7 @@ OCR_FIXTURE=ocr/tests/data/nist-171r3-p55.png
 # gives its NEON bytes (docs/35-OCR-SCOPE.md §3). A process not under Rosetta ignores it.
 export ROSETTA_ADVERTISE_AVX=1
 
-# The newest glibc a Linux gnu binary may need (README "Install"): what the workflow's
+# The newest glibc a Linux gnu binary may need (docs/INSTALL.md): what the workflow's
 # ubuntu-22.04 runner has. A binary that references a newer GLIBC_ version fails its release.
 GLIBC_FLOOR=2.35
 
@@ -493,7 +493,7 @@ for target in "${TARGETS[@]}"; do
         need="$(glibc_need "$f" || true)"
         [ -n "$need" ] || fail "objdump -T found no GLIBC_ version in $f."
         [ "$(printf '%s\n' "$GLIBC_FLOOR" "$need" | sort -V | tail -n 1)" = "$GLIBC_FLOOR" ] || \
-          fail "$(basename "$f") needs glibc $need; the floor is $GLIBC_FLOOR (README \"Install\")." \
+          fail "$(basename "$f") needs glibc $need; the floor is $GLIBC_FLOOR (docs/INSTALL.md)." \
                "The symbols at $need:" "$(objdump -T "$f" | grep "GLIBC_$need")"
         ok "$(basename "$f") needs glibc $need, floor $GLIBC_FLOOR"
       done ;;
