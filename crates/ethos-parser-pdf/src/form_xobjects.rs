@@ -58,6 +58,9 @@ pub(crate) struct Form {
     /// The names its resources' `/ExtGState` gives graphics states that change no fill's colour
     /// (decision #139).
     pub(crate) plain_states: std::collections::BTreeSet<Vec<u8>>,
+    /// The names its resources' `/ColorSpace` gives spaces whose components read as a device
+    /// colour's, each with how many it has (decision #156).
+    pub(crate) colour_spaces: std::collections::BTreeMap<Vec<u8>, u8>,
 }
 
 /// What an XObject is to the interpreter.
@@ -182,6 +185,7 @@ impl<'d> PageForms<'d> {
             layer: (stream.dict.get(b"OC").ok()).and_then(|oc| switches.layer(doc, oc)),
             layers: switches.names(doc, resources.as_ref()),
             plain_states: crate::layers::plain_states(doc, resources.as_ref()),
+            colour_spaces: crate::layers::device_like_spaces(doc, resources.as_ref()),
             // Each number read through its reference, and four of them or no box (review).
             bbox: crate::fonts::resolve_array(doc, stream.dict.get(b"BBox").ok()).and_then(|b| {
                 let n: Vec<f64> = b

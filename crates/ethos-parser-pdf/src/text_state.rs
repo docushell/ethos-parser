@@ -131,6 +131,10 @@ pub struct GraphicsState {
     /// `scn` after `cs` named `/DeviceGray`, `/DeviceRGB` or `/DeviceCMYK` — where its operands
     /// mean one colour whatever the document (decision #139). `true` to begin with: DeviceGray.
     pub fill_device: bool,
+    /// How many components the space [`Self::fill`] was set in has, where its components read as a
+    /// device colour's — a device space, or one the page's `/ColorSpace` resolves so — and 0 where
+    /// they do not (decision #156). 1 to begin with: DeviceGray.
+    pub fill_space: u8,
     /// Whether a `gs` set a graphics-state parameter dictionary this reader does not resolve —
     /// whose `/ca` may make a fill transparent, or its `/BM` blend it — since the state was last
     /// saved (decision #139). A fill painted under one has no colour this reader compares.
@@ -181,6 +185,7 @@ impl Default for GraphicsState {
             ctm: Matrix::IDENTITY,
             fill: Fill::BLACK,
             fill_device: true,
+            fill_space: 1,
             ext_gstate: false,
             clip_unknown: false,
             text_blends: false,

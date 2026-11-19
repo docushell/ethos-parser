@@ -113,6 +113,39 @@ impl OptionalContent {
     }
 }
 
+/// The names a resource dictionary's `/ColorSpace` gives spaces whose components read as a device
+/// colour's, each with how many it has (decision #156): `/CalGray` one, `/CalRGB` three, and
+/// `/ICCBased` its `/N` — one, three or four read as gray, RGB or CMYK by their count, as the
+/// recognizer reads an image in one (`docs/35-OCR-SCOPE.md` §4), and any other count as no colour
+/// at all. A colour set in any other space, `/Lab`, `/Indexed`, `/Separation`, `/DeviceN` or a
+/// pattern, is not known.
+pub(crate) fn device_like_spaces(
+    doc: &lopdf::Document,
+    resources: Option<&lopdf::Dictionary>,
+) -> BTreeMap<Vec<u8>, u8> {
+    let Some(spaces) = resources.and_then(|r| resolve_dict(doc, r.get(b"ColorSpace").ok())) else {
+        return BTreeMap::new();
+    };
+    let components = |o: &lopdf::Object| -> Option<u8> {
+        let a = crate::fonts::resolve_array(doc, Some(o))?;
+        match a.first().and_then(|f| f.as_name().ok())? {
+            b"CalGray" => Some(1),
+            b"CalRGB" => Some(3),
+            b"ICCBased" => a
+                .get(1)
+                .and_then(|s| crate::fonts::resolve_stream(doc, Some(s)))
+                .and_then(|s| crate::fonts::resolve_object(doc, s.dict.get(b"N").ok()))
+                .and_then(|n| n.as_i64().ok())
+                .and_then(|n| u8::try_from(n).ok()),
+            _ => None,
+        }
+    };
+    spaces
+        .iter()
+        .filter_map(|(name, v)| Some((name.clone(), components(v)?)))
+        .collect()
+}
+
 /// The names a resource dictionary's `/ExtGState` gives graphics states that change no fill's
 /// colour as painted (decision #139): no `/BM` but `/Normal` or `/Compatible`, no `/SMask` but
 /// `/None`, and no `/ca` under one. Text drawn under any other `gs`, or one not named here, is not
@@ -137,7 +170,12 @@ pub(crate) fn plain_states(
         let alpha = d
             .get(b"ca")
             .map_or(true, |a| a.as_float().is_ok_and(|v| v >= 1.0));
-        blend && mask && alpha
+        // Decision #156 (review): a transfer function maps what is painted to another colour.
+        let transfer = [b"TR".as_slice(), b"TR2"].iter().all(|k| match d.get(k) {
+            Err(_) => true,
+            Ok(o) => matches!(o.as_name(), Ok(b"Identity" | b"Default")),
+        });
+        blend && mask && alpha && transfer
     };
     states
         .iter()

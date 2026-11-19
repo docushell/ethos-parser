@@ -32,6 +32,46 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A scan stored as several images is read with `--ocr` (decision #156)
+
+A scanner often stores a page as a background image and the one-bit masks its text is stencilled
+with, or as strips. `--ocr` read a scanned page only where it painted exactly one image, so such a
+page was refused `several-images` and gave no text.
+
+- The engine now keeps what a scanned page painted, in paint order — each image, and each single
+  rectangle filled in a known colour, as much of each as a rectangular clip and every form's
+  `/BBox` show — and the recognizer composes it on white into one raster and reads it. A
+  stencil paints its fill colour; a soft mask that is a gray image without `/Matte` weighs its
+  image over what lies beneath; content in a layer switched off is not painted.
+- A page that paints anything a composition does not hold is refused by name,
+  `several-images:<what>`: `stroke`, `path-not-rectangular`, `shading`, `inline-image`,
+  `clip-not-rectangular` (a clip of another shape, or a form box its matrix turns),
+  `graphics-state-not-read` (a blend mode, soft mask, fill alpha or transfer function),
+  `layer-not-read`, `fill-colour-not-read` (a space whose components do not read as gray, RGB or
+  CMYK, or another number of operands than it has), `annotation` (one a viewer draws over the
+  page). The page counts under `scanned-page-not-recognized`, with or without `--ocr`, as before.
+- The raster lies over the visible box at the finest image's density, at most 300 dpi and 40
+  megapixels. Each image is sent once; a page that paints more than 400 million pixels between its
+  paints, or holds more than 65,536 of them, is refused `composite-too-large`.
+- `ethos-parser-ocr` takes a new request kind, `composite` (`ocr/src/compose.rs`): integer
+  maths, the nearest sample at each pixel's centre, every CPU the same bytes. Its identity and the
+  rule id `ppocrv5-mobile-v1` do not move; no release carries either.
+- Measured: ParseBench-2's `--ocr` lane 57.18 → 57.54 (text 61.74 → 62.51, formatting 77.57 →
+  78.93; nine of the census's eleven pages read, two refused as `JBIG2Decode` and
+  `CCITTFaxDecode`); ParseBench's `--ocr` lane 54.69 → 55.14 (content 75.48 → 77.39), no page
+  down. Without `--ocr` nothing moves on ParseBench, ParseBench-2, opendataloader-bench or the
+  private real-document set.
+- Reviewed with made-up PDFs before it was measured: the first build read text a viewer hides
+  through an image's own `/OC`, a transfer function, a turned form box, a stencil's soft mask, four
+  operands in an RGB space and an annotation over the page, and sent an image once per paint.
+  Fixed, each with a test; 29 mutations of the final code, all caught.
+- Known limit: a page of one image keeps its path, so a fill, clip, layer or annotation over a
+  single scanned image is still not read (`docs/35-OCR-SCOPE.md` §14).
+- The two readings the review added are shared with `--drop-hidden` (decision #139): a graphics
+  state with a transfer function, and a form box its matrix turns, now leave what is painted under
+  them uncompared with a run's colour there, as a blend mode and a clip of another shape already
+  did.
+
 ### cargo-deny checks the recognizer's dependencies
 
 `ethos-parser-ocr`, which every release archive carries, builds in its own workspace (`ocr/`) with

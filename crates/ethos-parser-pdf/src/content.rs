@@ -206,6 +206,34 @@ pub struct ImagePlacement {
     pub corners: [(f64, f64); 4],
 }
 
+/// What a page painted, in paint order, for a recognizer to compose into one raster (decision
+/// #156): each image a `Do` placed and each rectangle a fill painted, as much of it as the page's
+/// clip shows. Or, by name, the first paint of a kind it does not hold — a stroke, a path other
+/// than one rectangle, a shading, an inline image, a clip of any other shape, a graphics state that
+/// may blend or soften what is painted, a colour this reader does not know — after which nothing
+/// more is recorded: a page composed without what it painted could show text no viewer sees.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Composite {
+    /// The paints, in paint order.
+    pub layers: Vec<CompositeLayer>,
+    /// Why the page cannot be composed, where it cannot.
+    pub refusal: Option<&'static str>,
+}
+
+/// One paint of a [`Composite`], in user space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompositeLayer {
+    /// The image [`Interpreter::images`] holds at `index`, shown inside `shown`; `fill` is the
+    /// colour a stencil mask paints, where it is one set in a device colour space.
+    Image {
+        index: usize,
+        shown: PathRect,
+        fill: Option<Fill>,
+    },
+    /// A rectangle filled in a device colour, as much of it as the clip shows.
+    Fill { rect: PathRect, fill: Fill },
+}
+
 /// One axis-aligned rectangle a page's path operators drew, in **user space**.
 ///
 /// v1-S1. Captured because a ruled table is a table the document *drew*: the ruling lines are
@@ -692,6 +720,9 @@ pub struct Interpreter<'a> {
     /// (decision #139): no blend mode but `/Normal` or `/Compatible`, no soft mask, no fill alpha
     /// under one.
     plain_states: std::collections::BTreeSet<Vec<u8>>,
+    /// The names the page's `/ColorSpace` gives spaces whose components read as a device colour's,
+    /// each with how many it has (decision #156).
+    colour_spaces: std::collections::BTreeMap<Vec<u8>, u8>,
     /// How many subpaths of the path being built drew a line (decision #139), so a stroke can tell
     /// a path of rectangles and axis-aligned lines from one with any other subpath.
     path_subpaths: usize,
@@ -769,6 +800,8 @@ pub struct Interpreter<'a> {
     /// reads (`docs/35-OCR-SCOPE.md` §4). Counted before the operands are read, so a string this
     /// reader cannot decode still counts: the page has a text layer, whatever it says.
     pub text_operators: u32,
+    /// What the page painted, for a recognizer to compose (decision #156).
+    pub composite: Composite,
     /// The index of the operation [`Self::run_inner`] is dispatching, recorded before every
     /// dispatch and read by [`Self::show`] (auto-tagging S2).
     ///
@@ -823,6 +856,7 @@ impl<'a> Interpreter<'a> {
             layers: std::collections::BTreeMap::new(),
             clip_text: ClipTexts::default(),
             plain_states: std::collections::BTreeSet::new(),
+            colour_spaces: std::collections::BTreeMap::new(),
             path_subpaths: 0,
             path_box: None,
             path_shaped: false,
@@ -848,6 +882,7 @@ impl<'a> Interpreter<'a> {
             unresolved_xobjects: 0,
             inline_images: 0,
             text_operators: 0,
+            composite: Composite::default(),
             xobjects: None,
             op_index: 0,
             forms: None,
@@ -888,6 +923,16 @@ impl<'a> Interpreter<'a> {
     /// beneath it.
     pub(crate) fn with_plain_states(mut self, names: std::collections::BTreeSet<Vec<u8>>) -> Self {
         self.plain_states = names;
+        self
+    }
+
+    /// Supply the names the page's `/ColorSpace` gives spaces whose components read as a device
+    /// colour's (decision #156). Without them a colour set in a named space is not known.
+    pub(crate) fn with_colour_spaces(
+        mut self,
+        names: std::collections::BTreeMap<Vec<u8>, u8>,
+    ) -> Self {
+        self.colour_spaces = names;
         self
     }
 
@@ -976,6 +1021,73 @@ impl<'a> Interpreter<'a> {
     fn shown_part(&self, area: PathRect) -> Option<PathRect> {
         area.clip_to(self.gs.clip)
             .and_then(|a| a.clip_to(self.gs.form_clip))
+    }
+
+    /// Decision #156: the page cannot be composed, for `why`, the first reason kept.
+    fn uncomposable(&mut self, why: &'static str) {
+        self.composite.refusal.get_or_insert(why);
+    }
+
+    /// Decision #156: whether paint drawn now may still go into [`Self::composite`] — `false` once
+    /// it is refused, or once the page has shown text, which no composition is asked of — and
+    /// refused where it is drawn under a state the composition does not hold. `Ok(false)` is paint
+    /// a viewer does not show, in a layer switched off.
+    fn composable(&mut self) -> Option<bool> {
+        if self.composite.refusal.is_some() || self.text_operators > 0 {
+            return None;
+        }
+        let why = match self.layer() {
+            Some(crate::layers::Layer::Off) => return Some(false),
+            Some(crate::layers::Layer::NotEvaluated) => "layer-not-read",
+            None if self.gs.clip_unknown => "clip-not-rectangular",
+            None if self.gs.text_blends => "graphics-state-not-read",
+            None => return Some(true),
+        };
+        self.uncomposable(why);
+        None
+    }
+
+    /// Decision #156: whether the fill colour is one a composition paints — set in a space whose
+    /// components read as a device colour's, with as many operands as that space has components (a
+    /// viewer reads the last of more, review).
+    fn fill_composable(&self) -> bool {
+        self.gs.fill_space != 0 && self.gs.fill.count == self.gs.fill_space
+    }
+
+    /// Decision #156: the image [`Self::images`] holds at `index`, placed over `area`.
+    fn compose_image(&mut self, index: usize, area: PathRect) {
+        if self.composable() != Some(true) {
+            return;
+        }
+        let fill = self.fill_composable().then_some(self.gs.fill);
+        if let Some(shown) = self.shown_part(area) {
+            self.composite
+                .layers
+                .push(CompositeLayer::Image { index, shown, fill });
+        }
+    }
+
+    /// Decision #156: the path a painting operator just ended — one rectangle filled in a device
+    /// colour, or anything else, which refuses the page.
+    fn compose_path(&mut self, strokes: bool, fills: bool, shaped: bool, subpaths: usize) {
+        if self.composable() != Some(true) {
+            return;
+        }
+        if strokes {
+            return self.uncomposable("stroke");
+        }
+        let (true, [rect], false, 1) = (fills, &self.pending[..], shaped, subpaths) else {
+            return self.uncomposable("path-not-rectangular");
+        };
+        if !self.fill_composable() {
+            return self.uncomposable("fill-colour-not-read");
+        }
+        if let Some(rect) = self.shown_part(*rect) {
+            let fill = self.gs.fill;
+            self.composite
+                .layers
+                .push(CompositeLayer::Fill { rect, fill });
+        }
     }
 
     /// Marks as clipping paint each rendering-mode-7 run whose clip has taken effect, still stands,
@@ -1415,6 +1527,13 @@ impl<'a> Interpreter<'a> {
                 // Decision #139: `g`, `rg` and `k` name their device space; `sc` and `scn` paint
                 // in the space `cs` named last.
                 self.gs.fill_device |= matches!(op, FillGray | FillRgb | FillCmyk);
+                // Decision #156: and how many components the space they paint in has.
+                match op {
+                    FillGray => self.gs.fill_space = 1,
+                    FillRgb => self.gs.fill_space = 3,
+                    FillCmyk => self.gs.fill_space = 4,
+                    _ => {}
+                }
             }
             FillColorSpace => {
                 self.gs.fill = crate::text_state::Fill::UNKNOWN;
@@ -1423,6 +1542,20 @@ impl<'a> Interpreter<'a> {
                     Some(lopdf::Object::Name(n))
                         if matches!(n.as_slice(), b"DeviceGray" | b"DeviceRGB" | b"DeviceCMYK")
                 );
+                // Decision #156: or one whose components read as a device colour's.
+                let spaces = match self.form_stack.last() {
+                    Some((_, form, _)) => &form.colour_spaces,
+                    None => &self.colour_spaces,
+                };
+                self.gs.fill_space = match operands.first() {
+                    Some(lopdf::Object::Name(n)) => match n.as_slice() {
+                        b"DeviceGray" => 1,
+                        b"DeviceRGB" => 3,
+                        b"DeviceCMYK" => 4,
+                        named => spaces.get(named).copied().unwrap_or(0),
+                    },
+                    _ => 0,
+                };
             }
             // --- path construction: interpreted as of v1-S1 ---------------------------------
             //
@@ -1532,6 +1665,7 @@ impl<'a> Interpreter<'a> {
                 let fills = !matches!(op, Stroke | CloseStroke);
                 let shaped = std::mem::take(&mut self.path_shaped);
                 let subpaths = std::mem::take(&mut self.path_subpaths);
+                self.compose_path(strokes, fills, shaped, subpaths);
                 // Decision #105: a path whose middle the page clips away is no chart's, nor the fill
                 // beneath an inset cell.
                 let gone = self
@@ -1766,15 +1900,18 @@ impl<'a> Interpreter<'a> {
             // count is declared.
             XObject => self.draw_xobject(operands)?,
             // Decision #139: a shading paints the whole clip, in no colour this reader compares.
-            Shading => self.paint(
-                PathRect {
-                    x0: f64::MIN,
-                    y0: f64::MIN,
-                    x1: f64::MAX,
-                    y1: f64::MAX,
-                },
-                None,
-            ),
+            Shading => {
+                self.paint(
+                    PathRect {
+                        x0: f64::MIN,
+                        y0: f64::MIN,
+                        x1: f64::MAX,
+                        y1: f64::MAX,
+                    },
+                    None,
+                );
+                self.uncomposable("shading");
+            }
             // Inline images carry their samples in the content stream itself, so there is no
             // object to address and no separate stream to digest. Counted, and declared — an
             // uncounted skip here would let "this page has no image nodes" read as "this page has
@@ -1787,6 +1924,7 @@ impl<'a> Interpreter<'a> {
                 self.inline_images = self.inline_images.saturating_add(1);
                 // Decision #139: an image covers what lies under it.
                 self.paint(PathRect::of_unit_square(self.gs.ctm), None);
+                self.uncomposable("inline-image");
             }
             InlineImageData | EndInlineImage => {}
             // Type 3 glyph metrics, meaningful only inside a glyph procedure.
@@ -2157,6 +2295,7 @@ impl<'a> Interpreter<'a> {
             _ => {
                 self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
                 self.paint(PathRect::of_unit_square(self.gs.ctm), None);
+                self.uncomposable("image-not-loaded");
                 return Ok(());
             }
         };
@@ -2169,6 +2308,7 @@ impl<'a> Interpreter<'a> {
             self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
             // Decision #139: what it drew is not known, so what lies beneath is not either.
             self.paint(PathRect::of_unit_square(self.gs.ctm), None);
+            self.uncomposable("image-not-loaded");
             return Ok(());
         };
         // `docs/30-FORM-XOBJECTS-SCOPE.md` §7. A form that draws itself, directly or through
@@ -2186,6 +2326,7 @@ impl<'a> Interpreter<'a> {
         let m = self.gs.ctm;
         // Decision #139: an image covers what lies under it.
         self.paint(PathRect::of_unit_square(m), None);
+        self.compose_image(self.images.len(), PathRect::of_unit_square(m));
         self.images.push(ImagePlacement {
             object,
             corners: [
@@ -2255,6 +2396,11 @@ impl<'a> Interpreter<'a> {
                 x1: f64::MIN,
                 y1: f64::MIN,
             }));
+        }
+        // Decision #156 (review): a `/BBox` the form's matrix turns by other than a quarter clips to
+        // its turned shape, which no one rectangle holds.
+        if form.bbox.is_some() && !self.ctm_is_axis_aligned() {
+            self.gs.clip_unknown = true;
         }
         self.form_stack.push((id, Arc::clone(&form), path));
         let mut outcome = Ok(());

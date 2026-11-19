@@ -17,7 +17,8 @@ or from this repository's own fixtures.
 **With `--ocr`, a page on which the deterministic reader found no text layer at all, and on which
 exactly one image was painted, is read by a pinned recognizer whose output is the same bytes on
 every supported CPU**; each word it reads is a run of derivation `Recognized`, under the OCR
-profile, on that page and nowhere else.
+profile, on that page and nowhere else. **Amended (decision #156):** or several images, which the
+recognizer composes into one raster with the rectangles filled between them (§14).
 
 ## 2. Why now
 
@@ -72,7 +73,9 @@ server. The output is byte-identical at the default count, two threads and one.
 - **The trigger is a reason code, not a score** (`docs/07-VERIFY-BOUNDARY.md` §7). A PDF page is
   read when it carries `classify`'s `scanned` (no text-showing operator at all, and an image) and
   exactly one image placement. The coverage threshold the census used to sort pages is not a
-  condition: one image on a page with no text layer is read whatever its size.
+  condition: one image on a page with no text layer is read whatever its size. **Amended
+  (decision #156):** or several placements, where everything the page paints is an image or a
+  rectangle filled in a known colour (§14).
 - **The image is decoded by the recognizer**, not the engine: DCT and Flate streams, Flate with
   PNG and TIFF predictors; DeviceGray, DeviceRGB, DeviceCMYK, ICC-based by component count,
   Indexed, CalGray and CalRGB; 1, 2, 4, 8 and 16 bits per component; `/Decode` and `/ImageMask`.
@@ -124,7 +127,7 @@ server. The output is byte-identical at the default count, two threads and one.
 - **A new locator variant, `recognized`**: the run's place on its page as a text layer states it —
   the foot of its line under the word's left edge, and the word box's width as the advance —
   computed through the placement; the image it came from (its object and generation for a PDF,
-  none for an image file); and the word's quadrilateral in the image's own pixel grid, as the
+  none for an image file or a page composed of several, §14); and the word's quadrilateral in the image's own pixel grid, as the
   recognizer reported it. The run's box is its node's geometry. Its size is the height of the
   word's line, as a text layer written by Tesseract states it. A line that does not run left to
   right on the page — turned within the image, or upside down — is one run with no advance.
@@ -145,11 +148,13 @@ server. The output is byte-identical at the default count, two threads and one.
 
 A page that needs OCR and is not read is counted under a named reason, never dropped in silence.
 **Amended (decision #132, owner 2026-11-14):** that includes a read without `--ocr`. A page the
-trigger takes — no text-showing operator, exactly one image placed and loaded, no inline image —
+trigger takes — no text-showing operator, exactly one image placed and loaded, or several it
+composes (§14), no inline image —
 is counted under the default profile by the reason the request for it would be refused for (a
 filter, a mask, a colour space, a placement), the same name `--ocr` writes, and as
 `ocr-not-requested` where the request would be sent. A page the trigger itself refuses — several
-images, an inline image, an image not loaded — is not counted without the flag. With the flag or
+images it does not compose, an inline image, an image not loaded — is not counted without the
+flag. With the flag or
 without it, `extract`, `markdown` and `html` print one line on stderr naming how many pages were
 not read and each reason, and offer the flag only for the pages not requested — `--ocr` on the
 command that read the source, `extract --ocr` or `markdown --source FILE --ocr` on a record, which
@@ -161,11 +166,14 @@ unread goes unsaid there — a hint there is a follow-up. **A known limit:** the
 page that places one 1 x 1 spacer image and shows no text is taken, counted `ocr-not-requested`
 and, under `--ocr`, sent; `--ocr` reads it under the same trigger, and nothing is drawn from size.
 Under `--ocr`, the reasons:
-several images on the page; an inline image; a stream whose filter the recognizer does not decode
+several images on a page that paints something a composition does not hold,
+`several-images:<what>` (§14); an inline image; a stream whose filter the recognizer does not decode
 (CCITT, JBIG2, JPEG 2000 — the first filter that is neither Flate nor a final DCT, named by the
 engine by the recognizer's own rule before the colour space, which a JPEG 2000 stream may leave to
 its own header, and not sent); a placement that is not axis-aligned; a colour space or bit depth it
-does not read; an image a soft mask or a mask shapes, since the protocol carries the image alone. A
+does not read; an image a soft mask or a mask shapes, since the protocol carries the image alone —
+**amended (decision #156):** on a composed page, a soft mask that is a gray image with no `/Matte`
+is carried and drawn (§14). A
 recognizer that refuses the CPU fails `--ocr` by name for the whole document, as a
 missing one does. A word whose box's centre falls outside the page's visible box is not written and
 is counted; one whose centre is on the page and whose box runs past its edge is written without its
@@ -244,8 +252,8 @@ drawn invoice's do.
 ## 12. What this scope does not decide
 
 Photos (perspective, lighting, a photo's own orientation; a scanned page's quarter and half turns
-are decided, §13); composite pages (mixed raster content, strips, soft
-masks); CCITT, JPEG 2000 and JBIG2; grounding an image file; pages with a stray text layer (contract §6 as it stands); tables,
+are decided, §13); composite pages that paint anything but images and filled rectangles (pages of
+images and fills are decided, §14); CCITT, JPEG 2000 and JBIG2; grounding an image file; pages with a stray text layer (contract §6 as it stands); tables,
 headings and emphasis on recognized pages; languages other than English. How the recognizer is
 released is decided (§9): beside `ethos-parser` in every release archive.
 
@@ -291,3 +299,76 @@ fewer of its paragraphs and none of its tables (a turned invoice reads its field
 the table its upright copy makes). The rule id stays `ppocrv5-mobile-v1`, which no release
 carries yet; `ori_sha256` tells a recognizer before this decision from one after it.
 
+
+## 14. A page painted with several images (2026-11-19, decision #156)
+
+A scan is often stored as more than one image: a background and the one-bit masks its text is
+stencilled with (mixed raster content), or a page cut into strips. Such a page was refused
+`several-images`. ParseBench-2's census found eleven among its 508 text pages, the cheapest of its
+fixes that need no model. The owner chose a compositor in the recognizer over a renderer: hayro's
+vello_cpu picks SIMD paths at run time, so its pixels on other CPUs are unmeasured
+(`assist/README.md`), and §10.1 asks the same bytes everywhere.
+
+- **What the engine sends.** The content interpreter keeps what the page painted, in paint order:
+  each image a `Do` placed and each single rectangle a fill painted, as much of each as the page's
+  rectangular clip and every open form's `/BBox` show, with the colour a stencil mask paints.
+  Anything else refuses the page by name, `several-images:<what>`: a stroke (`stroke`); a path
+  other than one rectangle (`path-not-rectangular`); a shading (`shading`); an inline image
+  (`inline-image`); a clip of another shape, or a form's box its matrix turns by other than a
+  quarter (`clip-not-rectangular`); a graphics state that may blend, soften or remap what is
+  painted — a blend mode, a soft mask, a fill alpha, a transfer function
+  (`graphics-state-not-read`); a layer membership dictionary (`layer-not-read`); a colour set in a
+  space whose components do not read as a device colour's, or with another number of operands
+  than the space has (`fill-colour-not-read`); an annotation a viewer draws over the page
+  (`annotation`). What a layer switched off holds — a `BDC /OC`'s content, or an image whose own
+  `/OC` is off — is not painted. A page whose request is refused names the request's reason, as
+  one image's does: a filter the recognizer does not decode, a soft mask that is not a gray image
+  without `/Matte` or that a stencil carries, a placement not axis-aligned or past a trillion
+  pixels, or `composite-too-large` (below).
+- **The raster** lies over the page's visible box at the finest density an image on it holds: at
+  least a pixel a point, at most 300 dpi and 40 megapixels. Each image is sent once however often
+  it is painted, and a paint over no area is left out. A page whose paints cover more than 400
+  million pixels between them, or that holds more than 65,536 paints, is refused
+  `composite-too-large`.
+- **The recognizer draws it** (`ocr/src/compose.rs`) on white, in integers: a raster pixel takes
+  the stored sample under its centre; a stencil paints its colour where it is black; a soft mask
+  weighs its image over what lies beneath with one rounding; each image is decoded once. Then the
+  raster is read as one image is, §13's orientation model included, and each word lands on the
+  page through the visible box, citing no one image (§6).
+- **Colours** are read as gray, RGB or CMYK by their space's count of components — a device
+  space, `/CalGray`, `/CalRGB`, or an ICC profile — as an image's are (§4); a calibrated space's
+  gamma or matrix is not applied.
+
+**Reviewed** with made-up PDFs before it was measured: the first build read text a viewer does not
+show through an image's own `/OC`, a transfer function, a form box turned 53°, a stencil's soft
+mask, four operands in an RGB space, and an annotation drawn over the page; sent an image's stream
+once per paint (4 GB for one image painted a thousand times); and refused a whole page for one
+image painted over no area. Each is fixed above, with a test that fails without it.
+
+**Measured** on `0f6c8a3` with this decision, with parse-bench 2.1.1:
+
+| | Before | After |
+| --- | ---: | ---: |
+| ParseBench-2, `--ocr`, overall | 57.18 | **57.54** |
+| — text | 61.74 | 62.51 |
+| — formatting | 77.57 | 78.93 |
+| ParseBench, `--ocr`, overall | 54.69 | **55.14** |
+| — content faithfulness | 75.48 | 77.39 |
+| — semantic formatting | 52.82 | 53.15 |
+
+Nine of the census's eleven pages are read; the other two are refused by name (`JBIG2Decode`,
+`CCITTFaxDecode`). ParseBench gains on 14 content pages, 2 formatting pages and 1 grounding page and
+loses on none; ParseBench-2's text subset gains on 8 documents' text and 11 documents' formatting
+and loses on none (one formatting part, lists, falls on a page that had no text before). Without `--ocr` nothing moves: both ParseBench lanes score the same
+on every page, opendataloader-bench's 200 documents and the private real-document set's 250 write
+the same Markdown, and the resume scores are identical.
+
+**Known limits.** A page of one image keeps the path it had (§4): a fill, clip, layer or annotation
+over a single scanned image is not read, since sending such a page through the composition would
+refuse scans read today (a stroked border); that is a decision for the owner. JBIG2, CCITT and JPEG
+2000 masks, common in scanners' mixed raster output, are refused by name. A composed raster carries
+no orientation from a placement, so the orientation model reads it as it stands; on a made-up
+cropped page turned 270° it read the raster wrongly. Samples are nearest, so a mask finer than
+300 dpi is sampled down. The rule id stays `ppocrv5-mobile-v1`, which no release carries; a
+recognizer from before this decision has the same identity and fails the read on the new request
+kind, `composite`, rather than one page (both binaries ship together, §9).

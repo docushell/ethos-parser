@@ -72,6 +72,65 @@ pub enum ImageSpec {
     File,
     /// A PDF image XObject's stream, as its dictionary describes it.
     Pdf(PdfImageSpec),
+    /// A page painted with several images (decision #156): what to compose, in paint order, on a
+    /// white raster `width` by `height` pixels; the bytes are each image's stream, and its soft
+    /// mask's after it, in layer order.
+    Composite(CompositeSpec),
+}
+
+/// A page to compose (decision #156).
+#[derive(Clone, Debug, Serialize)]
+pub struct CompositeSpec {
+    /// The raster's width, in pixels.
+    pub width: u32,
+    /// Its height.
+    pub height: u32,
+    /// Each image the page painted, once however often it painted it, in the order first painted.
+    pub sources: Vec<SourceSpec>,
+    /// What the page painted, in paint order.
+    pub layers: Vec<LayerSpec>,
+}
+
+/// One image a composed page painted (decision #156): what its dictionary states, its stream's
+/// length, and its soft mask, whose stream follows its own.
+#[derive(Clone, Debug, Serialize)]
+pub struct SourceSpec {
+    /// What its dictionary states.
+    pub image: PdfImageSpec,
+    /// Its stream's length.
+    pub bytes: u64,
+    /// Its `/SMask`.
+    pub soft_mask: Option<SoftMaskSpec>,
+}
+
+/// One paint of a [`CompositeSpec`]. Rectangles are `[x0, y0, x1, y1]` in the raster's pixels,
+/// top-left system: a pixel whose top-left corner `(x, y)` has `x0 <= x < x1` and `y0 <= y < y1`
+/// is inside.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "paint", rename_all = "snake_case")]
+pub enum LayerSpec {
+    /// The image [`CompositeSpec::sources`] holds at `source`: the rectangle its raster fills,
+    /// stood upright as `orientation` says, the part of it the page's clip shows, and the colour a
+    /// stencil mask paints.
+    Image {
+        source: u32,
+        rect: [i64; 4],
+        shown: [i64; 4],
+        orientation: u8,
+        colour: Option<[u8; 3]>,
+    },
+    /// A rectangle filled in one colour, red, green and blue.
+    Fill { rect: [i64; 4], colour: [u8; 3] },
+}
+
+/// An image's `/SMask` (decision #156): a gray image whose samples are how much of the image
+/// shows, over the same rectangle.
+#[derive(Clone, Debug, Serialize)]
+pub struct SoftMaskSpec {
+    /// What its dictionary states.
+    pub image: PdfImageSpec,
+    /// Its stream's length, after the image's own.
+    pub bytes: u64,
 }
 
 /// What an image XObject's dictionary states, resolved to what the recognizer reads.
@@ -264,19 +323,94 @@ pub(crate) fn whole_page(page_id: lopdf::ObjectId, width: u32, height: u32) -> C
         object: (0, 0),
         corners: [(0.0, h), (w, h), (w, 0.0), (0.0, 0.0)],
         visible: (0.0, 0.0, w, h),
+        composite: None,
     }
 }
 
-/// A page the trigger took: no text-showing operator, and exactly one image placed (§4).
+/// A page the trigger took: no text-showing operator, and exactly one image placed (§4), or
+/// several, each image and rectangle fill it painted composed into one raster (decision #156).
 #[derive(Clone, Debug)]
 pub(crate) struct Candidate {
     pub page_id: lopdf::ObjectId,
     pub object: lopdf::ObjectId,
     /// The unit square's corners (0,0), (1,0), (1,1), (0,1) on the page, in points, top-left
-    /// system, `/Rotate` applied: where the image's pixels land.
+    /// system, `/Rotate` applied: where the image's pixels land. A composed page's raster lies
+    /// over the visible box.
     pub corners: [(f64, f64); 4],
     /// The box a viewer shows, in the same system: (x0, y0, x1, y1).
     pub visible: (f64, f64, f64, f64),
+    /// What a page painted with several images painted, in paint order (decision #156).
+    pub composite: Option<Vec<Paint>>,
+}
+
+impl Candidate {
+    /// A page painted with several images, composed over its visible box (decision #156).
+    pub(crate) fn composed(
+        page_id: lopdf::ObjectId,
+        visible: (f64, f64, f64, f64),
+        paints: Vec<Paint>,
+    ) -> Self {
+        let (x0, y0, x1, y1) = visible;
+        Candidate {
+            page_id,
+            object: (0, 0),
+            corners: [(x0, y1), (x1, y1), (x1, y0), (x0, y0)],
+            visible,
+            composite: Some(paints),
+        }
+    }
+}
+
+/// One paint of a composed page (decision #156), in the candidate's system.
+#[derive(Clone, Debug)]
+pub(crate) enum Paint {
+    /// An image XObject: where the unit square's corners land, as [`Candidate::corners`] says; the
+    /// box the clip shows of it, (x0, y0, x1, y1); and the colour a stencil mask paints, where it
+    /// is one this reader knows.
+    Image {
+        object: lopdf::ObjectId,
+        corners: [(f64, f64); 4],
+        shown: (f64, f64, f64, f64),
+        fill: Option<crate::text_state::Fill>,
+    },
+    /// A rectangle filled in a device colour, (x0, y0, x1, y1).
+    Fill {
+        rect: (f64, f64, f64, f64),
+        fill: crate::text_state::Fill,
+    },
+}
+
+/// The most pixels per point a composed page is drawn at (decision #156): 300 dpi, a scan's
+/// usual resolution, which a finer mask is sampled down to.
+const COMPOSITE_MAX_DENSITY: f64 = 300.0 / 72.0;
+
+/// The most pixels a composed page holds (decision #156): about 40 megapixels, so a poster is drawn
+/// coarser rather than refused or allowed a raster without bound.
+const COMPOSITE_MAX_PIXELS: f64 = 40.0e6;
+
+/// The most pixels a composed page's paints may cover between them, each counted as often as it
+/// is painted (decision #156, review): ten of the largest rasters, so a page that paints one image
+/// a thousand times is refused by name rather than drawn for minutes.
+pub(crate) const COMPOSITE_MAX_WORK: u128 = 400_000_000;
+
+/// The most paints a composed page may hold (decision #156, review).
+pub(crate) const COMPOSITE_MAX_LAYERS: usize = 65_536;
+
+/// A device colour as 8-bit red, green and blue (decision #156): a gray, an RGB, or a CMYK
+/// converted as the recognizer converts one (32000-1 §10.4.2, no undercolour removal); `None` for a
+/// colour this reader does not know.
+fn rgb(fill: crate::text_state::Fill) -> Option<[u8; 3]> {
+    let byte = |v: i32| ((v.clamp(0, 1000) * 255 + 500) / 1000) as u8;
+    let [a, b, c, k] = fill.components;
+    match fill.count {
+        1 => Some([byte(a); 3]),
+        3 => Some([byte(a), byte(b), byte(c)]),
+        4 => {
+            let ink = |v: i32| byte(1000 - (v.clamp(0, 1000) + k.clamp(0, 1000)).min(1000));
+            Some([ink(a), ink(b), ink(c)])
+        }
+        _ => None,
+    }
 }
 
 /// A recognized word placed on its page, quantized, ready to become a run.
@@ -299,14 +433,208 @@ pub(crate) struct PageWord {
     pub pixels: [[i32; 2]; 4],
 }
 
-/// The request for `candidate`'s image, or the name of what this protocol cannot carry.
+/// The request for `candidate`'s image, or its composed page's, or the name of what this protocol
+/// cannot carry.
 pub(crate) fn request(
     doc: &lopdf::Document,
     candidate: &Candidate,
     page_number: u32,
 ) -> Result<RecognitionRequest, String> {
+    if let Some(paints) = &candidate.composite {
+        return composed(doc, candidate, paints, page_number);
+    }
+    let (spec, data, _) = image_spec(doc, candidate.object, false)?;
+    let orientation = orientation(candidate.corners, spec.width, spec.height)
+        .ok_or("placement-not-axis-aligned")?;
+    Ok(RecognitionRequest {
+        ocr_request: 1,
+        id: format!("page {page_number}"),
+        image: ImageSpec::Pdf(spec),
+        orientation,
+        bytes: data.len() as u64,
+        data,
+    })
+}
+
+/// The request for a page painted with several images (decision #156): each image's stream once,
+/// and each paint, placed on a raster over the visible box at the finest density an image of it
+/// holds, up to [`COMPOSITE_MAX_DENSITY`] and [`COMPOSITE_MAX_PIXELS`]. An image painted over no
+/// area paints nothing and is left out.
+fn composed(
+    doc: &lopdf::Document,
+    candidate: &Candidate,
+    paints: &[Paint],
+    page_number: u32,
+) -> Result<RecognitionRequest, String> {
+    let (vx0, vy0, vx1, vy1) = candidate.visible;
+    let (pw, ph) = (vx1 - vx0, vy1 - vy0);
+    if !(pw > 0.0 && ph > 0.0) {
+        return Err("page-empty".into());
+    }
+    if paints.len() > COMPOSITE_MAX_LAYERS {
+        return Err("composite-too-large".into());
+    }
+    let span = |c: &[(f64, f64); 4]| {
+        let (xs, ys) = (c.map(|p| p.0), c.map(|p| p.1));
+        let lo = |v: [f64; 4]| v.iter().copied().fold(f64::INFINITY, f64::min);
+        let hi = |v: [f64; 4]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        (lo(xs), lo(ys), hi(xs), hi(ys))
+    };
+    // Each image read once, first: what it is, how each paint of it stands, and the density the
+    // page is drawn at.
+    let mut sources: Vec<SourceSpec> = Vec::new();
+    let mut data = Vec::new();
+    let mut read: std::collections::BTreeMap<lopdf::ObjectId, usize> = Default::default();
+    let mut placed = Vec::with_capacity(paints.len());
+    let mut density: f64 = 1.0;
+    for paint in paints {
+        let Paint::Image {
+            object,
+            corners,
+            fill,
+            ..
+        } = paint
+        else {
+            placed.push(None);
+            continue;
+        };
+        let (x0, y0, x1, y1) = span(corners);
+        if !(x1 > x0 && y1 > y0) {
+            placed.push(None);
+            continue;
+        }
+        let source = match read.get(object) {
+            Some(&k) => k,
+            None => {
+                let (image, bytes, mask) = image_spec(doc, *object, true)?;
+                // A stencil is painted through its colour, not weighed by a mask (review).
+                if image.image_mask && mask.is_some() {
+                    return Err("soft-mask-not-read".into());
+                }
+                data.extend_from_slice(&bytes);
+                let soft_mask = mask.map(|(image, bytes)| {
+                    data.extend_from_slice(&bytes);
+                    SoftMaskSpec {
+                        image,
+                        bytes: bytes.len() as u64,
+                    }
+                });
+                sources.push(SourceSpec {
+                    image,
+                    bytes: bytes.len() as u64,
+                    soft_mask,
+                });
+                read.insert(*object, sources.len() - 1);
+                sources.len() - 1
+            }
+        };
+        let spec = &sources[source].image;
+        let orientation =
+            orientation(*corners, spec.width, spec.height).ok_or("placement-not-axis-aligned")?;
+        let colour = match (spec.image_mask, fill) {
+            (true, Some(f)) => Some(rgb(*f).ok_or("fill-colour-not-read")?),
+            (true, None) => return Err("fill-colour-not-read".into()),
+            (false, _) => None,
+        };
+        let (across, down) = if orientation % 2 == 1 {
+            (spec.height, spec.width)
+        } else {
+            (spec.width, spec.height)
+        };
+        density = density
+            .max(f64::from(across) / (x1 - x0))
+            .max(f64::from(down) / (y1 - y0));
+        placed.push(Some((source as u32, orientation, colour)));
+    }
+    let density = density
+        .min(COMPOSITE_MAX_DENSITY)
+        .min((COMPOSITE_MAX_PIXELS / (pw * ph)).sqrt());
+    let width = ((pw * density).round() as u32).max(1);
+    let height = ((ph * density).round() as u32).max(1);
+    let (sx, sy) = (f64::from(width) / pw, f64::from(height) / ph);
+    // A placement so far off the page that its pixels are no integer is refused, not clamped:
+    // clamped, it would sample another part of its image (review).
+    let rect = |(x0, y0, x1, y1): (f64, f64, f64, f64)| -> Result<[i64; 4], String> {
+        let at = |v: f64, origin: f64, s: f64| {
+            let p = ((v - origin) * s).round();
+            (p.abs() <= 1e12).then_some(p as i64)
+        };
+        match (
+            at(x0, vx0, sx),
+            at(y0, vy0, sy),
+            at(x1, vx0, sx),
+            at(y1, vy0, sy),
+        ) {
+            (Some(a), Some(b), Some(c), Some(d)) => Ok([a, b, c, d]),
+            _ => Err("placement-not-read".into()),
+        }
+    };
+    // How many raster pixels a paint covers, as the recognizer draws it.
+    let area = |r: [i64; 4], s: [i64; 4]| -> u128 {
+        let (x0, y0) = (r[0].max(s[0]).max(0), r[1].max(s[1]).max(0));
+        let (x1, y1) = (
+            r[2].min(s[2]).min(i64::from(width)),
+            r[3].min(s[3]).min(i64::from(height)),
+        );
+        (x1 - x0).max(0) as u128 * (y1 - y0).max(0) as u128
+    };
+    let mut layers = Vec::new();
+    let mut work: u128 = 0;
+    for (paint, placed) in paints.iter().zip(placed) {
+        let layer = match (paint, placed) {
+            (Paint::Image { corners, shown, .. }, Some((source, orientation, colour))) => {
+                let (r, s) = (rect(span(corners))?, rect(*shown)?);
+                work += area(r, s);
+                LayerSpec::Image {
+                    source,
+                    rect: r,
+                    shown: s,
+                    orientation,
+                    colour,
+                }
+            }
+            (Paint::Image { .. }, None) => continue,
+            (Paint::Fill { rect: r, fill }, _) => {
+                let r = rect(*r)?;
+                work += area(r, r);
+                LayerSpec::Fill {
+                    rect: r,
+                    colour: rgb(*fill).ok_or("fill-colour-not-read")?,
+                }
+            }
+        };
+        layers.push(layer);
+    }
+    if work > COMPOSITE_MAX_WORK {
+        return Err("composite-too-large".into());
+    }
+    Ok(RecognitionRequest {
+        ocr_request: 1,
+        id: format!("page {page_number}"),
+        image: ImageSpec::Composite(CompositeSpec {
+            width,
+            height,
+            sources,
+            layers,
+        }),
+        orientation: 0,
+        bytes: data.len() as u64,
+        data,
+    })
+}
+
+/// A soft mask's dictionary and stream (decision #156).
+type SoftMask = (PdfImageSpec, Vec<u8>);
+
+/// What image `object`'s dictionary states, its stream as stored, and, where `soft_masks` allows
+/// one, its `/SMask`'s; or the name of what this protocol cannot carry.
+fn image_spec(
+    doc: &lopdf::Document,
+    object: lopdf::ObjectId,
+    soft_masks: bool,
+) -> Result<(PdfImageSpec, Vec<u8>, Option<SoftMask>), String> {
     let stream = doc
-        .get_object(candidate.object)
+        .get_object(object)
         .and_then(lopdf::Object::as_stream)
         .map_err(|_| "image-not-loaded".to_string())?;
     let dict = &stream.dict;
@@ -323,9 +651,27 @@ pub(crate) fn request(
     };
     // A mask decides what of the image a viewer sees, and the protocol carries the image alone:
     // read without it, black text masked onto a black image reaches the recognizer all black, and
-    // what a stencil hides could be read as text no viewer shows (PR 53's review).
+    // what a stencil hides could be read as text no viewer shows (PR 53's review). A composed
+    // page carries a soft mask (decision #156) where it is a gray image with no `/Matte`.
+    let mut soft_mask = None;
     if dict.has(b"SMask") {
-        return Err("soft-mask-not-read".into());
+        let read = soft_masks
+            .then(|| {
+                dict.get(b"SMask")
+                    .and_then(lopdf::Object::as_reference)
+                    .ok()
+            })
+            .flatten()
+            .and_then(|id| {
+                let unmatted = doc
+                    .get_object(id)
+                    .and_then(lopdf::Object::as_stream)
+                    .is_ok_and(|s| !s.dict.has(b"Matte"));
+                let (spec, data, _) = image_spec(doc, id, false).ok()?;
+                let gray = matches!(spec.colour, Some(Colour::Gray)) && !spec.image_mask;
+                (unmatted && gray).then_some((spec, data))
+            });
+        soft_mask = Some(read.ok_or("soft-mask-not-read")?);
     }
     if dict.has(b"Mask") {
         return Err("mask-not-read".into());
@@ -408,25 +754,17 @@ pub(crate) fn request(
             })
             .collect()
     });
-    let orientation =
-        orientation(candidate.corners, width, height).ok_or("placement-not-axis-aligned")?;
-    Ok(RecognitionRequest {
-        ocr_request: 1,
-        id: format!("page {page_number}"),
-        image: ImageSpec::Pdf(PdfImageSpec {
-            width,
-            height,
-            bits_per_component,
-            colour,
-            filters,
-            decode_parms,
-            decode,
-            image_mask,
-        }),
-        orientation,
-        bytes: stream.content.len() as u64,
-        data: stream.content.clone(),
-    })
+    let spec = PdfImageSpec {
+        width,
+        height,
+        bits_per_component,
+        colour,
+        filters,
+        decode_parms,
+        decode,
+        image_mask,
+    };
+    Ok((spec, stream.content.clone(), soft_mask))
 }
 
 /// A colour space resolved to what the recognizer reads, or the name of one it does not.
@@ -675,6 +1013,26 @@ mod tests {
     /// A one-page PDF, 200 x 100 points, drawing `images` copies of a 20 x 10 gray image with the
     /// matrix `cm`, and `text` with Helvetica when given.
     fn scanned(cm: &str, images: usize, text: Option<&str>) -> Vec<u8> {
+        let mut ops = String::new();
+        for _ in 0..images {
+            ops.push_str(&format!("q {cm} cm /Im0 Do Q "));
+        }
+        if let Some(t) = text {
+            ops.push_str(&format!("BT /F1 12 Tf 10 50 Td ({t}) Tj ET"));
+        }
+        page_with(&ops)
+    }
+
+    /// The page [`scanned`] makes, drawing `ops`: `/Im0` its 20 x 10 gray image, `/F1` Helvetica.
+    fn page_with(ops: &str) -> Vec<u8> {
+        page_with_resources(ops, |_, _| {})
+    }
+
+    /// [`page_with`], its resources as `more` leaves them.
+    fn page_with_resources(
+        ops: &str,
+        more: impl FnOnce(&mut lopdf::Document, &mut lopdf::Dictionary),
+    ) -> Vec<u8> {
         use lopdf::{dictionary, Object, Stream};
         let mut doc = lopdf::Document::with_version("1.7");
         let pages = doc.new_object_id();
@@ -688,22 +1046,18 @@ mod tests {
         let font = doc.add_object(dictionary! {
             "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"
         });
-        let mut ops = String::new();
-        for _ in 0..images {
-            ops.push_str(&format!("q {cm} cm /Im0 Do Q "));
-        }
-        if let Some(t) = text {
-            ops.push_str(&format!("BT /F1 12 Tf 10 50 Td ({t}) Tj ET"));
-        }
+        let ops = ops.to_string();
         let content = doc.add_object(Stream::new(dictionary! {}, ops.into_bytes()));
+        let mut resources = dictionary! {
+            "XObject" => dictionary! { "Im0" => image },
+            "Font" => dictionary! { "F1" => font },
+        };
+        more(&mut doc, &mut resources);
         let page = doc.add_object(dictionary! {
             "Type" => "Page",
             "Parent" => pages,
             "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
-            "Resources" => dictionary! {
-                "XObject" => dictionary! { "Im0" => image },
-                "Font" => dictionary! { "F1" => font },
-            },
+            "Resources" => resources,
             "Contents" => content,
         });
         doc.objects.insert(
@@ -729,6 +1083,8 @@ mod tests {
         requests: Vec<RecognitionRequest>,
         /// The pixel "world" ends at; 18, inside the 20-pixel image, unless a test moves it.
         reach: i32,
+        /// The size it answers a composed page at, where not the size asked for.
+        composed_at: Option<(u32, u32)>,
     }
 
     impl Fake {
@@ -739,6 +1095,7 @@ mod tests {
                 refused: None,
                 requests: Vec::new(),
                 reach: 18,
+                composed_at: None,
             }
         }
     }
@@ -753,6 +1110,11 @@ mod tests {
                 text: t.into(),
                 quad: [[x0, 2], [x1, 2], [x1, 8], [x0, 8]],
             };
+            // A composed page is answered at the size it was asked for (decision #156).
+            let (width, height) = match &request.image {
+                ImageSpec::Composite(c) => self.composed_at.unwrap_or((c.width, c.height)),
+                _ => (20, 10),
+            };
             Ok(Recognition {
                 ocr_response: 1,
                 id: request.id.clone(),
@@ -760,8 +1122,8 @@ mod tests {
                     .answers_as
                     .clone()
                     .unwrap_or_else(|| self.identity.clone()),
-                width: 20,
-                height: 10,
+                width,
+                height,
                 lines: if self.refused.is_some() {
                     Vec::new()
                 } else {
@@ -895,20 +1257,464 @@ mod tests {
     }
 
     #[test]
-    fn two_images_are_refused_by_name() {
+    fn two_images_are_composed_and_read() {
+        // Decision #156: a page painted with several images is drawn as one raster over its
+        // visible box and read once; its words are placed on the page through that raster.
         let profile = Profile::ocr_v0();
         let doc =
             Document::open_bytes(&scanned("200 0 0 100 0 0", 2, None), &profile).expect("opens");
         let mut fake = Fake::new();
         let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
-        assert!(fake.requests.is_empty());
-        let l = artifact
-            .assurance
-            .limitations
+        assert_eq!(fake.requests.len(), 1);
+        let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+            panic!("composed: {:?}", fake.requests[0].image);
+        };
+        // 20 x 10 samples over 200 x 100 points: under a pixel a point, so one pixel a point.
+        assert_eq!((spec.width, spec.height), (200, 100));
+        assert_eq!(spec.layers.len(), 2);
+        for layer in &spec.layers {
+            let LayerSpec::Image {
+                source,
+                rect,
+                shown,
+                orientation,
+                ..
+            } = layer
+            else {
+                panic!("an image: {layer:?}");
+            };
+            assert_eq!(
+                (*source, *rect, *shown, *orientation),
+                (0, [0, 0, 200, 100], [0, 0, 200, 100], 0)
+            );
+        }
+        // One image painted twice is one source, its stream sent once (review).
+        assert_eq!(spec.sources.len(), 1);
+        assert_eq!(fake.requests[0].data.len(), 200);
+        let runs = &artifact.pages[0].runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            ["Hello ", "world"]
+        );
+        // Pixel 2 of 200 across 200 points; the line's foot 8 of 100 pixels down 100 points.
+        assert_eq!(
+            (runs[0].locator.origin_x, runs[0].locator.origin_y),
+            (200, 800)
+        );
+        assert!(!codes(&artifact).contains(&ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED));
+        // Read from no one image, so its locator names none.
+        let rep = crate::to_representation(&artifact, &profile).expect("seals");
+        let node = rep
+            .payload()
+            .nodes
             .iter()
-            .find(|l| l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED)
-            .expect("counted on its page");
-        assert!(l.detail.contains("several-images"), "{}", l.detail);
+            .find(|n| n.text == "Hello ")
+            .expect("the run is a node");
+        let NativeLocator::Recognized(at) = &node.native_locator else {
+            panic!("a recognized run is addressed as one");
+        };
+        assert!(at.image.is_none());
+    }
+
+    #[test]
+    fn a_composed_page_is_drawn_at_its_finest_images_density_up_to_300_dpi() {
+        let profile = Profile::ocr_v0();
+        let size = |ops: &str| {
+            let doc = Document::open_bytes(&page_with(ops), &profile).expect("opens");
+            let mut fake = Fake::new();
+            crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+                panic!("composed");
+            };
+            (spec.width, spec.height)
+        };
+        // 20 x 10 samples over 10 x 5 points is two a point; the other image's tenth is coarser.
+        let fine = "q 200 0 0 100 0 0 cm /Im0 Do Q q 10 0 0 5 0 0 cm /Im0 Do Q";
+        assert_eq!(size(fine), (400, 200));
+        // Over 2 x 1 points it is ten a point: drawn at 300 dpi, 200 x 100 points at 833 x 417.
+        let finer = "q 200 0 0 100 0 0 cm /Im0 Do Q q 2 0 0 1 0 0 cm /Im0 Do Q";
+        assert_eq!(size(finer), (833, 417));
+    }
+
+    #[test]
+    fn a_composed_page_answered_at_another_size_is_refused_by_name() {
+        let profile = Profile::ocr_v0();
+        let doc =
+            Document::open_bytes(&scanned("200 0 0 100 0 0", 2, None), &profile).expect("opens");
+        let mut fake = Fake::new();
+        fake.composed_at = Some((20, 10));
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert!(artifact.pages[0].runs.is_empty());
+        assert_eq!(reason(&artifact).as_deref(), Some("image-size-mismatch"));
+    }
+
+    #[test]
+    fn paint_a_composition_does_not_hold_refuses_the_page_by_name() {
+        // Decision #156: composed without what it painted, a page could show text no viewer sees
+        // — a word under a redaction drawn as a curve, or blended away — so it is not composed.
+        let profile = Profile::ocr_v0();
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        for (between, why) in [
+            ("0 0 m 50 50 l S", "stroke"),
+            ("0 0 m 50 50 50 0 100 0 c f", "path-not-rectangular"),
+            ("0 0 10 10 re 20 20 10 10 re f", "path-not-rectangular"),
+            ("/Sh0 sh", "shading"),
+            ("/GsX gs 0 0 10 10 re f", "graphics-state-not-read"),
+            ("0 0 m 100 0 l 50 50 l h W n", "clip-not-rectangular"),
+            ("/P0 cs /Pat scn 0 0 10 10 re f", "fill-colour-not-read"),
+            // Four operands in an RGB space: a viewer reads the last three (review).
+            (
+                "/DeviceRGB cs 0 1 1 1 sc 0 0 10 10 re f",
+                "fill-colour-not-read",
+            ),
+        ] {
+            let ops = format!("{image} {between} {image}");
+            let doc = Document::open_bytes(&page_with(&ops), &profile).expect("opens");
+            let mut fake = Fake::new();
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert!(fake.requests.is_empty(), "{why}: nothing is sent");
+            assert_eq!(
+                reason(&artifact).as_deref(),
+                Some(format!("several-images:{why}").as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn a_stencil_paints_a_colour_set_in_a_space_that_reads_as_a_device_ones() {
+        // Decision #156: a scan's text stencilled in a colour set with `/Cs1 cs … sc`, where `/Cs1`
+        // is an ICC profile of three components, paints that colour. In a space whose components
+        // do not read as a device colour's — an ICC profile of two, whatever the operands; `/Lab`,
+        // whose three are no RGB — it is not known, and the page is refused by name rather than
+        // painted a guessed colour.
+        use lopdf::{dictionary, Object, Stream};
+        let profile = Profile::ocr_v0();
+        let icc = |doc: &mut lopdf::Document, n: i64| {
+            let profile = doc.add_object(Stream::new(dictionary! { "N" => n }, vec![]));
+            Object::Array(vec![Object::Name(b"ICCBased".to_vec()), profile.into()])
+        };
+        let lab = |_: &mut lopdf::Document, _: i64| {
+            Object::Array(vec![
+                Object::Name(b"Lab".to_vec()),
+                Object::Dictionary(
+                    dictionary! { "WhitePoint" => vec![0.95.into(), 1.into(), 1.09.into()] },
+                ),
+            ])
+        };
+        type Space<'a> = &'a dyn Fn(&mut lopdf::Document, i64) -> Object;
+        let unknown: [(Space, &str); 2] = [(&icc, "0.5 0.5 0.5 sc"), (&lab, "50 0 0 sc")];
+        for (space, colour) in unknown {
+            let bytes = page_with_resources(
+                &format!(
+                    "q 200 0 0 100 0 0 cm /Im0 Do Q /Cs1 cs 0.2 0.4 0.6 sc \
+                     q 200 0 0 100 0 0 cm /M0 Do Q /Cs2 cs {colour} q 200 0 0 100 0 0 cm /M0 Do Q"
+                ),
+                |doc, resources| {
+                    let mask = doc.add_object(Stream::new(
+                        dictionary! {
+                            "Type" => "XObject", "Subtype" => "Image", "Width" => 8, "Height" => 1,
+                            "ImageMask" => true,
+                        },
+                        vec![0x0F],
+                    ));
+                    let (cs1, cs2) = (icc(doc, 3), space(doc, 2));
+                    resources.set("ColorSpace", dictionary! { "Cs1" => cs1, "Cs2" => cs2 });
+                    if let Ok(Object::Dictionary(x)) = resources.get_mut(b"XObject") {
+                        x.set("M0", mask);
+                    }
+                },
+            );
+            let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+            let mut fake = Fake::new();
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert!(
+                fake.requests.is_empty(),
+                "{colour}: the stencil's colour is not known"
+            );
+            assert_eq!(
+                reason(&artifact).as_deref(),
+                Some("fill-colour-not-read"),
+                "named by the request, as a stencil with no colour is"
+            );
+        }
+        // Without the second stencil the page is composed, the first painting its colour.
+        let bytes = page_with_resources(
+            "q 200 0 0 100 0 0 cm /Im0 Do Q /Cs1 cs 0.2 0.4 0.6 sc q 200 0 0 100 0 0 cm /M0 Do Q",
+            |doc, resources| {
+                let mask = doc.add_object(Stream::new(
+                    dictionary! {
+                        "Type" => "XObject", "Subtype" => "Image", "Width" => 8, "Height" => 1,
+                        "ImageMask" => true,
+                    },
+                    vec![0x0F],
+                ));
+                let profile = doc.add_object(Stream::new(dictionary! { "N" => 3 }, vec![]));
+                let cs1 = Object::Array(vec![Object::Name(b"ICCBased".to_vec()), profile.into()]);
+                resources.set("ColorSpace", dictionary! { "Cs1" => cs1 });
+                if let Ok(Object::Dictionary(x)) = resources.get_mut(b"XObject") {
+                    x.set("M0", mask);
+                }
+            },
+        );
+        let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+        let mut fake = Fake::new();
+        crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+            panic!("composed");
+        };
+        let LayerSpec::Image { colour, .. } = &spec.layers[1] else {
+            panic!("the stencil");
+        };
+        assert_eq!(*colour, Some([51, 102, 153]));
+    }
+
+    /// `bytes` with its document as `edit` leaves it.
+    fn edited(bytes: &[u8], edit: impl FnOnce(&mut lopdf::Document)) -> Vec<u8> {
+        let mut doc = lopdf::Document::load_mem(bytes).expect("loads");
+        edit(&mut doc);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("saves");
+        out
+    }
+
+    /// The reason `--ocr` names for `bytes`'s page, and the requests it sent.
+    fn read_ocr(bytes: &[u8]) -> (Option<String>, Vec<RecognitionRequest>) {
+        let profile = Profile::ocr_v0();
+        let doc = Document::open_bytes(bytes, &profile).expect("opens");
+        let mut fake = Fake::new();
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        (reason(&artifact), fake.requests)
+    }
+
+    #[test]
+    fn what_a_viewer_hides_or_draws_over_a_composition_is_honoured_or_refused() {
+        // Decision #156's review: each probe hid text from a viewer that the first build read.
+        use lopdf::{dictionary, Object, Stream};
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        let two = format!("{image} {image}");
+        let first_page = |doc: &lopdf::Document| doc.page_iter().next().expect("a page");
+        // An annotation a viewer draws over the page.
+        for (flags, why) in [(0, Some("several-images:annotation")), (2, None)] {
+            let bytes = edited(&page_with(&two), |doc| {
+                let ap = doc.add_object(Stream::new(
+                    dictionary! { "BBox" => vec![0.into(), 0.into(), 100.into(), 100.into()] },
+                    b"0 g 0 0 100 100 re f".to_vec(),
+                ));
+                let annot = doc.add_object(dictionary! {
+                    "Type" => "Annot", "Subtype" => "Square", "F" => flags,
+                    "Rect" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+                    "AP" => dictionary! { "N" => ap },
+                });
+                let page = first_page(doc);
+                doc.get_object_mut(page)
+                    .and_then(Object::as_dict_mut)
+                    .expect("the page")
+                    .set("Annots", vec![annot.into()]);
+            });
+            let (got, requests) = read_ocr(&bytes);
+            match why {
+                Some(why) => assert_eq!(got.as_deref(), Some(why), "flags {flags}"),
+                None => assert_eq!(requests.len(), 1, "a hidden annotation draws nothing"),
+            }
+        }
+        // A transfer function maps what is painted to another colour.
+        let bytes = page_with_resources(&format!("{image} /Gs1 gs {image}"), |doc, resources| {
+            let f = doc.add_object(dictionary! {
+                "FunctionType" => 2, "Domain" => vec![0.into(), 1.into()], "N" => 1,
+                "C0" => vec![1.into()], "C1" => vec![1.into()],
+            });
+            resources.set(
+                "ExtGState",
+                dictionary! { "Gs1" => dictionary! { "TR" => f } },
+            );
+        });
+        assert_eq!(
+            read_ocr(&bytes).0.as_deref(),
+            Some("several-images:graphics-state-not-read")
+        );
+        // A form's box turned by its matrix clips to no one rectangle.
+        let bytes = page_with_resources(&format!("{image} /Fm0 Do"), |doc, resources| {
+            let im0 = match resources.get(b"XObject") {
+                Ok(Object::Dictionary(x)) => x.get(b"Im0").expect("Im0").clone(),
+                _ => panic!("the page's images"),
+            };
+            let form = doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Form",
+                    "BBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+                    "Matrix" => vec![0.6.into(), 0.8.into(), (-0.8).into(), 0.6.into(), 100.into(), 0.into()],
+                    "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => im0 } },
+                },
+                b"q 0.6 -0.8 0.8 0.6 0 0 cm 200 0 0 100 0 0 cm /Im0 Do Q".to_vec(),
+            ));
+            if let Ok(Object::Dictionary(x)) = resources.get_mut(b"XObject") {
+                x.set("Fm0", form);
+            }
+        });
+        assert_eq!(
+            read_ocr(&bytes).0.as_deref(),
+            Some("several-images:clip-not-rectangular")
+        );
+        // An image's own `/OC`: switched off it is not painted; a membership dictionary is not
+        // evaluated, and refuses the page.
+        for (ocmd, why) in [(false, None), (true, Some("several-images:layer-not-read"))] {
+            let bytes = page_with_resources(
+                "q 200 0 0 100 0 0 cm /Im0 Do Q q 100 0 0 50 0 0 cm /Im1 Do Q",
+                |doc, resources| {
+                    let ocg = doc.add_object(dictionary! { "Type" => "OCG", "Name" => "hidden" });
+                    let oc: Object = if ocmd {
+                        doc.add_object(dictionary! { "Type" => "OCMD", "OCGs" => vec![ocg.into()] })
+                            .into()
+                    } else {
+                        ocg.into()
+                    };
+                    let hidden = doc.add_object(Stream::new(
+                        dictionary! {
+                            "Type" => "XObject", "Subtype" => "Image", "Width" => 20,
+                            "Height" => 10, "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+                            "OC" => oc,
+                        },
+                        vec![0u8; 200],
+                    ));
+                    let shown = doc.add_object(Stream::new(
+                        dictionary! {
+                            "Type" => "XObject", "Subtype" => "Image", "Width" => 20,
+                            "Height" => 10, "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+                        },
+                        vec![255u8; 200],
+                    ));
+                    if let Ok(Object::Dictionary(x)) = resources.get_mut(b"XObject") {
+                        x.set("Im0", hidden);
+                        x.set("Im1", shown);
+                    }
+                    // The catalog is made after the page; it takes these once it is.
+                    doc.trailer.set(
+                        "PendingOC",
+                        dictionary! {
+                            "OCGs" => vec![ocg.into()],
+                            "D" => dictionary! { "OFF" => vec![ocg.into()] },
+                        },
+                    );
+                },
+            );
+            let bytes = edited(&bytes, |doc| {
+                let props = doc.trailer.remove(b"PendingOC").expect("set above");
+                let root = doc
+                    .trailer
+                    .get(b"Root")
+                    .and_then(Object::as_reference)
+                    .expect("root");
+                doc.get_object_mut(root)
+                    .and_then(Object::as_dict_mut)
+                    .expect("the catalog")
+                    .set("OCProperties", props);
+            });
+            let (got, requests) = read_ocr(&bytes);
+            match why {
+                Some(why) => assert_eq!(got.as_deref(), Some(why)),
+                None => {
+                    let ImageSpec::Composite(spec) = &requests[0].image else {
+                        panic!("composed");
+                    };
+                    assert_eq!(spec.layers.len(), 1, "the hidden image is not painted");
+                    assert_eq!(
+                        requests[0].data,
+                        vec![255u8; 200],
+                        "only the shown one sent"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_stencil_with_a_soft_mask_is_refused_by_name() {
+        use lopdf::{dictionary, Stream};
+        let bytes = page_with_resources(
+            "q 200 0 0 100 0 0 cm /Im0 Do Q 0 g q 200 0 0 100 0 0 cm /M0 Do Q",
+            |doc, resources| {
+                let soft = doc.add_object(Stream::new(
+                    dictionary! {
+                        "Type" => "XObject", "Subtype" => "Image", "Width" => 8, "Height" => 1,
+                        "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+                    },
+                    vec![0u8; 8],
+                ));
+                let mask = doc.add_object(Stream::new(
+                    dictionary! {
+                        "Type" => "XObject", "Subtype" => "Image", "Width" => 8, "Height" => 1,
+                        "ImageMask" => true, "SMask" => soft,
+                    },
+                    vec![0x00],
+                ));
+                if let Ok(lopdf::Object::Dictionary(x)) = resources.get_mut(b"XObject") {
+                    x.set("M0", mask);
+                }
+            },
+        );
+        assert_eq!(read_ocr(&bytes).0.as_deref(), Some("soft-mask-not-read"));
+    }
+
+    #[test]
+    fn placements_that_paint_nothing_are_left_out_and_ones_past_reach_refused() {
+        // An image painted over no area paints nothing (review: it refused the whole page).
+        let ops = "q 0 0 0 0 0 0 cm /Im0 Do Q q 200 0 0 100 0 0 cm /Im0 Do Q";
+        let (why, requests) = read_ocr(&page_with(ops));
+        assert_eq!(why, None);
+        let ImageSpec::Composite(spec) = &requests[0].image else {
+            panic!("composed");
+        };
+        assert_eq!(spec.layers.len(), 1);
+        // One whose pixels are past a trillion is refused, not clamped onto another part of it.
+        let ops = "q 10000000000000 0 0 10000000000000 0 0 cm /Im0 Do Q \
+                   q 200 0 0 100 0 0 cm /Im0 Do Q";
+        assert_eq!(
+            read_ocr(&page_with(ops)).0.as_deref(),
+            Some("placement-not-read")
+        );
+    }
+
+    #[test]
+    fn a_page_painted_over_and_over_is_refused_by_name() {
+        // 833 x 417 pixels painted 1,200 times is past the 400 million (review: one image drawn a
+        // thousand times took gigabytes).
+        let mut ops = String::from("q 2 0 0 1 0 0 cm /Im0 Do Q ");
+        for _ in 0..1200 {
+            ops.push_str("q 200 0 0 100 0 0 cm /Im0 Do Q ");
+        }
+        let (why, requests) = read_ocr(&page_with(&ops));
+        assert!(requests.is_empty());
+        assert_eq!(why.as_deref(), Some("composite-too-large"));
+    }
+
+    #[test]
+    fn fills_and_clips_reach_the_composition_in_paint_order() {
+        let profile = Profile::ocr_v0();
+        let ops = "q 0 0 100 100 re W n q 200 0 0 100 0 0 cm /Im0 Do Q Q \
+                   1 0 0 rg 10 10 20 20 re f q 200 0 0 100 0 0 cm /Im0 Do Q";
+        let doc = Document::open_bytes(&page_with(ops), &profile).expect("opens");
+        let mut fake = Fake::new();
+        crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+            panic!("composed");
+        };
+        let shown: Vec<_> = spec
+            .layers
+            .iter()
+            .map(|l| match l {
+                LayerSpec::Image { shown, .. } => ("image", *shown, None),
+                LayerSpec::Fill { rect, colour } => ("fill", *rect, Some(*colour)),
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("image", [0, 0, 100, 100], None),
+                // (10, 10)-(30, 30) up from the foot is 70..90 down from the top.
+                ("fill", [10, 70, 30, 90], Some([255, 0, 0])),
+                ("image", [0, 0, 200, 100], None),
+            ]
+        );
     }
 
     #[test]
@@ -1114,13 +1920,17 @@ mod tests {
         ] {
             assert_eq!(reason(&extract(&bytes)).as_deref(), Some(why));
         }
+        // Decision #156: a page of several images it would compose, too.
+        let two = extract(&scanned("200 0 0 100 0 0", 2, None));
+        assert_eq!(reason(&two).as_deref(), Some("ocr-not-requested"));
         // Never on a page that shows text, nor on one the trigger itself does not take.
-        for (images, text) in [(1, Some("drawn")), (2, None)] {
-            let other = extract(&scanned("200 0 0 100 0 0", images, text));
-            assert!(
-                !codes(&other).contains(&ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED),
-                "{images} image(s), text {text:?}"
-            );
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        for bytes in [
+            scanned("200 0 0 100 0 0", 1, Some("drawn")),
+            page_with(&format!("{image} 0 0 m 50 50 l S {image}")),
+        ] {
+            let other = extract(&bytes);
+            assert!(!codes(&other).contains(&ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED));
         }
     }
 
@@ -1165,6 +1975,7 @@ mod tests {
             object: (2, 0),
             corners: [(0.0, 50.0), (100.0, 50.0), (100.0, 0.0), (0.0, 0.0)],
             visible: (0.0, 0.0, 100.0, 50.0),
+            composite: None,
         };
         let word = |t: &str, x0: i32, x1: i32| RecognizedWord {
             text: t.into(),
@@ -1301,6 +2112,7 @@ mod tests {
             object: (2, 0),
             corners: [(0.0, 100.0), (200.0, 100.0), (200.0, 0.0), (0.0, 0.0)],
             visible: (0.0, 0.0, 100.0, 100.0),
+            composite: None,
         };
         let mut fake = Fake::new();
         let answer = fake

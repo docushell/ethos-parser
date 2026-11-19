@@ -21,7 +21,9 @@
 //! ```
 //!
 //! **A request** is one JSON line, then exactly `bytes` raw bytes:
-//! `{"ocr_request":1,"id":"..","image":{"kind":"file"}|{"kind":"pdf",..},"orientation":0,"bytes":N}`.
+//! `{"ocr_request":1,"id":"..","image":{"kind":"file"}|{"kind":"pdf",..}|{"kind":"composite",..},"orientation":0,"bytes":N}`.
+//! A composite is a page painted with several images, drawn on white before it is read (decision
+//! #156, `compose.rs`).
 //! `orientation` stands the stored raster upright: mirrored left to right first when 4 or more,
 //! then turned `orientation % 4` quarter turns clockwise.
 //!
@@ -34,6 +36,7 @@
 //! The same request gets the same bytes on every CPU this runs on; an x86-64 CPU without AVX2 and
 //! FMA computes differently and is refused before anything is read.
 
+mod compose;
 mod decode;
 mod pipeline;
 
@@ -92,6 +95,7 @@ struct Request {
 enum ImageSpec {
     File,
     Pdf(decode::PdfImage),
+    Composite(compose::Composite),
 }
 
 #[derive(Serialize)]
@@ -243,6 +247,7 @@ fn serve(rec: &Recognizer) -> Result<(), String> {
         let stored = match &req.image {
             ImageSpec::File => decode::file(&data),
             ImageSpec::Pdf(spec) => decode::pdf(spec, &data),
+            ImageSpec::Composite(spec) => compose::compose(spec, &data),
         };
         let a = answer(rec, req.id, stored, req.orientation);
         serde_json::to_writer(&mut out, &a).map_err(|e| e.to_string())?;

@@ -732,11 +732,13 @@ fn extract_page(
         let resources = page_resources(doc.inner(), page_dict);
         let layers = doc.layers().names(doc.inner(), resources.as_ref());
         let plain = crate::layers::plain_states(doc.inner(), resources.as_ref());
+        let spaces = crate::layers::device_like_spaces(doc.inner(), resources.as_ref());
         let mut interp = Interpreter::new(&fonts)
             .with_xobjects(xobjects)
             .with_forms(&resolve, allowance)
             .with_layers(layers)
-            .with_plain_states(plain);
+            .with_plain_states(plain)
+            .with_colour_spaces(spaces);
         match interp.run(&operations) {
             Err(_) if interp.form_ops_exhausted => return Ok(None),
             outcome => outcome?,
@@ -1932,20 +1934,88 @@ fn extract_page(
 
         // v3 (`docs/35-OCR-SCOPE.md` §4): the trigger, a reason code and never a score. A page
         // that showed no text and placed an image is `classify`'s `scanned`; under a profile that
-        // pins a recognizer it is read when it placed exactly one image, and refused by name when
-        // it did not. Decided on the first reading only. Under a profile that pins none, the page
-        // it would read is taken too, and counted after the pages are read (decision #132); a
-        // page it would refuse here is not counted there.
+        // pins a recognizer it is read when it placed exactly one image, or several that the
+        // recognizer can compose with the fills between them (decision #156), and refused by name
+        // when it did not. Decided on the first reading only. Under a profile that pins none, the
+        // page it would read is taken too, and counted after the pages are read (decision #132);
+        // a page it would refuse here is not counted there.
         if words.is_none() && interp.text_operators == 0 {
             let placed = interp.images.len() + interp.inline_images as usize;
+            let composite = &interp.composite;
+            // Decision #156 (review): what an image's own `/OC` makes of it, and whether the page
+            // draws an annotation over itself, which a composition does not hold.
+            let image_layer = |object: lopdf::ObjectId| {
+                doc.inner()
+                    .get_object(object)
+                    .and_then(lopdf::Object::as_stream)
+                    .ok()
+                    .and_then(|s| s.dict.get(b"OC").ok())
+                    .and_then(|oc| doc.layers().layer(doc.inner(), oc))
+            };
+            let composite_refusal = composite.refusal.or_else(|| {
+                if draws_annotations(doc.inner(), page_dict) {
+                    return Some("annotation");
+                }
+                composite.layers.iter().find_map(|layer| match *layer {
+                    crate::content::CompositeLayer::Image { index, .. } => matches!(
+                        image_layer(interp.images[index].object),
+                        Some(crate::layers::Layer::NotEvaluated)
+                    )
+                    .then_some("layer-not-read"),
+                    crate::content::CompositeLayer::Fill { .. } => None,
+                })
+            });
+            let corner = |(x, y): (f64, f64)| geom.to_top_left(x, y);
+            let shown = |r: &crate::content::PathRect| {
+                let ((ax, ay), (bx, by)) = (corner((r.x0, r.y0)), corner((r.x1, r.y1)));
+                (ax.min(bx), ay.min(by), ax.max(bx), ay.max(by))
+            };
             if interp.images.len() == 1 && interp.inline_images == 0 && images.len() == 1 {
                 let placement = &interp.images[0];
                 candidate = Some(crate::recognize::Candidate {
                     page_id,
                     object: placement.object,
-                    corners: placement.corners.map(|(x, y)| geom.to_top_left(x, y)),
+                    corners: placement.corners.map(corner),
                     visible: (visible.x0, visible.y0, visible.x1, visible.y1),
+                    composite: None,
                 });
+            } else if interp.images.len() > 1
+                && interp.inline_images == 0
+                && composite_refusal.is_none()
+            {
+                let paints = composite
+                    .layers
+                    .iter()
+                    .filter_map(|layer| match *layer {
+                        crate::content::CompositeLayer::Image {
+                            index,
+                            shown: s,
+                            fill,
+                        } => {
+                            let placement = &interp.images[index];
+                            // An image in a layer a viewer hides is not painted (review).
+                            image_layer(placement.object).is_none().then(|| {
+                                crate::recognize::Paint::Image {
+                                    object: placement.object,
+                                    corners: placement.corners.map(corner),
+                                    shown: shown(&s),
+                                    fill,
+                                }
+                            })
+                        }
+                        crate::content::CompositeLayer::Fill { rect, fill } => {
+                            Some(crate::recognize::Paint::Fill {
+                                rect: shown(&rect),
+                                fill,
+                            })
+                        }
+                    })
+                    .collect();
+                candidate = Some(crate::recognize::Candidate::composed(
+                    page_id,
+                    (visible.x0, visible.y0, visible.x1, visible.y1),
+                    paints,
+                ));
             } else if matches!(
                 profile.recognizer,
                 ethos_parser_core::RecognizerPin::Pinned(_)
@@ -1953,7 +2023,11 @@ fn extract_page(
                 ocr_refusal = if interp.inline_images > 0 {
                     Some("inline-image".into())
                 } else if placed > 1 {
-                    Some("several-images".into())
+                    // Decision #156: what the composition does not hold, by name.
+                    Some(match composite_refusal {
+                        Some(why) => format!("several-images:{why}"),
+                        None => "several-images".into(),
+                    })
                 } else if placed == 1 || interp.unresolved_xobjects > 0 {
                     Some("image-not-loaded".into())
                 } else {
@@ -2579,17 +2653,25 @@ fn extract_counted(
                 y.ocr_refusal = Some(why);
                 continue;
             }
-            if let crate::recognize::ImageSpec::Pdf(spec) = &request.image {
-                if (answer.width, answer.height) != (spec.width, spec.height) {
-                    y.ocr_refusal = Some("image-size-mismatch".into());
-                    continue;
-                }
-            }
-            let image = ethos_parser_core::PdfObjectNumber {
-                object: candidate.object.0,
-                generation: u32::from(candidate.object.1),
+            let size = match &request.image {
+                crate::recognize::ImageSpec::Pdf(spec) => Some((spec.width, spec.height)),
+                crate::recognize::ImageSpec::Composite(spec) => Some((spec.width, spec.height)),
+                crate::recognize::ImageSpec::File => None,
             };
-            let (words, outside) = crate::recognize::place(&candidate, &answer, Some(image))?;
+            if size.is_some_and(|s| s != (answer.width, answer.height)) {
+                y.ocr_refusal = Some("image-size-mismatch".into());
+                continue;
+            }
+            // A composed page's words were read from no one image (decision #156).
+            let image =
+                candidate
+                    .composite
+                    .is_none()
+                    .then_some(ethos_parser_core::PdfObjectNumber {
+                        object: candidate.object.0,
+                        generation: u32::from(candidate.object.1),
+                    });
+            let (words, outside) = crate::recognize::place(&candidate, &answer, image)?;
             if !words.is_empty() {
                 let again = read(
                     *page_number,
@@ -3195,6 +3277,25 @@ fn extract_counted(
         assurance: Assurance::new(profile.capabilities, page_count, page_states, limitations)?,
     };
     Ok((artifact, positions))
+}
+
+/// Whether `page`'s `/Annots` holds an annotation a viewer draws over the page: one with an
+/// appearance, neither hidden nor unviewed (decision #156, review). A composed page holds none, so
+/// text one covers would be read.
+fn draws_annotations(doc: &lopdf::Document, page: &lopdf::Dictionary) -> bool {
+    let Some(annots) = crate::fonts::resolve_array(doc, page.get(b"Annots").ok()) else {
+        return false;
+    };
+    annots.iter().any(|a| {
+        let Some(lopdf::Object::Dictionary(d)) = crate::fonts::resolve_object(doc, Some(a)) else {
+            return false;
+        };
+        let flags = crate::fonts::resolve_object(doc, d.get(b"F").ok())
+            .and_then(|f| f.as_i64().ok())
+            .unwrap_or(0);
+        // 32000-1 Table 165: bit 2 Hidden, bit 6 NoView.
+        d.has(b"AP") && flags & (2 | 32) == 0
+    })
 }
 
 /// One page's table-detection evidence, exposed for the v2-S22 diagnostic (`cfg(test)`).
