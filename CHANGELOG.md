@@ -32,6 +32,38 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A form filler's values are read beside their captions (decision #157)
+
+A tool that fills a PDF form appends its values to the end of the page's content stream, each
+in a font of its own. Reading order keeps content-stream order inside a block of text, so every
+value came out after all the captions of its block, or at the foot of the page, and a reader
+could not tell which value answered which caption.
+
+- The longest last stretch of a page's runs whose fonts no earlier run uses is a filler's overlay
+  where at least three of its runs, and at least half, lie among the page's own baselines, none
+  holds more than eight words, and it brings a font of its own for at least one run in three. Each
+  of its runs is read after the caption on its row (one ending before it, or whose own leader
+  runs under it, `Name: ____`), else after the line above it; a one-glyph mark (`✓`, `X`, a
+  ZapfDingbats `4`) beside the option it ticks. Values in a table, in another column, drawn over
+  the page's own words, set more than three times larger than their caption (by the height of
+  its measured box, not its `Tf` operand), or marked `/Artifact` by the page — a watermark turned
+  on it, which no box measures — stay where they were, and an overlay more drawn over words than
+  read beside them moves nothing.
+- Folded into `gutter-columns-v5`, which no release carries; no rule id or profile moves.
+- Measured: ParseBench-2 55.25 → 55.71 (forms 67.39 → 70.14), with `--ocr` 57.54 → 58.00 (54th
+  → 53rd of 57); ParseBench, opendataloader-bench, the private set's 250 runs and its resume set
+  unchanged, with `--ocr` and without.
+  Measured on all 4,317 ParseBench-2 pages, the font share keeps the rule to forms: without it the
+  stretch qualified on 265 pages that are no form, a fifth of the chart pages; with it on none.
+- Reviewed with made-up PDFs: the first build paired values with the row above when a caption's
+  leader ran under them, read a ZapfDingbats tick as the option before it, spliced watermark tiles
+  and stamps into paragraphs, and missed the font share. Fixed, each with a test; 21
+  mutations of the final rule, all caught.
+- Known limits (`crates/ethos-parser-pdf/src/drawn_last.rs`): a filler that draws every value in
+  one font, a form whose title alone has a font of its own, a value set over its caption, a
+  sidebar drawn last closer than the column gutter, and a page that draws its own words in
+  fragments each in a font of its own.
+
 ### A scan stored as several images is read with `--ocr` (decision #156)
 
 A scanner often stores a page as a background image and the one-bit masks its text is stencilled

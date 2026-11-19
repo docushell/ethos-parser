@@ -1607,6 +1607,36 @@ fn extract_page(
                 .collect();
             let boxes: Vec<crate::tables::QuantRect> = tables.iter().map(|t| t.rect).collect();
             let arranged = crate::reading_order::arrange_page(&geometry, &boxes);
+            // Decision #157: text drawn over the page after its own, in fonts none of it uses — a
+            // form filler's values — is read where it sits, beside the caption it answers. In
+            // content-stream order here, as the rule reads it.
+            let placed = {
+                let drawn: Vec<crate::drawn_last::Drawn<'_>> = runs
+                    .iter()
+                    .map(|r| crate::drawn_last::Drawn {
+                        x: r.locator.origin_x,
+                        y: r.locator.origin_y,
+                        advance: r.locator.advance,
+                        // The height of its measured box: a `Tf` operand is no size where the
+                        // text matrix scales it.
+                        size: r
+                            .geometry
+                            .measured()
+                            .map_or(r.font_size, |b| b.y1() - b.y0()),
+                        font: &r.font_id,
+                        text: &r.text,
+                        artifact: matches!(
+                            r.structural,
+                            Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
+                        ),
+                    })
+                    .collect();
+                crate::drawn_last::place(&drawn, &boxes, &arranged.regions, &arranged.order)
+            };
+            let arranged = crate::reading_order::Arrangement {
+                order: placed.unwrap_or(arranged.order),
+                regions: arranged.regions,
+            };
 
             // D4-S2. **Before `reorder_page`, deliberately.** `arranged.regions` is indexed by
             // stream position, which is what `runs` is in right now; `reorder_page` then moves

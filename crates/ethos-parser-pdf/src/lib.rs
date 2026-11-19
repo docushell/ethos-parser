@@ -69,6 +69,7 @@ pub(crate) mod cmap;
 pub(crate) mod content;
 pub(crate) mod decorations;
 pub(crate) mod document;
+pub(crate) mod drawn_last;
 pub(crate) mod encoding;
 pub(crate) mod extract;
 // Decision #46. Figure regions: paths a page paints, read as one drawing.

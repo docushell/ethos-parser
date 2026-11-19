@@ -187,6 +187,15 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 /// sidebar whose boxes run past the paragraphs beside them stays a column. `columns`, which the
 /// table detector reads, does not join. The half, the quarter and the three in four are chosen,
 /// not measured.
+///
+/// **And text drawn over the page after its own** (decision #157, folded in: no release carries
+/// this id): the longest last stretch of the content stream in fonts no earlier run uses, short
+/// runs mostly among the page's own baselines — a form filler's values — is read beside the run it
+/// sits by: after the caption on its row (one ending before it, or whose own leader runs under
+/// it), else after the line above it, and a one-glyph mark beside the option it ticks. A run drawn
+/// over the page's own words, set more than three times its anchor's measured height, or marked
+/// `/Artifact` stays where it was, and a stretch more drawn over words than read beside them moves
+/// nothing (`crate`-private `drawn_last` in `ethos-parser-pdf`).
 pub const READING_ORDER_RULE_V5: &str = "gutter-columns-v5";
 
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
