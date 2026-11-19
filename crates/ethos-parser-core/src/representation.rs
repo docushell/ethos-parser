@@ -522,7 +522,12 @@ pub struct PptxLocator {
     /// Resolved through `ppt/_rels/presentation.xml.rels` — not `slide{n}.xml` guessed from the
     /// slide's position in `<p:sldIdLst>`.
     pub part: String,
-    /// 1-based position of the `<p:sp>` within this part, in its own document order.
+    /// 1-based position of the `<p:sp>` within this part, in its own document order — **or, where
+    /// [`Self::row`] and [`Self::column`] are present, of the `<p:graphicFrame>` among the part's
+    /// graphic frames** (decision #135). The two counts are separate, so a frame does not move a
+    /// shape's address; read `shape` with `row` to know which one it is. A separate `frame` field
+    /// would still leave `shape` required and meaningless on a cell's run, so the one field counts
+    /// what holds the run.
     ///
     /// **Shapes nest.** A `<p:sp>` inside a `<p:grpSp>` group is a shape and is counted as one,
     /// because it is one — groups appeared on essentially every slide of every real deck this was
@@ -532,6 +537,22 @@ pub struct PptxLocator {
     pub paragraph: u32,
     /// 1-based position of the `<a:r>` within that paragraph.
     pub run: u32,
+    /// For a run in a table cell (decision #135): 1-based position of the `<a:tr>` within its
+    /// `<a:tbl>`. Absent for a run in a `<p:sp>`.
+    ///
+    /// **Present with [`Self::column`], and then `shape` counts frames.** A table sits in a
+    /// `<p:graphicFrame>`, not a `<p:sp>`, so a cell's run has no `<p:sp>` position; its `shape` is
+    /// the 1-based position of the `<p:graphicFrame>` among the part's graphic frames, and
+    /// `paragraph` and `run` count within the cell's `<a:txBody>`. Two optional fields rather than
+    /// a second locator: every address a deck had before keeps its spelling, and a reader built
+    /// before them refuses the new keys (`deny_unknown_fields`) rather than reading a frame's
+    /// position as a shape's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<u32>,
+    /// For a run in a table cell: 1-based position of the `<a:tc>` within its `<a:tr>`, which is
+    /// its grid column — a cell a merge covers still holds its place. See [`Self::row`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
 }
 
 /// A paragraph's address inside an OpenDocument text part (v2-S5).
@@ -1425,6 +1446,11 @@ pub enum ImageMediaType {
 pub enum TextFinding {
     /// The run was drawn in text rendering mode 3 or 7 — painted with no fill and no stroke.
     ///
+    /// Since `page-observations-v5` (decision #139) mode 7 only where nothing is painted through
+    /// the clip it sets — after `ET`, which is where the clip takes effect, over the run's glyphs,
+    /// and before the state holding that clip is restored: a heading set as a clip and filled with
+    /// a shading or an image is seen, and carries no finding.
+    ///
     /// `Tr 3` is how a scanner's OCR layer is laid under a page image, which is ordinary and
     /// useful. It is also how text is hidden from a human reader while staying perfectly legible
     /// to anything that reads the text layer. **This profile does not decide which one it is
@@ -1437,6 +1463,50 @@ pub enum TextFinding {
     /// box a viewer actually shows — after `/Rotate`. Content outside it is in the file and is
     /// not on the page.
     OffPage,
+    /// The run's rendered em is under one point (decision #139, `page-observations-v5`).
+    ///
+    /// The em is the vertical scale of the text rendering matrix — the `Tf` size carried through
+    /// the text matrix and the CTM, in user-space units, before `/UserUnit` — which is the height
+    /// a glyph's 1000-unit em is drawn at. Nought counts: a size of 0 draws nothing. Not reported
+    /// for a Type 3 font whose `/FontMatrix` is not the 1/1000 default, where nothing in the file
+    /// says how tall an em is drawn. Tiny print a reader can still make out with a magnifier is
+    /// flagged too; this reports the size, not legibility.
+    TinyText,
+    /// The run lies inside optional content its document's default configuration hides (decision
+    /// #139): a `BDC /OC /name` sequence, or a form XObject whose `/OC`, names an optional-content
+    /// group listed in `/OCProperties /D /OFF`, or not listed in `/ON` where `/BaseState` is
+    /// `/OFF`.
+    ///
+    /// What a viewer shows on opening the file. A layer the reader can switch on is still flagged,
+    /// and a membership dictionary (`/OCMD`) is not evaluated — its runs are counted under
+    /// `optional-content-membership-not-evaluated` and carry no finding. `/AS` auto-state, print
+    /// usage and intents are not read.
+    HiddenLayer,
+    /// The run is filled in the colour of what lies beneath it (decision #139): its fill, set in
+    /// a device colour space, is the same as that of the last rectangle a fill painted before it
+    /// under the whole run, or exactly white where nothing was painted beneath it. Whitespace draws
+    /// no ink and carries none of this finding, `TinyText` or `HiddenLayer`.
+    ///
+    /// **A comparison of operands, never of contrast.** Two colours match where their operands do
+    /// in the same device space, to the thousandth the reader stores, or where both are exactly
+    /// white; grey at 0.99 on white is not flagged, and black text in `rg` over a black box in `g`
+    /// is not either. Beneath means under the run's glyphs, from its baseline to seven tenths of
+    /// its em above, from its origin to where its pen ends, and a rectangle that does not cover
+    /// them all — a rule through them — is not their background. Any other paint touching them —
+    /// an image, a shading, an XObject that does not resolve, a stroke of any shape (its path
+    /// widened by half its width: a rectangle's edges, a line, or else the whole path's box), a
+    /// fill of any other path, a colour this reader does not compare, a fill under a `gs` it does
+    /// not resolve (whose alpha may be nought), under a clip that is not one rectangle, or under
+    /// text set as a clip (`Tr 4` to `7`) — makes the background unknown and nothing is flagged.
+    /// Nor is a run drawn under a `gs` that sets a blend mode, a soft mask or a fill alpha under
+    /// one, or one not resolved. Paint in a layer switched off is not paint, and paint is
+    /// cut to the known clip and to every enclosing form's `/BBox`. Only runs filled and not
+    /// stroked (`Tr 0` or `4`), none the page clips away, none whose pen travel is unknown (a
+    /// font with no widths, a predefined CMap), and none in a Type 3 font, whose glyph procedures
+    /// paint in colours and to sizes of their own. Not compared: text used as a background (a
+    /// glyph painted as a box), the run's own transparency, and paint laid OVER a run. A white
+    /// fill painted through a mode-7 clip shows that run, though white on white.
+    FillMatchesBackground,
 }
 
 impl TextFinding {
@@ -1449,11 +1519,20 @@ impl TextFinding {
         match self {
             Self::InvisibleRenderMode => crate::codes::INVISIBLE_RENDER_MODE_TEXT,
             Self::OffPage => crate::codes::OFF_PAGE_TEXT,
+            Self::TinyText => crate::codes::TINY_TEXT,
+            Self::HiddenLayer => crate::codes::HIDDEN_LAYER_TEXT,
+            Self::FillMatchesBackground => crate::codes::FILL_MATCHES_BACKGROUND_TEXT,
         }
     }
 
     /// Every finding this profile can report.
-    pub const ALL: [Self; 2] = [Self::InvisibleRenderMode, Self::OffPage];
+    pub const ALL: [Self; 5] = [
+        Self::InvisibleRenderMode,
+        Self::OffPage,
+        Self::TinyText,
+        Self::HiddenLayer,
+        Self::FillMatchesBackground,
+    ];
 }
 
 /// What an interactive form field declares about itself (v1-S4).
@@ -1698,7 +1777,12 @@ pub struct TextRunAttributes {
     /// and starting where the unit starts. Since `line-units-v6` a line is also parted where the
     /// reading order went back left between two of its runs with any gap between them, a first word
     /// ends at an ideograph or a kana, and a body line set in by half its height, where the next line
-    /// returns to the left edge of the line above, opens a unit.
+    /// returns to the left edge of the line above, opens a unit. Since `line-units-v7` a footnote
+    /// mark set against a line's last letter is part of that line; a list marker alone, or a label
+    /// closed by a colon, set apart from the piece after it on its line stays with it, where that
+    /// piece is no such piece itself; and a line at the hanging indent of a list item whose marker
+    /// is a run of its own continues the item within the page's body leading, or within its own
+    /// height on a page that sets none. A unit is still not a list item.
     ///
     /// **Where, never what**, as [`Self::block`] is: a unit says these lines read as one piece of
     /// text, not that the author wrote a paragraph, and no role is read from it. Absent on a
@@ -1755,12 +1839,25 @@ pub struct TextRunAttributes {
     /// and `<sub>`. PDF only. **Absent** on a run set on its line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<Script>,
+    /// A thin line the page drew solid runs through the run's middle, over three quarters of it,
+    /// with no stretch of it longer than an em marking no run (decision #154): a strikeout, as a
+    /// word processor draws one. Never on a superscript or subscript. `Computed` from the page's
+    /// own ink under the profile's `observation_rule`; the Markdown projection writes it as `~~`
+    /// (not around a run holding a `~` or set against one), the HTML one as `<s>`. PDF only.
+    /// **Absent where false.**
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strikeout: bool,
+    /// A thin line the page drew runs just under the run's baseline, on the same terms (decision
+    /// #154): an underline. Written as `<u>` in both projections. PDF only. **Absent where false.**
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underline: bool,
     /// The run's line is page furniture (decision #41): set apart from the rest of its page at the
     /// top or the bottom edge, inside the page's outer tenth — a running head, a folio.
     ///
     /// **Where, never what was meant**: `Computed` from where the page's lines sit, under the
     /// profile's `furniture_rule`. The run stays in the text, in reading order and in every
-    /// projection; furniture is flagged, never dropped, as an `/Artifact` is. Absent on a
+    /// projection; furniture is flagged, never dropped, as an `/Artifact` is — a projection leaves
+    /// it out only where its caller asks, and counts it (decision #134). Absent on a
     /// document that declares author structure, on every other line, and under every other rule
     /// id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1796,10 +1893,16 @@ pub struct TextRunAttributes {
 
 /// An office run's facts: what OOXML states about a `<w:r>` and nothing else (v2-S2).
 ///
-/// Deliberately one field. Everything else a run could carry — a style id, bold, a language — is
-/// in `word/styles.xml` or a `<w:rPr>` this slice does not read, and a field that is always
-/// `false` because nobody populated it is worse than no field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One field until decision #136, which added three the file states about the run's paragraph and
+/// part: a heading level, a list level and furniture. Everything else a run could carry — bold, a
+/// language — is in a `<w:rPr>` this reader does not read, and a field that is always `false`
+/// because nobody populated it is worse than no field. Each new field is absent where the file
+/// states nothing, so a run that is neither heading, list item nor header serializes as before.
+///
+/// **A level is no outline**, the argument [`OfficeParagraphAttributes::outline_level`] makes:
+/// each is the paragraph's statement about itself, so [`Node::structural_locator`] stays `None`
+/// and `capabilities.structural_locators` stays false.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OfficeRunAttributes {
     /// Whether the `<w:t>` carried `xml:space="preserve"`.
@@ -1810,6 +1913,30 @@ pub struct OfficeRunAttributes {
     /// whether this run's spaces are the document's or the parser's. Recorded rather than
     /// resolved: this reader takes the text verbatim either way and says which case it was.
     pub space_preserved: bool,
+    /// The heading level the run's paragraph declares, one-based (decision #136): its own
+    /// `<w:outlineLvl w:val>` plus one, or else its style's, through `word/styles.xml` and the
+    /// style's `<w:basedOn>` chain, or the built-in style name `heading N` such a style carries.
+    ///
+    /// **A declaration, never a font size**: `w:val="Heading1"` alone is a styleId, an
+    /// author-chosen token, and is read only through the style it names. Absent where nothing
+    /// declares a level, and where `<w:outlineLvl w:val="9"/>` states body text. OOXML's levels
+    /// run to nine; a level past the six both projections have projects as a paragraph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading_level: Option<u32>,
+    /// The `<w:ilvl>` of the numbering the run's paragraph declares, zero-based (decision #136):
+    /// its own `<w:numPr>`, or its style's. Absent where neither names a numbering, and where
+    /// `<w:numId w:val="0"/>` removes one.
+    ///
+    /// **The level, never the number.** Word renders `1.` or `a)` from `word/numbering.xml`, and
+    /// no byte of the paragraph holds it, so no projection writes one: every item is a bullet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_level: Option<u32>,
+    /// Which page edge the run's part is set at (decision #136): a run of a header part a
+    /// `<w:headerReference>` names, or of a footer part a `<w:footerReference>` names. Read off
+    /// the reference, never off where anything lies, since nothing here is laid out. Absent on a
+    /// run of the body or the footnotes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub furniture: Option<Furniture>,
 }
 
 /// A slide run's facts: what PresentationML states about the shape holding it (v2-S4).
@@ -1838,6 +1965,13 @@ pub struct OfficeSlideRunAttributes {
     /// What the authoring tool called the shape, which is what a person reading a citation
     /// recognises. It may be empty: the attribute is required by the schema, its content is not.
     pub shape_name: String,
+    /// For a run in a table cell (decision #135, review): whether its paragraph holds an `<a:br>`
+    /// before it, after any run before it. The break holds no text of its own, and without it two
+    /// runs of one paragraph join as they stand, so `North`, a break and `America` read
+    /// `NorthAmerica`. Absent where `false`, as it always is in a shape, whose runs no projection
+    /// joins.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub line_break_before: bool,
 }
 
 /// An OpenDocument paragraph's facts: what `content.xml` states about the block (v2-S5).
@@ -1906,16 +2040,24 @@ pub enum OdfBlockKind {
 /// and a text cell that stores its own string is `InlineString` + [`CellTextSource::StoredValue`]
 /// — the pair is not two spellings of one fact.
 ///
-/// **Nothing here is a rendering.** A cell's displayed form comes from a number format in
-/// `xl/styles.xml` — `42` shown as `$42.00` or as `1970-02-11` — and this reader does not read
-/// styles, does not apply them, and does not carry a formatted string the file did not store.
+/// **A number shows as its format displays it, and keeps what it stores** (decision #135). A
+/// cell's displayed form comes from a number format in `xl/styles.xml` — `46339` shown as
+/// `2026-11-13`, `116000` as `₹1,16,000.00` — and since `xlsx-number-format-v1` the node's `text` is
+/// that form wherever the rule renders the cell's format, with the value `<v>` holds in
+/// [`Self::stored_value`]. Both are the file's: the format is a statement the workbook makes about
+/// how its value reads. Where the rule does not render the format, `text` is the stored value and
+/// the cell is counted under `office-number-formats-not-rendered`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OfficeCellAttributes {
     /// What the cell's `t` attribute says its stored value is.
     pub value_type: CellValueType,
-    /// Where this node's `text` came from.
+    /// Where the value behind this node's `text` came from.
     pub text_source: CellTextSource,
+    /// The value the cell stores, present exactly when `text` is that value as its number format
+    /// displays it (decision #135). Absent when `text` is the stored value itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stored_value: Option<String>,
 }
 
 /// What a `<c>`'s `t` attribute declares its stored value to be (v2-S3).
@@ -2217,13 +2359,47 @@ pub struct PageRecord {
     pub height: i64,
     /// Page rotation as declared: 0, 90, 180 or 270.
     pub rotation: i64,
+    /// **Quarter turns clockwise, beyond [`Self::rotation`], in which the page is read**
+    /// (decision #155): 90, 180 or 270 where the page's text is drawn turned and no rotation
+    /// declares it, so the page is read upright. [`Self::width`], [`Self::height`] and every
+    /// coordinate on the page are then in that frame — the declared one turned clockwise by this
+    /// much — and a consumer placing a box on the page as a viewer shows it maps it back with
+    /// [`Self::to_declared`]. `Computed` from the text's own direction under the profile's
+    /// `observation_rule`. **Absent where 0**, so a page read as declared states nothing new.
+    #[serde(default, skip_serializing_if = "is_no_turn")]
+    pub turn: i64,
     /// **The box a viewer shows** (decision #62): the page's `/CropBox` clipped to its media box,
-    /// in the declared system, wherever it is narrower than the page. [`Self::width`] and
-    /// [`Self::height`] are the media box's, the frame every coordinate here is in; a consumer that
-    /// draws the page shows this box alone, and places this representation's boxes on its picture
-    /// by it. Absent where the page shows the whole of its media box.
+    /// in the page's frame (the declared one, turned by [`Self::turn`]), wherever it is narrower
+    /// than the page. [`Self::width`] and [`Self::height`] are the media box's, the frame every
+    /// coordinate here is in; a consumer that draws the page shows this box alone, and places this
+    /// representation's boxes on its picture by it, turned back by [`Self::to_declared`] where the
+    /// page was read turned. Absent where the page shows the whole of its media box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<QRect>,
+}
+
+fn is_no_turn(turn: &i64) -> bool {
+    *turn == 0
+}
+
+impl PageRecord {
+    /// A box in this page's frame, in the frame its rotation declares (decision #155): the
+    /// identity where the page is read as declared, and the turn undone where
+    /// [`Self::turn`] says it was read turned. `None` where the box does not fit the page.
+    pub fn to_declared(&self, r: QRect) -> Option<QRect> {
+        let (w, h) = (self.width, self.height);
+        let (x0, y0, x1, y1) = (r.x0(), r.y0(), r.x1(), r.y1());
+        if x0 < 0 || y0 < 0 || x1 > w || y1 > h {
+            return None;
+        }
+        let (a, b, c, d) = match self.turn {
+            90 => (y0, w - x1, y1, w - x0),
+            180 => (w - x1, h - y1, w - x0, h - y0),
+            270 => (h - y1, x0, h - y0, x1),
+            _ => (x0, y0, x1, y1),
+        };
+        QRect::new(a, b, c, d).ok()
+    }
 }
 
 /// One ordered, typed node.
@@ -2351,6 +2527,15 @@ pub struct RepresentationPayload {
     /// since decision #97, as an index only.
     #[serde(default)]
     pub figures: Vec<crate::figures::FigureRecord>,
+    /// A drafting model's replies, read into `Proposed` blocks, where a replies file was attached
+    /// (decision #145); absent everywhere else, so an engine-only record's bytes do not move.
+    ///
+    /// **Not nodes.** A node needs a native locator and model text has none, so a block is
+    /// uncitable by construction: `ground`, `locate` and `elements` read nodes and never see it
+    /// (contract §6, rule 3). `check_structure` holds every block `Proposed`, on a declared page,
+    /// from a model that is not this record's processor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assist: Option<crate::assist::AssistRecord>,
     /// M4's L1 gate, carried forward by value: capabilities, limitations, per-page state,
     /// coverage, terminal state.
     pub assurance: Assurance,
@@ -2413,6 +2598,7 @@ impl RepresentationPayload {
             outlines,
             figures,
             tables,
+            assist,
             assurance,
         } = self;
 
@@ -2421,7 +2607,14 @@ impl RepresentationPayload {
             detail: e.to_string(),
         };
 
-        sink.push(b"{\"assurance\":");
+        // `assist` sorts first, and is written only where present, as serde skips it.
+        if let Some(assist) = assist {
+            sink.push(b"{\"assist\":");
+            sink.canonical(assist).map_err(malformed)?;
+            sink.push(b",\"assurance\":");
+        } else {
+            sink.push(b"{\"assurance\":");
+        }
         sink.canonical(assurance).map_err(malformed)?;
         sink.push(b",\"coordinate_system\":");
         sink.canonical(coordinate_system).map_err(malformed)?;
@@ -2571,6 +2764,12 @@ impl DocumentRepresentation {
         };
         d.check_structure()?;
         Ok(d)
+    }
+
+    /// The payload and geometry, so a sealed record can be changed and sealed again
+    /// (`assist::attach`, decision #145). Sealing is the only way back to a record.
+    pub(crate) fn into_parts(self) -> (RepresentationPayload, Vec<NodeGeometry>) {
+        (self.representation, self.geometry)
     }
 
     /// Whether an id was minted as a [`crate::IdKind::Part`].
@@ -2729,6 +2928,14 @@ impl DocumentRepresentation {
             if pages_by_id.insert(page.id.as_str(), page).is_some() {
                 return Err(Self::malformed(format!("duplicate page id `{}`", page.id)));
             }
+            // Decision #155: a page is read as declared or a quarter turn round, or two, or three.
+            if !matches!(page.turn, 0 | 90 | 180 | 270) {
+                return Err(Self::malformed(format!(
+                    "page `{}` states turn {}; a page is read 0, 90, 180 or 270 degrees beyond \
+                     its rotation",
+                    page.id, page.turn
+                )));
+            }
             // Decision #62: the box a viewer shows is part of the page, never past it.
             if let Some(v) = page.visible {
                 if v.x0() < 0 || v.y0() < 0 || v.x1() > page.width || v.y1() > page.height {
@@ -2825,12 +3032,152 @@ impl DocumentRepresentation {
             }
         }
 
+        self.check_assist(&pages_by_id)?;
         self.check_geometry_matches_its_declaration()?;
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
         self.check_attributes_agree_with_kind()?;
         self.check_readings_move_characters()?;
         self.check_recognized_placement()?;
 
+        Ok(())
+    }
+
+    /// A drafting model's blocks, checked rather than trusted (decision #145): what
+    /// `assist::attach` writes, held on the way in too.
+    ///
+    /// - The model's id is not empty, not a file path, and not this engine's processor or
+    ///   recognizer, compared trimmed and ASCII case-folded: the processor-identity rule
+    ///   (`docs/04-ARCHITECTURE.md` §6) made mechanical, refused here rather than caught in review.
+    /// - Each page is a declared page, in page order, at most once; a page whose reply is an error
+    ///   holds no block.
+    /// - Each block is `Proposed`, its id `m` and a number, used once, its box on the 0-1000 grid
+    ///   with no side inverted.
+    /// - A page is `truncated` or a `loop` only where the server cut its reply and it has a block to
+    ///   drop, and a page the server cut is never `read` (decision #146).
+    /// - A block has a guard exactly where it has a box; its agreement is at most 1,000; its flagged
+    ///   lines are in line order, each once, within its lines, a contradicted or estimated one naming
+    ///   its value, an unsupported one none, a disputed one either; and it binds and flags no more lines than the block
+    ///   has.
+    /// - A page left out is one the document has and this record does not list, in ascending
+    ///   order.
+    fn check_assist(
+        &self,
+        pages_by_id: &std::collections::BTreeMap<&str, &PageRecord>,
+    ) -> Result<(), EngineError> {
+        let p = &self.representation;
+        let Some(assist) = &p.assist else {
+            return Ok(());
+        };
+        if let Some((_, why)) =
+            crate::assist::model_id_refusal(&assist.model.id, &p.processing_run.processor.name)
+        {
+            return Err(Self::malformed(why));
+        }
+        let mut last = 0;
+        let mut ids = std::collections::BTreeSet::new();
+        for page in &assist.pages {
+            let Some(record) = pages_by_id.get(page.page.as_str()) else {
+                return Err(Self::malformed(format!(
+                    "the drafting model's reply names page `{}`, which is not a declared page",
+                    page.page
+                )));
+            };
+            if record.index <= last {
+                return Err(Self::malformed(format!(
+                    "the drafting model's replies are in page order, each page once; `{}` is not",
+                    page.page
+                )));
+            }
+            last = record.index;
+            if page.outcome == crate::assist::AssistOutcome::Error && !page.blocks.is_empty() {
+                return Err(Self::malformed(format!(
+                    "page `{}` holds the error of a request that was not answered, and blocks",
+                    page.page
+                )));
+            }
+            let capped = page.finish_reason.as_deref() == Some("length");
+            let cut = matches!(
+                page.outcome,
+                crate::assist::AssistOutcome::Truncated | crate::assist::AssistOutcome::Loop
+            );
+            if (cut && (!capped || page.blocks.is_empty()))
+                || (capped && page.outcome == crate::assist::AssistOutcome::Read)
+            {
+                return Err(Self::malformed(format!(
+                    "page `{}` is `{:?}`: a page is truncated or a loop only where the server \
+                     cut a reply of blocks, and a page it cut is never read whole",
+                    page.page, page.outcome
+                )));
+            }
+            for block in &page.blocks {
+                if block.derivation != DerivationClass::Proposed {
+                    return Err(Self::malformed(format!(
+                        "block `{}` is a drafting model's text and is `{:?}`; a model's text is \
+                         `proposed`, and never evidence (contract §6, rule 3)",
+                        block.id, block.derivation
+                    )));
+                }
+                let id = block.id.as_str();
+                let numbered = id
+                    .strip_prefix('m')
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+                if !numbered || !ids.insert(id) {
+                    return Err(Self::malformed(format!(
+                        "block id `{id}` is not a proposal's own: `m` and a number, used once"
+                    )));
+                }
+                if let Some([x0, y0, x1, y1]) = block.grid {
+                    if x0 > x1 || y0 > y1 || x1 > 1000 || y1 > 1000 {
+                        return Err(Self::malformed(format!(
+                            "block `{id}`'s box [{x0}, {y0}, {x1}, {y1}] is not on the 0-1000 \
+                             grid with its sides in order"
+                        )));
+                    }
+                }
+                if block.grid.is_some() != block.guard.is_some() {
+                    return Err(Self::malformed(format!(
+                        "block `{id}` has a guard exactly where it has a box, and does not"
+                    )));
+                }
+                if let Some(guard) = &block.guard {
+                    let mut last = 0;
+                    let in_order = guard.flagged.iter().all(|f| {
+                        let next = last < f.line && f.line <= guard.lines;
+                        last = f.line;
+                        let named = match f.mark {
+                            crate::assist::AssistMark::Unsupported => Some(false),
+                            crate::assist::AssistMark::Disputed => None,
+                            _ => Some(true),
+                        };
+                        next && named.is_none_or(|named| f.value.is_some() == named)
+                    });
+                    let marked = u64::from(guard.bound) + guard.flagged.len() as u64;
+                    if guard.agreement_permille > 1000
+                        || !in_order
+                        || marked > u64::from(guard.lines)
+                    {
+                        return Err(Self::malformed(format!(
+                            "block `{id}`'s guard is not one the guard writes: agreement at most \
+                             1,000, flagged lines in order within its lines, each naming its value \
+                             unless unsupported, and no more lines bound and flagged than it has"
+                        )));
+                    }
+                }
+            }
+        }
+        let left_out = &assist.pages_left_out;
+        if left_out.windows(2).any(|w| w[0] >= w[1])
+            || left_out.iter().any(|&index| {
+                index == 0
+                    || index > p.assurance.coverage.pages_authorized
+                    || p.pages.iter().any(|r| r.index == index)
+            })
+        {
+            return Err(Self::malformed(format!(
+                "pages left out {left_out:?} are not, in ascending order, pages the document has \
+                 and this record does not list"
+            )));
+        }
         Ok(())
     }
 
@@ -3217,6 +3564,42 @@ impl DocumentRepresentation {
 }
 
 #[cfg(test)]
+mod turn_tests {
+    use super::*;
+
+    /// **A box on a turned page maps back to the declared frame** (decision #155): a page
+    /// declared 300 by 400 points and read a quarter turn clockwise is 400 by 300 in its own
+    /// frame; a box near its top-left corner lies along the declared page's left edge, near the
+    /// bottom. Half and three-quarter turns, and no turn, as their geometry says.
+    #[test]
+    fn a_box_on_a_turned_page_maps_back_to_the_declared_frame() {
+        let page = |turn: i64, width: i64, height: i64| PageRecord {
+            id: NodeId::from_parts(crate::IdKind::Page, 1),
+            index: 1,
+            width,
+            height,
+            rotation: 0,
+            turn,
+            visible: None,
+        };
+        let r = QRect::new(1000, 2000, 3000, 5000).unwrap();
+        let back = |p: PageRecord| {
+            let q = p.to_declared(r).unwrap();
+            (q.x0(), q.y0(), q.x1(), q.y1())
+        };
+        assert_eq!(back(page(0, 30000, 40000)), (1000, 2000, 3000, 5000));
+        assert_eq!(back(page(90, 40000, 30000)), (2000, 37000, 5000, 39000));
+        assert_eq!(back(page(180, 30000, 40000)), (27000, 35000, 29000, 38000));
+        assert_eq!(back(page(270, 40000, 30000)), (25000, 1000, 28000, 3000));
+        // A box past the page's edge does not fit it; one on its edges does.
+        let off = QRect::new(-100, 0, 100, 100).unwrap();
+        assert_eq!(page(0, 30000, 40000).to_declared(off), None);
+        let whole = QRect::new(0, 0, 40000, 30000).unwrap();
+        assert!(page(90, 40000, 30000).to_declared(whole).is_some());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::assurance::{PageState, PageStateEntry};
@@ -3266,6 +3649,7 @@ mod tests {
             tables: Vec::new(),
             outlines: Vec::new(),
             figures: Vec::new(),
+            assist: None,
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,
@@ -3286,6 +3670,7 @@ mod tests {
             width: 30000,
             height: 14400,
             rotation: 0,
+            turn: 0,
             visible: None,
         }
     }
@@ -3320,6 +3705,8 @@ mod tests {
                 bold: false,
                 italic: false,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
             }),
@@ -3452,6 +3839,28 @@ mod tests {
         seal(vec![n], vec![p], vec![g]).unwrap()
     }
 
+    /// **A page is read as declared or a quarter, half or three-quarter turn beyond it** (decision
+    /// #155): any other turn is refused.
+    #[test]
+    fn a_turn_other_than_a_quarter_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let mut p = page(&mut alloc, 1);
+        let n = node(&mut alloc, &p.id, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+        );
+        for turn in [0, 90, 180, 270] {
+            p.turn = turn;
+            seal(vec![n.clone()], vec![p.clone()], vec![g.clone()]).expect("a quarter turn");
+        }
+        for turn in [45, 360, -90] {
+            p.turn = turn;
+            let err = seal(vec![n.clone()], vec![p.clone()], vec![g.clone()]).unwrap_err();
+            assert!(err.to_string().contains("states turn"), "{err}");
+        }
+    }
+
     /// **A reading is the run's own characters, and flags the ones it inserted** (decision #54).
     #[test]
     fn a_reading_with_other_characters_or_other_flags_is_refused() {
@@ -3518,6 +3927,7 @@ mod tests {
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
                 space_preserved: false,
+                ..Default::default()
             }),
         }
     }
@@ -3691,6 +4101,7 @@ mod tests {
                     attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
                         value_type: CellValueType::Number,
                         text_source: CellTextSource::StoredValue,
+                        stored_value: None,
                     }),
                 });
             }
@@ -3734,6 +4145,7 @@ mod tests {
             attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
                 value_type: CellValueType::Number,
                 text_source: CellTextSource::StoredValue,
+                stored_value: None,
             }),
         };
         let geometry = vec![geom(
@@ -3856,7 +4268,12 @@ mod tests {
             !docx.capabilities.measured_ink_boxes,
             "a DOCX has no ink box"
         );
-        assert!(!docx.capabilities.tables, "v2-S2 reads no tables");
+        assert!(
+            docx.capabilities.tables
+                && docx.table_detection.office.as_deref() == Some(crate::TABLE_DETECTION_DOCX_V1)
+                && docx.table_detection.ruled == crate::NOT_RUN,
+            "a `<w:tbl>` is read as the file states it, and no PDF table rule runs (decision #136)"
+        );
         assert!(
             docx.capabilities.spans,
             "a run is a span, and that is the claim this reader makes"

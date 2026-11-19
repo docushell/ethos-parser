@@ -12,7 +12,7 @@
 
 use ethos_parser_core::{EngineError, IdAllocator};
 
-use crate::charts::{chart_table, is_year, labels, number, title, Label, Value};
+use crate::charts::{chart_table, hypot_floor, is_year, labels, number, title, Label, Value};
 use crate::tables::{DetectedTable, QuantRect};
 use crate::text_state::Fill;
 use crate::tracks::TrackRun;
@@ -690,7 +690,7 @@ pub(crate) fn legend(
         let (sx, sy) = ((s.rect.x0 + s.rect.x1).div_euclid(2), cy);
         let dx = (plot.x0 - sx).max(0).max(sx - plot.x1);
         let dy = (plot.y0 - sy).max(0).max(sy - plot.y1);
-        let d = (dx as f64).hypot(dy as f64) as i64;
+        let d = hypot_floor(dx, dy);
         if d > (plot.x1 - plot.x0).max(plot.y1 - plot.y0) {
             continue;
         }

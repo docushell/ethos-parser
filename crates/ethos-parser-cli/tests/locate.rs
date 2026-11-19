@@ -386,8 +386,9 @@ fn an_office_representation_answers_with_typed_absent_geometry() {
 
     assert_eq!(
         (found.searched.nodes, found.searched.blocks),
-        (4, 4),
-        "four runs, four blocks: a run with no baseline joins nothing"
+        (5, 5),
+        "five runs, the third paragraph's break one of them since decision #130, five blocks: a \
+         run with no baseline joins nothing"
     );
     assert!(
         found_in(&repr, "a run and never to a page")

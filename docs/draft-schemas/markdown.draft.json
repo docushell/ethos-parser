@@ -51,7 +51,7 @@
       "minLength": 1,
       "description": "Version id of the projection rule. `markdown-blocks-v2` (v1.1-S3) emits block structure: a GFM table for every table on the representation, a list item for every run the structure tree places in an `/L`, and headings taken only from the tree — never from a font size, a bullet glyph or a hanging indent (checklist L29 is REFUSE) — plus one export-only cosmetic, closing up a word the page broke across a line. It supersedes `markdown-blocks-v1`, which left the hyphen and the paragraph break where they were, and `markdown-linear-v1`, which emitted a table's cell runs as consecutive paragraphs with no grid around them. A document comes out differently under each, which is what a rule id on the profile is for. The cosmetic never touches the representation: both halves stay in the record with the hyphen verbatim, the joined bytes are one `source` segment naming both runs, and the removed hyphen is counted in `coverage.dropped` under `hyphenation-rejoin-dropped-v1`.",
       "examples": [
-        "markdown-blocks-v13"
+        "markdown-blocks-v14"
       ]
     },
     "markdown": {
@@ -80,9 +80,10 @@
               "kind": {
                 "enum": [
                   "source",
-                  "syntax"
+                  "syntax",
+                  "proposed"
                 ],
-                "description": "TWO values, deliberately. `source` inverts to canonical node text; `syntax` is markup the exporter invented. There is no third — a 'probably source' would be the confidence field docs/01-CONTRACT.md §9 forbids, and would put the consumer back to guessing whether a quote is citable."
+                "description": "TWO values for the engine's bytes, deliberately. `source` inverts to canonical node text; `syntax` is markup the exporter invented. There is no third for them — a 'probably source' would be the confidence field docs/01-CONTRACT.md §9 forbids, and would put the consumer back to guessing whether a quote is citable. `proposed` is no such third: it is a drafting model's text, never the engine's reading, written only where the record holds an `assist` key (decision #147), and a quote touching it is not citable, as one touching `syntax` is not."
               },
               "start": {
                 "type": "integer",
@@ -100,7 +101,7 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "description": "The representation nodes these bytes came from, in emission order. Present on `source` and ABSENT on `syntax`, because syntax came from no node. Never a newly minted id: a projection that invented identifiers would be a second record of one document, and two records drift."
+                "description": "The representation nodes these bytes came from, in emission order. Present on `source` and ABSENT on `syntax`, because syntax came from no node. Never a newly minted id: a projection that invented identifiers would be a second record of one document, and two records drift. On `proposed`, exactly one: the `m`-numbered block of the record's `assist` key the bytes came from, which is no node."
               }
             }
           }
@@ -156,7 +157,10 @@
                   "whitespace-collapsed-v1",
                   "hyphenation-rejoin-dropped-v1",
                   "overprinted-run-dropped-v1",
-                  "null-characters-not-projected-v1"
+                  "page-furniture-not-projected-v1",
+                  "repeated-table-header-not-projected-v1",
+                  "null-characters-not-projected-v1",
+                  "replaced-by-proposed-page-v1"
                 ]
               },
               "chars": {
@@ -184,13 +188,14 @@
               "code": {
                 "type": "string",
                 "minLength": 1,
-                "description": "`gfm-span-slots-unrepresentable-v1` — slots a merged cell covered that GFM cannot say it covered, `rowspan × colspan - 1` summed over the table's cells. `gfm-row-zero-separator-v1` — once per GFM table, because the delimiter row makes row 0 a header on every renderer and no detector reads `/TH`. `gfm-cell-run-claimed-twice-v1` — a run two cells both claimed, emitted under the first so that one node's characters are not counted twice. `gfm-cell-not-placed-v1` — a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs. `gfm-table-not-projected-v1` — a table with zero rows or columns. `gfm-list-item-run-joins-v1` — a body run appended to an already-open list item, which is the one boundary a role path cannot settle. `mcid-run-joins-v1` — two runs the document placed in one marked-content sequence, emitted as one block, so the boundary between them is gone. `baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1` — the same erasure with no declaration behind it: two runs drawn as the next ink along one baseline, joined on this engine's geometry rather than the producer's word. The two are counted apart because the abutted form asserts one word and the spaced form only reproduces a space the page drew. `layout-unit-line-joins-v1` — two lines of one heading the PDF reader set in one layout unit (decision #38), joined with one space; the unit is this engine's measure, so it is counted apart from both. Decision #65 counts a label's next line in its unit here too, kept as a line break in the label's block; decisions #81 and #85 count here a bold line read on to the bold line above, #85's on a tagged page, which has no units, where its column wrapped it or it opens lowercase. `heading-number-joins-v1` — a heading's section number or marker joined to the title it opens across the gap the page set between them on one line (decision #65), with one space; the licence is the heading rule's line and the number's shape, so it is counted apart from all three. `layout-unit-gap-joins-v1` — runs of one layout unit on one line joined across the gap between them (decision #68), with one space: a page that places its words by moving its pen draws no space, and each word was a block of its own; the licence is the units rule's reading, so it is counted apart from the baseline joins. `block-element-run-joins-v1` — runs one block element of the structure tree holds, a paragraph, a heading, a list item or a cell, joined across a change of marked-content sequence (decision #84): along a line with a space only where the page drew one, onto the element's next line with one space; the licence is the element rather than one sequence, so it is counted apart from `mcid-run-joins-v1`.",
+                "description": "`gfm-span-slots-unrepresentable-v1` — slots a merged cell covered that GFM cannot say it covered, `rowspan × colspan - 1` summed over the table's cells. `gfm-row-zero-separator-v1` — once per GFM table, because the delimiter row makes row 0 a header on every renderer and no detector reads `/TH`. `gfm-cell-run-claimed-twice-v1` — a run two cells both claimed, emitted under the first so that one node's characters are not counted twice. `gfm-cell-not-placed-v1` — a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs. `gfm-table-not-projected-v1` — a table with zero rows or columns, or a DOCX table no run is in (decision #136). `layout-table-as-blocks-v1` — a DOCX layout table, one with a cell holding two paragraphs or more with text, or holding a nested table, written as the blocks it holds in document order rather than as a grid (decision #136); its `tables[]` record stays. `gfm-list-item-run-joins-v1` — a body run appended to an already-open list item where the file leaves either run's element unnumbered, or where a body set no lower than the open run's line follows a marker drawn in the `/LI` itself or reads on, opening lowercase with no label of its own, as a column break carries a bullet on: the boundary a role path cannot settle, since two sibling `/LI`s share one (decision #128). `mcid-run-joins-v1` — two runs the document placed in one marked-content sequence, emitted as one block, so the boundary between them is gone. `baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1` — the same erasure with no declaration behind it: two runs drawn as the next ink along one baseline, joined on this engine's geometry rather than the producer's word. The two are counted apart because the abutted form asserts one word and the spaced form only reproduces a space the page drew. `layout-unit-line-joins-v1` — two lines of one heading the PDF reader set in one layout unit (decision #38), joined with one space; the unit is this engine's measure, so it is counted apart from both. Decision #65 counts a label's next line in its unit here too, kept as a line break in the label's block; decisions #81 and #85 count here a bold line read on to the bold line above, #85's on a tagged page, which has no units, where its column wrapped it or it opens lowercase. `heading-number-joins-v1` — a heading's section number or marker joined to the title it opens across the gap the page set between them on one line (decision #65), with one space; the licence is the heading rule's line and the number's shape, so it is counted apart from all three. `layout-unit-gap-joins-v1` — runs of one layout unit on one line joined across the gap between them (decision #68), with one space: a page that places its words by moving its pen draws no space, and each word was a block of its own; the licence is the units rule's reading, so it is counted apart from the baseline joins. `block-element-run-joins-v1` — runs one block element of the structure tree holds, a paragraph, a heading, a list item or a cell, joined across a change of marked-content sequence (decision #84): along a line with a space only where the page drew one, onto the element's next line with a line break since decision #126, or one space in a heading, on a line its column wrapped, from bold onto bold unless the second is a label ending in `:`, or before a line Markdown would read as a block of its own; the licence is the element rather than one sequence, so it is counted apart from `mcid-run-joins-v1`. A list item's runs one numbered element holds count here too, in a sequence or across them (decision #128). So do a DOCX paragraph's runs, which its `<w:p>` holds, joined with the tab, line break or space it holds between them or with nothing (decision #130). `list-items-inferred-from-markers-v1` — not a flattening but the opposite, counted here because it is structure the projection asserts beyond the record: with `--infer-lists` alone (decision #138), a list item written for each layout unit of a document that declares no author structure opening with a list marker — a bullet, or a number of up to three digits or one letter closed by `.` or `)` — where two such units or more stand in a row, the marker kept as the page drew it after the item syntax, nested by where it stands against the items open before it; the item holds the rest of its unit, those joins counted under the two `layout-unit-*` codes. Inferred, not declared: the representation is unchanged and carries no list. Absent without the option. `tables-joined-across-pages-v1` — a table written as the rest of the one before it, once per join (decision #142): it stands on the next page, read off the page's ink or text as the first was and after it in `tables[]`, with as many columns, the pages of one size and turn; between them only running heads and folios another page repeats at the same side and place, `/Artifact`s, blank runs, annotations and form fields, never an inferred heading, under one running head and one running foot (digits and all, but a folio in the foot), and no picture below the first or above the second that no other page repeats at its place; the first reaching, within the second's first row under its header, the lowest point the document's body reaches on a page of its height; and the second's first row repeating the first's header cell for cell — where an author's tree cites either, only the tree's own header cells, inside a `/TR`, cited again on the second page say so. A continuation that does not repeat its header stays a table of its own. The record keeps both tables; the rows of the second follow the first's.",
                 "examples": [
                   "gfm-span-slots-unrepresentable-v1",
                   "gfm-row-zero-separator-v1",
                   "gfm-cell-run-claimed-twice-v1",
                   "gfm-cell-not-placed-v1",
                   "gfm-table-not-projected-v1",
+                  "layout-table-as-blocks-v1",
                   "gfm-list-item-run-joins-v1",
                   "mcid-run-joins-v1",
                   "baseline-run-joins-abutted-v1",
@@ -200,13 +205,129 @@
                   "layout-unit-gap-joins-v1",
                   "block-element-run-joins-v1",
                   "heading-level-unresolved-v1",
-                  "heading-level-unrepresentable-v1"
+                  "heading-level-unrepresentable-v1",
+                  "list-items-inferred-from-markers-v1",
+                  "tables-joined-across-pages-v1"
                 ]
               },
               "count": {
                 "type": "integer",
                 "minimum": 1,
                 "description": "How many. Never a severity and never a ratio (docs/01-CONTRACT.md §9). Only non-zero classes appear: a list of codes all reading `0` is the disclosure-shaped noise a reader learns to skip, and every code is documented here whether or not a document trips it."
+              }
+            }
+          }
+        }
+      }
+    },
+    "proposed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "model",
+        "pages"
+      ],
+      "description": "What this artifact writes and leaves out of a drafting model's blocks (decision #147). PRESENT EXACTLY WHERE THE RECORD HOLDS AN `assist` KEY, so an engine-only artifact is byte for byte what it was. Under the rule `assist-lightonocr-v1`, a page where the engine read under 30% of the model's words (`model > 0`, `10 * shared < 3 * model`, `2 * model >= engine`, in decision #123's words: distinct runs of letters, digits and `_`, two characters or more, lower-cased, tags removed; `model` counted in the blocks a swap would write, not a cut last block, furniture `--drop-furniture` leaves out, a table's text outside its cells or a line the guard leaves out; `engine` in the engine-only Markdown) is swapped: the engine's runs and tables there are left out, counted in `coverage.dropped` under `replaced-by-proposed-page-v1`, and the model's blocks follow in reply order. On every other page, each `table` and `chart` block, with the `title` or `caption` before it unless all its words are the engine's, is added after the last run of the page that overlaps it across and starts above its foot, at the next block boundary, or before the page's first node; a model table whose cells, spans and rows equal an engine table's it overlaps on half the smaller box is left out. A model table is written from its parsed cells (a GFM grid here in Markdown, spans flattened; with its spans in HTML), never as the model's HTML, and not at all where its spans would lay it out on more than 100,000 slots (`proposed-table-unparsed-v1`); in text, tags but `<sub>`, `<sup>` and `<br>` are removed. Each insertion is one block quote: first `> **Proposed:** WHAT by ID@VERSION; model text, not read from the document.` (WHAT `page N as read`, `table`, `chart`, or `chart values estimated` where a value is an estimate; `page N as read, chart values estimated` on a swapped page holding one), last `> **End of proposed text.**`, and the model's blocks between them one quote deeper, every line opening with `> >`. The model's text in it is escaped so none of it leaves its quote nor stands where the label or end line stands: U+0000 left out first, `&` and `<` as `&amp;` and `&lt;`, every `[` and `]` after a `\\`, a run of three backticks or tildes where a fence could open after a `\\`, a `\\r` a line break; code in a fence longer than any run of backticks in it as written. The model's id and version are escaped as its text is. The guard's `contradicted` and `unsupported` lines are left out, a cell emptied, never removed; a reply's cut last block is left out.",
+      "properties": {
+        "rule": {
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "assist-lightonocr-v1"
+          ]
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "The model the record's `assist` key names, which every label names too."
+        },
+        "pages": {
+          "type": "array",
+          "description": "One line per page the record holds a reply for, in page order.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "page",
+              "model_words",
+              "engine_words",
+              "shared_words",
+              "swapped",
+              "blocks",
+              "left_out"
+            ],
+            "properties": {
+              "page": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model_words": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Distinct words of the blocks a swap would write: not a cut last block, furniture `--drop-furniture` leaves out, a table's text outside its cells, or a line the guard leaves out."
+              },
+              "engine_words": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Distinct words of this page in the engine-only Markdown, a table's header row the next page repeats kept (decision #151)."
+              },
+              "shared_words": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "swapped": {
+                "type": "boolean"
+              },
+              "blocks": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "How many of the model's blocks this artifact writes."
+              },
+              "left_out": {
+                "type": "array",
+                "description": "What of the reply is left out, by code, sorted; only non-zero codes appear. Blocks: `proposed-table-duplicate-v1`, `proposed-block-truncated-v1`, `proposed-table-unparsed-v1` (a `table` holding no cell, or one whose spans would lay it out on more than 100,000 slots), `proposed-block-not-projected-v1` (off a swapped page, any block but a table, a chart and the caption before one; an empty block; furniture under `--drop-furniture`). Lines: `proposed-value-contradicted-v1`, `proposed-line-unsupported-v1`. In Markdown only, `gfm-span-slots-unrepresentable-v1`: slots a model table's spans covered.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "count"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "minLength": 1,
+                      "examples": [
+                        "proposed-block-not-projected-v1",
+                        "proposed-block-truncated-v1",
+                        "proposed-line-unsupported-v1",
+                        "proposed-table-duplicate-v1",
+                        "proposed-table-unparsed-v1",
+                        "proposed-value-contradicted-v1",
+                        "gfm-span-slots-unrepresentable-v1"
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
               }
             }
           }
@@ -242,7 +363,7 @@
         "structural_erasures": []
       },
       "markdown": "Hello Ethos\n",
-      "markdown_rule": "markdown-blocks-v13",
+      "markdown_rule": "markdown-blocks-v14",
       "parser_version": "0.65.0",
       "profile_sha256": "sha256:130a7f6765217ec0ca86ac86e0595094a947df825e7b8c97beb27abccc492674",
       "representation_sha256": "sha256:1de806b587c83aefaa836e1058e65e3fe0457abbf69e5d5f0105bedc83a12bdc",

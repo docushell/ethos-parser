@@ -72,8 +72,9 @@
 //! 1. **Never one without the other.** [`HtmlArtifact`] holds `html` and `anchor_map` together,
 //!    and there is no `--html-only` on the CLI.
 //! 2. **The map total-tiles the bytes.** The same [`crate::AnchorMap::new`] runs, over the HTML.
-//! 3. **Two segment kinds.** Every tag, attribute, and newline this file writes is `syntax`. Only
-//!    node text is `source`.
+//! 3. **Two segment kinds for the engine's bytes.** Every tag, attribute, and newline this file
+//!    writes is `syntax`. Only node text is `source`; a drafting model's text, where the record
+//!    holds it, is `proposed` (decision #147).
 //! 4. **Coverage is a census.** The same [`crate::markdown::census`] closes it, so the two
 //!    artifacts cannot disagree about how many CHARACTERS a document contains, nor about which
 //!    are dropped and why. Their `structural_erasures` do differ, and that difference is the
@@ -82,7 +83,7 @@
 //! # What is reused rather than rewritten
 //!
 //! Everything that decides *what* to emit: [`crate::markdown::normalize`], `heading_level`,
-//! `list_role`, `dropped_code`, `hyphen_tail` and `plan_tables`. A second copy of the hyphen
+//! `list_role_at`, `dropped_code`, `hyphen_tail` and `plan_tables`. A second copy of the hyphen
 //! predicate would be a second rule that could drift from the first, and only one of them would
 //! have the corpus test that found `nonescr`.
 //!
@@ -101,8 +102,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::markdown::{
-    census, dropped_code, heading_level, hyphen_tail, list_role, normalize, plan_tables, AnchorMap,
-    Coverage, Emit, FontMeasure, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS,
+    census, dropped_code, heading_level, hyphen_tail, list_role_at, normalize, plan_tables,
+    AnchorMap, Coverage, Emit, FontMeasure, ProjectionOptions, SlotRole, TablePlan,
     GFM_ROW_ZERO_SEPARATOR, GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
 };
 use crate::{sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError, Sha256Hex};
@@ -141,21 +142,21 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` documents — an ODT
+/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents — an ODT
 /// or ODP `<text:h>` now projects as `<h1>`..`<h6>` at the level it declared, where before it
 /// projected `<p>`. Both ids move together for the reason `-v3` gives: the change went through
 /// `heading_level`, which both projections call. A level past six projects `<p>`, because
 /// `<h300>` is not an element. **The same id also carries the erasure declaration**, folded for
-/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` gives: a declared heading that comes out
+/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` gives: a declared heading that comes out
 /// `<p>` is counted, at the same value its sibling counts, because both projections commit the
 /// same flattening. Not one character of the HTML changes; the census does.
 ///
-/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V13` documents. Both ids
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids
 /// move together because both projections call `ink_sequenced`.
 ///
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
 /// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
-/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V13`, whose decision #38 folds — emphasis,
+/// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V14`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
 /// runs of one unit on one line joined across the gap between them, decision #81's bold line its
@@ -171,7 +172,19 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// breaks, decision #110's run painted over a copy of itself written once, and decision #111's run
 /// with no reach going on along its line from a space it ends with. Both ids move
 /// together, for the reason `-v5` gives.
-pub const HTML_RULE_BLOCKS_V13: &str = "html-blocks-v13";
+///
+/// `-v14`: decision #126's tagged element's next line on a line of its own inside its `<p>`, with
+/// the same exceptions and the same spans closed at the line's end, as
+/// `crate::markdown::MARKDOWN_RULE_BLOCKS_V14` documents. Both ids move together, for the reason
+/// `-v5` gives. And decision #128's, folded in: two list bodies the file numbers are two `<li>`s,
+/// and one body's join counts as the element's, as in Markdown. And decision #130's: a DOCX
+/// paragraph's runs are one `<p>`, keeping the tabs and line breaks it holds, as in Markdown. And
+/// decision #131's: a raised or lowered mark stays on its line, as in Markdown. And decision
+/// #136's: a DOCX heading, list item and table as the file declares them, and a layout table as
+/// its blocks, as in Markdown. And decision #142's: a table the next page goes on with is one
+/// `<table>`, as in Markdown, and decision #151's: the header row the next page repeats is left
+/// out of it, counted, as in Markdown.
+pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -200,6 +213,10 @@ pub struct HtmlArtifact {
     pub anchor_map: AnchorMap,
     /// The census of what reached the HTML and what did not.
     pub coverage: Coverage,
+    /// What of a drafting model's blocks this artifact writes and leaves out, page by page, as
+    /// [`crate::MarkdownArtifact::proposed`] (decision #147).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed: Option<crate::proposed::ProposedCensus>,
 }
 
 impl HtmlArtifact {
@@ -265,7 +282,7 @@ fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIde
 /// `source` segment on this artifact means HTML-unescaping it — a total, lossless transform, said
 /// out loud here and in the schema, for the same reason [`normalize`] says it: a map that claimed
 /// exact bytes and delivered encoded ones would be the subtlest lie available to this module.
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -339,6 +356,25 @@ impl ListState {
     }
 }
 
+/// Write the groups of a drafting model's blocks pending at this block boundary (decision #147),
+/// any open list closed first, as a block of its own closes it in Markdown.
+fn proposals(
+    e: &mut Emit,
+    list: &mut ListState,
+    cursor: &mut Option<crate::proposed::Cursor<'_, '_>>,
+) {
+    let Some(cursor) = cursor else {
+        return;
+    };
+    let groups = cursor.take();
+    if !groups.is_empty() {
+        list.close_to(e, 0);
+    }
+    for group in groups {
+        cursor.html(e, group);
+    }
+}
+
 /// Close the open block, if one is open. **The only place a closing tag is written** (v2.2-S1).
 fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
     match open.take() {
@@ -350,10 +386,11 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v13`
+/// # The rule, in full — `html-blocks-v14`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
-///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
+///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22), unless the caller
+///    asks [`to_html_with`] to, as [`crate::to_markdown_with`] counts it (decision #134).
 /// 2. **`<h1>`–`<h6>` when the structure tree says so**, or `<h1>` where the reader read a line as a
 ///    heading from its type (decision #29, `TextRunAttributes::inferred_heading`); `<p>` otherwise.
 ///    Inside a paragraph or a list item, `<strong>` and `<em>` where a run's font declares bold or
@@ -364,7 +401,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 ///    column group's head and the row dividing it `<th>` (decision #99).
 /// 4. **`<ul>`/`<li>`** for runs the tree places in an `/L`, nested from nested `/L`. The document
 ///    drew no bullet, so the marker here is a tag rather than a `- `; where it drew its own
-///    `/Lbl`, that is source text inside the `<li>`.
+///    `/Lbl`, that is source text inside the `<li>`. On request, a unit opening with a marker too,
+///    as [`crate::to_markdown_with`] reads it (decision #138).
 /// 5. **Every tag, attribute and newline is `syntax`.** There is no indentation — an indent is
 ///    bytes no document drew, and while the map would tile them honestly, they would be `syntax`
 ///    inside a quote a consumer is likely to lift.
@@ -386,6 +424,29 @@ pub fn to_html(
     profile_sha256: &Sha256Hex,
     html_rule: &str,
 ) -> Result<HtmlArtifact, EngineError> {
+    to_html_with(
+        repr,
+        parser_version,
+        profile_sha256,
+        html_rule,
+        ProjectionOptions::default(),
+    )
+}
+
+/// [`to_html`], leaving out what `options` asks to, counted as [`crate::to_markdown_with`] counts
+/// it (decision #134); a record holding a drafting model's replies is projected as that function
+/// projects it, each group in a `<blockquote class="ethos-proposed">` (decision #147).
+///
+/// # Errors
+///
+/// As [`to_html`].
+pub fn to_html_with(
+    repr: &DocumentRepresentation,
+    parser_version: &str,
+    profile_sha256: &Sha256Hex,
+    html_rule: &str,
+    options: ProjectionOptions,
+) -> Result<HtmlArtifact, EngineError> {
     let payload = repr.payload();
 
     let mut e = Emit::with_emphasis(&payload.nodes, crate::markdown::Markup::Html);
@@ -397,7 +458,32 @@ pub fn to_html(
         std::collections::BTreeMap::new();
     let mut in_representation = 0usize;
 
-    let plans = plan_tables(payload, &mut erasures);
+    // Decision #136, as in `crate::markdown`.
+    let office = if options.drop_furniture {
+        crate::markdown::office_furniture(payload)
+    } else {
+        Default::default()
+    };
+    // Decision #147, as in `crate::markdown`: a page a drafting model's reading replaces.
+    let plan = crate::proposed::Plan::of(repr, options)?;
+    let replaced = plan.as_ref().map(|p| &p.replaced);
+    let tables_left_out = match replaced {
+        Some(replaced) => office.union(replaced).copied().collect(),
+        None => office.clone(),
+    };
+    let mut plans = plan_tables(
+        repr,
+        &mut erasures,
+        &tables_left_out,
+        !options.keep_repeated_header,
+    );
+    // Decision #139, as in `crate::markdown`.
+    let flagged = if options.drop_flagged {
+        crate::markdown::flagged_runs(repr)
+    } else {
+        Default::default()
+    };
+    crate::markdown::leave_cells(&mut plans, &flagged);
     // Every merge costs GFM a slot; here a merge costs nothing unless the grid could not hold it,
     // so the blanket count is replaced by what was actually clamped away.
     erasures.remove(GFM_SPAN_SLOTS_UNREPRESENTABLE);
@@ -418,11 +504,14 @@ pub fn to_html(
 
     let mut emitted_tables = vec![false; plans.len()];
     let mut list = ListState::default();
-    // The list item the previous run belonged to, and whether that run was the item's own `/Lbl`.
-    // Tracked exactly as the Markdown projection tracks it, because the question it answers —
-    // "is this run the rest of an item or the start of the next one?" — is about the TREE, and
-    // both projections have to give it the same answer or they describe different documents.
-    let mut open_item: Option<(usize, bool)> = None;
+    // The list item the previous run belonged to: its place in it, its own `/Lbl` or not, and the
+    // element holding it (decision #128). Tracked exactly as the Markdown projection tracks it,
+    // because the question it answers — "is this run the rest of an item or the start of the next
+    // one?" — is about the TREE, and both projections have to give it the same answer or they
+    // describe different documents.
+    let mut open_item: Option<crate::markdown::ListRole> = None;
+    // Decision #136 (review), as in `crate::markdown`.
+    let mut docx_levels: Vec<usize> = Vec::new();
     let mut joined_tail = false;
 
     // v2.2-S1. The open block's closing tag, deferred.
@@ -449,19 +538,56 @@ pub fn to_html(
     let pitch = crate::markdown::pitch_reference(&payload.nodes);
     let stretches = crate::markdown::read_stretches(&payload.nodes, &pitch);
     let wrapped = crate::markdown::wrapped_labels(repr);
-    let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &pitch);
+    let overprinted = crate::markdown::overprinted_runs(&payload.nodes, &owner, &flagged, &pitch);
+    let mut furniture = if options.drop_furniture {
+        let mut furniture = crate::markdown::repeated_furniture(repr, &owner);
+        furniture.extend(office);
+        furniture
+    } else {
+        Default::default()
+    };
+    // Decision #142: a continuation's header row repeating its table's, left out with them.
+    let repeated: std::collections::BTreeSet<&str> = plans
+        .iter()
+        .flat_map(|p| &p.repeated)
+        .map(|n| n.id.as_str())
+        .collect();
+    furniture.extend(&repeated);
+    furniture.extend(replaced.into_iter().flatten());
+    let mut cursor = plan.as_ref().map(crate::proposed::Plan::cursor);
+    // Decision #138, as in `crate::markdown`.
+    let items = if options.infer_lists {
+        crate::markdown::marker_items(repr)
+    } else {
+        Default::default()
+    };
+    let mut item_unit: Option<(&crate::NodeId, u32)> = None;
     let mut open_line: Option<crate::markdown::LineKey> = None;
     let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
+        if let Some(cursor) = &mut cursor {
+            cursor.at(i, &node.parent);
+        }
 
         if joined_tail {
             joined_tail = false;
             continue;
         }
 
-        if let Some(code) = dropped_code(node.kind) {
+        // Decision #134, as in `crate::markdown`.
+        let dropped = dropped_code(node.kind).or_else(|| {
+            let id = node.id.as_str();
+            furniture.contains(id).then_some(if repeated.contains(id) {
+                crate::markdown::REPEATED_TABLE_HEADER_NOT_PROJECTED
+            } else if replaced.is_some_and(|r| r.contains(id)) {
+                crate::proposed::REPLACED_BY_PROPOSED_PAGE
+            } else {
+                crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
+            })
+        });
+        if let Some(code) = dropped {
             let b = buckets.entry(code).or_insert((0, 0));
             b.0 += node.text.chars().count();
             b.1 += 1;
@@ -471,6 +597,24 @@ pub fn to_html(
             pending_space = false;
             open_line = None;
             line_ink = None;
+            // Decision #134, as in `crate::markdown`: the list closes, as the furniture's own
+            // paragraph closed it.
+            if code == crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
+                || code == crate::proposed::REPLACED_BY_PROPOSED_PAGE
+            {
+                list.close_to(&mut e, 0);
+                open_item = None;
+            }
+            continue;
+        }
+
+        // Decision #139, as in `crate::markdown`.
+        if flagged.contains(node.id.as_str()) {
+            let b = buckets
+                .entry(crate::markdown::FLAGGED_TEXT_NOT_PROJECTED)
+                .or_insert((0, 0));
+            b.0 += node.text.chars().count();
+            b.1 += 1;
             continue;
         }
 
@@ -489,6 +633,7 @@ pub fn to_html(
                 emitted_tables[t] = true;
                 flush_block(&mut e, &mut open_block);
                 list.close_to(&mut e, 0);
+                proposals(&mut e, &mut list, &mut cursor);
                 emit_table(&mut e, &plans[t], &pitch, &stretches);
                 open_item = None;
             }
@@ -500,7 +645,7 @@ pub fn to_html(
             continue;
         }
 
-        let text = normalize(node.reading_text());
+        let text = crate::markdown::projected_text(&payload.nodes, i);
         if text.is_empty() {
             // v2.2-S1. The space the page drew, which this `continue` used to destroy. The block
             // stays open: a space inside a marked-content sequence does not end it.
@@ -528,24 +673,37 @@ pub fn to_html(
             continue;
         }
 
-        if let Some(role) = list_role(node) {
+        if let Some(role) = list_role_at(&payload.nodes, i, &pitch) {
+            // Decision #136, as in `crate::markdown`: a DOCX list paragraph's runs are one item.
+            let seam = open_item
+                .and(open_prev)
+                .and_then(|prev| crate::markdown::paragraph_seam(&payload.nodes, i, prev));
+            let role =
+                crate::markdown::docx_item(node, role, open_item, &mut docx_levels, seam.is_some());
+            let docx = matches!(node.native_locator, crate::NativeLocator::Docx(_));
             flush_block(&mut e, &mut open_block);
             open_group = None;
-            open_prev = None;
+            open_prev = docx.then_some(node);
             pending_space = false;
             open_line = None;
             line_ink = None;
-            let continues = !role.label && open_item.map(|(d, _)| d) == Some(role.depth);
-            if continues {
+            if let Some(seam) = seam {
+                e.syntax(seam);
+                *erasures
+                    .entry(crate::markdown::BLOCK_ELEMENT_RUN_JOINS)
+                    .or_insert(0) += 1;
+            } else if !docx && role.continues(open_item) {
                 // A second body run inside an item the tree did not itself close. **This
                 // projection commits the same erasure the Markdown one does**, so it declares it
-                // under the same code — see `GFM_LIST_ITEM_RUN_JOINS`, whose `gfm-` prefix is
-                // historical rather than descriptive: two sibling `/LI`s have identical role
-                // paths, so nothing in the representation distinguishes them, and every
-                // projection has to guess. HTML guessing differently would make the two artifacts
-                // disagree about how many items the document has.
-                if !matches!(open_item, Some((_, true))) {
-                    *erasures.entry(GFM_LIST_ITEM_RUN_JOINS).or_insert(0) += 1;
+                // under the same code, which `ListRole::join_code` picks for both — see
+                // `crate::markdown::GFM_LIST_ITEM_RUN_JOINS`, whose `gfm-` prefix is historical
+                // rather than descriptive: two sibling `/LI`s have identical role paths, so where
+                // the file leaves a body unnumbered nothing in the representation distinguishes
+                // them, and every projection has to guess (decision #128). HTML guessing
+                // differently would make the two artifacts disagree about how many items the
+                // document has.
+                if let Some(code) = open_item.and_then(|open| role.join_code(open)) {
+                    *erasures.entry(code).or_insert(0) += 1;
                 }
                 // `-v12`: no space between two fragments of one word, as in a table cell.
                 let abuts = i
@@ -558,10 +716,11 @@ pub fn to_html(
                     e.syntax(" ");
                 }
             } else {
+                proposals(&mut e, &mut list, &mut cursor);
                 list.open_item(&mut e, role.depth);
             }
             escaped_source(&mut e, &text, node.id.as_str());
-            open_item = Some((role.depth, role.label));
+            open_item = Some(role);
             continue;
         }
 
@@ -573,7 +732,10 @@ pub fn to_html(
         // v2.2-S5. Computed here so it keeps first refusal over the undeclared join, exactly as
         // in `crate::markdown`.
         let next = payload.nodes.get(i + 1);
-        let next = next.filter(|n| !overprinted.contains(n.id.as_str()));
+        let next = next.filter(|n| {
+            let id = n.id.as_str();
+            !overprinted.contains(id) && !furniture.contains(id) && !flagged.contains(id)
+        });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = crate::markdown::group_key(node);
         let mut across: Option<crate::markdown::SequenceJoin> = None;
@@ -658,12 +820,27 @@ pub fn to_html(
         // and heading-number joins too, from the same predicates, so a label's lines are one `<p>`
         // here as they are one block there. Decision #68: its gap join too, so a page's words set
         // apart by position are one `<p>` here as they are one block there.
-        let continues = if joining.is_some() || key.is_some() || open_group.is_some() {
+        // Decision #130, as in `crate::markdown`: one DOCX paragraph's runs are one `<p>`.
+        // Decision #141, as in `crate::markdown`: across sequences no tree cites, between two
+        // heading runs.
+        let sequenced = (key.is_some() || open_group.is_some())
+            && !open_prev.is_some_and(|prev| crate::markdown::unbound_heading_pair(prev, node));
+        let continues = if joining.is_some() || sequenced {
             None
+        } else if let Some(seam) =
+            open_prev.and_then(|prev| crate::markdown::paragraph_seam(&payload.nodes, i, prev))
+        {
+            Some((seam, crate::markdown::BLOCK_ELEMENT_RUN_JOINS))
         } else if open_prev
             .is_some_and(|prev| crate::markdown::unit_continues(prev, node, &wrapped))
         {
             Some((" ", crate::markdown::LAYOUT_UNIT_LINE_JOINS))
+        } else if let Some(space) =
+            open_prev.and_then(|prev| crate::markdown::script_continues(prev, node, &pitch))
+        {
+            // Decision #131, as in `crate::markdown`.
+            let separator = if space || pending_space { " " } else { "" };
+            Some((separator, crate::markdown::LAYOUT_UNIT_LINE_JOINS))
         } else if open_prev.is_some_and(|prev| {
             crate::markdown::label_line_continues(prev, node)
                 || crate::markdown::body_line_continues(prev, node)
@@ -683,11 +860,26 @@ pub fn to_html(
         } else {
             None
         };
+        // Decision #138, as in `crate::markdown`: an inferred item holds the rest of its unit.
+        let continues = continues.or_else(|| {
+            let space = pending_space
+                || open_prev.is_some_and(|p| p.reading_text().ends_with(char::is_whitespace))
+                || node.reading_text().starts_with(char::is_whitespace);
+            joining
+                .is_none()
+                .then(|| {
+                    open_prev.and_then(|p| {
+                        crate::markdown::item_continues(item_unit, p, node, space, &pitch)
+                    })
+                })
+                .flatten()
+        });
         if let Some((separator, code)) = continues {
             e.syntax(separator);
             block_text.push_str(separator);
             *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
+            open_group = key;
             // Decision #109, as in `crate::markdown`.
             if let Some((tail, joined)) = ht.filter(|_| {
                 open_prev.is_some_and(|prev| crate::markdown::body_line_continues(prev, node))
@@ -721,9 +913,27 @@ pub fn to_html(
 
         if let Some(space) = joining {
             use crate::markdown::SequenceJoin;
+            // Decision #126, as in `crate::markdown`: onto its element's next line, on a line of
+            // its own, except in a heading, on a line its column wrapped, from bold onto bold but a
+            // label, and before a line Markdown would read as a block of its own, so the two
+            // projections agree.
+            let separator = match (across, open_prev) {
+                (Some(SequenceJoin::ElementNextLine), Some(prev)) => {
+                    let heading = matches!(open_block, Some(Some(_)));
+                    crate::markdown::element_next_line(
+                        prev,
+                        &payload.nodes,
+                        i,
+                        &text,
+                        heading,
+                        &wrapped,
+                    )
+                }
+                _ => " ",
+            };
             if space {
-                e.syntax(" ");
-                block_text.push(' ');
+                e.syntax(separator);
+                block_text.push_str(separator);
             }
             escaped_source(&mut e, &text, node.id.as_str());
             block_text.push_str(&text);
@@ -759,7 +969,20 @@ pub fn to_html(
         }
 
         flush_block(&mut e, &mut open_block);
-        list.close_to(&mut e, 0);
+        proposals(&mut e, &mut list, &mut cursor);
+        // Decision #138, as in `crate::markdown`: an item, no deeper than one under the open one,
+        // whose `</li>` the list writes.
+        let item = items.get(node.id.as_str()).copied();
+        item_unit = item.and_then(|_| crate::markdown::unit_of(node));
+        match item {
+            Some(depth) => {
+                list.open_item(&mut e, depth.min(list.levels.len()));
+                *erasures
+                    .entry(crate::markdown::LIST_ITEMS_INFERRED_FROM_MARKERS)
+                    .or_insert(0) += 1;
+            }
+            None => list.close_to(&mut e, 0),
+        }
         block_text.clear();
         block_text.push_str(&text);
         open_group = key;
@@ -778,6 +1001,7 @@ pub fn to_html(
                 e.syntax(&format!("<h{l}>"));
                 e.heading();
             }
+            None if item.is_some() => {}
             None => {
                 e.syntax("<p>");
                 // Kept, not dropped: this projection commits the same flattening at the same
@@ -787,7 +1011,7 @@ pub fn to_html(
                 }
             }
         }
-        open_block = Some(level);
+        open_block = item.is_none().then_some(level);
 
         // The same join, from the same predicate. See `crate::markdown::hyphen_tail`.
         if let Some((tail, joined)) = ht {
@@ -818,6 +1042,11 @@ pub fn to_html(
 
     flush_block(&mut e, &mut open_block);
     list.close_to(&mut e, 0);
+    // Decision #147, as in `crate::markdown`.
+    if let Some(cursor) = &mut cursor {
+        cursor.end();
+    }
+    proposals(&mut e, &mut list, &mut cursor);
 
     // A table whose cells enclose no run has no first run to sit behind, so it has no position in
     // reading order at all — emitted here, in document order, for the reason the Markdown
@@ -836,7 +1065,15 @@ pub fn to_html(
 
     // See the module header: this artifact declares the erasures it actually commits, and no
     // others.
-    let coverage = census(payload, in_representation, emitted_chars, buckets, erasures);
+    let left_out: std::collections::BTreeSet<&str> = furniture.union(&flagged).copied().collect();
+    let coverage = census(
+        payload,
+        &left_out,
+        in_representation,
+        emitted_chars,
+        buckets,
+        erasures,
+    );
 
     let artifact = HtmlArtifact {
         identity: ArtifactIdentity {
@@ -851,6 +1088,7 @@ pub fn to_html(
         html,
         anchor_map,
         coverage,
+        proposed: cursor.map(crate::proposed::Cursor::finish),
     };
     artifact.validate()?;
     Ok(artifact)
@@ -873,6 +1111,12 @@ fn emit_table(
     pitch: &crate::markdown::PitchReference,
     stretches: &crate::markdown::Stretches<'_>,
 ) {
+    // Decision #135: a worksheet's name heads its table, as in the Markdown projection.
+    if let Some(name) = plan.caption.map(normalize).filter(|n| !n.is_empty()) {
+        e.syntax("<h1>");
+        e.syntax(&escape(&name));
+        e.syntax("</h1>\n");
+    }
     e.table(true);
     let header = header_rows(plan);
     e.syntax("<table>\n");
@@ -1041,6 +1285,30 @@ mod tests {
         );
     }
 
+    /// **A raised or lowered mark stays on its line** (decision #131), as in Markdown.
+    #[test]
+    fn a_mark_set_on_a_line_stays_on_it() {
+        use crate::Script::Superscript;
+        let a = artifact_of(crate::markdown::tests::unit_with_scripts(
+            &[
+                ("The rate of interest", 7200, 8600),
+                ("1", 11200, 8450),
+                (" was revised", 11400, 8600),
+                ("Next line", 7200, 10000),
+            ],
+            &[(1, Superscript)],
+        ));
+        assert_eq!(
+            a.html,
+            "<p>The rate of interest<sup>1</sup> was revised\nNext line</p>\n"
+        );
+        assert!(a.coverage.balances());
+
+        // Emphasis stays open where only the script changes, as in Markdown.
+        let a = artifact_of(crate::markdown::tests::italic_index());
+        assert_eq!(a.html, "<p>The state <em>U<sub>t</sub></em> at time</p>\n");
+    }
+
     /// **A word its line broke closes up inside the `<p>`** (decision #109), as in Markdown.
     #[test]
     fn a_word_a_line_broke_closes_up_inside_the_paragraph() {
@@ -1121,6 +1389,19 @@ mod tests {
         assert_eq!(a.html, "<p>develop-</p>\n<p>ment</p>\n");
     }
 
+    /// **A struck run is `<s>` and an underlined one `<u>`** (decision #154), as in Markdown.
+    #[test]
+    fn struck_and_underlined_runs_are_s_and_u() {
+        use crate::markdown::tests::with_marks;
+        let a = artifact_of(with_marks(styled_line(), &[0, 1, 2], &[6]));
+        assert!(
+            a.html
+                .contains("<p><s>Total revenue</s> rose <u>sharply</u></p>"),
+            "{}",
+            a.html
+        );
+    }
+
     /// **A superscript and a subscript are `<sup>` and `<sub>`** (decision #40), as in Markdown.
     #[test]
     fn superscript_and_subscript_runs_are_sup_and_sub() {
@@ -1153,7 +1434,7 @@ mod tests {
             ]))
         };
         let a = one(9);
-        assert!(a.html.contains("<p>Total revenue rose</p>"), "{}", a.html);
+        assert!(a.html.contains("<p>Total revenue\nrose</p>"), "{}", a.html);
         let joins = a
             .coverage
             .structural_erasures
@@ -1211,6 +1492,112 @@ mod tests {
         };
         assert_eq!(count(crate::markdown::MCID_RUN_JOINS), 1);
         assert_eq!(count(crate::markdown::BASELINE_RUN_JOINS_SPACED), 1);
+    }
+
+    /// **An element's next line keeps its line break** (decision #126), as in Markdown: a heading
+    /// stays on one line, a bold line its column wrapped stays one span, and a line Markdown would
+    /// read as a block of its own stays on the line above, so the two projections agree.
+    #[test]
+    fn an_elements_next_line_keeps_its_line_break() {
+        let p = |mcid| tagged_in(mcid, &["Document", "P"], Some(9));
+        let resume = artifact_of(with_styles(
+            repr_of_placed(&[
+                ("Designation: ", p(12), 7200, 7200, Some(1300), None),
+                ("Relationship Manager", p(13), 8500, 7200, Some(2200), None),
+                ("Company: ICICI Bank", p(14), 7200, 5800, Some(2000), None),
+            ]),
+            &[1],
+            &[],
+        ));
+        assert!(
+            resume.html.contains(
+                "<p>Designation: <strong>Relationship Manager</strong>\nCompany: ICICI Bank</p>"
+            ),
+            "{}",
+            resume.html
+        );
+        assert!(resume.coverage.balances());
+
+        let h = |mcid| tagged_in(mcid, &["Document", "H1"], Some(9));
+        let heading = artifact_of(repr_of_placed(&[
+            ("Annual report", h(1), 7200, 7200, Some(2600), None),
+            ("for 2025", h(2), 7200, 5800, Some(1600), None),
+        ]));
+        assert!(
+            heading.html.contains("<h1>Annual report for 2025</h1>"),
+            "{}",
+            heading.html
+        );
+        let opened = artifact_of(with_inferred_headings(
+            repr_of_placed(&[
+                ("Annual report", p(1), 7200, 7200, Some(2600), None),
+                ("for 2025", p(2), 7200, 5800, Some(1600), None),
+                ("and 2026", p(3), 7200, 4400, Some(1600), None),
+            ]),
+            &[0],
+        ));
+        assert!(
+            opened
+                .html
+                .contains("<h1>Annual report for 2025 and 2026</h1>"),
+            "{}",
+            opened.html
+        );
+
+        let two = |a: &'static str, b: &'static str, bold: &[usize]| {
+            artifact_of(with_styles(
+                repr_of_placed(&[
+                    (a, p(1), 7200, 7200, Some(2000), None),
+                    (b, p(2), 7200, 5800, Some(2000), None),
+                ]),
+                bold,
+                &[],
+            ))
+            .html
+        };
+        for (a, b, bold, want) in [
+            (
+                "Company: ICICI Bank",
+                "Relationship Manager",
+                &[1][..],
+                "<p>Company: ICICI Bank\n<strong>Relationship Manager</strong></p>",
+            ),
+            (
+                "Contact the Funds Service Center at",
+                "JPMorgan Funds for a prospectus.",
+                &[0, 1][..],
+                "<p><strong>Contact the Funds Service Center at JPMorgan Funds for a prospectus.</strong></p>",
+            ),
+            (
+                "Designation:",
+                "Duration:",
+                &[0, 1][..],
+                "<p><strong>Designation:</strong>\n<strong>Duration:</strong></p>",
+            ),
+            (
+                "Building resilience",
+                "across markets",
+                &[0, 1][..],
+                "<p><strong>Building resilience across markets</strong></p>",
+            ),
+            (
+                "Experience",
+                "- Led a team",
+                &[][..],
+                "<p>Experience - Led a team</p>",
+            ),
+        ] {
+            let html = two(a, b, bold);
+            assert!(html.contains(want), "{html}");
+        }
+        // A marker its runs cut along the line is read whole (review of decision #126).
+        let split = artifact_of(repr_of_placed(&[
+            ("Experience", p(1), 7200, 7200, Some(2000), None),
+            ("1", p(2), 7200, 5800, Some(500), None),
+            (". Led a team", p(3), 7700, 5800, Some(2000), None),
+        ]))
+        .html;
+        assert!(split.contains("<p>Experience 1. Led a team</p>"), "{split}");
     }
 
     /// **A tagged title's lines read on into one `<strong>`** (decision #85), as in Markdown, and
@@ -1837,6 +2224,65 @@ mod tests {
         );
     }
 
+    /// **Two bodies the file numbers are two `<li>`s** (decision #128), as they are two items in
+    /// Markdown; one body's runs stay one, counted as the element's join.
+    #[test]
+    fn two_numbered_list_bodies_are_two_items() {
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let a = artifact_of(repr_of_placed(&[
+            ("• First", body(4, 2795), 7200, 7200, Some(1400), None),
+            ("continued", body(5, 2795), 7200, 5800, Some(1600), None),
+            ("• Second", body(8, 2796), 7200, 4400, Some(1600), None),
+        ]));
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>• First continued</li>\n<li>• Second</li>\n</ul>\n"
+        );
+        assert_tiles(&a);
+        // The join one body holds is the element's, as in Markdown, not the guess.
+        let count = |code: &str| {
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map_or(0, |e| e.count)
+        };
+        assert_eq!(count(crate::markdown::GFM_LIST_ITEM_RUN_JOINS), 0);
+        assert_eq!(count(crate::markdown::BLOCK_ELEMENT_RUN_JOINS), 1);
+    }
+
+    /// **A body that reads on at the top of the next column stays in its `<li>`** (decision #128),
+    /// as it does in Markdown.
+    #[test]
+    fn a_body_that_reads_on_stays_in_its_item() {
+        let body =
+            |mcid, element| tagged_in(mcid, &["Document", "L", "LI", "LBody"], Some(element));
+        let a = artifact_of(repr_of_placed(&[
+            (
+                "• Observations made from",
+                body(4, 95),
+                7200,
+                7200,
+                Some(4000),
+                None,
+            ),
+            (
+                "a viewing platform.",
+                body(9, 100),
+                30000,
+                2000,
+                Some(3000),
+                None,
+            ),
+        ]));
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>• Observations made from a viewing platform.</li>\n</ul>\n"
+        );
+        assert_tiles(&a);
+    }
+
     /// **The tags balance and nest, on every depth sequence the tree can produce.**
     ///
     /// Found by review. The first `ListState` tracked one `item_open` flag and assumed closing an
@@ -2022,5 +2468,351 @@ mod tests {
             md.coverage.source_chars_emitted
         );
         assert_eq!(html.coverage.dropped, md.coverage.dropped);
+    }
+
+    /// **Flagged text goes on request, as in Markdown, under the same count** (decision #139):
+    /// out of the paragraph, which goes on, and out of its table cell; the default is `to_html`
+    /// byte for byte.
+    #[test]
+    fn flagged_text_is_left_out_on_request_and_counted() {
+        use crate::markdown::tests::{flagged_at, tagged_at};
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let options = ProjectionOptions {
+            drop_flagged: true,
+            ..ProjectionOptions::default()
+        };
+        let both = |repr: &DocumentRepresentation| {
+            let html = to_html_with(
+                repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                options,
+            )
+            .expect("projects");
+            let md = crate::to_markdown_with(
+                repr,
+                &profile.parser_version,
+                &sha,
+                &profile.markdown_rule,
+                options,
+            )
+            .expect("projects");
+            assert!(html.coverage.balances());
+            assert_eq!(html.coverage.dropped, md.coverage.dropped);
+            html
+        };
+        let repr = flagged_at(
+            &repr_of_placed(&[
+                ("Pay ", tagged_at(1), 7200, 7200, Some(1600), None),
+                ("IGNORE ", tagged_at(1), 8800, 7200, Some(2800), None),
+                ("now", tagged_at(1), 11600, 7200, Some(1200), None),
+            ]),
+            &[1],
+        );
+        let plain = artifact_of(repr.clone());
+        assert_eq!(
+            to_html_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                ProjectionOptions::default()
+            )
+            .expect("projects"),
+            plain
+        );
+        assert!(plain.html.contains("IGNORE"));
+        let a = both(&repr);
+        assert_eq!(a.html, "<p>Pay now</p>\n");
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .any(|b| b.code == crate::markdown::FLAGGED_TEXT_NOT_PROJECTED
+                && (b.chars, b.nodes) == (7, 1)));
+
+        let table = flagged_at(
+            &repr_with_table(
+                &["Name", "Alpha", "secret"],
+                1,
+                2,
+                &[cell(0, 0, &[0]), cell(0, 1, &[1, 2])],
+            ),
+            &[2],
+        );
+        let t = both(&table);
+        assert!(
+            !t.html.contains("secret") && t.html.contains("Alpha"),
+            "{}",
+            t.html
+        );
+
+        // A visible run painted over a flagged copy of itself is written (review).
+        let copy = flagged_at(
+            &repr_of_placed(&[
+                ("Report", None, 7200, 7200, Some(2400), None),
+                ("Report", None, 7200, 7200, Some(2400), None),
+            ]),
+            &[0],
+        );
+        assert_eq!(both(&copy).html, "<p>Report</p>\n");
+    }
+
+    /// **Repeated furniture goes on request, as in Markdown, under the same count** (decision
+    /// #134), and the default is `to_html` byte for byte.
+    #[test]
+    fn repeated_furniture_is_left_out_on_request_and_counted() {
+        use crate::Furniture::{Footer, Header};
+        let head = "Acme Ltd - Quarterly Report Q2 FY27";
+        let repr = crate::markdown::tests::paged_repr(
+            &[
+                (head, 1, Some(Header)),
+                ("Body one", 1, None),
+                ("Page 1 of 2", 1, Some(Footer)),
+                (head, 2, Some(Header)),
+                ("Body two", 2, None),
+                ("Page 2 of 2", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let with = |options| {
+            to_html_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                options,
+            )
+            .expect("projects")
+        };
+        let plain = artifact_of(repr.clone());
+        assert_eq!(with(ProjectionOptions::default()), plain);
+        assert_eq!(plain.html.matches(head).count(), 2);
+
+        let options = ProjectionOptions {
+            drop_furniture: true,
+            ..ProjectionOptions::default()
+        };
+        let a = with(options);
+        assert_eq!(a.html, "<p>Body one</p>\n<p>Body two</p>\n");
+        assert!(a.coverage.balances());
+        let md = crate::to_markdown_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.markdown_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(a.coverage.dropped, md.coverage.dropped);
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .any(|b| b.code == crate::markdown::PAGE_FURNITURE_NOT_PROJECTED
+                && (b.chars, b.nodes) == (92, 4)));
+
+        // A word broken before a footer left out is not closed up with it.
+        let repr = crate::markdown::tests::paged_repr(
+            &[
+                ("Rates may be recalcu-", 1, None),
+                ("Confidential", 1, Some(Footer)),
+                ("Body two", 2, None),
+                ("Confidential", 2, Some(Footer)),
+            ],
+            false,
+        );
+        let a = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(a.html, "<p>Rates may be recalcu-</p>\n<p>Body two</p>\n");
+
+        // A list item does not run on across furniture left out: the list closes where the
+        // furniture's paragraph closed it, so the HTML is the default's without that paragraph.
+        let body = &["Document", "L", "LI", "LBody"];
+        let repr = crate::markdown::tests::resealed(
+            &crate::markdown::tests::paged_repr(
+                &[
+                    ("Acme Ltd", 1, Some(Header)),
+                    ("Alpha item", 1, None),
+                    ("Acme Ltd", 2, Some(Header)),
+                    ("carries on", 2, None),
+                ],
+                true,
+            ),
+            |nodes| {
+                nodes[1].structural_locator = tagged_in(1, body, None);
+                nodes[3].structural_locator = tagged_in(2, body, None);
+            },
+            &[],
+        );
+        let plain = artifact_of(repr.clone());
+        let a = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(a.html, plain.html.replace("<p>Acme Ltd</p>\n", ""));
+        assert_eq!(a.html.matches("<ul>").count(), 2);
+    }
+
+    /// **A table the next page goes on with is one `<table>`** (decision #142), counted as
+    /// Markdown counts it, and a second page's repeat of its header row goes, as in Markdown
+    /// (decision #151), unless asked to stay a row of it.
+    #[test]
+    fn a_table_the_next_page_goes_on_with_is_one_table_element() {
+        use crate::markdown::tests::{paged_tables, staff, FIRST, SECOND};
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let with = |keep_repeated_header| {
+            let options = ProjectionOptions {
+                keep_repeated_header,
+                ..ProjectionOptions::default()
+            };
+            let html = to_html_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.html_rule,
+                options,
+            );
+            let md = crate::to_markdown_with(
+                &repr,
+                &profile.parser_version,
+                &sha,
+                &profile.markdown_rule,
+                options,
+            );
+            (html.expect("projects"), md.expect("projects"))
+        };
+        let (a, md) = with(true);
+        assert_eq!(
+            a.html,
+            "<p>Staff</p>\n<table>\n<tr>\n<td>Name</td>\n<td>Dept</td>\n</tr>\n<tr>\n<td>Ann</td>\n\
+             <td>Audit</td>\n</tr>\n<tr>\n<td>Name</td>\n<td>Dept</td>\n</tr>\n<tr>\n<td>Bob</td>\n\
+             <td>Tax</td>\n</tr>\n<tr>\n<td>Cy</td>\n<td>Legal</td>\n</tr>\n</table>\n\
+             <p>Page 1</p>\n<p>Page 2</p>\n"
+        );
+        let joins = |c: &crate::Coverage| {
+            c.structural_erasures
+                .iter()
+                .find(|e| e.code == crate::markdown::TABLES_JOINED_ACROSS_PAGES)
+                .map(|e| e.count)
+        };
+        assert_eq!(joins(&a.coverage), Some(1));
+        assert_eq!(joins(&md.coverage), Some(1));
+        assert!(a.coverage.balances());
+
+        let (a, md) = with(false);
+        assert_eq!(a.html.matches("<td>Name</td>").count(), 1);
+        assert_eq!(a.coverage.dropped, md.coverage.dropped);
+        assert!(a.coverage.dropped.iter().any(|b| b.code
+            == crate::markdown::REPEATED_TABLE_HEADER_NOT_PROJECTED
+            && (b.chars, b.nodes) == (8, 2)));
+        assert!(a.coverage.balances());
+
+        // Kept, furniture left out or not.
+        let options = ProjectionOptions {
+            drop_furniture: true,
+            keep_repeated_header: true,
+            ..ProjectionOptions::default()
+        };
+        let both = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            options,
+        )
+        .expect("projects");
+        assert_eq!(both.html.matches("<td>Name</td>").count(), 2);
+        assert!(both.coverage.balances());
+    }
+
+    /// **A unit opening with a marker is an `<li>`, on request** (decision #138), nested inside
+    /// the open `<li>` where it stands further in, as `crate::markdown` nests it, counted alike.
+    #[test]
+    fn a_unit_opening_with_a_marker_is_an_li_on_request() {
+        use crate::markdown::tests::{unit_lines, INFER_LISTS, MARKER_LINES};
+        let repr = unit_lines(MARKER_LINES);
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let a = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.html,
+            "<p>Terms</p>\n<ul>\n<li>1. Payment is due within 15 days.\nLate payments carry \
+             interest.<ul>\n<li>a. Notices must be in writing.</li>\n</ul>\n</li>\n<li>2. Goods \
+             once sold stay sold.</li>\n</ul>\n<p>Closing words.</p>\n<ul>\n<li>• One year \
+             warranty</li>\n<li>• Installation support</li>\n</ul>\n"
+        );
+        let md = crate::to_markdown_with(
+            &repr,
+            &profile.parser_version,
+            &sha,
+            &profile.markdown_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.coverage.structural_erasures,
+            md.coverage.structural_erasures
+        );
+        assert_eq!(
+            artifact_of(repr.clone()).html,
+            "<p>Terms</p>\n<p>1. Payment is due within 15 days.\nLate payments carry interest.</p>\n\
+             <p>a. Notices must be in writing.</p>\n<p>2. Goods once sold stay sold.</p>\n\
+             <p>Closing words.</p>\n<p>• One year warranty</p>\n<p>• Installation support</p>\n",
+            "off, no list"
+        );
+
+        // No deeper than one under the open `<li>`, and none open after a paragraph.
+        let a = to_html_with(
+            &crate::markdown::tests::columns_repr(),
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>1. First</li>\n</ul>\n<p>rest</p>\n<ul>\n\
+             <li>a. Set in<ul>\n<li>i. Deeper</li>\n</ul>\n</li>\n<li>2. Next column</li>\n</ul>\n"
+        );
+
+        // An item holds the rest of its unit, in whatever sequence.
+        let a = to_html_with(
+            &crate::markdown::tests::sequenced_item_repr(),
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert_eq!(
+            a.html,
+            "<ul>\n<li>• Collected via surveys\nand stored.</li>\n<li>• Kept safe.</li>\n</ul>\n\
+             <p>82.65</p>\n"
+        );
     }
 }

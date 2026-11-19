@@ -661,3 +661,82 @@ NID one document up and none down; TEDS and MHS unchanged.
 
 **Measured beside it and not used:** a heading inside a figure region read as text. The ground truth
 calls many infographic labels section headers: grounding 0.5546, 32 pages up and 50 down.
+
+## 15. `type-size-v8` — labels heading recurring sections head a document nothing else heads (2026-11-14)
+
+opendataloader-bench's heading score reads a document whose ground truth holds a heading and whose
+Markdown holds none as **0**. Read class by class — every ground-truth heading matched to the line
+we write, every `#` line we write matched back, each class patched into the Markdown alone and
+rescored with the harness's own evaluator — the losses at `-v7` (MHS 0.5903 over 107 documents, 193
+headings) were: a heading written as a **bold line**, 33 headings on 21 documents, worth +0.118 if
+written with `#` — 25 of them label-tier lines; a heading **split** over several lines or blocks, 29
+on 24 documents, +0.093 (§16); false headings, 52 on 21 documents, +0.040; a heading written as a
+plain line, 5, +0.009; text not read at all, 8. A wrong level costs nothing: the evaluator reads
+every level as one. **18 of the 107 documents scored 0, and 15 of those had their heading as a
+label**: the label tier is level 7, below every ranked level, and where nothing in the document
+ranks, nothing was written as a heading at all.
+
+**The rule**: where the document declares no author structure and none of its lines ranks — none
+set large, none bold standing apart — a label is level 1 where it heads a section: the last inked
+run before it in reading order is not bold; the next inked run is in no bold and does not run in
+along the label's line a little off its baseline; the next line below that is in no bold either;
+and another label of the document does the same in the same font at the same size. Every other
+label stays at level 7, and a document with one ranked line, or a tag tree, reads as under `-v7`.
+
+**How it got there, step by step** (opendataloader-bench MHS / NID; the review's made-up probes —
+forms, an invoice's key-value row and `Bill To` blocks, a resume's contact labels, a signature
+line, a caption, a page number, a bold line inside a paragraph, a definition list — counted as the
+probes that gain a `#` line they should not):
+
+| form | MHS | NID | false `#` probes |
+| --- | ---: | ---: | ---: |
+| `-v7`, with §16's joins | 0.6285 | 0.8921 | 0 |
+| every label where nothing ranks (simulated on the Markdown: 0.6639 alone) | — | — | — |
+| a label with no label just before or after | 0.7197 | 0.8923 | — |
+| … untagged only, last run before it not bold, no run-in | 0.7163 | 0.8923 | 14 |
+| … the next run not bold (rather than no label) | 0.7111 | 0.8923 | 12 |
+| … heading two lines of text in no bold | 0.7024 | 0.8922 | 12 |
+| **… recurring: two such labels set alike** (shipped) | **0.6378** | **0.8922** | **0** |
+
+**The recurrence clause costs 0.065 MHS, and it is the one that removes every false heading.** A
+document whose one heading is a label over its text — a single section's title — reads exactly
+like a form's `Total` over its value and body, a resume's `EXPERIENCE`, a page's `Schedule B`, or a
+caption: nothing in the type tells them apart. A section title recurs; those do not. The owner's
+standing rule is that a false heading in a form, an invoice or a resume costs a user more than a
+missed one on the bench.
+
+**Measured and refused before that.** Every label of such a document: the bench's MHS higher
+(0.6639, simulated on the Markdown), but five ParseBench formatting pages fell — a label set on two
+lines, an article's number over its title, stacked field captions, a list of names in three
+languages, became one `#` line run together, which no title rule matches — and eleven content pages
+fell. Every label of every document, ranked or not, simulated on the Markdown: nine bench documents
+fell, a list's bold item labels read as headings under a real one. Labels on a tagged document
+whose tree tags no heading, and a bold line inside a bold passage, cost three ParseBench content
+pages (two tagged, one bold passage).
+
+**The bounds**: the eleven documents of §7.1.1 each rank headings, so neither tier moves on any of
+them, tree kept or stripped.
+
+## 16. A heading set a marked-content sequence to a word (decision #141, 2026-11-14)
+
+143 of opendataloader-bench's 200 documents carry runs in marked-content sequences no structure tree
+cites (`pdf_mcid`). Both projections join a run of another sequence only through `sequence_join`,
+whose line clause asks for a tagged parent, and the unit joins an untagged page's heading takes —
+its next line, its section number's title, its words set apart on one line — are off wherever any
+sequence is declared. A producer that opens a sequence at each word therefore wrote a heading's
+number and each of its words as a `#` line of its own, though the heading rule read one line and
+the units rule one unit; a heading set on two lines, each line a sequence, was two `#` lines.
+
+**The rule** (folded into `markdown-blocks-v14` / `html-blocks-v14`, unreleased): two runs read as
+headings or labels, neither cited by a tree — a bare `pdf_mcid`, or no locator — join by those unit
+clauses across their sequences. A run a tree cites joins only as the tree says, as before. Body
+text keeps its blocks. The heading rule and the bounds are untouched: the representation does not
+change.
+
+**Measured** (strict comparison, any change counted): `#141` alone, MHS 0.5903 -> 0.6285,
+16 documents up and none down; NID 0.8918 -> 0.8921, 26 up and none down; TEDS unchanged; ParseBench
+formatting and content unchanged on every page. With `type-size-v8`: MHS **0.6378**, 17 up
+and none down; NID 0.8922, 27 up and none down; overall 0.8005 -> 0.8134; ParseBench formatting,
+content and layout unchanged on every page; the gate documents' Markdown byte-identical, and on
+their tree-stripped copies only this section's joins move (a title set on two lines, a section
+number and its title, two bold cells side by side).

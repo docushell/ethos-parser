@@ -60,10 +60,10 @@
 #   * **`v0-fuzz-smoke`.** Needs a nightly toolchain and `cargo-fuzz` for `-Z sanitizer=address`.
 #     The workspace MSRV is 1.88 and no other job installs nightly.
 #
-#   * **`deny-policy-is-enforced`.** It flips `crates/ethos-parser-core/Cargo.toml` to AGPL and restores
-#     it with `git checkout --`, which silently discards uncommitted work in that file. Its own
-#     step comment says not to run it by hand in a dirty tree, and a gate a developer runs *while
-#     working* is exactly a dirty tree.
+#   * **`deny-policy-is-enforced`.** It flips `crates/ethos-parser-core/Cargo.toml` and
+#     `ocr/Cargo.toml` to AGPL and restores them with `git checkout --`, which silently discards
+#     uncommitted work in those files. Its own step comment says not to run it by hand in a dirty
+#     tree, and a gate a developer runs *while working* is exactly a dirty tree.
 #
 #   * **Every matrix entry in `v0-exit-criteria`, `v01-gates`, `v1s1-gates`, `v1s7-table-gate`,
 #     and the `v0-office-mutation` job.** These re-run subsets of `cargo test --workspace` under a
@@ -157,7 +157,7 @@ elif [ -x ../ethos-oracle/target/release/ethos ]; then
 fi
 
 step=0
-total=10
+total=11
 announce() {
   step=$((step + 1))
   printf '\n\033[1m[%d/%d] %s\033[0m\n' "$step" "$total" "$1"
@@ -184,14 +184,19 @@ cargo build --workspace --locked
 announce 'test'
 cargo test --workspace --locked
 
-announce 'deny'
+announce 'deny — the engine, then the assist binary and the recognizer in their own workspaces'
 cargo deny check
+cargo deny --manifest-path assist/Cargo.toml check
+cargo deny --manifest-path ocr/Cargo.toml check
 
 announce 'sdk suites — node and python, the version guards that had never run'
 ci/sdk-suites.sh
 
 announce 'ocr — the recognizer, in its own workspace on its own toolchain'
 ci/ocr.sh
+
+announce 'assist — the assist binary, in its own workspace on its own toolchain'
+ci/assist.sh
 
 printf '\n\033[1;32mgate: all %d checks passed.\033[0m\n' "$total"
 printf 'Not run, by design: the oracle build, the toolchain tripwire, v0-fuzz-smoke,\n'

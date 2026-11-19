@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v14");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -341,6 +341,769 @@ fn a_form_field_value_is_a_named_bucket_rather_than_body_text() {
     assert!(b["chars"].as_u64().unwrap() > 0);
 }
 
+/// The running head [`running_furniture_pdf`] sets on each of its three pages.
+const RUNNING_HEAD: &str = "Acme Ltd - Quarterly Report Q2 FY27";
+
+/// Three pages of 9-point Helvetica, each with [`RUNNING_HEAD`] at its top edge, one body line
+/// and `Page n of 3` at its foot: the reader flags the head and the folio as furniture.
+///
+/// Built in-test rather than committed as a fixture, as `oracle.rs` builds its one-line PDF: no
+/// engine fixture has more than two pages of running furniture, and no manifest hash moves for it.
+fn running_furniture_pdf() -> Vec<u8> {
+    let pages = 3;
+    let streams: Vec<String> = (1..=pages)
+        .map(|n| {
+            format!(
+                "BT /F1 9 Tf 1 0 0 1 36 380 Tm ({RUNNING_HEAD}) Tj ET \
+                 BT /F1 9 Tf 1 0 0 1 36 300 Tm (Body text of page {n}.) Tj ET \
+                 BT /F1 9 Tf 1 0 0 1 36 15 Tm (Page {n} of {pages}) Tj ET"
+            )
+        })
+        .collect();
+    pdf_of_pages(&streams)
+}
+
+/// A PDF of 300 by 400 point pages, one per content stream in `streams`, each drawing with `/F1`:
+/// Helvetica, every glyph 500 units wide.
+fn pdf_of_pages(streams: &[String]) -> Vec<u8> {
+    let pages = streams.len();
+    let widths = vec!["500"; 224].join(" ");
+    let kids: Vec<String> = (0..pages).map(|i| format!("{} 0 R", 3 + 2 * i)).collect();
+    let mut objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {pages} >>",
+            kids.join(" ")
+        )
+        .into_bytes(),
+    ];
+    let font = 3 + 2 * pages;
+    for (i, stream) in streams.iter().enumerate() {
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << \
+                 /F1 {font} 0 R >> >> /Contents {} 0 R >>",
+                4 + 2 * i
+            )
+            .into_bytes(),
+        );
+        objects.push(
+            format!(
+                "<< /Length {} >>\nstream\n{stream}\nendstream",
+                stream.len()
+            )
+            .into_bytes(),
+        );
+    }
+    objects.push(
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    );
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        out.extend_from_slice(o);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref = out.len();
+    out.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    out
+}
+
+/// **A page whose text is drawn upside down is read upright, and the record says so** (decision
+/// #155): a made-up price list drawn turned half a turn on a page that declares no rotation. The
+/// page records `turn: 180`, the frame its boxes are in, and the list reads as a table in its own
+/// order; the same list drawn upright records no turn.
+#[test]
+fn a_page_drawn_upside_down_is_read_upright() {
+    let dir = scratch("turned-page");
+    let rows = [
+        ["Item", "Price", "Qty"],
+        ["Widget", "$3.50", "2"],
+        ["Gadget", "$4.50", "3"],
+        ["Sprocket", "$1.25", "9"],
+        ["Flange", "$7.00", "1"],
+    ];
+    let page = ruled_page("", &rows, 1);
+    let read = |label: &str, stream: String| {
+        let pdf = dir.join(format!("{label}.pdf"));
+        std::fs::write(&pdf, pdf_of_pages(&[stream])).expect("write PDF");
+        let repr = extract_to(&dir, &pdf);
+        let record: Value = serde_json::from_slice(&std::fs::read(&repr).unwrap()).unwrap();
+        let turn = record["representation"]["pages"][0]["turn"].clone();
+        (
+            turn,
+            markdown_of(&repr)["markdown"].as_str().unwrap().to_string(),
+        )
+    };
+    let (turn, md) = read("upright", page.clone());
+    assert!(turn.is_null(), "{turn}");
+    assert!(md.contains("| Widget | $3.50 | 2 |"), "{md}");
+    let (turn, md) = read("upside-down", format!("q -1 0 0 -1 300 400 cm {page} Q"));
+    assert_eq!(turn, 180);
+    assert!(md.contains("| Item | Price | Qty |"), "{md}");
+    assert!(
+        md.contains("| Widget | $3.50 | 2 |\n| Gadget | $4.50 | 3 |"),
+        "{md}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **A phrase a painted line strikes through is `~~`, one a stroked line underlines is `<u>`**
+/// (decision #154), on a made-up page, and the record says so of each run; a rule under a line
+/// of text that reaches far past it, a box drawn round a word, a dashed guide, a white line and a
+/// filled path of no area through one, mark nothing; and a subscript over its line's underline
+/// is not struck (review).
+#[test]
+fn drawn_strikeout_and_underline_are_marked() {
+    let dir = scratch("decorations");
+    let stream = "BT /F1 12 Tf 1 0 0 1 40 300 Tm (Old fee) Tj ET 40 303.5 42 0.8 re f \
+                  BT /F1 12 Tf 1 0 0 1 40 270 Tm (New fee) Tj ET 0.6 w 40 268.5 m 82 268.5 l S \
+                  BT /F1 12 Tf 1 0 0 1 40 240 Tm (Plain row) Tj ET 20 238.5 m 280 238.5 l S \
+                  BT /F1 12 Tf 1 0 0 1 40 210 Tm (Boxed) Tj ET 38 208.5 34 14 re S \
+                  BT /F1 12 Tf 1 0 0 1 40 180 Tm (Guide) Tj ET [3 3] 0 d 40 183.5 m 70 183.5 l S [] 0 d \
+                  BT /F1 12 Tf 1 0 0 1 40 150 Tm (White) Tj ET 1 1 1 RG 40 153.5 m 70 153.5 l S 0 0 0 RG \
+                  BT /F1 12 Tf 1 0 0 1 40 120 Tm (Ghost) Tj ET 40 123.5 m 70 123.5 l f \
+                  BT /F1 12 Tf 1 0 0 1 40 90 Tm (H) Tj /F1 7 Tf 1 0 0 1 48 87 Tm (2) Tj \
+                  /F1 12 Tf 1 0 0 1 52 90 Tm (O) Tj ET 40 88.5 m 46 88.5 l S 48 88.5 m 51.5 88.5 l S \
+                  52 88.5 m 58 88.5 l S \
+                  BT /F1 12 Tf 1 0 0 1 40 60 Tm (Spot) Tj ET /CS0 CS 1 SCN 40 63.5 m 64 63.5 l S";
+    let pdf = dir.join("marks.pdf");
+    std::fs::write(&pdf, pdf_of_pages(&[stream.to_string()])).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let record: Value = serde_json::from_slice(&std::fs::read(&repr).unwrap()).unwrap();
+    let flag = |text: &str, key: &str| {
+        record["representation"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["text"] == text)
+            .map(|n| n["attributes"]["text_run"][key] == true)
+    };
+    assert_eq!(flag("Old fee", "strikeout"), Some(true));
+    assert_eq!(flag("New fee", "underline"), Some(true));
+    assert_eq!(flag("Plain row", "underline"), Some(false));
+    let md = markdown_of(&repr)["markdown"].as_str().unwrap().to_string();
+    assert!(md.contains("~~Old fee~~"), "{md}");
+    assert!(md.contains("<u>New fee</u>"), "{md}");
+    assert!(md.contains("Plain row") && !md.contains("<u>Plain"), "{md}");
+    assert!(md.contains("Boxed") && !md.contains("<u>Boxed"), "{md}");
+    assert!(md.contains("Guide") && !md.contains("~~Guide"), "{md}");
+    assert!(md.contains("White") && !md.contains("~~White"), "{md}");
+    assert!(md.contains("Ghost") && !md.contains("~~Ghost"), "{md}");
+    assert!(
+        md.contains("~~Spot~~"),
+        "a full tint in a named space is no white: {md}"
+    );
+    assert!(
+        md.contains("<sub>2</sub>") && !md.contains("~~<sub>"),
+        "{md}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **`--drop-furniture` leaves out a running head and a folio repeated on every page, and counts
+/// them** (decision #134). The record and `--source` give one artifact, `html` leaves out the same
+/// runs under the same count, and without the flag the head is on every page.
+#[test]
+fn drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them() {
+    let dir = scratch("drop-furniture");
+    let pdf = dir.join("running.pdf");
+    std::fs::write(&pdf, running_furniture_pdf()).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+    assert_eq!(
+        plain["markdown"]
+            .as_str()
+            .unwrap()
+            .matches(RUNNING_HEAD)
+            .count(),
+        3
+    );
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let dropped = run(&["markdown", "--drop-furniture", repr]);
+    assert_eq!(
+        dropped,
+        run(&["markdown", "--drop-furniture", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&dropped).expect("canonical JSON");
+    assert_eq!(
+        a["markdown"],
+        "Body text of page 1.\n\nBody text of page 2.\n\nBody text of page 3.\n"
+    );
+    let coverage = &a["coverage"];
+    let bucket = coverage["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "page-furniture-not-projected-v1")
+        .expect("what went is counted");
+    let head = RUNNING_HEAD.len() as u64;
+    assert_eq!(
+        (bucket["chars"].as_u64(), bucket["nodes"].as_u64()),
+        (Some(3 * head + 3 * "Page 1 of 3".len() as u64), Some(6))
+    );
+    assert_eq!(
+        coverage["source_chars_emitted"].as_u64().unwrap()
+            + coverage["source_chars_dropped"].as_u64().unwrap(),
+        coverage["source_chars_in_representation"].as_u64().unwrap()
+    );
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--drop-furniture", repr])).unwrap();
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        !html.contains(RUNNING_HEAD) && !html.contains("Page "),
+        "{html}"
+    );
+    assert_eq!(h["coverage"]["dropped"], coverage["dropped"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A page of a ruled price list on a 300 by 400 point page, under `Acme Ltd` at its head and over
+/// its folio: `before` drawn at the head of its body, then `rows` of three cells, 16 points tall,
+/// from 345 points up, each cell a stroked rectangle.
+fn ruled_page(before: &str, rows: &[[&str; 3]], folio: u32) -> String {
+    let mut ops = format!(
+        "BT /F1 8 Tf 1 0 0 1 36 385 Tm (Acme Ltd) Tj ET {before} \
+         BT /F1 8 Tf 1 0 0 1 140 10 Tm (Page {folio}) Tj ET"
+    );
+    let x = [36, 156, 216, 276];
+    for (r, row) in rows.iter().enumerate() {
+        let y = 345 - 16 * r as i32;
+        for (c, cell) in row.iter().enumerate() {
+            ops.push_str(&format!(
+                " {} {} {} 16 re S BT /F1 9 Tf 1 0 0 1 {} {} Tm ({cell}) Tj ET",
+                x[c],
+                y - 16,
+                x[c + 1] - x[c],
+                x[c] + 3,
+                y - 12
+            ));
+        }
+    }
+    ops
+}
+
+/// **A table whose next page repeats its header is one table; a heading, a header of its own or
+/// no header on that page keeps two** (decision #142), on made-up PDFs: a price list of 20 rows
+/// that fills its page and goes on under its header for 2 more on the next, under a running head
+/// and over folios both pages repeat. A month's heading drawn at the head of the second page,
+/// where the reader flags it as furniture, a second table opening with a header of its own, and
+/// the rest of the list set without its header, are each another table.
+#[test]
+fn a_table_whose_next_page_repeats_its_header_is_one_table_and_a_heading_keeps_two() {
+    let dir = scratch("continued-table");
+    let head = ["Item", "Price", "Qty"];
+    let first: Vec<[&str; 3]> = std::iter::once(head)
+        .chain(std::iter::repeat_n(["Widget", "$3.50", "2"], 19))
+        .collect();
+    let more = [head, ["Gadget", "$4.50", "3"], ["Gadget", "$4.50", "3"]];
+    let joins = |label: &str, before: &str, second: &[[&str; 3]]| {
+        let pdf = dir.join(format!("{label}.pdf"));
+        let pages = [ruled_page("", &first, 1), ruled_page(before, second, 2)];
+        std::fs::write(&pdf, pdf_of_pages(&pages)).expect("write PDF");
+        let a = markdown_of(&extract_to(&dir, &pdf));
+        let markdown = a["markdown"].as_str().unwrap().to_string();
+        let joined = a["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == "tables-joined-across-pages-v1")
+            .map_or(0, |e| e["count"].as_u64().unwrap());
+        let grids = markdown.lines().filter(|l| l.starts_with("| ---")).count();
+        (joined, grids, markdown)
+    };
+    let (joined, grids, markdown) = joins("goes-on", "", &more);
+    assert_eq!((joined, grids), (1, 1), "{markdown}");
+    assert!(
+        markdown.contains("| Widget | $3.50 | 2 |\n| Gadget | $4.50 | 3 |"),
+        "{markdown}"
+    );
+    assert_eq!(markdown.matches("| Item | Price | Qty |").count(), 1);
+    // Decision #151: the repeat goes, counted; `--keep-repeated-header` keeps it a row.
+    let repr = dir.join("repr.json");
+    let repr = repr.to_str().unwrap();
+    let a = markdown_of(Path::new(repr));
+    let repeated = |a: &Value| {
+        a["coverage"]["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["code"] == "repeated-table-header-not-projected-v1")
+            .map(|b| (b["chars"].as_u64().unwrap(), b["nodes"].as_u64().unwrap()))
+    };
+    assert_eq!(repeated(&a), Some((12, 3)));
+    let kept = |command: &str| -> Value {
+        let out = engine(&[command, "--keep-repeated-header", repr]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).expect("canonical JSON")
+    };
+    let k = kept("markdown");
+    assert!(
+        k["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("| Widget | $3.50 | 2 |\n| Item | Price | Qty |\n| Gadget | $4.50 | 3 |"),
+        "{k}"
+    );
+    assert_eq!(repeated(&k), None);
+    let h = kept("html");
+    assert_eq!(
+        h["html"].as_str().unwrap().matches("<td>Item</td>").count(),
+        2
+    );
+    assert_eq!(repeated(&h), None);
+    assert_eq!(
+        repeated(&serde_json::from_slice(&engine(&["html", repr]).stdout).unwrap()),
+        Some((12, 3))
+    );
+
+    let heading = "BT /F1 14 Tf 1 0 0 1 36 368 Tm (February) Tj ET";
+    let (joined, grids, markdown) = joins("heading", heading, &more);
+    assert_eq!((joined, grids), (0, 2), "{markdown}");
+
+    let mut own = more;
+    own[0] = ["Region", "Sales", "Growth"];
+    let (joined, grids, markdown) = joins("own-header", "", &own);
+    assert_eq!((joined, grids), (0, 2), "{markdown}");
+
+    let (joined, grids, markdown) = joins("no-header", "", &more[1..]);
+    assert_eq!((joined, grids), (0, 2), "{markdown}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **`--infer-lists` writes a list item for each line opening with a marker on an untagged page,
+/// and counts them** (decision #138): the marker stays as drawn after `- `, a lettered item set in
+/// further nests under the numbered one, and a section number (`2.3.1`) and a decimal (`1.5`)
+/// open none. Without the flag the Markdown is the default one; the record path and `--source`
+/// give one artifact, and `html` writes the same items under the same count.
+#[test]
+fn infer_lists_writes_marker_lines_as_items_and_counts_them() {
+    let dir = scratch("infer-lists");
+    let pdf = dir.join("list.pdf");
+    let line =
+        |x: u32, y: u32, text: &str| format!("BT /F1 10 Tf 1 0 0 1 {x} {y} Tm ({text}) Tj ET ");
+    let stream = [
+        line(36, 300, "1."),
+        line(54, 300, "Payment is due within 15 days."),
+        line(54, 285, "a."),
+        line(72, 285, "Notices must be in writing."),
+        line(36, 270, "2."),
+        line(54, 270, "Goods once sold stay sold."),
+        line(36, 240, "2.3.1 Scope of the terms"),
+        line(36, 210, "1.5 million units were sold."),
+    ]
+    .concat();
+    std::fs::write(&pdf, pdf_of_pages(&[stream])).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let listed = run(&["markdown", "--infer-lists", repr]);
+    assert_eq!(
+        listed,
+        run(&["markdown", "--infer-lists", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&listed).expect("canonical JSON");
+    assert_eq!(
+        a["markdown"],
+        "- 1. Payment is due within 15 days.\n  - a. Notices must be in writing.\n\
+         - 2. Goods once sold stay sold.\n\n2.3.1 Scope of the terms\n\n\
+         1.5 million units were sold.\n"
+    );
+    assert_eq!(
+        plain["markdown"],
+        "1. Payment is due within 15 days.\n\na. Notices must be in writing.\n\n\
+         2. Goods once sold stay sold.\n\n2.3.1 Scope of the terms\n\n\
+         1.5 million units were sold.\n",
+        "no item without the flag"
+    );
+    let inferred = |artifact: &Value| {
+        artifact["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == "list-items-inferred-from-markers-v1")
+            .and_then(|e| e["count"].as_u64())
+    };
+    assert_eq!(inferred(&a), Some(3));
+    assert_eq!(inferred(&plain), None);
+    assert_eq!(a["markdown_rule"], plain["markdown_rule"]);
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--infer-lists", repr])).unwrap();
+    assert_eq!(
+        h["html"],
+        "<ul>\n<li>1. Payment is due within 15 days.<ul>\n<li>a. Notices must be in writing.\
+         </li>\n</ul>\n</li>\n<li>2. Goods once sold stay sold.</li>\n</ul>\n\
+         <p>2.3.1 Scope of the terms</p>\n<p>1.5 million units were sold.</p>\n"
+    );
+    assert_eq!(inferred(&h), Some(3));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **`--drop-hidden` leaves out the text a reader does not see, and counts it** (decision #139):
+/// white on the bare page and text at half a point go from both projections under one count, the
+/// record and `--source` give one artifact, white on a black box stays, and without the flag every
+/// run is written.
+#[test]
+fn drop_hidden_leaves_out_flagged_text_and_counts_it() {
+    let stream = "BT /F1 9 Tf 1 0 0 1 36 300 Tm (Seen text.) Tj ET \
+                  q 1 g BT /F1 9 Tf 1 0 0 1 36 280 Tm (Unseen instruction.) Tj ET Q \
+                  BT /F1 0.5 Tf 1 0 0 1 36 260 Tm (Tiny print.) Tj ET \
+                  q 0 g 30 230 200 20 re f 1 g BT /F1 9 Tf 1 0 0 1 36 235 Tm (Reversed out.) Tj ET Q";
+    let widths = vec!["500"; 224].join(" ");
+    let objects: Vec<String> = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".into(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] \
+         /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            .into(),
+        format!(
+            "<< /Length {} >>\nstream\n{stream}\nendstream",
+            stream.len()
+        ),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        ),
+    ];
+    let mut bytes = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(bytes.len());
+        bytes.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = bytes.len();
+    bytes.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        bytes.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    bytes.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+
+    let dir = scratch("drop-hidden");
+    let pdf = dir.join("hidden.pdf");
+    std::fs::write(&pdf, bytes).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let plain = markdown_of(&repr);
+    let text = plain["markdown"].as_str().unwrap();
+    assert!(
+        text.contains("Unseen instruction.") && text.contains("Tiny print."),
+        "{text}"
+    );
+
+    let (repr, pdf) = (repr.to_str().unwrap(), pdf.to_str().unwrap());
+    let run = |args: &[&str]| {
+        let out = engine(args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let dropped = run(&["markdown", "--drop-hidden", repr]);
+    assert_eq!(
+        dropped,
+        run(&["markdown", "--drop-hidden", "--source", pdf]),
+        "the record and the source give one artifact"
+    );
+    let a: Value = serde_json::from_slice(&dropped).expect("canonical JSON");
+    assert_eq!(a["markdown"], "Seen text.\n\nReversed out.\n");
+    let coverage = &a["coverage"];
+    let bucket = coverage["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "flagged-text-not-projected-v1")
+        .expect("what went is counted");
+    assert_eq!(
+        (bucket["chars"].as_u64(), bucket["nodes"].as_u64()),
+        (
+            Some(("Unseen instruction.".len() + "Tiny print.".len()) as u64),
+            Some(2)
+        )
+    );
+    assert_eq!(
+        coverage["source_chars_emitted"].as_u64().unwrap()
+            + coverage["source_chars_dropped"].as_u64().unwrap(),
+        coverage["source_chars_in_representation"].as_u64().unwrap()
+    );
+
+    let h: Value = serde_json::from_slice(&run(&["html", "--drop-hidden", repr])).unwrap();
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        !html.contains("Unseen") && !html.contains("Tiny") && html.contains("Reversed out."),
+        "{html}"
+    );
+    assert_eq!(h["coverage"]["dropped"], coverage["dropped"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **A heading set a marked-content sequence to a word is one heading line** (decision #141): a
+/// page with no structure tree that opens a sequence at each word of its heading, and again at the
+/// heading's next line, projected a `#` line per sequence, since nothing joins two sequences no
+/// tree cites. The heading rule read the three runs as one heading and the units rule as one unit,
+/// and both projections now join them as they join an untagged page's; the body's lines, each in a
+/// sequence of its own, keep their blocks.
+#[test]
+fn a_heading_set_a_sequence_to_a_word_is_one_heading_line() {
+    let dir = scratch("heading-sequences");
+    let pdf = dir.join("heading.pdf");
+    let seq = |mcid: usize, x: usize, y: usize, size: usize, text: &str| {
+        format!(
+            "/Span <</MCID {mcid}>> BDC BT /F1 {size} Tf 1 0 0 1 {x} {y} Tm ({text}) Tj ET EMC "
+        )
+    };
+    let body = [
+        "Sales rose in every region over the quarter, and",
+        "the margin held near the level of the year before.",
+        "Costs fell as the new plant came on line in May,",
+        "while freight and energy prices stayed high.",
+        "The board expects the second half to be slower,",
+        "and holds its guidance for the full year as set.",
+        "Orders in hand cover most of the next two months,",
+        "with the largest buyers renewing their terms.",
+        "Cash on hand rose, and the debt taken last year",
+        "was repaid ahead of the date it fell due on.",
+    ];
+    let mut stream = seq(0, 20, 370, 16, "Quarterly ")
+        + &seq(1, 100, 370, 16, "Results")
+        + &seq(2, 20, 350, 16, "and Outlook");
+    for (k, line) in body.iter().enumerate() {
+        stream += &seq(3 + k, 20, 320 - 12 * k, 10, line);
+    }
+    std::fs::write(&pdf, pdf_of_pages(&[stream])).expect("write PDF");
+    let repr = extract_to(&dir, &pdf);
+    let md = markdown_of(&repr)["markdown"].as_str().unwrap().to_string();
+    assert!(
+        md.starts_with(&format!(
+            "# Quarterly Results and Outlook\n\n{}\n\n{}\n\n",
+            body[0], body[1]
+        )),
+        "{md}"
+    );
+    assert_eq!(md.matches('#').count(), 1, "{md}");
+
+    let out = engine(&["html", repr.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let h: Value = serde_json::from_slice(&out.stdout).expect("canonical JSON");
+    let html = h["html"].as_str().unwrap();
+    assert!(
+        html.starts_with(&format!(
+            "<h1>Quarterly Results and Outlook</h1>\n<p>{}</p>\n",
+            body[0]
+        )),
+        "{html}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// One page with the boxes `boxes` — its `/MediaBox`, its `/CropBox` — drawing `stream`, with
+/// Helvetica as `/F1` and a one-pixel image as `/Im0`.
+fn page_pdf(boxes: &str, stream: &str) -> Vec<u8> {
+    let widths = vec!["500"; 224].join(" ");
+    let objects: Vec<String> = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".into(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        format!(
+            "<< /Type /Page /Parent 2 0 R {boxes} \
+             /Resources << /Font << /F1 5 0 R >> /XObject << /Im0 6 0 R >> >> /Contents 4 0 R >>"
+        ),
+        format!(
+            "<< /Length {} >>\nstream\n{stream}\nendstream",
+            stream.len()
+        ),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        ),
+        "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+         /BitsPerComponent 8 /Length 1 >>\nstream\n0\nendstream"
+            .into(),
+    ];
+    let mut bytes = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(bytes.len());
+        bytes.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = bytes.len();
+    bytes.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        bytes.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    bytes.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    bytes
+}
+
+/// `markdown --drop-hidden --source` over `stream` on a 300 x 400 [`page_pdf`]: its text, and the
+/// `(chars, nodes)` it counts as flagged text left out.
+fn drop_hidden_of(label: &str, stream: &str) -> (String, Option<(u64, u64)>) {
+    drop_hidden_on(label, "/MediaBox [0 0 300 400]", stream)
+}
+
+/// [`drop_hidden_of`] on a page with the boxes `boxes`.
+fn drop_hidden_on(label: &str, boxes: &str, stream: &str) -> (String, Option<(u64, u64)>) {
+    let dir = scratch(label);
+    let pdf = dir.join("scan.pdf");
+    std::fs::write(&pdf, page_pdf(boxes, stream)).expect("write PDF");
+    let out = engine(&[
+        "markdown",
+        "--drop-hidden",
+        "--source",
+        pdf.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let a: Value = serde_json::from_slice(&out.stdout).expect("canonical JSON");
+    let bucket = a["coverage"]["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "flagged-text-not-projected-v1")
+        .map(|b| (b["chars"].as_u64().unwrap(), b["nodes"].as_u64().unwrap()));
+    let _ = std::fs::remove_dir_all(&dir);
+    (a["markdown"].as_str().unwrap().to_owned(), bucket)
+}
+
+/// **`--drop-hidden` keeps a scan's text layer** (decision #139, review of 2026-11-14): invisible
+/// text inside images covering half their page or more is the words of the picture and stays;
+/// invisible text over none goes, and so does invisible text in a picture on a page its pictures
+/// cover less than half of, each counted.
+#[test]
+fn drop_hidden_keeps_a_scan_text_layer() {
+    let (text, bucket) = drop_hidden_of(
+        "drop-hidden-scan",
+        "q 300 0 0 250 0 150 cm /Im0 Do Q \
+         BT 3 Tr /F1 12 Tf 1 0 0 1 40 350 Tm (Scanned words) Tj ET \
+         BT 3 Tr /F1 12 Tf 1 0 0 1 40 60 Tm (Unseen words) Tj ET \
+         BT 0 Tr /F1 12 Tf 1 0 0 1 40 100 Tm (Seen words) Tj ET",
+    );
+    assert!(
+        text.contains("Scanned words") && text.contains("Seen words"),
+        "{text}"
+    );
+    assert!(!text.contains("Unseen"), "{text}");
+    assert_eq!(bucket, Some(("Unseen words".len() as u64, 1)));
+
+    let (text, bucket) = drop_hidden_of(
+        "drop-hidden-small",
+        "q 150 0 0 250 0 150 cm /Im0 Do Q \
+         BT 3 Tr /F1 12 Tf 1 0 0 1 40 350 Tm (Small picture words) Tj ET",
+    );
+    assert!(!text.contains("Small picture"), "{text}");
+    assert_eq!(bucket, Some(("Small picture words".len() as u64, 1)));
+}
+
+/// **An off-page run goes only where its box is known to miss the page** (review of 2026-11-14):
+/// a line whose origin is just off the media box, which extract gives no box, stays, and so does a
+/// line starting left of the crop box and running onto it; a word wholly between the crop box and
+/// the media box, its box measured, goes and is counted.
+#[test]
+fn drop_hidden_keeps_an_off_page_run_that_may_show() {
+    let (text, bucket) = drop_hidden_on(
+        "drop-hidden-off-page",
+        "/MediaBox [0 0 300 400] /CropBox [50 0 300 400]",
+        "BT /F1 12 Tf 1 0 0 1 -4 350 Tm (Over the media edge) Tj ET \
+         BT /F1 12 Tf 1 0 0 1 40 300 Tm (Partly cropped line) Tj ET \
+         BT /F1 12 Tf 1 0 0 1 5 250 Tm (Gone) Tj ET \
+         BT /F1 12 Tf 1 0 0 1 80 200 Tm (Inside) Tj ET",
+    );
+    for kept in ["Over the media edge", "Partly cropped line", "Inside"] {
+        assert!(text.contains(kept), "{kept}: {text}");
+    }
+    assert!(!text.contains("Gone"), "{text}");
+    assert_eq!(bucket, Some(("Gone".len() as u64, 1)));
+}
+
+/// **A scan in strips is one scan, and its text layer may be set under a point** (review of
+/// 2026-11-14): four strips that together cover the page keep the invisible text inside them,
+/// tiny or not.
+#[test]
+fn drop_hidden_keeps_a_scan_in_strips_and_its_tiny_text_layer() {
+    let strips: String = [0, 100, 200, 300]
+        .iter()
+        .map(|y| format!("q 300 0 0 100 0 {y} cm /Im0 Do Q "))
+        .collect();
+    let (text, bucket) = drop_hidden_of(
+        "drop-hidden-strips",
+        &format!(
+            "{strips}BT 3 Tr /F1 12 Tf 1 0 0 1 40 350 Tm (Invoice number 4471) Tj ET \
+             BT 3 Tr /F1 0.9 Tf 1 0 0 1 40 230 Tm (Total due) Tj ET"
+        ),
+    );
+    assert!(
+        text.contains("Invoice number 4471") && text.contains("Total due"),
+        "{text}"
+    );
+    assert_eq!(bucket, None);
+}
+
 /// Double-run byte identity — standing rule 6.
 #[test]
 fn two_runs_are_byte_identical() {
@@ -377,7 +1140,15 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         flags.iter().all(|f| matches!(
             *f,
-            "--help" | "--version" | "--diagnostics" | "--source" | "--ocr"
+            "--help"
+                | "--version"
+                | "--diagnostics"
+                | "--source"
+                | "--ocr"
+                | "--drop-furniture"
+                | "--keep-repeated-header"
+                | "--infer-lists"
+                | "--drop-hidden"
         )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
@@ -409,6 +1180,40 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         ocr_help.contains("byte-identical"),
         "--ocr must document the equality that admits it: {ocr_help:?}"
+    );
+    // **`--drop-furniture` is admitted on other evidence** (decision #134): it leaves text out,
+    // which law 1 does not forbid and A14 does unless it is counted. The map still tiles every
+    // byte it writes, and what it leaves out is counted under its own code, which
+    // [`drop_furniture_leaves_out_a_repeated_head_and_folio_and_counts_them`] asserts.
+    let furniture_help = options
+        .split("--drop-furniture")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        furniture_help.contains("page-furniture-not-projected-v1"),
+        "--drop-furniture must name the count that admits it: {furniture_help:?}"
+    );
+    // **`--infer-lists` likewise** (decision #138): it writes `- ` before a line the page drew,
+    // all `syntax`, so the map tiles every byte, and each item it infers is counted, which
+    // [`infer_lists_writes_marker_lines_as_items_and_counts_them`] asserts.
+    let lists_help = options
+        .split("--infer-lists")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        lists_help.contains("list-items-inferred-from-markers-v1"),
+        "--infer-lists must name the count that admits it: {lists_help:?}"
+    );
+
+    // **`--drop-hidden` on the same evidence** (decision #139), which
+    // [`drop_hidden_leaves_out_flagged_text_and_counts_it`] asserts.
+    let hidden_help = options
+        .split("--drop-hidden")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        hidden_help.contains("flagged-text-not-projected-v1"),
+        "--drop-hidden must name the count that admits it: {hidden_help:?}"
     );
 
     // And the artifact itself always carries both halves.
@@ -529,17 +1334,23 @@ fn lists_come_from_the_tree_and_nowhere_else() {
          indents, the two-run body joins, and the unmarked run ends the list"
     );
 
-    let joins = a["coverage"]["structural_erasures"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["code"] == "gfm-list-item-run-joins-v1")
-        .and_then(|e| e["count"].as_u64())
-        .unwrap_or(0);
+    let count = |code: &str| {
+        a["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == code)
+            .and_then(|e| e["count"].as_u64())
+            .unwrap_or(0)
+    };
     assert_eq!(
-        joins, 1,
-        "one item's body is two marked runs, and nothing in a role path distinguishes that from \
-         two sibling items — so the join is made and counted"
+        (
+            count("gfm-list-item-run-joins-v1"),
+            count("block-element-run-joins-v1")
+        ),
+        (0, 1),
+        "one item's body is two marked runs in one numbered `/LBody`, so the join is the \
+         element's and no guess (decision #128)"
     );
 
     // **The dangerous-looking case, and it is in the conformance corpus.**
@@ -858,7 +1669,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v14");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1487,7 +2298,7 @@ fn an_odts_own_outline_level_projects_as_a_heading() {
         "one `#` and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
          heading:\n{md}"
     );
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v14");
     // **The negative, and it is the one that earns its place.** A heading that projected at its
     // own depth flattened nothing — this is the only guard that a predicate which forgot to
     // short-circuit on a level it CAN write would fail.
@@ -1584,7 +2395,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         1,
         "one heading, and no body line became one"
     );
-    assert_eq!(md["markdown_rule"], "markdown-blocks-v13");
+    assert_eq!(md["markdown_rule"], "markdown-blocks-v14");
 
     let first = &md["anchor_map"]["segments"][0];
     assert_eq!(
@@ -1606,7 +2417,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         text.starts_with("<h1>Display line</h1>\n"),
         "the same line, the same level, in the other syntax: {text:?}"
     );
-    assert_eq!(html["html_rule"], "html-blocks-v13");
+    assert_eq!(html["html_rule"], "html-blocks-v14");
 }
 
 /// **`--source` is the same two stages in one process, and the bytes say so.**
@@ -1666,7 +2477,7 @@ fn the_source_path_equals_the_two_step_path() {
 /// **`--ocr` is `extract --ocr` in this process, and the bytes say so** (v3,
 /// `docs/35-OCR-SCOPE.md`). The recognizer is `tests/fake-ocr.sh`, which states the identity the
 /// OCR profile pins and reads "Hello world" off any image; the source is an image file, which the
-/// engine does not decode, so its signature is all of it.
+/// engine does not decode, so its signature and its header are all of it.
 #[cfg(unix)]
 #[test]
 fn the_ocr_source_path_equals_the_two_step_path() {
@@ -1691,7 +2502,13 @@ fn the_ocr_source_path_equals_the_two_step_path() {
     };
     let dir = scratch("ocr-source-equals");
     let image = dir.join("scan.png");
-    std::fs::write(&image, b"\x89PNG\r\n\x1a\n and the rest of the file").expect("write");
+    // The signature and an `IHDR` stating the answer's 200 x 100 pixels (decision #132).
+    let png = [
+        &b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR\0\0\0\xc8\0\0\0\x64"[..],
+        b" and the rest of the file",
+    ]
+    .concat();
+    std::fs::write(&image, png).expect("write");
     let image = image.to_str().unwrap();
 
     let extracted = with_ocr(&["extract", "--ocr", image]);
@@ -1726,6 +2543,219 @@ fn the_ocr_source_path_equals_the_two_step_path() {
     assert!(
         md["markdown"].as_str().unwrap().contains("Hello world"),
         "{md}"
+    );
+}
+
+/// A two-page scan: each 200 x 100 point page paints one 20 x 10 gray image over itself and shows
+/// no text. The image's stream is stored under `filter`, where one is named; nothing decodes it.
+fn two_page_scan(dir: &Path, filter: Option<&str>) -> PathBuf {
+    use lopdf::{dictionary, Object, Stream};
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let mut dict = dictionary! {
+        "Type" => "XObject", "Subtype" => "Image", "Width" => 20, "Height" => 10,
+        "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+    };
+    if let Some(f) = filter {
+        dict.set("Filter", Object::Name(f.as_bytes().to_vec()));
+    }
+    let image = doc.add_object(Stream::new(dict, vec![255u8; 200]));
+    let kids: Vec<Object> = (0..2)
+        .map(|_| {
+            let content = doc.add_object(Stream::new(
+                dictionary! {},
+                b"q 200 0 0 100 0 0 cm /Im0 Do Q".to_vec(),
+            ));
+            doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages,
+                "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } },
+                "Contents" => content,
+            })
+            .into()
+        })
+        .collect();
+    doc.objects.insert(
+        pages,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+    doc.trailer.set("Root", catalog);
+    let scan = dir.join(format!("scan-{}.pdf", filter.unwrap_or("raw")));
+    doc.save(&scan).expect("saves");
+    scan
+}
+
+/// **A scan read without `--ocr` says so on stderr, once, and nowhere else** (decision #132).
+/// The record counts each such page under `scanned-page-not-recognized`; stderr names how many,
+/// the reason and the flag that reads them, and stdout is the artifact it was. A born-digital page
+/// gets neither.
+#[test]
+fn a_scan_read_without_ocr_names_the_flag_on_stderr() {
+    let dir = scratch("scan-without-ocr");
+    let scan = two_page_scan(&dir, None);
+    let scan = scan.to_str().unwrap();
+
+    let extracted = engine(&["extract", scan]);
+    assert_eq!(extracted.status.code(), Some(0));
+    let record: Value = serde_json::from_slice(&extracted.stdout).expect("a record");
+    let counted = record["representation"]["assurance"]["limitations"]
+        .as_array()
+        .expect("limitations")
+        .iter()
+        .filter(|l| {
+            l["code"] == "scanned-page-not-recognized"
+                && l["detail"]
+                    .as_str()
+                    .is_some_and(|d| d.contains("`ocr-not-requested`"))
+        })
+        .count();
+    assert_eq!(counted, 2, "one per page");
+    let repr_path = dir.join("scan.json");
+    std::fs::write(&repr_path, &extracted.stdout).expect("write the record");
+    let one_step = engine(&["markdown", "--source", scan]);
+    let two_step = engine(&["markdown", repr_path.to_str().unwrap()]);
+    assert_eq!(one_step.stdout, two_step.stdout, "stdout is the artifact");
+    for (what, out) in [
+        ("extract", &extracted),
+        ("markdown --source", &one_step),
+        ("markdown", &two_step),
+    ] {
+        assert_eq!(out.status.code(), Some(0), "{what}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.lines().count(), 1, "{what}: one line: {stderr}");
+        assert!(
+            stderr.contains("2 page(s)")
+                && stderr.contains("ocr-not-requested")
+                && stderr.contains("--ocr"),
+            "{what}: {stderr}"
+        );
+    }
+
+    let drawn = engine_fixture("leading-gap-two-blocks");
+    let drawn = drawn.to_str().unwrap();
+    for args in [vec!["extract", drawn], vec!["markdown", "--source", drawn]] {
+        let out = engine(&args);
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}: {:?}", out.stderr);
+    }
+}
+
+/// **A scan `--ocr` does not read names its reason on stderr** (decision #132): the Markdown
+/// artifact carries no limitation, so without this line `markdown --source --ocr` on a CCITT scan
+/// exits 0 with empty Markdown and says nothing. stdout is unchanged. The recognizer is
+/// `tests/fake-ocr.sh`, refusing every image as the real one refuses a CCITT stream.
+#[cfg(unix)]
+#[test]
+fn a_scan_ocr_does_not_read_names_its_reason_on_stderr() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 20, "height": 10,
+        "lines": [], "refused": "filter-not-decoded:CCITTFaxDecode"
+    });
+    let fake = repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh");
+    let dir = scratch("scan-not-read");
+    let scan = two_page_scan(&dir, None);
+    for args in [
+        vec!["extract", "--ocr", scan.to_str().unwrap()],
+        vec!["markdown", "--source", scan.to_str().unwrap(), "--ocr"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+            .args(&args)
+            .env("ETHOS_PARSER_OCR", &fake)
+            .env("FAKE_OCR_IDENTITY", identity.to_string())
+            .env("FAKE_OCR_ANSWER", answer.to_string())
+            .output()
+            .expect("the engine binary runs");
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.lines().count(), 1, "{args:?}: one line: {stderr}");
+        assert!(
+            stderr.contains("2 page(s)")
+                && stderr.contains("filter-not-decoded:CCITTFaxDecode")
+                && !stderr.contains("run with --ocr"),
+            "{args:?}: {stderr}"
+        );
+    }
+}
+
+/// **The hint names what `--ocr` would say, and where to ask for it** (decision #132). A page
+/// `--ocr` would refuse before asking the recognizer is counted by that reason without the flag,
+/// and the flag is not offered for it. On a record, the flag cannot read anything — `markdown`
+/// refuses it without `--source` — so the hint names the commands that read the source again, the
+/// same for `markdown` and `html`.
+#[test]
+fn the_hint_names_what_ocr_would_and_where_to_ask() {
+    let dir = scratch("hint-names");
+    let ccitt = two_page_scan(&dir, Some("CCITTFaxDecode"));
+    let out = engine(&["markdown", "--source", ccitt.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("filter-not-decoded:CCITTFaxDecode (2)") && !stderr.contains("--ocr"),
+        "{stderr}"
+    );
+
+    let scan = two_page_scan(&dir, None);
+    let record = dir.join("scan.json");
+    let extracted = engine(&["extract", scan.to_str().unwrap()]);
+    std::fs::write(&record, &extracted.stdout).expect("write the record");
+    let record = record.to_str().unwrap();
+    let markdown = engine(&["markdown", record]);
+    let html = engine(&["html", record]);
+    assert_eq!(
+        (markdown.status.code(), html.status.code()),
+        (Some(0), Some(0))
+    );
+    let stderr = String::from_utf8_lossy(&markdown.stderr);
+    assert!(
+        stderr.contains("ocr-not-requested (2)") && stderr.contains("--source FILE --ocr"),
+        "{stderr}"
+    );
+    assert_eq!(
+        markdown.stderr, html.stderr,
+        "the same hint on either projection"
+    );
+    let refused = engine(&["markdown", record, "--ocr"]);
+    assert_eq!(
+        refused.status.code(),
+        Some(2),
+        "--ocr reads a source, never a record"
+    );
+    assert!(refused.stdout.is_empty());
+}
+
+/// **A recognizer's reason reaches the terminal as one line**: it is the recognizer's text, so
+/// a control character in it is not written as one (decision #132).
+#[cfg(unix)]
+#[test]
+fn a_recognizers_reason_is_one_line_on_stderr() {
+    let identity = serde_json::to_value(ethos_parser_core::RecognizerIdentity::ethos_parser_ocr())
+        .expect("serializes");
+    let answer = serde_json::json!({
+        "ocr_response": 1, "id": "fake", "identity": identity, "width": 20, "height": 10,
+        "lines": [], "refused": "first\nsecond\u{1b}[31m"
+    });
+    let dir = scratch("reason-one-line");
+    let scan = two_page_scan(&dir, None);
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["markdown", "--source", scan.to_str().unwrap(), "--ocr"])
+        .env(
+            "ETHOS_PARSER_OCR",
+            repo_root().join("crates/ethos-parser-cli/tests/fake-ocr.sh"),
+        )
+        .env("FAKE_OCR_IDENTITY", identity.to_string())
+        .env("FAKE_OCR_ANSWER", answer.to_string())
+        .output()
+        .expect("the engine binary runs");
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(stderr.lines().count(), 1, "{stderr:?}");
+    assert!(
+        stderr.contains("first second [31m (2)") && !stderr.contains('\u{1b}'),
+        "{stderr:?}"
     );
 }
 

@@ -304,7 +304,12 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         ),
         (
             "scan.png",
-            ethos_parser_pdf::extract_image(b"\x89PNG\r\n\x1a\n", &ocr, &mut Reads::new()),
+            // The signature and an `IHDR` stating the answer's 20 x 10 pixels.
+            ethos_parser_pdf::extract_image(
+                b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR\0\0\0\x14\0\0\0\x0a",
+                &ocr,
+                &mut Reads::new(),
+            ),
         ),
     ] {
         let extract = extract.expect("the recognizer reads it");
@@ -312,6 +317,53 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         let repr = ethos_parser_pdf::to_representation(&extract, &ocr).expect("represents");
         representations.push((name.into(), repr));
     }
+
+    // Decision #145: the scan with a made-up model's replies attached, a block before its first
+    // marker and one marked, so the assisted profile and the record's `assist` key are walked too;
+    // and a table with a span, which the projections add, so their `proposed` segments and census
+    // are walked (decision #147).
+    let scan = representations
+        .iter()
+        .find(|(name, _)| name == "scan.pdf")
+        .map(|(_, repr)| repr.clone())
+        .expect("the scan's record");
+    let page = &scan.payload().pages[0];
+    let pixels = ethos_parser_core::Sha256Hex::of_bytes(b"made-up pixels").to_string();
+    let answers = serde_json::json!({
+        "ethos_assist_answers": 1,
+        "source_sha256": scan.payload().source.sha256.to_string(),
+        "renderer": ethos_parser_core::ASSIST_RENDERER,
+        "request": ethos_parser_core::ASSIST_REQUEST_V1,
+        "model": {"id": "example/made-up-model", "version": "not-reported"},
+        "pages": [{
+            "page": page.index, "points": [page.width, page.height], "dpi": 200,
+            "width": 556, "height": 278, "pixels_sha256": pixels, "finish_reason": "stop",
+            "reply": "made-up words\n\n![text+](10,20,30,40) Hello world\n\n\
+                      ![table](10,50,90,90) <table><tr><td rowspan=\"2\">Made-up</td><td>7</td></tr>\
+                      <tr><td>8</td></tr></table>"
+        }]
+    });
+    let assisted = ethos_parser_core::attach(
+        scan,
+        &ocr,
+        &serde_json::to_vec(&answers).expect("JSON"),
+        None,
+    )
+    .expect("the replies attach");
+    let pin = ethos_parser_core::AssistPin {
+        rule: ethos_parser_core::ASSIST_RULE_V1.into(),
+        guard: ethos_parser_core::ASSIST_GUARD_V1.into(),
+        renderer: ethos_parser_core::ASSIST_RENDERER.into(),
+        request: ethos_parser_core::ASSIST_REQUEST_V1.into(),
+        model: "example/made-up-model".into(),
+        model_version: "not-reported".into(),
+    };
+    out.push((
+        "assisted profile".into(),
+        "profile",
+        as_json!(ocr.clone().with_assist(pin)),
+    ));
+    representations.push(("scan.pdf assisted".into(), assisted));
 
     let office = repo_root().join("fixtures/office");
     let mut documents: Vec<PathBuf> = std::fs::read_dir(&office)
@@ -419,7 +471,7 @@ impl ethos_parser_pdf::Recognize for Reads {
     }
 }
 
-/// The three projections of `repr`, each where the engine produces one.
+/// The projections of `repr`, each where the engine produces one.
 fn project(
     name: &str,
     repr: &DocumentRepresentation,
@@ -434,6 +486,9 @@ fn project(
     if let Ok(html) = ethos_parser_core::to_html(repr, v, sha, &profile.html_rule) {
         out.push((name.into(), "html", as_json!(html)));
     }
+    let elements = ethos_parser_core::to_elements(repr, v)
+        .unwrap_or_else(|e| panic!("{name}: every record projects to elements: {e}"));
+    out.push((name.into(), "elements", as_json!(elements)));
     // A word the record holds, so an occurrence is walked and not only an empty answer.
     let payload = as_json!(repr);
     let quote = payload["representation"]["nodes"]
@@ -487,6 +542,7 @@ fn every_artifact_the_engine_emits_is_described_by_its_draft() {
         "markdown",
         "html",
         "locations",
+        "elements",
         "error-taxonomy",
     ] {
         assert!(

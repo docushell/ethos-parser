@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! PP-OCRv5 mobile, detection then recognition (`docs/35-OCR-SCOPE.md`).
+//! PP-OCRv5 mobile, detection then recognition (`docs/35-OCR-SCOPE.md`), on a page first stood
+//! upright as PP-LCNet_x1_0_doc_ori reads its orientation (decision #153).
 //!
 //! The steps around the two models follow PaddleOCR's reference pipeline, measured in Phase 0,
 //! except where a step would call a platform maths library or depend on the thread count: the
@@ -39,6 +40,12 @@ const MAX_CANDIDATES: usize = 1000;
 const MIN_SIZE: f64 = 3.0;
 const REC_H: usize = 48;
 const REC_W: usize = 320;
+/// The orientation model's short side, crop, scale, means and deviations (its `inference.yml`).
+const ORI_SHORT: usize = 256;
+const ORI_CROP: usize = 224;
+const ORI_SCALE: f64 = 0.00392156862745098;
+const ORI_MEAN: [f64; 3] = [0.485, 0.456, 0.406];
+const ORI_STD: [f64; 3] = [0.229, 0.224, 0.225];
 
 /// An 8-bit image, rows of BGR pixels.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -79,21 +86,63 @@ pub struct Word {
 pub struct Recognizer {
     det: Model,
     rec: Model,
+    ori: Model,
     chars: Vec<String>,
 }
 
 pub const DET: &[u8] = include_bytes!("../models/ch_PP-OCRv5_det_mobile.onnx");
 pub const REC: &[u8] = include_bytes!("../models/en_PP-OCRv5_rec_mobile.onnx");
 pub const DICT: &str = include_str!("../models/ppocrv5_en_dict.txt");
+pub const ORI: &[u8] = include_bytes!("../models/PP-LCNet_x1_0_doc_ori.onnx");
 
 impl Recognizer {
     pub fn new() -> Result<Recognizer, String> {
         let det = Model::load_static_slice(DET).map_err(|e| format!("detection model: {e}"))?;
         let rec = Model::load_static_slice(REC).map_err(|e| format!("recognition model: {e}"))?;
+        let ori = Model::load_static_slice(ORI).map_err(|e| format!("orientation model: {e}"))?;
         let mut chars = vec![String::from("blank")];
         chars.extend(DICT.lines().map(String::from));
         chars.push(" ".into());
-        Ok(Recognizer { det, rec, chars })
+        Ok(Recognizer {
+            det,
+            rec,
+            ori,
+            chars,
+        })
+    }
+
+    /// How many quarter turns clockwise `img` stands from upright (decision #153): the label
+    /// PP-LCNet_x1_0_doc_ori ranks first of `0`, `90`, `180` and `270`, the first of any tied,
+    /// where every view agrees on it ([`agreed`]): the model's own centre square and the whole
+    /// page, each turned 0 to 3 quarters more. Taken alone, as PaddleOCR's pipeline takes it, the
+    /// label turned upright pages a ParseBench run holds — a chart, a folded letter, handwriting
+    /// — and every one of them read otherwise in some view. Labels only: no score is kept or
+    /// compared. A page whose centre square reads upright is not looked at again.
+    pub fn orientation(&self, img: &Bgr) -> Result<u8, String> {
+        if img.w == 0 || img.h == 0 {
+            return Ok(0);
+        }
+        let top = |x: Tensor<f32>| -> Result<u8, String> {
+            let scores: Vec<f32> = run(&self.ori, x)?.iter().copied().collect();
+            let mut top = 0;
+            for k in 1..4 {
+                if scores[k] > scores[top] {
+                    top = k;
+                }
+            }
+            Ok(top as u8)
+        };
+        if top(ori_input(img))? == 0 {
+            return Ok(0);
+        }
+        let mut labels = [[0u8; 4]; 2];
+        for j in 0..4u8 {
+            let turned = (j > 0).then(|| turn(img, j));
+            let t = turned.as_ref().unwrap_or(img);
+            labels[0][j as usize] = top(ori_input(t))?;
+            labels[1][j as usize] = top(ori_whole(t))?;
+        }
+        Ok(agreed(&labels))
     }
 
     /// Every line in `img`, in PaddleOCR's reading order (top to bottom, then left to right
@@ -141,42 +190,104 @@ fn run(model: &Model, x: Tensor<f32>) -> Result<Tensor<f32>, String> {
         .map_err(|_| String::from("model output is not f32"))
 }
 
-/// One axis of cv2's INTER_LINEAR on 8-bit data: per destination index, the two source indices
-/// and their 11-bit fixed-point weights.
-fn taps(src: usize, dst: usize) -> Vec<(usize, usize, i64, i64)> {
+/// A tap of one axis of cv2's INTER_LINEAR on 8-bit data: two source indices and their 11-bit
+/// fixed-point weights.
+type Tap = (usize, usize, i64, i64);
+
+/// The tap of destination index `d` of `dst`, on a source of `src`.
+fn tap(src: usize, dst: usize, d: usize) -> Tap {
     let scale = src as f64 / dst as f64;
-    (0..dst)
-        .map(|d| {
-            let f = ((d as f64 + 0.5) * scale - 0.5) as f32;
-            let (mut s, mut frac) = (f.floor(), f - f.floor());
-            if s < 0.0 {
-                (s, frac) = (0.0, 0.0);
-            }
-            if s >= (src - 1) as f32 {
-                (s, frac) = ((src - 1) as f32, 0.0);
-            }
-            let s = s as usize;
-            let w0 = ((1.0 - frac) * 2048.0).round_ties_even() as i64;
-            let w1 = (frac * 2048.0).round_ties_even() as i64;
-            (s, (s + 1).min(src - 1), w0, w1)
-        })
-        .collect()
+    let f = ((d as f64 + 0.5) * scale - 0.5) as f32;
+    let (mut s, mut frac) = (f.floor(), f - f.floor());
+    if s < 0.0 {
+        (s, frac) = (0.0, 0.0);
+    }
+    if s >= (src - 1) as f32 {
+        (s, frac) = ((src - 1) as f32, 0.0);
+    }
+    let s = s as usize;
+    let w0 = ((1.0 - frac) * 2048.0).round_ties_even() as i64;
+    let w1 = (frac * 2048.0).round_ties_even() as i64;
+    (s, (s + 1).min(src - 1), w0, w1)
+}
+
+/// Every destination index's tap.
+fn taps(src: usize, dst: usize) -> Vec<Tap> {
+    (0..dst).map(|d| tap(src, dst, d)).collect()
+}
+
+/// One channel of one resized pixel: integer weights, one rounding at the end.
+fn sample(img: &Bgr, (x0, x1, a0, a1): Tap, (y0, y1, b0, b1): Tap, c: usize) -> u8 {
+    let row = |yy| img.at(x0, yy, c) as i64 * a0 + img.at(x1, yy, c) as i64 * a1;
+    ((row(y0) * b0 + row(y1) * b1 + (1 << 21)) >> 22).clamp(0, 255) as u8
 }
 
 /// cv2.resize INTER_LINEAR: integer weights, one rounding at the end.
 pub fn resize(img: &Bgr, dw: usize, dh: usize) -> Bgr {
     let (tx, ty) = (taps(img.w, dw), taps(img.h, dh));
     let mut px = vec![0u8; dw * dh * 3];
-    for (y, &(y0, y1, b0, b1)) in ty.iter().enumerate() {
-        for (x, &(x0, x1, a0, a1)) in tx.iter().enumerate() {
+    for (y, &ty) in ty.iter().enumerate() {
+        for (x, &tx) in tx.iter().enumerate() {
             for c in 0..3 {
-                let row = |yy| img.at(x0, yy, c) as i64 * a0 + img.at(x1, yy, c) as i64 * a1;
-                let v = (row(y0) * b0 + row(y1) * b1 + (1 << 21)) >> 22;
-                px[(y * dw + x) * 3 + c] = v.clamp(0, 255) as u8;
+                px[(y * dw + x) * 3 + c] = sample(img, tx, ty, c);
             }
         }
     }
     Bgr { w: dw, h: dh, px }
+}
+
+/// The turn every view agrees on (decision #153): `k` where each view, turned `j` more quarters,
+/// read `k + j`; none where any read otherwise.
+fn agreed(labels: &[[u8; 4]]) -> u8 {
+    let k = labels[0][0];
+    let every = labels
+        .iter()
+        .all(|view| (0..4).all(|j| view[j] == (k + j as u8) % 4));
+    if every {
+        k
+    } else {
+        0
+    }
+}
+
+/// PP-LCNet_x1_0_doc_ori's input (its `inference.yml`, read as PaddleX's image classifier reads
+/// it): the raster in RGB, its short side resized to 256 as cv2's INTER_LINEAR does, the centre
+/// 224-pixel square, scaled by 1/255 and normalised as ImageNet's means and deviations say. Only
+/// the square is computed, so a raster far longer than it is wide costs no more than any other.
+fn ori_input(img: &Bgr) -> Tensor<f32> {
+    let scale = ORI_SHORT as f64 / img.w.min(img.h) as f64;
+    let (rw, rh) = (
+        (img.w as f64 * scale).round_ties_even() as usize,
+        (img.h as f64 * scale).round_ties_even() as usize,
+    );
+    let (x0, y0) = ((rw - ORI_CROP) / 2, (rh - ORI_CROP) / 2);
+    let tx: Vec<Tap> = (x0..x0 + ORI_CROP).map(|d| tap(img.w, rw, d)).collect();
+    let ty: Vec<Tap> = (y0..y0 + ORI_CROP).map(|d| tap(img.h, rh, d)).collect();
+    ori_tensor(img, &tx, &ty)
+}
+
+/// The orientation model's second view (decision #153, measured): the whole raster resized to the
+/// 224-pixel square, its shape not kept, so a page whose centre holds no text — a chart's grid —
+/// is read by its titles and edges too. Normalised as [`ori_input`] is.
+fn ori_whole(img: &Bgr) -> Tensor<f32> {
+    ori_tensor(img, &taps(img.w, ORI_CROP), &taps(img.h, ORI_CROP))
+}
+
+/// The 224-pixel square `tx` and `ty` sample from `img`, in RGB, normalised.
+fn ori_tensor(img: &Bgr, tx: &[Tap], ty: &[Tap]) -> Tensor<f32> {
+    let n = ORI_CROP * ORI_CROP;
+    let mut data = vec![0f32; 3 * n];
+    for (c, plane) in data.chunks_exact_mut(n).enumerate() {
+        let alpha = (ORI_SCALE / ORI_STD[c]) as f32;
+        let beta = (-ORI_MEAN[c] / ORI_STD[c]) as f32;
+        for (y, &ty) in ty.iter().enumerate() {
+            for (x, &tx) in tx.iter().enumerate() {
+                // Channel `c` of RGB is channel `2 - c` of the raster's BGR.
+                plane[y * ORI_CROP + x] = sample(img, tx, ty, 2 - c) as f32 * alpha + beta;
+            }
+        }
+    }
+    Tensor::from_data(&[1, 3, ORI_CROP, ORI_CROP], data)
 }
 
 /// PaddleOCR's detection size: no downscale, each side to a multiple of 32, at most 4000.
@@ -690,6 +801,141 @@ mod tests {
         assert_eq!((t.w, t.h), (2, 3));
         // The top-left pixel of a clockwise turn is the source's bottom-left.
         assert_eq!(t.px[..3], img.px[3 * 3..3 * 3 + 3]);
+    }
+
+    /// **A page turned any number of quarters is found so** (decision #153): a scanned page of
+    /// text, turned 0 to 3 quarters clockwise, and a raster too thin to resize whole.
+    #[test]
+    fn a_page_turned_any_quarter_is_found_so() {
+        let png = include_bytes!("../tests/data/nist-171r3-p55.png");
+        let img = crate::decode::file(png).unwrap();
+        let rec = Recognizer::new().unwrap();
+        for q in 0..4 {
+            assert_eq!(rec.orientation(&turn(&img, q)).unwrap(), q, "turned {q}");
+        }
+        // A body turned between an upright head and foot band, where only the centre reads it
+        // turned: the whole page does not, so it stands (review).
+        let mut banded = img.clone();
+        let body = turn(
+            &Bgr {
+                w: 1300,
+                h: 1300,
+                px: (450..1750)
+                    .flat_map(|y| img.px[(y * img.w + 100) * 3..(y * img.w + 1400) * 3].to_vec())
+                    .collect(),
+            },
+            3,
+        );
+        for y in 450..1750 {
+            for x in 0..img.w {
+                let to = (y * img.w + x) * 3;
+                let inside = (100..1400).contains(&x);
+                for c in 0..3 {
+                    banded.px[to + c] = if inside {
+                        body.at(x - 100, y - 450, c)
+                    } else {
+                        255
+                    };
+                }
+            }
+        }
+        assert_eq!(
+            rec.orientation(&banded).unwrap(),
+            0,
+            "the whole page reads it upright"
+        );
+        let thin = Bgr {
+            w: 1,
+            h: 40_000,
+            px: vec![255; 40_000 * 3],
+        };
+        assert_eq!(rec.orientation(&thin).unwrap(), 0);
+        let empty = Bgr {
+            w: 0,
+            h: 0,
+            px: Vec::new(),
+        };
+        assert_eq!(rec.orientation(&empty).unwrap(), 0);
+    }
+
+    /// **The orientation model reads the centre square of the raster resized, in RGB**
+    /// (decision #153): the short side to 256, as [`resize`] does it, rounded half to even, the
+    /// centre 224 square, each channel normalised; a raster of one colour gives its red first.
+    #[test]
+    fn the_orientation_input_is_the_centre_of_the_resized_raster() {
+        let (w, h) = (300usize, 520usize);
+        let img = Bgr {
+            w,
+            h,
+            px: (0..w * h * 3).map(|i| (i * 37 % 251) as u8).collect(),
+        };
+        let got: Vec<f32> = ori_input(&img).iter().copied().collect();
+        // 520 * 256 / 300 = 443.73: 444 rows.
+        let (rw, rh) = (256, 444);
+        let r = resize(&img, rw, rh);
+        let (x0, y0) = ((rw - 224) / 2, (rh - 224) / 2);
+        for c in 0..3 {
+            for y in [0, 100, 223] {
+                for x in [0, 57, 223] {
+                    let v = r.px[((y0 + y) * rw + x0 + x) * 3 + (2 - c)] as f32;
+                    let want =
+                        v * (ORI_SCALE / ORI_STD[c]) as f32 + (-ORI_MEAN[c] / ORI_STD[c]) as f32;
+                    assert_eq!(
+                        got[c * 224 * 224 + y * 224 + x],
+                        want,
+                        "channel {c} at {x}, {y}"
+                    );
+                }
+            }
+        }
+        // A half rounds to even, as Python's `round`: 1025 * 256 / 512 = 512.5 rows, 512.
+        let (w, h) = (512usize, 1025usize);
+        let tall = Bgr {
+            w,
+            h,
+            px: (0..w * h * 3).map(|i| (i * 37 % 251) as u8).collect(),
+        };
+        let got: Vec<f32> = ori_input(&tall).iter().copied().collect();
+        let r = resize(&tall, 256, 512);
+        let (x0, y0) = (16, 144);
+        for (y, x) in [(0, 0), (100, 57), (223, 223)] {
+            let v = r.px[((y0 + y) * 256 + x0 + x) * 3 + 2] as f32;
+            let want = v * (ORI_SCALE / ORI_STD[0]) as f32 + (-ORI_MEAN[0] / ORI_STD[0]) as f32;
+            assert_eq!(got[y * 224 + x], want, "half to even at {x}, {y}");
+        }
+        let blue = Bgr {
+            w: 256,
+            h: 256,
+            px: [200u8, 20, 10].repeat(256 * 256),
+        };
+        let got: Vec<f32> = ori_input(&blue).iter().copied().collect();
+        let red = (10.0 / 255.0 - 0.485) / 0.229;
+        assert!((got[0] - red).abs() < 1e-5, "red first: {}", got[0]);
+    }
+
+    /// **A page is turned only where every view agrees** (decision #153, measured): the centre
+    /// square and the whole page, each turned 0 to 3 quarters, read `k` and then each quarter
+    /// more. One view or one turn reading otherwise leaves the page as it stands.
+    #[test]
+    fn a_turn_stands_only_where_every_view_agrees() {
+        assert_eq!(agreed(&[[3, 0, 1, 2], [3, 0, 1, 2]]), 3);
+        assert_eq!(agreed(&[[1, 2, 3, 0], [1, 2, 3, 0]]), 1);
+        assert_eq!(
+            agreed(&[[2, 3, 0, 1], [0, 1, 2, 3]]),
+            0,
+            "the views disagree"
+        );
+        assert_eq!(agreed(&[[3, 1, 1, 3], [1, 1, 3, 3]]), 0, "turns disagree");
+        assert_eq!(
+            agreed(&[[2, 1, 2, 3], [2, 3, 0, 1]]),
+            0,
+            "one turn disagrees"
+        );
+        assert_eq!(
+            agreed(&[[2, 3, 0, 1], [2, 3, 0, 2]]),
+            0,
+            "one turn of the other view"
+        );
     }
 
     #[test]

@@ -59,7 +59,10 @@ in the position pairing `tagged-tables-v1` relies on.
    it reads the order the content stream produced. **On a page of recognized text that order is the
    recognizer's** — row by row down the whole page, across any columns — so it is no evidence there
    (decision #125): such a grid stands only on the waiver's clauses (§7), three rows and three
-   columns or more with no column of running text, and no column of numbers is asked.
+   columns or more with no column of running text, and no column of numbers is asked — or as a
+   form's fields (decision #152, §42). **Nor is it evidence where every column is running text**
+   (decision #127, §41) and the first column is no column of labels, each under thirty characters:
+   such a grid is refused, and its lines passed over whole.
 7. **Fabrication 0 by construction.** A cell's text is its runs' text concatenated, in content
    order; no run is in two cells; a run in no track ends the table rather than being dropped.
 
@@ -1617,3 +1620,68 @@ table set in one column of a two-column page, where no gutter stands clear over 
 (`TEDS Paper` p6's is 11.95 points); a run holding two columns' text (`10 11 13`), which needs runs
 split; cells of words set closer than an em, which need cutting at word gaps; and a two-column
 table of fewer than four rows, which the floors still refuse.
+
+## 41. Columns of prose written row by row, and a header set flush left over figures set flush right (2026-11-14, decision #127)
+
+**What `whitespace-tracks-v16` missed.** A review's probes found two defects on born-digital pages.
+A two-column article whose content stream writes each left line, then the right line level with it,
+read as a 2-column table of interleaved lines: clause 6 took that order as evidence, and the
+running-text check guarded only a grid written in no order. And an invoice sets `Item`, `Qty`,
+`Rate` and `Amount` flush left where each column's space opens, over figures set flush right. No
+name but `Item` sits on a track, and `Rate`'s centre lies nearer `Qty`'s figures than its own, so
+the nearest centres (§14) gave the line `[0, 1, 1, 2]`. The band stopped, the names stood as four
+blocks above the table, and its first row of figures was the header.
+
+**The change**, folded into `-v16`, which no release carries. A grid whose every column is running
+text and whose first column is no column of labels (`-v12`: a cell in every row, each under thirty
+characters) is refused whatever order the stream wrote it in, and its lines are passed over down to
+the last that opens a line lower-case: a table set right under them, on their pitch and tracks,
+grows into their candidate, and passed over whole it was lost (review of decision #127).
+An earlier draft refused only the grid, and the rule then tried every shorter run of its lines: of
+an eight-line article, the last four open only one right-hand line lower-case, and stood as a 4×2
+table. A table with any other column keeps its row order, and so does a table of short names in
+lower case — a model's settings (`learning rate | 0.001`, `optimizer | adam`), a data dictionary
+(`id | integer | primary key`) — which an earlier draft lost. One side of two tables drawn side by
+side, which stood as one (§36), is asked nothing new. This reverses the drawn half of decision #125's
+test, which kept three columns of a newsletter's lines on a drawn page as a table; that test now
+pins row order with two columns of prose beside a column of figures. And a header line of two
+cells or more that neither sits on the tracks nor comes out in order by nearest centre gives each
+cell the first track ending at or past its own end. That stands only where the mapping comes out
+strictly left to right and each cell stays clear of its track's neighbours, so a name reaching back
+over the figures before it heads nothing.
+
+**Measured**: ParseBench (engine and `--ocr`), opendataloader-bench and DocuShell's 49 test PDFs are unchanged on every page. The gate documents' 557 tables, read with their trees stripped, and the 173 read with them, are unchanged cell for cell.
+
+## 42. A recognized form's fields (2026-11-17, decision #152)
+
+A made-up invoice, its five fields set as `Invoice No:` beside `INV-2026-0042` and so on, read as a
+two-column table drawn and as two columns scanned: every label, then every value. The recognizer
+reads such a form down its labels and then down its values, as it reads any two columns, and
+decision #125 takes its order as no evidence, so a recognized grid of two columns never stood.
+
+**The rule** (`form_fields` in `crates/ethos-parser-pdf/src/tracks.rs`): on a page of recognized
+text, a grid of two columns stands where every label holds one colon and ends in it, no two labels
+alike, beside values that are no running text (§41's test, a third or more opening lower-case) and
+hold no word ending in a colon, as `10:30` holds none. Each
+clause is a refusal measured on made-up pages in review: a blank form's two columns of labels, a
+column of labels beside a column of prose, and a transcript or question sheet naming its speakers
+again each stood as a table without it. One colon, since a label with no value beside it goes on
+the label above as a wrapped line does (`Order Date:Account:`) and two labels in one cell are no
+field; a first label with no value stands above the table. **A form has no header**: its rows
+stand as they are, with no header band, row above or header line read into them (review: a line
+with no colon just above the fields went into the first field's cells as a header,
+`SupplierCustomer:`).
+
+**Measured**: the made-up invoice scanned three ways, two images and a scanned PDF, reads as the
+drawn invoice's table, its rows as the drawn invoice's. ParseBench's `--ocr`
+lane, opendataloader-bench and the private real-document set (250 runs, scans among them) are
+unchanged on every page: no page there sets a recognized form so.
+
+**Known limits**: all or nothing. A short line on the labels' track just under the last field, a
+closing note or a label with no value, goes on the last label as a wrapped line and refuses the
+whole form; so does a label with no value between two fields. A form naming a field twice (`Name:`
+for a buyer and a seller), values a third or more of which open lower-case (e-mail addresses), a
+full-width colon `：` and a colon misread as `;` are not read as fields. A value wrapped over two
+lines joins its lines' words without a space, as every cell's runs join (§2, rule 7). Numbered
+steps or questions (`Step 1:` beside an instruction) read as fields, as they do on a drawn page.
+

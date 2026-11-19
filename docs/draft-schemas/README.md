@@ -22,6 +22,7 @@ document a shape that already compiles, rather than specifying one to be built.
 | [`markdown.draft.json`](markdown.draft.json) | `ethos.markdown.v1` — the string, the anchor map, the census, and what GFM erases |
 | [`html.draft.json`](html.draft.json) | `ethos.html.v1` — the same, with merges kept as `rowspan`/`colspan` |
 | [`locations.draft.json`](locations.draft.json) | `ethos.parser.locations.v0` — where a string lies: occurrences as node ids, offsets into each node's own text, the record's own geometry, and what was searched |
+| [`elements.draft.json`](elements.draft.json) | `ethos.parser.elements.v0` — a document's items: label, page, box, text, the node ids each covers, and a table's cells |
 
 The grounding schema is **not** drafted here. `ethos.grounding.v1` is owned by Ethos, and writing a
 draft of someone else's shipped schema would create a second, drifting description of a contract we
@@ -33,10 +34,10 @@ do not control. A byte-for-byte snapshot lives in
 **Every artifact is walked against its draft.** `every_artifact_the_engine_emits_is_described_by_its_draft`
 in [`crates/ethos-parser-cli/tests/draft_schemas.rs`](../../crates/ethos-parser-cli/tests/draft_schemas.rs)
 builds what the engine emits for every engine and office fixture — each profile, classification,
-extract, representation, Markdown, HTML and locations artifact, and each error shape — and walks
+extract, representation, Markdown, HTML, locations and elements artifact, and each error shape — and walks
 each against its draft: every key must be one the draft declares, every required key present,
-every `const`, `enum` and `type` met, and some branch of every union fitted. It reaches all fourteen
-files, the seven components through the `$ref`s of the seven artifacts, and every locator and
+every `const`, `enum` and `type` met, and some branch of every union fitted. It reaches all fifteen
+files, the seven components through the `$ref`s of the eight artifacts, and every locator and
 attribute variant the representation draft declares must meet a real node. It is a subset of JSON
 Schema, not a validator — no minimum, pattern or length is checked — and it needs no dependency. It
 exists because four of these files rejected every artifact the engine emitted, through 0.62.0, while
@@ -51,6 +52,7 @@ Beside it, a small test per draft pins the one or two fields a reader would actu
 | `the_markdown_schema_pins_the_version_and_rule_the_code_emits` | `schema_version`, `artifact_type`, `markdown_rule` |
 | `the_html_schema_pins_the_version_and_rule_the_code_emits` | The same, plus that the two projections do not share a rule id |
 | `the_locations_schema_pins_the_version_and_rule_the_code_emits` | The same for `locate_rule`, plus that the ceiling the schema states is the one the code enforces |
+| `the_elements_schema_pins_the_version_and_rule_the_code_emits` | The same for `elements_rule`, plus that the label enum is exactly the labels the code writes |
 
 The first three were added *after* the file they guard had already drifted. The fourth was added in
 the same slice as its schema, which is the lesson those three taught: **a schema without a guard
@@ -84,6 +86,13 @@ ethos-parser locate  repr.json --quote-file quote.txt   # the whole examples[0]
 `untagged-shredded-line` draws `Yar`, `ro` and `w` abutting on one baseline, so `arrow` is one
 occurrence of **three parts** — the shape a caller could not have assembled from the runs alone,
 and the one the concatenation invariant is about.
+
+`elements.draft.json`'s example is `heading-display-line`, the smallest fixture whose elements carry
+a label other than `text` — a `section-header` with its level over one five-line unit:
+
+```bash
+ethos-parser elements --source fixtures/engine/heading-display-line/document.pdf   # the whole examples[0]
+```
 
 This rule exists because half of it was already being followed and the other half went unnoticed for
 sixteen releases. The two files ended up publishing **different digests for the same representation

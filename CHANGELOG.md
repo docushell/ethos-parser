@@ -32,6 +32,1228 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A scan stored as several images is read with `--ocr` (decision #156)
+
+A scanner often stores a page as a background image and the one-bit masks its text is stencilled
+with, or as strips. `--ocr` read a scanned page only where it painted exactly one image, so such a
+page was refused `several-images` and gave no text.
+
+- The engine now keeps what a scanned page painted, in paint order — each image, and each single
+  rectangle filled in a known colour, as much of each as a rectangular clip and every form's
+  `/BBox` show — and the recognizer composes it on white into one raster and reads it. A
+  stencil paints its fill colour; a soft mask that is a gray image without `/Matte` weighs its
+  image over what lies beneath; content in a layer switched off is not painted.
+- A page that paints anything a composition does not hold is refused by name,
+  `several-images:<what>`: `stroke`, `path-not-rectangular`, `shading`, `inline-image`,
+  `clip-not-rectangular` (a clip of another shape, or a form box its matrix turns),
+  `graphics-state-not-read` (a blend mode, soft mask, fill alpha or transfer function),
+  `layer-not-read`, `fill-colour-not-read` (a space whose components do not read as gray, RGB or
+  CMYK, or another number of operands than it has), `annotation` (one a viewer draws over the
+  page). The page counts under `scanned-page-not-recognized`, with or without `--ocr`, as before.
+- The raster lies over the visible box at the finest image's density, at most 300 dpi and 40
+  megapixels. Each image is sent once; a page that paints more than 400 million pixels between its
+  paints, or holds more than 65,536 of them, is refused `composite-too-large`.
+- `ethos-parser-ocr` takes a new request kind, `composite` (`ocr/src/compose.rs`): integer
+  maths, the nearest sample at each pixel's centre, every CPU the same bytes. Its identity and the
+  rule id `ppocrv5-mobile-v1` do not move; no release carries either.
+- Measured: ParseBench-2's `--ocr` lane 57.18 → 57.54 (text 61.74 → 62.51, formatting 77.57 →
+  78.93; nine of the census's eleven pages read, two refused as `JBIG2Decode` and
+  `CCITTFaxDecode`); ParseBench's `--ocr` lane 54.69 → 55.14 (content 75.48 → 77.39), no page
+  down. Without `--ocr` nothing moves on ParseBench, ParseBench-2, opendataloader-bench or the
+  private real-document set.
+- Reviewed with made-up PDFs before it was measured: the first build read text a viewer hides
+  through an image's own `/OC`, a transfer function, a turned form box, a stencil's soft mask, four
+  operands in an RGB space and an annotation over the page, and sent an image once per paint.
+  Fixed, each with a test; 29 mutations of the final code, all caught.
+- Known limit: a page of one image keeps its path, so a fill, clip, layer or annotation over a
+  single scanned image is still not read (`docs/35-OCR-SCOPE.md` §14).
+- The two readings the review added are shared with `--drop-hidden` (decision #139): a graphics
+  state with a transfer function, and a form box its matrix turns, now leave what is painted under
+  them uncompared with a run's colour there, as a blend mode and a clip of another shape already
+  did.
+
+### cargo-deny checks the recognizer's dependencies
+
+`ethos-parser-ocr`, which every release archive carries, builds in its own workspace (`ocr/`) with
+its own lockfile, and the root's `cargo deny check` never saw those crates. A review on 2026-11-18
+found every one permissively licensed, but nothing kept it so.
+
+- `ocr/deny.toml` applies the root's policy to that workspace: a licence allowlist of Apache-2.0,
+  MIT and Unicode-3.0 (each one the graph needs, measured with `cargo deny list`), the root's
+  network bans copied whole, and crates.io as the only source.
+- `cargo deny --manifest-path ocr/Cargo.toml check` runs in `ci/gate.sh`'s `deny` step and as CI's
+  `deny ocr` step.
+- CI's `deny rejects AGPL` job flips `ocr/Cargo.toml` to AGPL-3.0 as well and requires cargo-deny
+  to refuse it, by exit code 4 and by the crate's name.
+- The README's licence notes name the recognizer beside the engine and the assist binary.
+
+### An install script, a sample page, and a README that starts with trying it
+
+- `install.sh` installs a release on macOS or Linux in one line: it picks this machine's archive,
+  checks it against the release's `SHA256SUMS.txt` and that its engine starts, and copies the
+  binaries into `~/.local/bin` (`ETHOS_PARSER_VERSION`, `ETHOS_PARSER_INSTALL_DIR` and
+  `ETHOS_PARSER_RELEASE_URL` change that). Nothing is installed if either check fails, nor where
+  a copy fails (review): every binary is copied beside its target before any is renamed over
+  one. It is fetched from the repository, so the release assets are unchanged.
+- `docs/sample.pdf`, a made-up one-page report with a ruled table, an image and one line drawn
+  invisible, for the quick start. `docs/images/overlay.png` is its `overlay`, rendered.
+- The README leads with what the parser is for, the one-line install and three commands on the
+  sample, then one install line per kind of user, tested: the CLI, Claude Code's MCP, Python 3.10+
+  from a git subdirectory, and Node 18+ from a shallow clone.
+- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `0f6c8a3` and placed on
+  the leaderboards as they are scored today: ParseBench, re-scored by its maintainers on 15–17
+  November, 52.14 for the engine (113th of 158), 54.69 with `--ocr`, 65.34 with the assist model as
+  written; ParseBench-2, new here, 55.22 for the engine and 57.15 with `--ocr` (each 54th of 57);
+  opendataloader-bench 0.813 (9th of 13). The long install notes move to `docs/INSTALL.md`.
+
+### A page drawn turned is read upright (decision #155)
+
+A page can set all its text a quarter or half turn round with no `/Rotate` declaring it — a
+landscape table on a portrait page, a page placed upside down. The engine laid it out as declared,
+so its lines ran down the page and its tables and reading order fell apart.
+
+- Where nine tenths or more of a page's characters, and 40 or more, on four lines or more, travel
+  one way other than the one the declared rotation stands upright, the page is read in that way's
+  upright frame: runs, rules, images, tables, figures and reading order alike. A run that does not
+  move, runs off the axes (a diagonal watermark) or is mirrored counts against every way; a stamp
+  down the margin is too few lines, and a run of spaces inks no line (review). A line is level
+  or upright as the page is read (review): on a page read a quarter turn round, a line drawn up
+  the declared page is a level rule. The page record states `turn` (90, 180 or 270, quarter
+  turns clockwise beyond `rotation`), its `width`, `height` and `visible` are the turned page's,
+  and `PageRecord::to_declared` maps a box back, `None` for one past the page's edge (review).
+  Under `page-observations-v5`, which no release carries yet.
+- A running head or folio set upright on a turned page is still furniture; a table joins across
+  pages read in the same frame; the overlay draws where the text is; `elements` carries `turn`;
+  `ground`, whose page has no `turn`, states the frame as its `rotation`. `--assist` answers a
+  turned page at the size the renderer draws it and turns the model's boxes onto the record's
+  frame.
+- Measured: ParseBench-2's engine lane 53.46 → 53.91 (tables 47.27 → 49.98, its tables subset
+  57.33 → 62.69); ParseBench's `--ocr` lane, opendataloader-bench and the private real-document set
+  unchanged.
+- Known limits: a page that mixes ways (a turned table under an upright running head and foot
+  can fall short of nine tenths) is read as declared; invisible text counts, so a scan's text
+  layer drawn turned turns its page; a scan `--ocr` stands upright (decision #153) is recorded as
+  declared; PDF only.
+
+### Strikeout and underline, from the lines a page draws (decision #154)
+
+A PDF has no strikeout or underline: a word processor draws a thin line through or under the
+words, and the engine wrote them plain, so a redline's deletions read as text still in force.
+
+- A run is `strikeout` or `underline` in the record where a thin, level line drawn solid runs
+  through its middle (0.15 to 0.5 em above the baseline) or just under it (to 0.3 em below), over
+  three quarters of the run, with no stretch of the line longer than an em marking no run and no
+  vertical line ending at its ends. A table's rule, a running head's rule, a box, a thick stroke
+  painting a background, a dashed guide and a white or unstroked line mark nothing, outlined as
+  a rectangle too (review); a superscript
+  or subscript is never struck. Under `page-observations-v5`, which no release carries yet.
+- Markdown writes `~~` and `<u>`, HTML `<s>` and `<u>`, in headings too but never in a table
+  cell; a space between two marked runs keeps the span whole, and a strikeout stays open where
+  only the emphasis inside it changes. A run holding a `~`, or set against one, is not written
+  struck in Markdown, nor one whose `~~` would open between a letter or digit and punctuation,
+  which GFM reads as text (review).
+- Measured: ParseBench-2's engine lane 51.97 → 53.46 (strikeout 14.1 → 76.8, underline 20.0 →
+  89.2); ParseBench's `--ocr` lane 54.67 → 54.68; opendataloader-bench's NID 0.8922 → 0.8911 and
+  MHS 0.6378 → 0.6372, its scorer reading `<u>` as text — the owner kept underline on by default.
+- Known limits: a run is the grain (a line through part of a run marks none of it); rotated text
+  is read as if level; PDF only.
+
+### A page scanned on its side or upside down is read upright (decision #153)
+
+`--ocr` read a page fed to the scanner sideways or upside down as it stood, which is mostly
+nonsense. `ethos-parser-ocr` now holds a fourth model, PaddleOCR's page-orientation classifier
+PP-LCNet_x1_0_doc_ori (Apache-2.0; source and SHA-256 in `ocr/models/MODELS.md`), stands each
+page upright before reading it, and maps every box back to the page as stored.
+
+- A page is turned only where every view agrees: the model's centre square and the whole page,
+  each turned 0 to 3 quarters more, read the same turn. Taken alone, its top label turned four
+  upright ParseBench pages (a chart, a folded letter, handwriting, Japanese). Labels only; no score
+  is kept.
+- The recognizer's identity gains `ori_sha256`, pinned by the engine (profile draft schema
+  updated); an engine and a recognizer from either side of this change refuse each other.
+- The declared limitation `recognized-text-orientation-not-corrected` now says what is and is not
+  turned: text turned against the rest of its page is not; a body turned under an upright header
+  turns the page, its header then read sideways.
+- Measured: ParseBench's `--ocr` lane 54.66 → 54.67, one page up, none down; the private
+  real-document set and its resumes unchanged. Known limits (`docs/35-OCR-SCOPE.md` §13): a turned
+  page keeps its own frame, so its tables are not read.
+
+### A scanned form's fields read as a table (decision #152)
+
+On a page read with `--ocr`, a form's labels and values — `Invoice No:` beside its number — came
+out as every label, then every value: the recognizer reads two columns down each, and decision #125
+takes its order as no evidence, so a recognized grid of two columns never stood as a table.
+
+- `whitespace-tracks` now reads one as a table where every label holds one colon and ends in it, no
+  two labels alike, beside values that are no running text and hold no word ending in a colon. A
+  blank form's two columns of labels, labels beside a column of prose and a transcript naming its
+  speakers again stay columns (review). Values rising like page numbers are no table of
+  contents (review). A form has no header row: a line just above its fields is none of them.
+- Folded into `whitespace-tracks-v16`, which no release carries yet; no `profile_sha256` moves.
+  Measured: a made-up invoice scanned three ways reads as its drawn copy's table; ParseBench
+  (`--ocr` too), opendataloader-bench and the private real-document set unchanged on every page.
+- Known limits: all or nothing. A short line on the labels' track just under the last field, or a
+  label with no value between two fields, folds into a label and the form stays columns; a field
+  named twice, values a third or more of which open lower-case, a full-width colon and a colon
+  misread as `;` are not read as fields.
+
+### A table's header row the next page repeats is left out of the joined table (decision #151)
+
+Where a table goes on onto the next page under a repeat of its header (decision #142, below),
+Markdown and HTML wrote that repeat as a row of the joined table, so a grid read from them held a
+row of column names between two rows of values. **The representation is unchanged**: it keeps the
+row, as it keeps both tables.
+
+- By default the repeat is left out, counted under the census bucket
+  `repeated-table-header-not-projected-v1`. `markdown --keep-repeated-header` and
+  `html --keep-repeated-header` (`ProjectionOptions::keep_repeated_header`) keep it a row; the
+  flag wins over `--drop-furniture`, which no longer decides it. The MCP `markdown` tool writes
+  the default, the row left out and counted in its summary.
+- Only a first row that repeats the header cell for cell, every cell one row tall, goes, as
+  before; a header two rows deep joins and stays a row. The element view is unchanged: it gives
+  the record's cells, every row with its page.
+- A drafting model's page (decision #147) is swapped as before: the swap test counts the
+  repeated header among the words the engine read, kept or not. A model table is a duplicate where
+  it equals the joined table as the projection writes it, so one equal to a table whose only
+  continuation row was the repeat is now a duplicate (review).
+- Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet; no
+  `profile_sha256` moves. Measured: ParseBench and opendataloader-bench byte-identical (every
+  document one page but one of three, with no join); on the gate's eight PDFs with their structure
+  trees stripped, three change, 28 joins each losing one row and nothing else, and
+  `--keep-repeated-header` gives the earlier bytes on all eight.
+
+### `--assist-pages`: a trigger chooses the pages a model reads (decision #150)
+
+`extract --assist` asks for a page only where the engine's own record says a model could help. The
+signals are read from the sealed engine-only record before anything is asked, by
+`ethos_parser_core::assist_trigger`, new and public (design §6):
+- **S1, a scan:** the page's `scanned-page-not-recognized`, or a recognized run on it.
+- **S2, few words:** under 20 distinct words in its runs, joined in order, since the engine splits
+  a word it kerns across runs; a run on another baseline opens a new line after a space, so the
+  last word of one line and the first of the next never fuse (review).
+- **S3, a figure** region on it, a table read from it or not; **S4, a table** on it.
+- **S5, a picture:** an image painted over a quarter of the page's visible box or more, clipped to
+  that box.
+- **S6:** a run holding U+FFFD.
+
+`--assist-pages trigger` is the default; `all` asks for every page the record lists, and a LIST
+(`1,3,7`, digits only, so `+1` is refused) for those pages, sorted and made unique. A page the
+record does not list, as one `--max-pages` cut, is never asked, and stderr counts it
+(`assist-pages-left-out`); a page past the document's end is the assist binary's to refuse. The
+nodes are grouped by page in one pass: on the gate's 733-page `nist-sp-800-53Ar5`, `extract
+--assist` with nothing asked takes 7.2 s, as plain `extract` does, where a scan of every node per
+page took 73.6 s (review). Engine-only output does not move (gate sample, 54 of 54 outputs byte-identical).
+- **Measured** on ParseBench, over the PDFs of decision #123's lane read with `extract --ocr` (2,023
+  of 2,036; the engine refuses 13): the trigger sends 1,694 of the 2,023 pages (83.7%; 77.6% of the
+  2,511 PDF examples), and 823 of the 869 examples #123's lane scored above the engine-only lane
+  (94.7%; 92.4% weighted by the score gained): tables 285 of 298, charts 419 of 443, content 72 of
+  77, formatting 47 of 51. The 42 PDFs it misses are charts and tables the engine read as neither a
+  figure nor a table, beside pictures under a quarter of the page. `trigger` stays the default, its
+  recall over 90%. The line rule moves no page sent.
+- Tested: one record of eleven made-up pages, each signal alone and three near misses, every signal
+  and boundary mutation-checked; the CLI's page lists, the budget's pages and `+1` through the fake
+  assist binary.
+
+### `extract --assist` asks a model server through the assist binary (decision #149)
+
+The fourth step of the assist lane. `ethos-parser extract doc.pdf --assist SERVER --assist-answers
+FILE [--assist-model ID@VERSION]` runs `ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF`,
+then reads FILE back exactly as `--assist-answers FILE` does. So the output is a function of the
+PDF and FILE: a later `--assist-answers FILE` gives the same bytes, and a stopped run resumes.
+**The engine gains no network code and no renderer**, and engine-only output does not move (gate sample, byte-identical). A live run on this Mac against LightOnOCR-3-0.8B on MLX: `check` ready in 8.7 s, and `extract --assist` on a made-up two-page PDF asked one page and gave the bytes `--assist-answers FILE` gives.
+- **Found** as `--ocr` finds the recognizer: `ETHOS_PARSER_ASSIST`, or `ethos-parser-assist`
+  beside `ethos-parser`, refused by name when missing. Its `identity` must state the renderer and
+  request this build reads, or it is refused before any page is asked. The two binaries share one
+  discovery function, which now makes a relative name absolute against the working directory,
+  where it was checked (review): a bare name was checked there and then run from `PATH`, so a
+  binary planted on `PATH` ran. **This fixes `ETHOS_PARSER_OCR` too**, which had the flaw since
+  decision #120.
+- **Spawned** with the PDF on stdin and SERVER, FILE, the pages and the model in argv. The key,
+  `ETHOS_PARSER_ASSIST_KEY`, reaches it only in the environment it inherits; the engine never reads
+  it. The child's stderr is passed on line by line from a thread of its own while the PDF is
+  written, lossily where it is not UTF-8 (review: a child that spoke 200 KB before reading
+  deadlocked `extract`, and a line that was not UTF-8 closed the pipe and killed the child). No
+  timeout is set: each request is bounded by curl's, and a child that hangs otherwise hangs
+  `extract`, as a hung recognizer hangs `--ocr`.
+- **Exits, by name:** 3 (a page not rendered) reads FILE as it stands and says
+  `assist-page-not-rendered`; 4 is `assist-server-unreachable`; 5 is the child's refusal as
+  `assist-` and its name (`assist-curl-not-found`, `assist-model-not-chosen`, ...), or the
+  `assist-answers-*` name the merge gives; any other exit is refused with the child's last line.
+  Each refusal exits 2 with nothing on stdout.
+- **Nothing to ask** (no page chosen, or none drawn) and no FILE gives the engine's record alone,
+  said on stderr (`assist-nothing-attached`). **A FILE reused from an earlier run keeps its pages**,
+  which are attached with the new ones; only a page with no reply is asked.
+- **A version left out is not compared**, on either path (review): `ethos-parser-assist ask` with
+  a MODEL of no `@VERSION` now resumes a FILE recorded under a version, and keeps it, as the merge
+  under `--assist-model ID` already did; another version named is still refused. A FILE of error
+  pages only holds no reply to keep: it takes the model named, and its version (review: it kept
+  the version it was first asked under).
+- Tested: six CLI tests against `tests/fake-assist.sh` (argv, stdin, the key, every exit, a
+  missing binary, another renderer or request, a bare name beside a planted one for both binaries,
+  200 KB of stderr before a 200 KB PDF is read, a line not UTF-8), one resume test of the assist
+  binary, and one end-to-end test in `assist/tests/` that runs both
+  binaries against a fake server on 127.0.0.1: the key in a header only, the bytes
+  `--assist-answers FILE` gives, a resumed run asking nothing, an unreachable server refused by
+  name. Each guard was mutation-checked. `assist/tests/` now needs the engine built
+  (`target/debug/ethos-parser`, or `ETHOS_PARSER_BIN`), which the gate and CI build first.
+- **Run live** on an M4 Pro against LightOnOCR-3-0.8B under mlx-vlm on 127.0.0.1: `check` ready in
+  8.7 s, and `extract --assist` on a made-up 2-page PDF asked the 1 page the trigger chose in 8.5 s,
+  9.2 s end to end, its bytes those `--assist-answers FILE` gives.
+- `assist/README.md` and `docs/37-ASSIST-TRANSPORT.md` §7 give the recipe: `ethos-parser extract
+  doc.pdf --assist http://127.0.0.1:8089 --assist-model ID@VERSION --assist-answers
+  doc.answers.json`.
+
+### Every release archive carries the assist binary, and no model file (decision #148)
+
+The owner's call (2026-11-15): `ethos-parser-assist` ships in every release, beside
+`ethos-parser-ocr`, and no model file goes in the repository or a release. **The engine is
+unchanged**: no root crate, lockfile or output moves (a local dry run on aarch64-apple-darwin built and verified the six-file archive).
+
+- `ci/release-artifacts.sh` builds the assist binary in `assist/` on its own pinned toolchain
+  (1.98.0) for Linux, Windows and both macOS architectures, and packages it beside the engine. Its
+  `identity` line is one more fingerprint row every runner must print alike; its `render` pixels
+  are not compared, being unmeasured on other CPUs.
+- **No model file ships.** An archive must hold exactly the three binaries, `LICENSE`, `NOTICE` and
+  `README.md`, or the script fails that target. A run whose native target produced no archive, a
+  binary missing after its build, fails (review: it went on and could exit 0). A test fails on a tracked model file
+  (`.onnx`, `.safetensors`, `.gguf`, `.npz`, `.mlx`, `.pt`, `.pth`, `.ckpt`) outside the
+  recognizer's `ocr/models/`, or a `.bin` over 1 MiB.
+- `NOTICE` gains the assist binary's section: hayro's built-in fonts (PDFium, BSD-3-Clause) and
+  Adobe CMaps (BSD-3-Clause), the notices its BSD-3-Clause, MIT and Unicode-3.0 crates ask for, and
+  every crate `assist/Cargo.lock` locks with its licence, which a unit test holds to the lockfile.
+- On Windows the binary ships, and `ask` and `check` are refused `curl-not-run`, since the page
+  reaches `curl` through `/dev/fd`; `render` and `identity` work. README, `assist/README.md` and
+  `docs/RELEASING.md`'s release notes say so.
+- Measured on this Mac (`--target aarch64-apple-darwin`): `verified`, 36 fingerprint rows, and an
+  archive of the six files, the assist binary 6.9 MB. The workflow has not run with it yet.
+
+### A drafting model's blocks reach Markdown and HTML, labelled `Proposed` (decision #147)
+
+The third step of the assist lane: `markdown` and `html` read the record's `assist` key, place the
+model's blocks by the rule the pin names (`assist-lightonocr-v1`, decision #123's lane with three
+changes) and say what they wrote and left out. **Engine-only output does not move**: without
+`--assist-answers` every `extract`, Markdown and HTML byte is what it was.
+
+- **A page the engine read under 30% of the model's words of is the model's page.** In decision
+  #123's words (distinct runs of letters, digits and `_`, two characters or more, lower-cased, tags
+  removed) and in integers: `10 * shared < 3 * model` and `2 * model >= engine`, `model` counting
+  the words of the blocks a swap would write — not a reply's cut last block, not furniture
+  `--drop-furniture` leaves out, not a table's text outside its cells, not a line the guard leaves
+  out (review: thirty blocks each with a contradicted value swapped a page for words it did not
+  show), so no page is swapped for words it would not show, nor to nothing — and `engine` the
+  page's share of the engine-only Markdown, a table's repeated header kept (decision #151). The engine's runs and tables there are left out, counted in `coverage.dropped` under
+  `replaced-by-proposed-page-v1`, and the census balances; a table the next page goes on with is
+  not joined across such a page (decision #142's join held off), so no row is written that no cell
+  holds. Where the page's first node stood, the model's blocks follow in reply order.
+- **Every other page gains the model's tables and charts at their reading position**: each with the
+  `title` or `caption` just before it, unless every word of that is the engine's on the page
+  (a line the guard leaves out not counted, review),
+  after the last run of the page, in reading order, that overlaps it across and starts above its
+  foot, at the next block boundary (never inside a paragraph, a list or a table), or before the
+  page's first node where no run does. Every other block stays in the record, counted.
+- **Model text is labelled, and cannot leave its label.** Each insertion — a swapped page, or a
+  table or chart with its caption — is one Markdown block quote: first `> **Proposed:** WHAT by
+  ID@VERSION; model text, not read from the document.` (WHAT `page N as read`, `table`, `chart`,
+  or `chart values estimated` where the guard marked a value an estimate; on a swapped page
+  `page N as read, chart values estimated`, since its Markdown table writes no cell's mark (review)), last `> **End of
+  proposed text.**`, and between them the model's blocks one quote deeper, every line opening
+  with `> >`, the model's blank lines too, so no model text stands where the label or the end line
+  stands, whatever it writes. The model's text reaches it only through one escape: references
+  decoded and U+0000 left out (a `&#0;` too) before anything is measured, then `&` and `<` written
+  as `&amp;` and `&lt;`, so no HTML block, comment, tag or autolink forms (a tag a removed one
+  rebuilt included); every `[` and `]` after a `\` (a `\` before one doubled), so no link, image
+  or link reference definition forms; the first of a run of three backticks or tildes where a
+  fence could open after a `\`; a `\r` a line break, so no line stands outside the quote; code
+  inside a fence longer than any run of backticks in it as written, the model's own fence taken
+  off. In HTML each insertion is one `<blockquote class="ethos-proposed"
+  data-derivation="proposed" data-model="ID" data-model-version="VERSION">`, the label a `<p>`
+  first and `<p><strong>End of proposed text.</strong></p>` last, the model's blocks between in a
+  `<blockquote>` of their own, so a browser indents them with no style sheet; its text escaped.
+  The model's id and version are escaped as its text is, in both.
+- **An exact duplicate is left out**: a model table whose rows, cells (whitespace collapsed) and
+  spans equal those of an engine table it overlaps on half the smaller box or more; otherwise both
+  stand, the engine's first.
+- **The guard's marks decide what is shown** (decision #146): `contradicted` and `unsupported`
+  lines are left out and counted, a table cell emptied, never removed (in HTML
+  `data-dropped="contradicted"` or `"unsupported"`); `disputed`, unchecked and bound lines are
+  kept; a chart's estimates are kept and labelled (`data-estimate="true"` on the cell); a reply's
+  cut last block, truncated or a loop, is left out. Under `--drop-furniture`, a swapped page's
+  `header`, `footer`, `page_number`, `header_image` and `footer_image` blocks go too.
+- **Model HTML never passes through.** A table is read into its cells and written by this engine:
+  a GFM grid in Markdown, its spans flattened and counted, and a `<table>` keeping its spans and
+  header cells in HTML; a `table` block holding no cell is left out, as is one whose spans would lay
+  it out on more than 100,000 slots, both counted `proposed-table-unparsed-v1` (review: rows each
+  starting past the spans above asked gigabytes; ParseBench's largest table lays out on 3,326). In any text, tags other than
+  `<sub>`, `<sup>` and `<br>` are removed (an inline one with nothing in its place, any other with
+  a space) and those three written by this engine, balanced, a space between two of them kept
+  (review). A character reference is decoded,
+  `&dollar;` too, then escaped. A title keeps the model's own `#` level, or is level 1; a formula
+  loses one outer `$$` or `$` and is fenced in `$$`; code is fenced; as ParseBench's
+  `_render_block` writes them, but for the language guess on code, which is not ported.
+- **The anchor map gains a third kind, `proposed`**, naming the one `m`-numbered block its bytes
+  came from: never invertible, as `syntax` is not. The labels are `syntax`. Breaking for a library
+  caller matching `SegmentKind` exhaustively.
+- **The census**: `MarkdownArtifact` and `HtmlArtifact` gain `proposed`, present exactly where the
+  record holds an `assist` key: the rule, the model, and a line per page asked — its model,
+  engine and shared word counts, whether it was swapped, how many blocks were written, and what
+  was left out by code (`proposed-table-duplicate-v1`, `proposed-value-contradicted-v1`,
+  `proposed-line-unsupported-v1`, `proposed-block-truncated-v1`, `proposed-table-unparsed-v1`,
+  `proposed-block-not-projected-v1`; in Markdown, `gfm-span-slots-unrepresentable-v1` for a model
+  table's spans). MCP's `markdown` summary says how many of the model's blocks the artifact
+  writes, and on how many pages its reading replaced the engine's. `markdown --help` and
+  `html --help` say what an assisted record projects to.
+- Library: the `proposed` module, `ProposedCensus`, `ProposedPage`, the seven codes and
+  `SegmentKind::Proposed`. Draft schemas: the `proposed` segment kind and census on both
+  projections, and `replaced-by-proposed-page-v1`.
+- Not ported: ParseBench's `_repair_dollar_delimiters`. Measured on decision #123's replies, it
+  changes 8 blocks on 3 pages, none of which this rule projects (text, list and footnote blocks on
+  pages not swapped), so it is worth nothing here.
+- Measured on decision #123's replies to the 1,567 ParseBench pages the engine reads, attached as
+  decisions #145 and #146 attach them (`extract --ocr --assist-answers`): the swap test picks 88
+  pages, and decision #123's Python lane, on the same engine's Markdown, 86 — the 86 its stored run
+  swapped. The two others, a Marathi and a Telugu page, are combining marks, which Rust's
+  `char::is_alphanumeric` keeps inside a word and Python's `\w` does not. Counting only the words
+  a swap would write changes `model` on 222 pages (27 a cut last block, 195 a table's text outside
+  its cells) and moves no decision. Markdown and HTML swap the same pages, and two runs give the
+  same bytes on all 1,567.
+  Engine-only `extract`, Markdown and HTML byte-identical to decision #146's build on the gate's 113
+  documents and opendataloader-bench's 200. ParseBench, with LightOnOCR-3-0.8B on hayro pages through the product lane: 71.91 overall where the benchmark adapter unwraps the quote markup (its converter reads no table or title inside a quote; written as is, 65.33); 71.07 was the bar. The guard costs 0.10 of it.
+
+### A guard checks a drafting model's blocks against the engine's runs, in the record (decision #146)
+
+The second step of the assist lane: each block a model proposes is checked against what the engine
+read inside its box, and what the page contradicts is marked to be dropped. **Engine-only output
+does not move**: without `--assist-answers` every `extract`, Markdown and HTML byte is what it was,
+and so is every profile's hash.
+
+- Each block with a box carries a `guard`: the distinct words of the engine's legible text runs
+  whose box centre lies in the block's box (the grid mapped onto the visible box, widened by 10
+  grid units), the share of the block's words among them in thousandths (reported, never a gate),
+  its line count, how many lines bind, and the lines flagged, each with its first value not found.
+  A run holding U+FFFD, or one the engine found hidden, invisible, off the page or too small, is no
+  evidence. The runs are joined as `ground` joins them into elements, with no table claiming its
+  cells, then read line by line: a page the engine reads glyph by glyph keeps its words, two lines
+  are never glued, runs more than a quarter of their height apart on either side are two pieces
+  (half, after a space the engine read: a page letter-spacing digits sets one between them, and
+  `19 ,5 2 1` held no `19,521`),
+  two pieces are never one value, nor two lines but where the first ends in `. , : / -` (a range or
+  a link the page wraps, `2007-` above `2023`; review: `12` above `34` held `1234`), and a printed
+  `<` and `>` hide nothing between them.
+- A block's lines are a table's or chart's cells, row by row, and the text outside them (a caption,
+  words after the table), or else its text's lines; blank lines outside a cell do not count.
+- A value is decision #123's prototype token with any script's decimal digit: a run of ASCII
+  letters and digits holding a digit, going on through `. , : / -` (`1,234.5`, `2024-03-01`),
+  compared as written, but that a dash of any width between two letters or digits (U+2010 to
+  U+2015, U+2212) reads as `-` on either side (the page's `99‐R98CR` held no `99-R98CR`), and that
+  in the model's text a LaTeX command, a backslash and the lower-case letters after it, is no part
+  of a value (`\pm20V` read as `pm20V`; a path's `\O365` keeps its value). It is found where it occurs in the runs' text with whitespace removed,
+  starting and ending outside the runs' own values, with the same sign (brackets read as a minus,
+  an en dash too) and, where both show one, the same currency symbol and percent sign; brackets, a
+  leading currency symbol and a percent sign count across a space or a gap the engine drew, a
+  minus only touching: a split `1 234` binds
+  `1234`; `12345` does not bind `1234`, nor `1.234` `1,234`, nor `(1,234)` `1,234`, nor `€980`
+  `$980`. A value the engine ran into its neighbour with no space (`1983` read as `1983DODG`) is not
+  found either: the rule is "exactly", kept until the ParseBench run measures its cost. The model's
+  text is read with its tags removed and its HTML character references decoded.
+- **A table row's values must be found on its own lines of the engine's, in the row's order, read
+  left to right**: the line holding most of them, then most of the row's words, and the lines
+  between it and the neighbouring rows' lines (a first or last row reaches one line past its own);
+  a cell's words bind on those lines. A cell set on two lines binds, its second line on a neighbouring row's line too when it lies in
+  the cell's column and the cell shows on its own line, while a swapped cell, a row
+  shifted a column or a wrong value printed nearby does not bind; a swap between rows whose lines
+  interleave may pass. Two rows swapped whole, labels kept, bind neither (review): each row's
+  label, its words of letters no other row holds, lies on the other's own line and not on its own.
+  A label alone on another row's line swaps nothing, since a table centres a label over the rows
+  it spans and sets a header over two lines. **A box the model drew too small binds against the engine's table it
+  overlaps**, or an engine block region of no more than half the page; never against the page at
+  large, so a value copied from elsewhere stays unfound. **A box over half the page places
+  nothing**: no line binds by it alone, though a table row still binds on its lines.
+- **A chart's value not found is an `estimate`**, kept: a chart's values are read from its bars.
+  **Its first row and the first cell of each row, its series and category names, are never
+  `unsupported`**: they name and assert nothing, so one the engine did not read is unchecked.
+  **The region is read where the engine's legible runs there hold a value or three words** and share
+  a word or a value with the block, so a reply that is mostly wrong is checked as closely as one
+  mostly right, while a font that maps its codes to other letters reads as nothing. There, a line with a value not found is `contradicted`, and a line of three words or more,
+  fewer than half of them found, `unsupported`, a chart's text lines included; both are to be
+  dropped, a table cell emptied rather than removed. **A table cell whose values off its row's
+  lines the region holds elsewhere is `disputed` instead, and kept**: a total column the engine
+  reads below its table, a code or a date the page prints once for rows the model repeats it in. A
+  value the region does not hold, or a row swapped whole, stays `contradicted`. Both rules were
+  calibrated on the product lane's ParseBench run, where the guard's drops cost 0.40 overall
+  (tables -1.38 over 65 pages, charts -0.58 over 10). **In a block fewer than half of whose words the
+  engine holds, such a line is `disputed` instead, and kept**: a reply that much at odds with the
+  engine is as often the engine's misreading as the model's. A line binds where all its values are found,
+  or, holding none, half its words; any other line is unchecked. Where the region was not read,
+  every line but a chart's estimates is kept unchecked. A `/ToUnicode` mapping codes to wrong but
+  valid characters cannot be told from the record, and its text is read as the engine's.
+- **A reply the server cut at its cap** (`finish_reason` `length`) loses its last block: the page is
+  `loop` where that block ends in four or more copies of one string of 1 to 400 characters, 64 or
+  more in all, and `truncated` otherwise. An unusable reply is said by the page's outcome alone, not
+  as an `assurance` limitation, so an assisted record's `ground` stays the engine's.
+- The profile's `assist` pin gains `guard` (`assist-guard-v1`), so an assisted record's
+  `profile_sha256` moves; an engine-only one's does not. The seal holds the guard's bounds, a guard
+  on exactly the blocks with a box, a value named on every contradicted and estimated line, and
+  the cut outcomes, on reading a record too. Library: `AssistGuard`, `AssistFlag`, `AssistMark`,
+  `ASSIST_GUARD_V1`. Draft schemas: the block's `guard`, the two outcomes, the pin's `guard`.
+- Nothing projects the blocks yet; the projection reads these marks. ParseBench: measured with the projection (decisions to come).
+- Measured on decision #123's replies to 1,567 ParseBench pages, attached to this build's records:
+  98,040 lines bind, 1,751 are contradicted, 86 unsupported, 629 disputed (kept), 23,847 chart
+  values estimated and 31,551 unchecked (the fourth review's line rule made 11 chart values the
+  engine reads a digit per line estimates and left one disputed line unchecked; its swap rule
+  fires on no row); 19,985 lines sit in the 30 dropped last blocks. After the calibration, 98,069
+  bind, 732 are contradicted, 34 unsupported, 1,463 disputed, 23,847 estimated and 31,759
+  unchecked: 1,019 table cells in 282 rows moved from contradicted to disputed, and 237 chart names
+  from unsupported or disputed to unchecked or bound. After the three value-matching fixes, 98,208
+  bind, 623 are contradicted, 35 unsupported, 1,429 disputed, 23,850 estimated and 31,759
+  unchecked: 108 contradicted lines and 34 disputed ones bind, one paragraph line the page wraps
+  after `2019—` is newly contradicted, and three chart years the page prints as a range become
+  estimates. The loop rule fires on 14 of the 30
+  capped replies and on none of the 1,537 others. Engine-only output is byte-identical to decision
+  #145's build on the gate's 113 documents and opendataloader-bench's 200.
+
+### A drafting model's replies attach to the record as `Proposed` blocks (decision #145)
+
+The first step of the assist lane: a model that reads page images may propose text, and its text is
+never evidence. **Engine-only output does not move**: without the new flag every `extract`,
+Markdown and HTML byte is what it was, and so is every profile's hash.
+
+- `extract --assist-answers FILE` reads a replies file another process wrote, checks that it
+  answers this PDF, and attaches the model's blocks under the record's one new optional key,
+  `assist`. The output is a function of the PDF and FILE alone, and two runs give the same bytes.
+  `--assist-model ID[@VERSION]` names the model FILE must come from; a version left out is not
+  compared.
+- The replies file holds `ethos_assist_answers` (1), the source's digest, the renderer
+  (`ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1`), the request
+  (`lightonocr-3-grounding-v1`), the model's `id` and `version` and, optionally, `asked` (the id
+  the request named, which `ethos-parser-assist` resumes the file under and the record does not
+  keep), and per page asked its number, its rendered size in centipoints (`points`), its `dpi`,
+  pixels and pixel digest, and either `reply` with `finish_reason` or `error`. Unknown fields are
+  refused.
+- A file that does not answer this PDF is refused by name: `assist-answers-unreadable` (an empty
+  model id too), `assist-answers-other-source`, `assist-answers-other-renderer`,
+  `assist-answers-other-request`, `assist-answers-other-page` (a page past the document's last, or
+  rendered more than a point from the box it shows) and `assist-answers-other-model`. A model id
+  that is a file path — starting `/`, `~`, `.` or a drive letter, or holding a backslash, as a
+  server started with a local `--model` reports it — is refused `assist-answers-model-is-path`, so
+  no home directory lands in a record; one naming this engine's processor or recognizer, in any
+  case, `assist-answers-model-is-processor`. A file over 64 MiB, or a reply of more than 2,048
+  block markers, is refused `assist-answers-over-budget` before it is read whole. Office and image
+  bytes are refused `assist-not-pdf`; a record already assisted, or read under another profile,
+  `assist-base`.
+- A reply to a page the document has and the record does not list — cut by `--max-pages`, or not
+  read — is left out, and its page number kept under `assist.pages_left_out`: a block hangs on a
+  listed page.
+- Each reply is read into blocks by ParseBench's rule for LightOnOCR's grounding replies — label,
+  continuation, box on the 0-1000 grid (clamped, an inverted side swapped) and text — but for box
+  digits, which are ASCII only where ParseBench's `\d` takes any script's. Blocks are not nodes,
+  so `ground`, `locate` and `elements` never see them; each is `m`-numbered and of derivation
+  `proposed`. Nothing projects them yet.
+- The profile gains one optional pin, `assist` (rule `assist-lightonocr-v1`), on the base or the OCR
+  profile, so an assisted record's `profile_sha256` is its own. The seal holds what the merge
+  writes, on reading a record too: every block `proposed`, its id `m` and a number used once, its
+  box on the grid with no side inverted; pages declared, in page order, once each, an unanswered
+  one with no block; the model's id neither empty, a path, nor the engine's own.
+- Library: `ethos_parser_core::attach`, the `assist` module's record types and constants,
+  `AssistPin` and `Profile::with_assist`. Draft schemas: the profile's `assist` pin and the record's
+  `assist` key.
+- Measured: engine-only output byte-identical on the gate's 113 documents and opendataloader-bench's 200; decision #123's stored replies to
+  1,567 ParseBench pages read into exactly the 22,355 blocks ParseBench's own parse gives (11 more pages
+  are PDFs the engine refuses without assist).
+
+### The assist binary asks a model server, through the system `curl` (decision #144)
+
+`ethos-parser-assist` gains `ask` and `check`. Requests go through the system `curl`, run as a
+subprocess, so no HTTP crate enters any lockfile ([`docs/37-ASSIST-TRANSPORT.md`](docs/37-ASSIST-TRANSPORT.md)).
+**The engine is unchanged**: no root crate, lockfile or output moves, and nothing spawns `ask` yet.
+
+- `ethos-parser-assist ask SERVER FILE PAGES [MODEL] <PDF` renders each page asked and sends it to
+  `SERVER/v1/chat/completions` as decision #123 asked it. It writes the replies to FILE, the file
+  `extract --assist-answers` reads, as canonical JSON with no address, key or timing, so the same
+  replies give the same bytes. FILE is replaced after each page, so a stopped run resumes: replies
+  are kept, and errors are asked again. Without MODEL, the one model `GET /v1/models` lists is used.
+  FILE keeps the id the request named (`model.asked`) beside the one the server reported; once it
+  holds a reply, a MODEL that is neither is refused `assist-answers-other-model` before any page
+  is passed over (review: another model's replies were kept, exit 0, where no version was named),
+  so a server's alias resumes under either name.
+- `ethos-parser-assist check SERVER [MODEL]` asks for a committed test page of made-up content and
+  says whether the server's replies are read as `lightonocr-3-grounding-v1`: exit 0 ready,
+  1 `reply-format-not-read`, 2 unreachable. It warns when the model id is a path.
+- The API key is read from `ETHOS_PARSER_ASSIST_KEY` only, and reaches curl on its stdin, never in
+  argv, curl's environment, on disk or in any output. It goes only to an `https://` server or to
+  loopback: to an `http://` server elsewhere the request is refused `key-needs-https` before curl
+  runs (review: the header crossed the network in clear). Without a key, plain `http://` to
+  another machine stays allowed: the request holds no secret, and a model server on the local
+  network is commonly served so.
+- The page reaches curl on a pipe, so no file holds it, even when a run is killed. `ask` and
+  `check` are therefore Unix-only for now; elsewhere they are refused `curl-not-run`.
+- A server on loopback — `localhost`, any address of 127.0.0.0/8 in dotted decimal, or `[::1]` — is
+  never reached through a proxy, whatever the proxy variables say: its `noproxy` is `*` (review:
+  `127.0.0.1` was listed, which curl matches exactly, so `127.0.0.2` went through the proxy; a CIDR
+  mask needs curl 7.86.0). Any other server is reached as the user's proxy settings say. curl
+  follows no redirect, reads SERVER as no glob, and takes a reply of 64 MiB at most.
+- Failures are named: `server-unreachable` (exit 4), `curl-not-found`, `curl-not-run`,
+  `key-needs-https`, `timeout`,
+  `http N`, `reply-unreadable`, `reply-too-large`, `curl-exit-N`, `curl-killed`,
+  `body-not-written`, and `reply-capped`, where a reply cut at `max_tokens` is kept with
+  `finish_reason: "length"`.
+- `docs/37-ASSIST-TRANSPORT.md` scopes the exception to the no-network rule to this binary's
+  subprocess `curl`; both `deny.toml` files keep every network ban. `assist/README.md` gives the
+  setup: the Mac (MLX) steps Phase 4a ran, and Linux (vLLM) steps not yet run here.
+- Tested, not yet measured on a server: 34 tests against a fake server on 127.0.0.1 (request bytes, the key in neither argv nor curl's environment and refused for `http://` off loopback, proxy variables bypassed for loopback, `127.0.0.2` too, no redirect followed, globs off, a 64 MiB reply cap, every page error, resume, another model's name refused before resume, two runs identical); a fresh security review's findings are fixed. `ask` and `check` need `/dev/fd` (macOS, Linux); elsewhere they are refused `curl-not-run`.
+
+### The assist lane's binary, `ethos-parser-assist`, renders pages (decision #143)
+
+A new binary, built in its own workspace, `assist/`, on the recognizer's toolchain (1.98.0) with
+its own `Cargo.lock` and `deny.toml`. Nothing calls it yet, and it has no network code. **The
+engine is unchanged**: no root crate, lockfile or output moves.
+
+- `ethos-parser-assist render PDF PAGE OUT.png` draws a page with hayro 0.7.1 by decision #123's
+  rule, `pages-400dpi-5mp-v1`: dpi = min(400, floor(sqrt(5e6 / inches))), pixel sizes rounded as
+  Ghostscript rounds them, a Lanczos shrink past 5e6 pixels, and the CropBox. It prints
+  `dpi width height`.
+- `ethos-parser-assist identity` prints one JSON line: the `renderer` string
+  (`ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1`) and the request format the lane
+  will read.
+- `cargo deny --manifest-path assist/Cargo.toml check` runs in `ci/gate.sh` and CI. It allows
+  Apache-2.0, MIT, BSD-3-Clause, Zlib and Unicode-3.0, and copies the root's network bans.
+  `ci/gate.sh` gains an eleventh step, `ci/assist.sh` (fmt, clippy and the tests in `assist/`, on
+  its pinned toolchain), and CI's `check` job runs it as well. `ci/forbidden-tokens.sh` scans
+  `assist/` too.
+- Measured: page 1 of the 379 ParseBench PDFs Phase 4a sampled renders byte for byte as Phase 4a's
+  renderer drew it, which scored within half a point of Ghostscript's pages on every ParseBench dimension with the reference model (100-page samples); engine output is untouched.
+
+### A table the next page goes on with is one table (decision #142)
+
+Markdown, HTML and `elements` wrote one table a page, so a table running onto a second page read
+as two. **The representation is unchanged**: both table records stay as read.
+
+- A table goes on from the one before it, a false join being the worse failure, only where all
+  of these hold: both were read off the page (`ruled-rects`, `stroke-ruled`, `unruled-align`,
+  `whitespace-tracks`), with rows and columns, and stand in `tables[]` in reading order; the
+  second is on the very next page, of the same size and rotation, with as many columns; between
+  their runs lie only running heads and folios another page repeats at the same side and place
+  (as `--drop-furniture` reads them), `/Artifact`s, blank runs, annotations and form fields —
+  never an inferred heading, a caption, a note or text; the running head over both pages reads
+  the same, digits and all, and so does the running foot but for a folio (a number one greater
+  on the second page, as a page number is), so an account, a schedule or a section named
+  in either ends the table; no picture stands below the first or above the second but one placed
+  at the same place on another page, as a logo is; the first reaches, within the height of the second's
+  first row under its header (the row that did not fit), the lowest point the document's body
+  text or tables reach on a page of its height; and **the second's
+  first row repeats the first's header cell for cell**, spans and all. Where an author's tree
+  cites either table, only the tree joins them: the header's own cells inside a `/TR`, cited
+  again on the next page, as Chrome prints a long table. Three pages join twice.
+- The second's rows follow the first's; the furniture between them is written after the table.
+  Each join is counted under `tables-joined-across-pages-v1` in the structural census. The
+  element view gives one table element: cells on a later page carry `page` and their own box,
+  and `continued` names the records joined in (draft schema updated).
+- A repeated header row is left out, counted under the census bucket
+  `repeated-table-header-not-projected-v1`; `--keep-repeated-header` keeps it (decision #151,
+  above).
+- Folded into `markdown-blocks-v14`, `html-blocks-v14` and `elements-units-v1`, which no release
+  carries yet; no `profile_sha256` moves. Measured: ParseBench and opendataloader-bench byte-identical (every page of both is one page); on the gate's documents with their structure trees stripped, 50 joins in five NIST publications, each read and each a real continuation, none false; the review probe and the made-up four-page statement read as one table; three rounds of review with made-up PDFs found no false join left in the cases the known limits do not name.
+- Known limits: **a continuation that does not repeat its header stays a table of its own** —
+  on an untagged page nothing else tells the rest of a table from a new table drawn on the same
+  grid, so a header that is not repeated, or repeated in another case (`ITEM` under `Item`),
+  keeps two; so does a running head printed on one page only (a two-page document whose first
+  page carries a title instead), a page number in the running head, running heads that
+  alternate between odd and even pages, a picture between that no other page repeats at its
+  place, and a first table that stops more than the next page's first body row short of the
+  lowest point the body reaches anywhere in the document (a short label row the producer kept
+  with a taller row after it keeps a real table two; and the floor is the whole document's, so in
+  a short document a table ending mid-page can still reach it). A tagged table whose next page
+  does not cite its header again stays two.
+
+### Labels heading recurring sections head an untagged document nothing else heads (decision #140)
+
+Rule id `heading_inference_rule` `type-size-v7` -> `type-size-v8`; `profile_sha256` moves.
+
+- The label tier (decision #47) reads a bold line set tight over the text it names as a label,
+  level 7, written as a bold line. On a document no line of which is set large or stands apart,
+  nothing ranks above its labels, so nothing was written as a heading at all. There, on a document
+  that declares no author structure, a label that heads a section is now level 1 — a `#` line, an
+  `<h1>`, a `section-header` in `elements`: the last inked run before it is not bold, the next inked
+  run is in no bold and does not run in along its line, the line below that is in no bold either,
+  and another such label in the document shares its font and size. Every other label stays at
+  level 7 — a form's captions, a resume's contact labels, an invoice's `Bill To`, a caption, a bold
+  line inside a paragraph, one label alone — and so does every label of a tagged document or of one
+  a line of which ranks: those read byte for byte as before. The limitation still counts these
+  lines as labels.
+- Measured: opendataloader-bench MHS 0.6285 -> 0.6378 over #141 alone, none down.
+  Without the recurrence clause MHS read 0.7024, with `#` lines on twelve made-up forms, invoices
+  and resumes; the shipped rule writes none there (`docs/measurements/headings/README.md` §15).
+- **Known limit**: a font is the name its page gives it, so labels on two pages naming different
+  fonts `F1` at one size recur as one style.
+
+### A heading set a marked-content sequence to a word is one heading line (decision #141)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet; no rule id
+and no `profile_sha256` moves, and the representation does not change.
+
+- On a page whose marked content no structure tree cites (`pdf_mcid` locators, on 143 of
+  opendataloader-bench's 200 documents), both projections joined a run of another sequence only
+  where a tagged parent licensed it, so a producer that opens a sequence at each word wrote a
+  heading's number and each of its words as a `#` line of its own, and a heading set on two lines
+  as two. Two runs read as headings or labels, neither cited by a tree, now join by the clauses that
+  join an untagged page's heading runs: the heading's next line in its unit, a label's lines, a
+  section number and its title, words of one unit set apart on one line. A run a tree cites joins
+  only as the tree says, and body text keeps its blocks.
+- Measured (strict comparison): opendataloader-bench, #141 alone, MHS 0.5903 -> 0.6285,
+  16 documents up and none down; NID 0.8918 -> 0.8921, 26 up and none down; TEDS unchanged.
+  ParseBench formatting and content unchanged on every page. With #140: MHS 0.6378, 17 up and none
+  down; NID 0.8922, 27 up and none down; ParseBench formatting, content and layout unchanged on every
+  page; the gate documents' Markdown byte-identical.
+
+### Text a reader does not see is flagged three more ways, and can be left out on request (decision #139)
+
+Rule id `page-observations-v5` (was `-v4`); the PDF `profile_sha256` moves. Default Markdown and
+HTML text is byte for byte what it was; their artifact JSON carries the new `profile_sha256`.
+`extract` and the representation gain the new findings, and `overlay` draws a box on each newly
+flagged run.
+
+- **Three new findings**, each a `TextFinding` on the run and a count under its own code; like
+  `invisible-render-mode` and `off-page`, none removes anything. `tiny-text`: the rendered em,
+  the text rendering matrix's vertical scale before `/UserUnit`, is under one point (a Type 3
+  font whose `/FontMatrix` is not the 1/1000 default is not measured). `hidden-layer`: the run is
+  inside a `BDC /OC /name` sequence, or a form whose `/OC`, naming an optional-content group the
+  catalog's `/OCProperties /D` switches off, by `/OFF` or by `/BaseState /OFF` without `/ON`. An
+  `/OCMD` is not evaluated: its runs are counted under
+  `optional-content-membership-not-evaluated`. `fill-matches-background`: the run, filled
+  (`Tr 0` or `4`) in a device colour, has the fill operands of the one rectangle a fill painted
+  last beneath its glyphs (baseline to 0.7 em) and covering them, or is exactly white where
+  nothing was painted beneath them. Any other paint touching them — an image, a shading, an
+  unresolved XObject, a stroke of any shape widened by half its width, a fill of any other path,
+  or a fill under a `gs` (not resolved; PowerPoint lays a fully transparent black box under its
+  text), under a clip that is not one rectangle — a clip path of a second subpath, which may cut a
+  hole, among them (review) — or under text set as a clip (`Tr 4` to `7`) —
+  makes the background unknown, and nothing is flagged; nor is a run under a `gs` that blends,
+  masks, sets a fill alpha or is not resolved. Paint in a layer switched off is not paint; paint
+  is cut to the known clip and to each form's `/BBox`; a run the page clips away is not
+  compared, nor one with no known advance (no widths, a predefined CMap) or in a Type 3 font; a
+  glyph painted as a box is not read as one, and a white fill painted through a mode-7 clip shows
+  the clip's text. Whitespace carries none of the three. A fill's colour is recorded only where
+  its path is one rectangle and nothing else: a second subpath, a rectangle drawn with each corner
+  named twice among them, may cut a hole. A string spread a glyph a run (decision #102) is
+  compared glyph by glyph, each glyph's own box against what lies beneath it. A form's `/BBox`
+  numbers are read through their references, and a box of other than four numbers is none.
+  What was painted is indexed by 32-point and 512-point cells, so a page of many paths is not
+  compared path by path with every run; many large paints in the cells a run's glyphs lie in are
+  still each looked at. Each `ET` gives effect only to the clips set since the one before it, so
+  a page of 100,000 mode-7 text objects reads in 0.7 s, where it took 14.3. The mode-7 clips
+  standing are indexed by the same 32-point cells (review), so a paint or a spread glyph reads
+  only those in its own cells, and a `Q` or a form's end forgets the last ones set: after 100,000
+  mode-7 objects, a string of 100,000 glyphs spread a glyph a run elsewhere reads in 1.2 s where it
+  took 20.3, and 100,000 `q Q` pairs in 0.8 s where they took 15.4; after 50,000, 50,000 small
+  fills elsewhere take 5.7 s where they took 11.9, as long as beside 50,000 runs that set no clip.
+  An area spanning more than 64 cells still reads every clip standing.
+- **`invisible-render-mode` narrows for mode 7**: a run set in `Tr 7` carries it only where
+  nothing is painted, after `ET`, through the clip it sets and over its glyphs, so a heading
+  filled with a shading is not hidden and a clip nothing paints through still is. Text in a layer
+  switched off, or kept from the page by a known clip, paints nothing through it, and a spread
+  string's glyph shows only what is painted over that glyph. A clip that has shown paint still
+  clips (review): each `ET` intersects the clip in force with the box around its text object's
+  glyphs set as a clip, in any of modes 4 to 7 (fifth review), until the `Q` that restores the
+  state, so a later mode-7 run painted over only outside an earlier clip standing carries the
+  finding. A Type 3 font's text, which mode 3 alone hides (32000-1 §9.3.6), carries no
+  `invisible-render-mode` in mode 7: it paints, showing a clip it is drawn through, and sets no
+  clip (fifth review).
+- **Operands, never contrast.** Grey at 0.99 on white, a colour in `rg` over the same in `g`,
+  and transparency are not flagged; `low-contrast-not-detected` stays on every profile and says
+  so. OpenDataLoader's filters are not matched: they render the page and test a contrast ratio
+  (off by default), drop line art as background, and call a box at most 1 high with a font of 5
+  or less tiny.
+- **`markdown --drop-hidden` and `html --drop-hidden`** (`ProjectionOptions::drop_flagged`) leave
+  out every run carrying any finding, as though the page had not drawn it: the block around it
+  goes on and a table cell keeps its other runs. A scan's text layer stays — a run whose
+  findings are `invisible-render-mode` (with `tiny-text` or not), inside a placed image on a page
+  its images together cover half of or more; a scan drawn as an inline image, or under half its
+  page, is not one. A run whose one finding is `off-page` goes only where its measured box is
+  known and misses the visible box: one whose box crosses the media box's edge has none and stays,
+  so text wholly off the media box stays too. A run left out is no painting a later run copies
+  (decision #110): text painted over a flagged copy of itself is written. Counted
+  once under `flagged-text-not-projected-v1`; coverage balances. MCP and the SDKs do not offer it
+  yet.
+
+Measured: default Markdown and HTML text byte for byte what it was on ParseBench (with and without
+OCR), opendataloader-bench's 200 PDFs, the gate and the made-up sets. On ParseBench the new
+findings flag 1,075 runs in 42 documents as `fill-matches-background` and 41 runs in 13 as
+`tiny-text`; `hidden-layer` fires on none; opendataloader-bench and the gate carry none of the
+three. Default `extract` retires within 1% of the instructions it did on pages of 100,000 strokes
+or fills. Three rounds of review with made-up PDFs, rendered with Ghostscript, found no visible
+text left out in the cases the limits above do not name.
+
+### On request, a line opening with a list marker is a list item on an untagged PDF (decision #138)
+
+The owner approved lists on untagged PDFs behind a flag. **Off by default, and off is byte for
+byte the output before it**; no rule id and no `profile_sha256` moves.
+
+- `markdown --infer-lists` and `html --infer-lists`, and the library's `ProjectionOptions`
+  field `infer_lists` (`to_markdown_with`, `to_html_with`). On a document that declares no author
+  structure, a layout unit opening with a list marker — a bullet, or a number of up to three
+  digits or one letter closed by `.` or `)`, the units rule's own pattern, now shared — projects as
+  a list item: `- ` and the marker as the page drew it, or an `<li>`, holding the rest of its
+  unit even where a word processor drew the bullet in a marked-content sequence of its own. Its
+  depth comes from where the marker stands against the items open before it, no more than one
+  under the open item, and a list going on at the top of the next column starts again at the top.
+  A marker run alone opens an item only where the next run stands apart from it, so a number
+  drawn as `82.` and `65` is none. **A list is two items or more**: a marker line with no other
+  next to it (an initial, `K. For the first time`; `(x) in time`) stays a paragraph.
+- Inferred, never declared: the representation is unchanged and carries no list. Each item is
+  counted under `list-items-inferred-from-markers-v1` in the structural census. An inferred
+  heading stays a heading; furniture, a table's runs, a tagged list and an office document's
+  numbering are untouched. MCP and the SDKs do not offer it yet.
+- Known limits: consecutive numbered lines at body size (`1. Introduction`, `2. Methods`), a unit
+  opening `- ` or an initial next to a real item, and rows of an undetected table opening `1.` read
+  as items; a decimal (`1.5`) and a section number (`2.3.1`) do not, nor do the roman `ii.`
+  through `iv.` (a marker is one letter, so `i.` and `v.` open items and the rest do not). An item
+  is written `- 2. x`, as a tagged one is, which CommonMark renders as a bullet holding an ordered
+  list starting at 2.
+- **NID does not measure list correctness**: it falls with the flag even where every item is
+  right, since the item syntax adds characters the ground truth may not hold (`- 1. x` against
+  `1. x`).
+- Measured: Default output byte-identical on opendataloader-bench and the gate. With the flag, 35 of opendataloader-bench's 200 documents gain 226 items; NID 0.8918 -> 0.8917, MHS 0.5903 unchanged at four places, overall 0.8005 unchanged at four places: a correct list still costs NID where the answer key writes `1. x` and the projection writes `- 1. x`..
+
+### One element view for consumers: `ethos-parser elements` (decision #137)
+
+New artifact `ethos.parser.elements.v0`, rule `elements-units-v1`, draft schema
+[`elements.draft.json`](docs/draft-schemas/elements.draft.json). Every other output is byte for byte
+what it was, `profile_sha256` included: the rule id travels on the artifact, not the profile.
+
+- **`elements <representation>` or `elements --source <file>`** writes a document's items as one
+  flat list: each with `label` (`text`, `section-header` with its `level`, `page-header`,
+  `page-footer`, `table` with its cells, `picture`), `page`, `bbox` in centipoints from the page's
+  top-left, `text`, and the `node_ids` it covers, in page order and reading order. A page-less
+  source (DOCX, XLSX, …) has no pages and no boxes; a DOCX paragraph is one element and a
+  workbook's sheet a named `table`. A Word header's or footer's paragraph is a `page-header` or
+  `page-footer`, and a heading a DOCX, ODF or EPUB file declares a `section-header` at its level,
+  as both projections read them.
+- **Nothing is dropped silently.** Every node is in one element or under `omitted` with its reason
+  (`no-measured-box`, `whitespace-only`, `form-field`, `annotation`, `image-not-painted`,
+  `figure-not-measured`), and one line on stderr counts them.
+- **No rule of its own.** It began as ParseBench's adapter view: `ground`'s blocks joined by
+  `layout_unit`, labels from page furniture, then a tagged role path, then an inferred heading;
+  tables and figures as the record states them. It departs where the adapter was wrong for a
+  consumer: a DOCX paragraph is one element, the label tier is `text`, the role path is read after
+  the `/RoleMap`, and a table with no box is one element. On all 456 ParseBench layout PDFs
+  `extract` reads, 26,721 of the adapter's 28,717 items are equal in page, label, box and text; the
+  other 1,996 are label-tier lines. No existing output changes: `elements` is a new subcommand.
+- Library: `ethos_parser_core::to_elements` and its types (`docs/PUBLIC-API.md`). No MCP tool and
+  no SDK function yet.
+
+### A DOCX's headings, list items, tables, headers, footers and footnotes are read as declared (decision #136)
+
+Folded into `docx-document-order-v3` and `docx-wt-verbatim-v4` (decision #130's, which no release
+carries yet) and into `markdown-blocks-v14` and `html-blocks-v14`. The DOCX profile names a new
+table rule, `docx-tbl-v1`, under the optional `table_detection.office` key decision #135 added,
+and turns `capabilities.tables` on, so its `profile_sha256` moves; PDF profiles still omit the
+key, so theirs do not, and no PDF artifact moves.
+
+- **Headings, where the file declares a level.** A paragraph's own `<w:outlineLvl>`, or its
+  style's in `word/styles.xml` through the `<w:basedOn>` chain, or a built-in style name
+  `heading N`, gives the run's `office_run` attributes a `heading_level`, projected as
+  `#`..`######` and `<h1>`..`<h6>`. A styleId alone (`Heading1`) is never read as a level, `Title`
+  declares none, and a level past six projects as a paragraph, counted under
+  `heading-level-unrepresentable`.
+- **List items, never their numbers.** A `<w:numPr>`, the paragraph's or its style's, gives
+  `list_level` (its `<w:ilvl>`) and projects as an item at that depth, written `- `: the `1.` or
+  `a)` Word renders from `word/numbering.xml` is in no byte of the paragraph.
+- **Tables.** A `<w:tbl>` is a `tables[]` record: a row per `<w:tr>`, a cell per `<w:tc>` on the
+  table's grid (`<w:gridBefore>`, `<w:gridSpan>`), a `<w:vMerge>` continuing the cell above
+  extending it, a nested table its own record. `Extracted`, geometry typed absent, and its `page`
+  is the part it was read from. Both projections write it as they write any table. It spends the
+  document's one slot budget (decision #135): a table that would pass what is left is not built,
+  counted under `office-tables-not-built`, and its runs read as paragraphs. The DOCX profile no
+  longer declares `tables-not-extracted`, and, as an XLSX or PPTX profile, measures no ink, so
+  does not take `undrawn-table-edges-not-supplied`.
+- **Headers, footers and footnotes are read.** Each header a section references comes before the
+  body, once, each footer after it, then the footnotes, each bound by relationship and parented by
+  a part id of its own. Header and footer runs carry `furniture`, so `--drop-furniture` leaves
+  them out, counted under `page-furniture-not-projected-v1`. A footnote's number is rendered and
+  is not written, and a separator or continuation notice is passed over by its `w:type`. A `first`
+  header or footer is read only where its section states `<w:titlePg/>`, an `even` one only where
+  `word/settings.xml` states `<w:evenAndOddHeaders/>`, since Word shows neither otherwise. A
+  header, footer, footnotes or styles part that will not read is counted, whatever its name, and
+  the rest of the document is read. Endnotes, comments, and a header, footer or footnotes part
+  nothing references or Word does not show are still counted under `office-parts-not-read`. **With
+  `--drop-furniture`, a resume whose name sits in its page header loses it**, as the option asks;
+  a table in a header or footer goes with it, counted.
+- **List depth** steps in one level at a time: an item opens at the top with no list open, one
+  level under the open item where its `<w:ilvl>` is deeper, so a list starting at level two is no
+  indented code block and a jump from one to four no lazy text; and an item goes back out to the
+  depth its `<w:ilvl>` was set at, so levels 2, 3, 2 set the third beside the first.
+- **A layout table is written as its blocks.** A `<w:tbl>` with a cell holding two paragraphs or
+  more with text, or holding a nested table, as a Word resume laid out as a table does, projects
+  row by row and cell by cell, a paragraph a block, a heading or a list item as outside a table,
+  a nested table in place (a grid of its own where it is one); counted under
+  `layout-table-as-blocks-v1`, new. Its `tables[]` record stays: the file states a table, and only
+  the projection chooses blocks. A grid table, one paragraph a cell and nothing nested, stays GFM.
+  **Known limit**: a table nested in the last cell, after every run of the outer table, is not
+  seen to be nested.
+- **A table with no run in it** is not written at the document's end; it is counted under
+  `gfm-table-not-projected-v1`. A cell's paragraphs are joined with one space where neither side
+  holds whitespace.
+- **Known limits**: a `<w:numPr>` naming no numbering in `word/numbering.xml` still projects as a
+  list item; a `<w:vMerge>` continue with no restart above is a cell of its own; a deleted row
+  (`<w:trPr><w:del/>`) is kept, its deleted text unread; `<w:tblGrid>` and `<w:gridAfter>` are not
+  read, so the grid's width is its widest row.
+- **Library**: `OfficeRunAttributes` gains `heading_level`, `list_level` and `furniture` (each
+  omitted when absent) and derives `Default`; `TableDetection` gains `office`;
+  `TABLE_DETECTION_DOCX_V1`. In `ethos_parser_office::docx`: `read_part`, `read_styles`, `Styles`,
+  `ParagraphProperties`, `Table`, `Cell`, `Reference`, `even_and_odd_headers`,
+  `Run::paragraph_properties`, and `MainPart`'s `tables` and `references`.
+- **Measured**: the made-up Word resumes: headings at their level 0 -> 150 of 150, list items
+  marked 0 -> 190 of 190, table rows 0 -> 60 of 60, header, footer and footnote 0 -> 20 of 20
+  each, the name 10 -> 20 of 20; the financial set's DOCX table rows 0 -> 69 of 69, totals 7 -> 19
+  of 19, header and footer 0 -> 5 of 5 each. Nothing falls. ParseBench and opendataloader-bench (PDF) unchanged; on the owner's private real Word resumes the tuning set keeps every field and gains contact details read from footers, and the held-out set loses one name and one company (accepted by the owner on 2026-11-14).
+
+### A workbook's sheets and a slide's tables are tables, and a number shows as its format displays it (decision #135)
+
+Rule ids `xlsx-sheet-table-v1`, `pptx-tbl-v1` and `xlsx-number-format-v1` (was
+`xlsx-stored-value-verbatim-v3`); the XLSX and PPTX `profile_sha256` move. PDF and DOCX output is
+byte for byte what it was, profiles included.
+
+- **Each worksheet is one table.** Its cells sit at the addresses the sheet states, counted from
+  the first row and column any of them holds, and a `<mergeCells>` range spans the cell it opens.
+  `tables[]` holds one record per sheet with text: `extracted`, no geometry, the locator
+  cross-check `not_applicable`, `detection_rule` `xlsx-sheet-table-v1`, its `page` the sheet's
+  part id. Every cell is still one node, addressed `{part, sheet, row, column}` as before.
+- **Each `<a:tbl>` on a slide is one table**, read from `<a:tr>` and `<a:tc>`, `gridSpan` and
+  `rowSpan`, a span reaching no further than the rows and columns the table states. Its runs are
+  nodes now, where the frame was counted under `office-parts-not-read`; a frame holding a chart,
+  SmartArt or an object still is, and so is a cell before any `<a:tr>`. A cell's record text is
+  its paragraphs joined by one space where neither holds whitespace at the seam, and a paragraph's
+  runs as they stand, as the projections write them (`Revenue FY2026`; `Rev` and `enue` are
+  `Revenue`), but for an `<a:br>` between two runs, which parts them as a paragraph's end does
+  (`North<a:br/>America` is `North America`, where it read `NorthAmerica`). The break holds no
+  text, so the run after it records it: `OfficeSlideRunAttributes.line_break_before`, written only
+  where true, on a run in a table cell (a shape's runs are blocks of their own). A row or cell in an `<mc:AlternateContent>` branch passed over is no row or cell of
+  the table, though the locators count it.
+- **A cell under a merge takes no slot**: one the file marks `hMerge`/`vMerge`, or whose slot an
+  earlier cell's span covers, or that a sheet's `<mergeCells>` range covers and does not open,
+  whatever the range's first cell holds and wherever the sheet lists the cell. Its text stays in
+  its node, projected after the table, and is counted under `office-covered-cells-not-placed`,
+  new.
+- **`PptxLocator` gains `row` and `column`**, optional and written only for a run in a table cell:
+  the 1-based `<a:tr>` and `<a:tc>`. With them, `shape` is the 1-based position of the
+  `<p:graphicFrame>` among the part's graphic frames, and `paragraph` and `run` count within the
+  cell. Every address a deck had before keeps its spelling; a reader that denies unknown fields
+  refuses a cell's run rather than reading a frame's position as a shape's.
+- **A number cell shows as its number format displays it**, and keeps what it stores:
+  `OfficeCellAttributes.stored_value`, optional, holds the `<v>` wherever `text` is the formatted
+  value, and `derivation` stays `extracted` (the format is the workbook's own statement). Dates
+  (built-ins 14–22 and `y`/`m`/`d`/`h`/`s`/`AM/PM` codes, English month and day names, the 1900
+  system with its 29 February 1900 and the 1904 system), digit placeholders, grouping at the widths
+  the code writes (`#,##,##0.00` is lakh grouping), `%`, literal text and `[$₹-4009]`, up to four
+  sections and `[>=100000]` conditions on positive values. The value is first rounded to fifteen
+  significant digits, as Excel displays a double (`0.22499999999999998` under `0.00` is `0.23`),
+  then half away from zero on its decimal digits. A comma between digit placeholders groups by
+  threes, except the Indian pattern (`#,##,##0`), written as the code writes it, as Excel shows it
+  on an Indian locale. Seconds round up only where the code shows a time, so a date alone is never
+  the next day. Built-in 14 and 22, which Excel shows in the reader's short-date order, are written
+  `yyyy-mm-dd` and `yyyy-mm-dd h:mm`, an order this build chose, counted under
+  `office-locale-dates-written-iso`, new.
+- **Anything else is the stored value, counted** under `office-number-formats-not-rendered`, new:
+  a scientific, fraction or elapsed-time code, a fill, a locale's own format, a non-English LCID
+  with month or day names, a built-in the standard leaves to the locale, a condition on a negative
+  value. A styles part that is missing, broken or names a format id that is no number refuses
+  nothing: styled numbers show what they store, counted, and where the part is missing or broken
+  every number is, since style zero's format is the part's to state too. A conditional format's
+  `<numFmt>` (in `<dxfs>`) styles no cell. A string, boolean or error cell shows what it stores,
+  as before.
+- **Markdown and HTML** write a worksheet's table under its sheet's name: `# Ledger`, `<h1>`. The
+  name is quoted from the locator every cell carries and is `syntax`, so a quote of it does not
+  invert; no node is added for it. Folded into `markdown-blocks-v14` and `html-blocks-v14`, which
+  no release carries.
+- **`capabilities.tables` is true** for both profiles, `table_detection` gains the optional key
+  `office` (written only where an office rule runs, so a PDF or DOCX profile is unchanged), and a
+  table-reading profile that measures no ink does not declare `undrawn-table-edges-not-supplied`,
+  whose rules read drawn ink. **One slot budget per document**: the tables of one workbook or deck
+  span a million slots between them; one that would pass what is left is not built and is counted
+  under `office-tables-not-built`, new; its cells stay nodes.
+- **Measured** on `docs/measurements/financial-en` (XLSX column): table rows 0 -> 74 of 74, exact
+  74 of 74, amounts verbatim 3 -> 82 of 82, dates 0 -> 20 of 20, `₹` beside its amount 0 -> 7 of 7,
+  totals 0 -> 15 of 15, cell text 171 -> 292 of 292; DOCX and PDF unchanged on every check.
+  PDF and DOCX output byte-identical on the gate, the engine fixtures and the review probes, so ParseBench and opendataloader-bench do not move.
+
+### Repeated running heads and folios can be left out of Markdown and HTML, counted (decision #134)
+
+No rule id and no `profile_sha256` moves: the default output is byte for byte what it was.
+
+- **`markdown --drop-furniture` and `html --drop-furniture`**, on a representation or, for
+  `markdown`, with `--source`. A furniture line — a page's consecutive runs on one baseline the
+  reader flagged as its header or footer, or a tagged page marked `/Artifact` — is left out
+  whole where another page's furniture repeats its text on the same side of the page and across
+  the same place: whitespace aside, each run of digits read as one, so `Page 9 of 12` and
+  `Page 10 of 12` repeat. A line set a run per word, or per letter, goes whole or stays whole,
+  so a title set apart on one page keeps every word. A cover's year at its foot stays where the
+  folios stand elsewhere. An `/Artifact` can be a watermark or a background's text, and one
+  repeated so goes too. The block around a line left out ends there, and so does the list
+  around it, so the blocks either side are the default's with the furniture's own cut out. The
+  representation keeps every run.
+- **Counted as `page-furniture-not-projected-v1`**, a new census bucket, so a consumer
+  validating bucket codes against a closed list must add it. A run left out is counted whole,
+  its whitespace and any U+0000 with it, and nowhere else; the census balances. The bucket
+  appears only where the option left something out, and where it found nothing to leave out the
+  artifact is the default one, so the bucket is the whole record of the option.
+- **Library**: `to_markdown_with` and `to_html_with` take `ProjectionOptions`, non-exhaustive,
+  built from `ProjectionOptions::default()` with `drop_furniture` set; `to_markdown` and
+  `to_html` are those calls with the default. MCP's `markdown` tool and the SDKs do not offer it
+  yet.
+- **Known limits.** A numbered title at the head of each chapter's first page (`Chapter 1`,
+  `Chapter 2`) reads as a running head and goes, and a year set where the folios stand goes with
+  them. A folio in roman numerals (`ii`, `iii`) is not read as a number. Found beside it and left
+  for its own decision: by default a body line ending in a hyphen is closed up with a flagged
+  footer after it (`recalcu-` + `Confidential` reads `recalcuConfidential`), since the hyphen
+  rule refuses a join across an `/Artifact` but does not read the furniture flag; with the
+  option the footer is no longer there to join.
+- Default output byte-identical on ParseBench, opendataloader-bench, the gate documents and the engine fixtures; with the flag, NIST SP 800-207 leaves out its running head and margin line on 56 pages and 50 folios (4,523 runs, 7,421 characters) and its first three pages lose nothing; the IRS forms lose nothing.
+
+### A narrow band set on its neighbour's rows is read with them (decision #133)
+
+Rule id `gutter-columns-v5`; `profile_sha256` moves.
+
+- **Dates beside a job are read with the job.** A résumé's dates in a narrow column beside each
+  job's first line, or flush right on it, cleared the 12pt gutter and overlapped the text, so the
+  reading-order cut took them for a column and read every date after the last job. Two
+  neighbouring bands are now one band when one is at most half as wide as the other, the other
+  is a single column, three of every four of the narrow band's cells (lines no more than a
+  leading and a quarter apart) start on the first line of one of the column's blocks, within a
+  quarter of its leading, and end inside that block, and one such cell, with another below it,
+  ends before its block's last line. A page whose only cut that was is read down its leading-gap
+  slabs in the order the document drew them, never sorted by baseline; inside a column the joined
+  band is read by its blocks, so each date follows its entry.
+- Two bands of one measured width are never joined. A band holding several columns that a strip
+  across them hides is no column to join, nor is a column of one value per line however marks are
+  raised between them, nor a shorter column whose entries start level with its neighbour's. A
+  sidebar keeps its column, at its own leading or on the body's grid, where its boxes run past the
+  paragraphs beside them or start between their heads. `reading_order::columns`, which table
+  detection reads, does not join. The half, the quarter and the three in four are chosen, not
+  measured.
+- Costs. A sidebar whose boxes each start level with a paragraph and end inside it, one ending
+  before its paragraph does, is read as notes on those paragraphs: a skills sidebar beside a
+  résumé's sections joins and is read in draw order or interleaved by slab. A page undivided by
+  the join keeps the draw order inside each slab, so a date or label at the left drawn after its
+  text is read after it, right before the next entry.
+- Not caught: a label column as wide as its values, one label per value (the OCR probe i03), and
+  page numbers beside a contents list set at one leading.
+- ParseBench: 5 of its 2,037 documents read differently (Ford p16, Marico p46, orbia p15, SERFF TX 838 and att10k: side heads, labels and figures now read with their rows) and every score is unchanged, with and without `--ocr`; opendataloader-bench byte for byte; the made-up resumes with a date column, dates flush right and right-hand dates read each date with its entry.
+
+### A scan read without `--ocr` says so, and an image file's size is checked (decision #132)
+
+No rule id and no profile field moves; `profile_sha256` is unchanged by this entry.
+
+- **A page the OCR trigger takes is counted without the flag.** A page that shows no text and
+  places one image read as a blank page under the default profile. It is now counted under
+  `scanned-page-not-recognized`, by the reason `--ocr` would refuse it for before asking the
+  recognizer (a filter, a mask, a colour space, a placement), or as `ocr-not-requested`. Markdown
+  text is unchanged; the representation, and the Markdown and HTML artifacts'
+  `representation_sha256`, move on such documents only: 72 of ParseBench's 2,024 extracted
+  documents (69 not requested, 2 CCITT, 1 JPEG 2000), none of the gate's, the engine fixtures' or
+  opendataloader-bench's 200. A page the trigger itself refuses (several images, an inline image)
+  is not counted without the flag.
+  Owner, 2026-11-14.
+- **`extract`, `markdown` and `html` name every unread scanned page on stderr**, in one line: how
+  many, each reason, and the flag for the pages not requested — `--ocr`, or on a record
+  `extract --ocr` or `markdown --source FILE --ocr`. The Markdown artifact carries no limitation,
+  so `markdown --source --ocr` on a CCITT or JPEG 2000 scan exited 0 with empty Markdown and said
+  nothing. A recognizer's reason is written with control characters as spaces. MCP prints nothing.
+- **`markdown RECORD --ocr` is a usage error**, as its help always said: the flag reads a source.
+- **A filter the recognizer does not decode is named before the colour space is read**, by the
+  recognizer's own rule — the first filter that is neither Flate nor a final DCT — and the image is
+  not sent. A JPEG 2000 stream may leave its colour space to its own header, and such a page was
+  refused `colour-space-not-read`. No `--ocr` artifact moves: the gate's, the fixtures',
+  opendataloader-bench's and ParseBench's 2,079 files extract byte-identical with the flag.
+- **An image file is refused when its header and the recognizer disagree on its size.** The page
+  was built from the size the recognizer answered, unchecked. The header — a PNG's `IHDR`, a JPEG's
+  first frame header, found past tables, fill bytes and stray bytes, a height of 0 stating none —
+  is read before the file is sent: `image-size-not-read` where it states no size,
+  `image-size-mismatch` where the answer differs. The committed PNG and JPEG scans hold the same
+  nodes and limitations as before.
+- ParseBench and opendataloader-bench scores unchanged, with and without `--ocr`; `--ocr` artifacts byte-identical on the gate, the engine fixtures, opendataloader-bench and ParseBench; 72 of ParseBench's 2,024 documents gain the page limitation without `--ocr` (69 `ocr-not-requested`, 3 naming the codec `--ocr` cannot read).
+
+### A raised or lowered mark stays on its line (decision #131)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet.
+
+- **No line break around a mark inside a line.** On a page that declares no structure, Markdown
+  and HTML wrote a line break before and after every superscript and subscript, since a mark sits
+  off its line's baseline and the two runs read as two lines of one layout unit:
+  `The rate of interest` / `<sup>1</sup>` / `was revised`, and `notification.` / `<sup>1</sup>`.
+  A mark and the run before it, and the run after it, now go on along the line with nothing
+  between them, or one space where the page drew one — in either run's text, or a gap a word gap
+  wide. A run on the next line still opens a line, so a line that a mark closes or opens on keeps
+  its break: a run starting left of the run before it, or at its x, set back over its ink by more
+  than a glyph — or, where that run's size has no measure, starting before its advance ends — or on
+  a baseline two median glyphs or more from it, about an em where `scripts.rs` sets a script
+  within half its line's em, measured from the glyphs the page draws rather than `font_size`, the
+  `Tf` operand a page that scales its text by the matrix sets at 1. Counted as `layout-unit-line-joins-v1`, as
+  the line break it replaces was. **Known limit**: in a column of vertical text whose glyphs the
+  script rule reads as marks, a glyph set just right of the one above joins it.
+- **Emphasis stays open where only the script changes.** An italic letter and its italic index
+  drawn together wrote `*U**<sub>t</sub>*`, which CommonMark reads with its asterisks as text; with
+  nothing between the two runs the span now stays open and only the script's element closes and
+  opens, `*U<sub>t</sub>*`, and in HTML `<em>U<sub>t</sub></em>`.
+- ParseBench content 0.6754 -> 0.6752 engine-only and 0.7550 -> 0.7548 with `--ocr` (2 pages up, 12 down; the owner accepted it on 2026-11-14: the scorer strips tags, so `Taha<sup>1</sup>` reads as one word where its answer key writes `Taha 1`), formatting, tables, charts and grounding unchanged on every page; opendataloader-bench NID 0.8916 -> 0.8918 and MHS 0.5902 -> 0.5903 (15 and 10 documents up, none down).
+
+### A DOCX paragraph is one block, keeping its tabs and line breaks (decision #130)
+
+Rule ids `docx-wt-verbatim-v4` and `docx-document-order-v3`, so the DOCX profile's
+`profile_sha256` moves. The projection change is folded into `markdown-blocks-v14` and
+`html-blocks-v14`, which no release carries yet.
+
+- **A run holding only a tab or a line break is a node**, as is one holding only a no-break
+  hyphen. Word writes a label's tab and a line break as runs of their own,
+  `<w:r><w:tab/></w:r>`, and the reader left them out, so `Company Name` and `: Acme Ltd` had
+  nothing between them. A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab Word
+  sets a right-aligned date with, is a tab. Only an element directly in a `<w:r>` states a
+  character, so a text box's tab stop is none.
+- **A run after a text box is its own paragraph's.** A box's `<w:p>` sits inside a run of the
+  paragraph anchoring it, and the counter gave every run after it the box's paragraph: a wrong
+  locator, and `Ira Testcase` welded to `Experience` once paragraphs joined. And a run holding text
+  either side of a box it anchors keeps both: the box's run took its place, so only the box's text
+  was read. It stays one node at its own address, standing where it opens, before the box's runs.
+- **One paragraph, one block.** Every DOCX run was a Markdown block and a `<p>` of its own:
+  `Name:` / `Asha Patil`, and a sentence with one bold phrase in three. The runs one `<w:p>` holds
+  are now one block, joined with a line break where the paragraph holds one between them, a tab
+  where it holds one, a space for any other whitespace, and nothing where it holds none, so a
+  word cut into runs stays one word. Counted as `block-element-run-joins-v1`.
+- **A tab or a line break inside a run is kept**, where it read as a space: `Company Name<TAB>:
+  Acme Ltd` and `Designation:<TAB>Senior Accountant` keep their tabs, an address its lines. This
+  departs from `normalize`'s one space for a DOCX run alone. Whitespace a `<w:t>` does not
+  preserve, holding a space, is the XML's own indentation and one space. A line break before a
+  line CommonMark reads as a block of its own (`- item`, `1. item`, `#`, `---`, a fence, an HTML
+  tag), read across the runs Word cut the line into, is one space, as decision #126 writes it.
+- **Known limits.** `locate` finds no quote that crosses two runs of a DOCX paragraph, though the
+  Markdown now shows them together: `locate-scalar-exact-v1` never crosses a block, and on a
+  page-less document every run is a block. A page-less paragraph rule for `locate` is the
+  follow-up. `ground` likewise stays one element per run. A `<w:sym>` symbol, a picture set inline
+  and a ruby reading yield no text, so the words either side join with nothing between them
+  (`Phone98765`), as they did inside one block before: the record cannot tell those runs from a
+  tracked deletion inside a word or a field's end before its punctuation, where a space would
+  split the word. PPTX is unchanged: its reader does not read `<a:br/>`, so joining a slide
+  paragraph's runs would weld the words either side of a break. PDF output is unchanged.
+- the made-up Word resumes in docs/measurements/office-resumes keep 240 of 240 expected lines whole (68 before; a tab-only run 0 -> 60 of 60, a break inside a run 0 -> 67 of 67), the bold-phrase sentence one paragraph in 20 of 20 (0 before) and every job's lines in 50 of 50 (16 before); the financial set's DOCX lines 60 -> 96 of 96 and the rupee sign beside its amount 15 -> 18 of 26. ParseBench and opendataloader-bench, PDF only, unchanged on every page.
+
+### Chart, pie and stroke geometry no longer calls the platform's `hypot`
+
+- Lengths in the chart, pie and line readers are exact integer roots, and a stroke's width and a
+  slice's distances to its centre are taken in IEEE arithmetic alone, where `f64::hypot` called
+  each operating system's own libm. An integer length of 2^25 centipoints or more, off any page,
+  can differ by 1 cp from before: exact, where the old float was not. Output is byte-identical on
+  the gate and engine fixtures, ParseBench's 568 chart PDFs and opendataloader-bench's 200;
+  `atan2` in the pie reader still calls libm.
+
+### Small pieces stay with their text on untagged pages (decision #129)
+
+Rule id `line-units-v7`; `profile_sha256` moves.
+
+- **A footnote mark set against its line's last letter is that line's.** A script had to lie inside
+  its line, so a mark set after the last letter was a layout unit of its own and split its
+  paragraph. It now joins where it starts no more than a quarter of the line's height past the
+  line's end and ends no more than the line's height past it, so a run-in heading's text and a
+  smaller aside set after a line stay lines of their own.
+- **A list marker or a label set apart from what follows it stays with it.** A piece that is a list
+  marker alone (`1.`, `(a)`) or ends in a colon (`Invoice No:`) ended short and was cut from the
+  piece after it on its line; it now ends short of nothing where the piece after it is no such
+  piece itself, so a label with no value does not take the next label's.
+- **A list item's next line at its hanging indent continues it.** Set a line and a half below, it
+  started more than its height right of the marker and was a unit of its own; a line within a
+  quarter of its height of where the item's text starts after a marker alone in its run, opening
+  with a word, now continues the item within the page's body leading and a twentieth more, or
+  within its own height on a page that sets no leading of its own. A marker set in one run with
+  its text sets no hanging indent. The quarter and the height are chosen, not measured.
+- Geometry and punctuation alone: no list or paragraph role is read from layout, and a unit is not a
+  list item.
+- ParseBench visual grounding 0.5987 -> 0.5999 engine-only and 0.6312 -> 0.6325 with `--ocr` (12 and 13 pages up, 4 down), content unchanged at four places (5 pages down by at most 0.0007, where a numbered paragraph's `13.` and a label's value now join their text), tables, charts and formatting unchanged on every page; opendataloader-bench NID, TEDS and MHS unchanged (12 documents' Markdown moves, no score).
+
+### Build and release
+
+- **The Linux binary is built on `ubuntu-22.04`**, so it needs glibc 2.35 or newer (Ubuntu 22.04,
+  Debian 12) rather than 0.65.0's 2.39, which came from two weak symbols. `ci/release-artifacts.sh`
+  prints the highest `GLIBC_` version each Linux binary references and fails the release above
+  2.35. GitHub supports that runner image until 2027-04-17.
+- **Every release archive carries `ethos-parser-ocr`** beside `ethos-parser`, where `--ocr` looks
+  for it, and `NOTICE`, which now names the PP-OCRv5 models (Apache-2.0). The script builds the
+  recognizer on its own pinned toolchain and adds one `extract --ocr` read of a committed scan to
+  the fingerprint the four runners must agree on. The recognizer refuses an x86-64 CPU without AVX2
+  and FMA, so the script asks Rosetta 2 to report them (`ROSETTA_ADVERTISE_AVX=1`); the local
+  `x86_64-apple-darwin` pair then matches the arm64 fingerprint byte for byte. The engine's output
+  is unchanged.
+
+### Each tagged list item stays its own item (decision #128)
+
+Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries yet, so no rule
+id and no `profile_sha256` moves.
+
+- **Two list bodies the file numbers are two items.** Both projections joined every body run at
+  one depth into the open item, since two sibling `/LI`s share one role path, so NIST SP 800-218's
+  four Executive Summary bullets, each its own `/LBody`, read as one item. Each body's object
+  number, which the reader carries since decision #84, now tells them apart.
+- A body still joins its own `/Lbl`, and one body's runs stay one item across its lines. A body
+  set no lower than the open run's line joins it after a marker drawn in the `/LI` itself, as
+  Chromium draws a bullet, and where it **reads on**: it opens lowercase with no label of its own
+  (`b)`, `ii.` read across the glyphs it is drawn in, Word's `o`), as a column break carries a
+  bullet to the top of the next column in a new `/LBody`. A body on the next line down, or one
+  opening with a capital, a bullet or a number, is an item of its own.
+- **The census counts only the guesses as guesses.** A join inside one numbered element now counts
+  under `block-element-run-joins-v1`, as a paragraph's does; `gfm-list-item-run-joins-v1` counts a
+  join where the file leaves either run's element unnumbered, and the two joins above. On the
+  gate's NIST SP 800-218 every one of its list joins was inside one body. An untagged page
+  projects byte for byte as before.
+- ParseBench content 0.6753 -> 0.6754 engine-only and 0.7549 -> 0.7550 with `--ocr` on top of decision #126 (10 pages up, 1 down by 0.0004: a bullet continued at a column's top), formatting, tables, charts and grounding unchanged on every page; opendataloader-bench byte for byte, none of its documents tagged; NIST SP 800-218's list items 24 -> 55.
+
+### Columns of prose are no table, and a header set flush left heads figures set flush right (decision #127)
+
+Folded into `whitespace-tracks-v16`, which no release carries yet, so no rule id and no
+`profile_sha256` moves.
+
+- **Columns of prose written row by row are no table.** The whitespace rule took a grid the
+  content stream wrote row by row for a table, so a two-column article whose stream writes each
+  left line, then the right line level with it, read as a table of interleaved lines. A grid whose
+  every column is running text, and whose first column is not short labels, is now refused in any
+  order, and its lines are passed over down to the last that opens a line lower-case, so no shorter
+  run of them stands either, and a table set right under them on their pitch and tracks, which grew
+  into them, is still read. A table with a column of anything else keeps its row order, and so does
+  one whose first column names every row in under thirty characters: a model's settings, a data
+  dictionary. One side of two tables drawn side by side, which stood as one, is unchanged. This
+  reverses one case decision #125 kept: three columns of prose on a drawn page.
+- **A header set flush left over figures set flush right heads them.** `Qty`, `Rate` and `Amount`
+  set where their columns' space opens sat on no track, and the nearest centres put `Rate` over
+  `Qty`'s figures, so the header stood outside the table and its first row of figures became the
+  header. Each name now heads the first column ending at or past its own end, where the names come
+  out left to right and each starts past the column before. A name reaching back over the figures
+  before it heads nothing.
+- ParseBench (engine and `--ocr`), opendataloader-bench and DocuShell's 49 test PDFs are unchanged on every page; the review's probes of both shapes now read right.
+
+### A tagged paragraph's next line keeps its line break (decision #126)
+
+Rule ids `markdown-blocks-v14` and `html-blocks-v14`; `profile_sha256` moves.
+
+- **A run that opens its block element's next line joins it with a line break,** where decision #84
+  wrote one space. Chromium's export opens a marked-content sequence at every line, so a resume's
+  fields read as one line: `Designation: **Relationship Manager** Company: ICICI Bank Duration: …`.
+  Each field now keeps its line, inside one Markdown block or one `<p>`, as decision #109 keeps an
+  untagged paragraph's lines.
+- **One space still in a heading**, which an ATX heading must keep on one line; **on a line its column
+  wrapped** (decisions #47, #81, #85); **from a bold run onto a bold run**, so a bold paragraph its
+  column wrapped stays one span, unless the second is a label ending in `:` — `**Duration:** 2019`
+  keeps its line; and **before a line CommonMark reads as a block of its own** — a list marker, `>`,
+  `#`, a fence, an HTML tag, or a line of `=`, `-` or `|` alone, a marker its runs cut along the
+  line, `1` and `. Led a team`, read whole — so HTML's one `<p>` and the Markdown agree. A soft
+  wrap inside one sequence stays a space.
+- **A short bold line over another bold line reads as one span**, `**ICICI Bank Relationship
+  Manager**`: two lines alone cannot tell it from a wrap, since the second's first word would not
+  have fitted after the first within either.
+- **Any other span closes at the line's end** and opens again on the next: `*a*` over `*b*` is written
+  where `*a b*` was, and so is a script.
+- The join is unchanged, so `ground`, `locate` and the census are too; an untagged page projects byte
+  for byte as before.
+- ParseBench: content 0.6750 -> 0.6753 engine-only and 0.7546 -> 0.7549 with `--ocr` (16 pages up,
+  5 down by at most 0.0024; the words are the same, only line breaks move), formatting 0.5131 ->
+  0.5132, tables, charts and grounding unchanged on every page. opendataloader-bench is byte for
+  byte, none of its documents tagged. DocuShell's made-up resume sets, from raw Markdown: all jobs
+  right 67% -> 100% (main) and 75% -> 100% (holdout).
+
 ### A scanned page keeps a word read past its line's end, and its columns are no table (decision #125)
 
 - **A recognized word whose box encloses nothing keeps its text.** A word the recognizer read in the

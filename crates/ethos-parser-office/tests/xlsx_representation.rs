@@ -252,9 +252,11 @@ fn the_artifact_declares_its_own_profile_and_its_own_media_type() {
         Profile::docx_v0().profile_sha256().expect("a digest"),
         "and it is not comparable with a DOCX one either"
     );
-    assert!(
-        !Profile::xlsx_v0().capabilities.tables,
-        "this slice emits cells, not this engine's table IR — see `Profile::xlsx_v0`"
+    // Decision #135: each worksheet is a table, read by the rule `table_detection.office` names.
+    assert!(Profile::xlsx_v0().capabilities.tables);
+    assert_eq!(
+        Profile::xlsx_v0().table_detection.office.as_deref(),
+        Some(ethos_parser_core::TABLE_DETECTION_XLSX_SHEETS_V1)
     );
 }
 
@@ -814,4 +816,573 @@ fn crc32(data: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+// -------------------------------------------------------------------------------------------
+// Decision #135: a sheet is a table, and a number shows as its format displays it
+// -------------------------------------------------------------------------------------------
+
+/// The financial set's number formats: a date, lakh grouping, and lakh grouping after `₹`.
+const STYLES: &str = r#"<numFmts count="3"><numFmt numFmtId="164" formatCode="dd-mm-yyyy"/><numFmt numFmtId="165" formatCode="[&gt;=10000000]##\,##\,##\,##0.00;[&gt;=100000]##\,##\,##0.00;##,##0.00"/><numFmt numFmtId="166" formatCode="[&gt;=10000000]&quot;₹&quot;##\,##\,##\,##0.00;[&gt;=100000]&quot;₹&quot;##\,##\,##0.00;&quot;₹&quot;##,##0.00"/><numFmt numFmtId="167" formatCode="0.00E+00"/></numFmts><cellXfs count="6"><xf/><xf numFmtId="14"/><xf numFmtId="164"/><xf numFmtId="165"/><xf numFmtId="166"/><xf numFmtId="167"/></cellXfs>"#;
+
+/// One sheet, `Ledger`, with a styles part and a `workbookPr`, and a second, `Notes`.
+fn styled(sheet: &str, merges: &str, workbook_pr: &str) -> Vec<u8> {
+    let entries = [
+        (
+            "xl/workbook.xml".to_string(),
+            format!(
+                r#"<workbook xmlns="{MAIN}" xmlns:r="{RELS}">{workbook_pr}<sheets><sheet name="Ledger" sheetId="1" r:id="rId1"/><sheet name="Notes &amp; terms" sheetId="2" r:id="rId2"/></sheets></workbook>"#
+            ),
+        ),
+        (
+            "xl/_rels/workbook.xml.rels".to_string(),
+            format!(
+                r#"<Relationships xmlns="{PACKAGE_RELS}"><Relationship Id="rId1" Type="{RELS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="{RELS}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="{RELS}/styles" Target="styles.xml"/></Relationships>"#
+            ),
+        ),
+        (
+            "xl/styles.xml".to_string(),
+            format!(r#"<styleSheet xmlns="{MAIN}">{STYLES}</styleSheet>"#),
+        ),
+        (
+            "xl/worksheets/sheet1.xml".to_string(),
+            format!(
+                r#"<worksheet xmlns="{MAIN}"><sheetData>{sheet}</sheetData>{merges}</worksheet>"#
+            ),
+        ),
+        (
+            "xl/worksheets/sheet2.xml".to_string(),
+            format!(
+                r#"<worksheet xmlns="{MAIN}"><sheetData><row r="3"><c r="C3" t="inlineStr"><is><t>Paid by NEFT</t></is></c></row></sheetData></worksheet>"#
+            ),
+        ),
+    ];
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()))
+        .collect();
+    build_zip(&borrowed)
+}
+
+fn inline(r: &str, text: &str) -> String {
+    format!(r#"<c r="{r}" t="inlineStr"><is><t>{text}</t></is></c>"#)
+}
+
+fn ledger() -> String {
+    format!(
+        r#"<row r="1">{}</row><row r="2">{}{}{}</row><row r="3"><c r="A3" s="1"><v>46339</v></c>{}<c r="C3" s="3"><v>116000</v></c><c r="D3" s="4"><v>493098.50</v></c></row><row r="4"><c r="A4" s="2"><v>46340</v></c><c r="C4" s="5"><v>12345</v></c><c r="D4"><f>D3</f><v>39000.5</v></c></row>"#,
+        inline("A1", "Ledger FY 2026-27"),
+        inline("A2", "Date"),
+        inline("B2", "Party"),
+        inline("C2", "Debit"),
+        inline("B3", "Kiran Builders"),
+    )
+}
+
+const TITLE_MERGE: &str = r#"<mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells>"#;
+
+fn office_cell(node: &ethos_parser_core::Node) -> &ethos_parser_core::OfficeCellAttributes {
+    match &node.attributes {
+        NodeAttributes::OfficeCell(a) => a,
+        other => panic!("a cell carries cell attributes, not {other:?}"),
+    }
+}
+
+/// **A number reads as the workbook displays it, and keeps what it stores.** The date is the
+/// day numFmtId 14 shows, the amounts carry their `₹` and lakh grouping, and the stored value is
+/// on the record beside each. The failure this catches: a serial or a bare float in the text, or a
+/// formatted string with the stored value lost.
+#[test]
+fn a_number_cell_shows_its_format_and_keeps_its_stored_value() {
+    let sealed = ethos_parser_office::read(&styled(&ledger(), TITLE_MERGE, "")).expect("reads");
+    for (column, row, text, stored) in [
+        ("A", 3, "2026-11-13", Some("46339")),
+        ("A", 4, "14-11-2026", Some("46340")),
+        ("C", 3, "1,16,000.00", Some("116000")),
+        ("D", 3, "₹4,93,098.50", Some("493098.50")),
+        // A cached formula result is shown as its format shows it too; `General` shows as stored.
+        ("D", 4, "39000.5", None),
+        ("B", 3, "Kiran Builders", None),
+    ] {
+        let node = cell_at(&sealed, "Ledger", column, row).expect("the cell is a node");
+        assert_eq!(node.text, text, "{column}{row}");
+        assert_eq!(
+            office_cell(node).stored_value.as_deref(),
+            stored,
+            "{column}{row}"
+        );
+        assert_eq!(
+            node.derivation,
+            ethos_parser_core::DerivationClass::Extracted
+        );
+    }
+    assert_eq!(
+        office_cell(cell_at(&sealed, "Ledger", "D", 4).unwrap()).text_source,
+        CellTextSource::CachedFormulaResult
+    );
+}
+
+/// **A format this build does not render is counted, and the cell reads as it stores.**
+#[test]
+fn a_number_format_this_build_does_not_render_is_counted() {
+    let sealed = ethos_parser_office::read(&styled(&ledger(), "", "")).expect("reads");
+    let node = cell_at(&sealed, "Ledger", "C", 4).expect("C4 is a node");
+    assert_eq!(
+        node.text, "12345",
+        "a scientific code shows the stored value"
+    );
+    assert_eq!(office_cell(node).stored_value, None);
+    let limitation = sealed
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED)
+        .expect("the unrendered format is declared");
+    assert!(
+        limitation.detail.starts_with("1 number cell(s)"),
+        "{}",
+        limitation.detail
+    );
+
+    // Nothing unrendered, nothing declared.
+    let clean = ledger().replace(r#"<c r="C4" s="5"><v>12345</v></c>"#, "");
+    let sealed = ethos_parser_office::read(&styled(&clean, "", "")).expect("reads");
+    assert!(!sealed
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .any(|l| l.code == ethos_parser_core::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED));
+}
+
+/// **`date1904` moves serial 0 to 1904-01-01**, so one serial is a different day.
+#[test]
+fn the_1904_date_system_is_read_from_the_workbook() {
+    let sheet = r#"<row r="1"><c r="A1" s="1"><v>44877</v></c></row>"#;
+    let sealed = ethos_parser_office::read(&styled(sheet, "", r#"<workbookPr date1904="1"/>"#))
+        .expect("reads");
+    assert_eq!(
+        cell_at(&sealed, "Ledger", "A", 1).unwrap().text,
+        "2026-11-13"
+    );
+    let sealed = ethos_parser_office::read(&styled(sheet, "", "")).expect("reads");
+    assert_eq!(
+        cell_at(&sealed, "Ledger", "A", 1).unwrap().text,
+        "2022-11-12"
+    );
+}
+
+/// **A worksheet is one table, each cell at the address the sheet states.** Slots count from the
+/// sheet's first row and column holding a cell; the merge the title opens spans four columns; a
+/// cell's slot names its node, and its node keeps the address. The failure this catches: cells as
+/// paragraphs, a slot counted rather than read, or a merge dropped.
+#[test]
+fn a_worksheet_is_one_table_at_the_addresses_it_states() {
+    let sealed = ethos_parser_office::read(&styled(&ledger(), TITLE_MERGE, "")).expect("reads");
+    let payload = sealed.payload();
+    assert!(payload.assurance.capabilities.tables);
+    assert_eq!(payload.tables.len(), 2, "one table per worksheet");
+    // It looked, so it declares no absence; and no ink rule ran, so it declares no ink rule's scope.
+    for code in [
+        ethos_parser_core::codes::TABLES_NOT_EXTRACTED,
+        ethos_parser_core::codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
+    ] {
+        assert!(
+            !payload.assurance.limitations.iter().any(|l| l.code == code),
+            "{code}"
+        );
+    }
+
+    let ledger = &payload.tables[0];
+    assert_eq!(
+        ledger.detection_rule,
+        ethos_parser_core::TABLE_DETECTION_XLSX_SHEETS_V1
+    );
+    assert_eq!(
+        ledger.derivation,
+        ethos_parser_core::DerivationClass::Extracted
+    );
+    assert_eq!((ledger.rows, ledger.columns), (4, 4));
+    assert!(matches!(
+        ledger.geometry,
+        GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind)
+    ));
+    assert!(matches!(
+        ledger.locator_check.outcome,
+        ethos_parser_core::CheckStatus::NotApplicable { .. }
+    ));
+    let at = |row: u32, column: u32| {
+        ledger
+            .cells
+            .iter()
+            .find(|c| (c.position.row, c.position.column) == (row, column))
+            .unwrap_or_else(|| panic!("a cell at ({row}, {column})"))
+    };
+    let title = at(0, 0);
+    assert_eq!((title.position.rowspan, title.position.colspan), (1, 4));
+    assert_eq!(title.text, "Ledger FY 2026-27");
+    let party = at(2, 1);
+    assert_eq!(party.text, "Kiran Builders");
+    let node = payload
+        .nodes
+        .iter()
+        .find(|n| n.id == party.node_ids[0])
+        .expect("the cell names a node");
+    assert_eq!(
+        node.native_locator,
+        NativeLocator::Xlsx(XlsxLocator {
+            part: "xl/worksheets/sheet1.xml".into(),
+            sheet: "Ledger".into(),
+            row: 3,
+            column: "B".into(),
+        })
+    );
+    // Every node is in exactly one cell, and its table is parented where the node is.
+    assert_eq!(
+        payload.tables.iter().map(|t| t.cells.len()).sum::<usize>(),
+        payload.nodes.len()
+    );
+    assert_eq!(ledger.page, node.parent);
+
+    // The second sheet's one cell, at C3, is its table's (0, 0).
+    let notes = &payload.tables[1];
+    assert_eq!((notes.rows, notes.columns), (1, 1));
+    assert_eq!(notes.cells[0].text, "Paid by NEFT");
+}
+
+/// **The Markdown is a table under its sheet's name.** The name is syntax, quoted from the
+/// locator every cell carries; the cells are source; the census still balances.
+#[test]
+fn a_worksheet_projects_as_a_table_under_its_name() {
+    let sealed = ethos_parser_office::read(&styled(&ledger(), TITLE_MERGE, "")).expect("reads");
+    let profile = Profile::default();
+    let md = ethos_parser_core::to_markdown(
+        &sealed,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects");
+    assert!(
+        md.markdown.starts_with(
+            "# Ledger\n\n| Ledger FY 2026-27 |  |  |  |\n| --- | --- | --- | --- |\n| Date | Party | Debit |  |\n| 2026-11-13 | Kiran Builders | 1,16,000.00 | ₹4,93,098.50 |"
+        ),
+        "{}",
+        md.markdown
+    );
+    assert!(
+        md.markdown.contains("# Notes & terms\n\n| Paid by NEFT |"),
+        "{}",
+        md.markdown
+    );
+    let heading = md.anchor_map.segments.first().expect("a segment");
+    assert_eq!(heading.kind, ethos_parser_core::SegmentKind::Syntax);
+    assert!(md.coverage.balances());
+    let html = ethos_parser_core::to_html(
+        &sealed,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.html_rule,
+    )
+    .expect("projects");
+    assert!(
+        html.html.contains("<h1>Notes &amp; terms</h1>\n<table>"),
+        "{}",
+        html.html
+    );
+}
+
+/// **A sheet too wide for a table is counted, and its cells are still read.**
+#[test]
+fn a_sheet_past_the_slot_ceiling_is_counted_rather_than_tabled() {
+    // 2,000 rows by 702 columns is 1,404,000 slots.
+    let sheet = format!(
+        "{}{}",
+        r#"<row r="1"><c r="A1"><v>1</v></c></row>"#,
+        r#"<row r="2000"><c r="ZZ2000"><v>2</v></c></row>"#
+    );
+    let sealed = ethos_parser_office::read(&styled(&sheet, "", "")).expect("reads");
+    let payload = sealed.payload();
+    assert_eq!(payload.tables.len(), 1, "only the second sheet is a table");
+    assert!(cell_at(&sealed, "Ledger", "ZZ", 2000).is_some());
+    let limitation = payload
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::OFFICE_TABLES_NOT_BUILT)
+        .expect("declared");
+    assert!(
+        limitation.detail.starts_with("1 worksheet(s)"),
+        "{}",
+        limitation.detail
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// Decision #135, after review: one slot budget, covered cells, styles that will not read
+// -------------------------------------------------------------------------------------------
+
+fn limitation<'a>(
+    sealed: &'a ethos_parser_core::DocumentRepresentation,
+    code: &str,
+) -> Option<&'a ethos_parser_core::Limitation> {
+    sealed
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == code)
+}
+
+/// **One slot budget for the whole workbook.** Two sheets of 600,000 slots each: the first is a
+/// table, the second would pass the million and is counted. The failure this catches: a ceiling
+/// per table, which let twenty such sheets in an 8 KB file project 60 MB.
+#[test]
+fn a_workbooks_tables_share_one_slot_budget() {
+    let sheet =
+        r#"<row r="1"><c r="A1"><v>1</v></c></row><row r="600"><c r="ALL600"><v>2</v></c></row>"#;
+    let entries = [
+        (
+            "xl/workbook.xml".to_string(),
+            format!(
+                r#"<workbook xmlns="{MAIN}" xmlns:r="{RELS}"><sheets><sheet name="A" sheetId="1" r:id="rId1"/><sheet name="B" sheetId="2" r:id="rId2"/></sheets></workbook>"#
+            ),
+        ),
+        (
+            "xl/_rels/workbook.xml.rels".to_string(),
+            format!(
+                r#"<Relationships xmlns="{PACKAGE_RELS}"><Relationship Id="rId1" Type="{RELS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="{RELS}/worksheet" Target="worksheets/sheet2.xml"/></Relationships>"#
+            ),
+        ),
+        (
+            "xl/worksheets/sheet1.xml".to_string(),
+            format!(r#"<worksheet xmlns="{MAIN}"><sheetData>{sheet}</sheetData></worksheet>"#),
+        ),
+        (
+            "xl/worksheets/sheet2.xml".to_string(),
+            format!(r#"<worksheet xmlns="{MAIN}"><sheetData>{sheet}</sheetData></worksheet>"#),
+        ),
+    ];
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()))
+        .collect();
+    let sealed = ethos_parser_office::read(&build_zip(&borrowed)).expect("reads");
+    assert_eq!(sealed.payload().tables.len(), 1);
+    assert_eq!(
+        sealed.payload().nodes.len(),
+        4,
+        "every cell is still a node"
+    );
+    let l =
+        limitation(&sealed, ethos_parser_core::codes::OFFICE_TABLES_NOT_BUILT).expect("declared");
+    assert!(l.detail.starts_with("1 worksheet(s)"), "{}", l.detail);
+}
+
+/// **A cell under another cell's merge takes no slot, and its text is not lost.** Excel shows the
+/// merge, not `hidden`; the node stays and is counted. The failure this catches: `| head | hidden |`,
+/// a merge the file states drawn as two cells.
+#[test]
+fn a_cell_under_a_merge_takes_no_slot_and_keeps_its_node() {
+    let sheet = format!(
+        r#"<row r="1">{}{}</row><row r="2"><c r="A2"><v>1</v></c><c r="B2"><v>2</v></c></row>"#,
+        inline("A1", "head"),
+        inline("B1", "hidden")
+    );
+    let merge = r#"<mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>"#;
+    let sealed = ethos_parser_office::read(&styled(&sheet, merge, "")).expect("reads");
+    let ledger = &sealed.payload().tables[0];
+    let texts: Vec<_> = ledger
+        .cells
+        .iter()
+        .map(|c| {
+            (
+                c.position.row,
+                c.position.column,
+                c.position.colspan,
+                c.text.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        vec![(0, 0, 2, "head"), (1, 0, 1, "1"), (1, 1, 1, "2")]
+    );
+    assert!(
+        cell_at(&sealed, "Ledger", "B", 1).is_some(),
+        "the covered text is a node"
+    );
+    let l = limitation(
+        &sealed,
+        ethos_parser_core::codes::OFFICE_COVERED_CELLS_NOT_PLACED,
+    )
+    .expect("declared");
+    assert!(l.detail.starts_with("1 cell(s)"), "{}", l.detail);
+}
+
+/// **A styles part that will not read refuses nothing.** A missing part, a `numFmtId` that is no
+/// number, and a truncated part each leave the workbook reading, styled numbers showing what they
+/// store, counted. The failure this catches: a workbook head1 read refused over its formatting.
+#[test]
+fn a_styles_part_that_will_not_read_refuses_nothing() {
+    let sheet = r#"<row r="1"><c r="A1" s="1"><v>46339</v></c><c r="B1"><v>7</v></c></row>"#;
+    let good = styled(sheet, "", "");
+    let rebuilt = |styles: Option<&str>| {
+        let mut entries = zip_entries(&good);
+        entries.retain(|(n, _)| n != "xl/styles.xml");
+        if let Some(body) = styles {
+            entries.push(("xl/styles.xml".into(), body.to_string()));
+        }
+        let borrowed: Vec<(&str, &str)> = entries
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_str()))
+            .collect();
+        build_zip(&borrowed)
+    };
+    let bad_id = format!(
+        r#"<styleSheet xmlns="{MAIN}"><cellXfs count="2"><xf/><xf numFmtId="x"/></cellXfs></styleSheet>"#
+    );
+    let truncated = format!(r#"<styleSheet xmlns="{MAIN}"><cellXfs count="2"><xf/>"#);
+    // Review of decision #135: where no styles were read, style zero's format is no more known
+    // than style one's, so the cell that names none is counted too; a part that reads, its one
+    // unreadable `numFmtId` aside, leaves style zero `General`.
+    for (package, counted) in [
+        (rebuilt(None), "2 number cell(s)"),
+        (rebuilt(Some(&bad_id)), "1 number cell(s)"),
+        (rebuilt(Some(&truncated)), "2 number cell(s)"),
+    ] {
+        let sealed = ethos_parser_office::read(&package).expect("formats refuse nothing");
+        assert_eq!(cell_at(&sealed, "Ledger", "A", 1).unwrap().text, "46339");
+        assert_eq!(cell_at(&sealed, "Ledger", "B", 1).unwrap().text, "7");
+        let l = limitation(
+            &sealed,
+            ethos_parser_core::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED,
+        )
+        .expect("the styled cell is counted");
+        assert!(l.detail.starts_with(counted), "{}", l.detail);
+    }
+}
+
+/// **Style zero is unknown where the styles part will not read** (review of decision #135): a
+/// workbook whose numbers all name style zero, or none, read as `General`, uncounted, and the
+/// styles part that would not read went undeclared.
+#[test]
+fn style_zero_is_unknown_where_the_styles_part_will_not_read() {
+    let sheet = r#"<row r="1"><c r="A1" s="0"><v>0.5</v></c><c r="B1"><v>7</v></c></row>"#;
+    let mut entries = zip_entries(&styled(sheet, "", ""));
+    for (name, body) in &mut entries {
+        if name == "xl/styles.xml" {
+            *body = format!(r#"<styleSheet xmlns="{MAIN}"><cellXfs count="1"><xf/>"#);
+        }
+    }
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()))
+        .collect();
+    let sealed = ethos_parser_office::read(&build_zip(&borrowed)).expect("reads");
+    assert_eq!(cell_at(&sealed, "Ledger", "A", 1).unwrap().text, "0.5");
+    let l = limitation(
+        &sealed,
+        ethos_parser_core::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED,
+    )
+    .expect("declared");
+    assert!(l.detail.starts_with("2 number cell(s)"), "{}", l.detail);
+    assert!(l.detail.contains("xl/styles.xml"), "{}", l.detail);
+}
+
+/// **A merge covers its cells whatever its first cell holds, and wherever the file lists them**
+/// (review of decision #135): for `A1:B1` with `A1` empty, `B1`'s text took an ordinary slot,
+/// uncounted; listed before its anchor, it took one under the anchor's span.
+#[test]
+fn a_merge_covers_its_cells_whatever_its_first_cell_holds() {
+    let merge = r#"<mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>"#;
+    let row2 =
+        r#"<row r="2"><c r="A2"><v>1</v></c><c r="B2"><v>2</v></c><c r="C2"><v>3</v></c></row>"#;
+    for (row1, want) in [
+        (
+            format!("{}{}", inline("B1", "hidden"), inline("C1", "c")),
+            vec![
+                (0, 2, 1, "c"),
+                (1, 0, 1, "1"),
+                (1, 1, 1, "2"),
+                (1, 2, 1, "3"),
+            ],
+        ),
+        (
+            format!(
+                "{}{}{}",
+                inline("B1", "hidden"),
+                inline("A1", "head"),
+                inline("C1", "c")
+            ),
+            vec![
+                (0, 0, 2, "head"),
+                (0, 2, 1, "c"),
+                (1, 0, 1, "1"),
+                (1, 1, 1, "2"),
+                (1, 2, 1, "3"),
+            ],
+        ),
+    ] {
+        let sheet = format!(r#"<row r="1">{row1}</row>{row2}"#);
+        let sealed = ethos_parser_office::read(&styled(&sheet, merge, "")).expect("reads");
+        let texts: Vec<_> = sealed.payload().tables[0]
+            .cells
+            .iter()
+            .map(|c| {
+                (
+                    c.position.row,
+                    c.position.column,
+                    c.position.colspan,
+                    c.text.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(texts, want);
+        assert!(cell_at(&sealed, "Ledger", "B", 1).is_some(), "a node still");
+        let l = limitation(
+            &sealed,
+            ethos_parser_core::codes::OFFICE_COVERED_CELLS_NOT_PLACED,
+        )
+        .expect("declared");
+        assert!(l.detail.starts_with("1 cell(s)"), "{}", l.detail);
+    }
+}
+
+/// **A conditional format's `<numFmt>` styles no cell.** One in `<dxfs>` with the id the cell's
+/// style names must not replace the cell's own built-in date.
+#[test]
+fn a_conditional_formats_number_format_is_not_the_cells() {
+    let sheet = r#"<row r="1"><c r="A1" s="1"><v>46339</v></c></row>"#;
+    let mut entries = zip_entries(&styled(sheet, "", ""));
+    for (name, body) in entries.iter_mut() {
+        if name == "xl/styles.xml" {
+            *body = format!(
+                r#"<styleSheet xmlns="{MAIN}"><cellXfs count="2"><xf/><xf numFmtId="14"/></cellXfs><dxfs count="1"><dxf><numFmt numFmtId="14" formatCode="0.00%"/></dxf></dxfs></styleSheet>"#
+            );
+        }
+    }
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()))
+        .collect();
+    let sealed = ethos_parser_office::read(&build_zip(&borrowed)).expect("reads");
+    assert_eq!(
+        cell_at(&sealed, "Ledger", "A", 1).unwrap().text,
+        "2026-11-13"
+    );
+}
+
+/// **A built-in locale date is written ISO and counted**, so a consumer can tell the order was
+/// chosen; a custom `dd-mm-yyyy` states its order and is not counted.
+#[test]
+fn a_locale_date_written_iso_is_counted() {
+    let sealed = ethos_parser_office::read(&styled(&ledger(), "", "")).expect("reads");
+    let l = limitation(
+        &sealed,
+        ethos_parser_core::codes::OFFICE_LOCALE_DATES_WRITTEN_ISO,
+    )
+    .expect("declared");
+    assert!(l.detail.starts_with("1 date cell(s)"), "{}", l.detail);
 }

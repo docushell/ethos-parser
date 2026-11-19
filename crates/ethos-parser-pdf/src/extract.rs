@@ -613,11 +613,10 @@ struct PageYield {
     /// that hole. Rewriting only emitted entities would close it and renumber
     /// every id after it.
     local_ids: IdAllocator,
-    /// v3 (`docs/35-OCR-SCOPE.md` §4): the page the OCR trigger took, on its first reading under a
-    /// profile that pins a recognizer.
+    /// v3 (`docs/35-OCR-SCOPE.md` §4): the page the OCR trigger took, on its first reading.
     candidate: Option<crate::recognize::Candidate>,
-    /// v3: why a page the trigger would read was not, by name — the trigger's own refusal or the
-    /// recognizer's. Set only under a profile that pins a recognizer, on a page that showed no text.
+    /// v3: why a page the trigger would read was not, by name — the trigger's own refusal, the
+    /// request's, or the recognizer's; `ocr-not-requested` under a profile that pins none.
     ocr_refusal: Option<String>,
     /// v3: recognized words not written because no viewer shows where they lie.
     recognized_outside: u32,
@@ -694,7 +693,7 @@ fn extract_page(
     // decision #94, its tree tags no heading — and the profile names the rule; any other id,
     // `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V7
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V8
         && (no_author_structure(structure.as_ref())
             || structure.as_ref().is_some_and(|t| !t.declares_headings()));
     let mut heading_lines: HeadingLines = Vec::new();
@@ -710,9 +709,6 @@ fn extract_page(
                 })?;
 
         let geom = PageGeometry::resolve(doc, page_dict)?;
-        // v1-S6. The frame an off-page finding is measured against, in the same coordinate system
-        // the runs end up in. Computed once per page rather than per run.
-        let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc, page_dict)?;
         describe_fonts(fonts.values(), &mut composite_fonts, &mut font_limitations);
 
@@ -732,9 +728,17 @@ fn extract_page(
         let forms =
             crate::form_xobjects::PageForms::new(doc, page_dict, page_number, content, allowance);
         let resolve = |id| forms.resolve(id);
+        // Decision #139: the names the page's `/Properties` give layers a viewer does not show.
+        let resources = page_resources(doc.inner(), page_dict);
+        let layers = doc.layers().names(doc.inner(), resources.as_ref());
+        let plain = crate::layers::plain_states(doc.inner(), resources.as_ref());
+        let spaces = crate::layers::device_like_spaces(doc.inner(), resources.as_ref());
         let mut interp = Interpreter::new(&fonts)
             .with_xobjects(xobjects)
-            .with_forms(&resolve, allowance);
+            .with_forms(&resolve, allowance)
+            .with_layers(layers)
+            .with_plain_states(plain)
+            .with_colour_spaces(spaces);
         match interp.run(&operations) {
             Err(_) if interp.form_ops_exhausted => return Ok(None),
             outcome => outcome?,
@@ -767,6 +771,13 @@ fn extract_page(
         // run text was the largest allocation in extraction to clone. The other
         // interpreter fields (rects, segments, counters) are read below and stay put.
         let shown_runs = std::mem::take(&mut interp.shown);
+        // Decision #155: a page whose text is drawn turned is read in the turn its text is set in,
+        // before any of it is measured, so every box, rule and table below is upright.
+        let turn = page_turn(&shown_runs, geom.rotation);
+        let geom = geom.turned(turn);
+        // v1-S6. The frame an off-page finding is measured against, in the same coordinate system
+        // the runs end up in. Computed once per page rather than per run.
+        let visible = geom.visible_in_display_space();
         let mut runs = Vec::with_capacity(shown_runs.len());
         // Decision #105: which runs the page clips away, for the chart rules.
         let mut clipped = Vec::with_capacity(shown_runs.len());
@@ -926,6 +937,7 @@ fn extract_page(
                 _ => None,
             });
 
+            let findings = run_findings(&shown, origin_x, origin_y, &visible);
             code_chars.push(shown.code_chars);
 
             let synthesized: Vec<SynthesizedChar> = shown
@@ -940,6 +952,12 @@ fn extract_page(
             let scalar_code_mismatch = shown.text.chars().count() != shown.codes.len();
 
             clipped.push(shown.clipped);
+            // Decision #139: a run in a membership dictionary is counted, and carries no finding.
+            if shown.layer == Some(crate::layers::Layer::NotEvaluated) {
+                *findings_seen
+                    .entry(ethos_parser_core::codes::OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED)
+                    .or_insert(0) += 1;
+            }
             runs.push(TextRun {
                 id: alloc.next(IdKind::Span)?,
                 text: shown.text,
@@ -963,6 +981,8 @@ fn extract_page(
                 italic: shown.font.italic,
                 weight: shown.font.weight,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
                 locator: PdfLocator {
@@ -979,10 +999,11 @@ fn extract_page(
                 structural: bind_structure(structure.as_ref(), page_id, shown.mcid, shown.artifact),
                 // Text and origins are read from the document's own encoding.
                 derivation: DerivationClass::Extracted,
-                // v1-S6. Observations about the run, never a reason to withhold it. Both are
+                // v1-S6. Observations about the run, never a reason to withhold it. Each is
                 // computed from evidence the page supplies: the text rendering mode the content
-                // stream set, and the visible box the page declares.
-                findings: run_findings(shown.render_mode, origin_x, origin_y, &visible),
+                // stream set, the visible box the page declares, and since decision #139 the size,
+                // the layer and the fill the page drew it in.
+                findings,
                 recognized: None,
             });
         }
@@ -1017,6 +1038,8 @@ fn extract_page(
                 italic: false,
                 weight: None,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
                 locator: PdfLocator {
@@ -1152,16 +1175,22 @@ fn extract_page(
         // on its Closing Disclosure pages — see `crate::stroke_ruled`.
         let mut stroke_rules = Vec::new();
         let mut uprights = Vec::new();
+        // Decision #154: the level rules stroked solid, which alone draw a strikeout or underline.
+        let mut solid_rules = Vec::new();
         for seg in &interp.segments {
             let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
             let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
             let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
-            if seg.is_horizontal() {
-                stroke_rules.push(crate::stroke_ruled::Rule {
+            if geom.level(seg) {
+                let rule = crate::stroke_ruled::Rule {
                     y: r.y0,
                     x0: r.x0,
                     x1: r.x1,
-                });
+                };
+                if seg.solid {
+                    solid_rules.push(rule);
+                }
+                stroke_rules.push(rule);
             } else {
                 uprights.push(crate::stroke_ruled::Upright {
                     x: r.x0,
@@ -1531,6 +1560,27 @@ fn extract_page(
         // Decision #40: superscripts and subscripts, from where each run sits beside its line.
         // Here, on the page's runs in content order, so `ems` still lines up with them.
         crate::scripts::assign(&mut runs, &ems);
+        // Decision #154: strikeout and underline, from the thin lines the page drew through and
+        // under its runs.
+        let wide = interp
+            .stroked
+            .iter()
+            .map(|(f, _)| {
+                let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
+                let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
+                crate::tables::quantize_rect(ax, ay, bx, by)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        // And (review) those a stroke outlined white or dashed, which draw no line either.
+        let mut unseen = table_white.clone();
+        for r in &interp.faint {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            unseen.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
+        let ink =
+            crate::decorations::Ink::of(&solid_rules, &uprights, &table_rects, &unseen, &wide);
+        crate::decorations::assign(&mut runs, &ems, &ink);
 
         // v1-S5. **Reading order, and the only order there is.**
         //
@@ -1884,31 +1934,105 @@ fn extract_page(
 
         // v3 (`docs/35-OCR-SCOPE.md` §4): the trigger, a reason code and never a score. A page
         // that showed no text and placed an image is `classify`'s `scanned`; under a profile that
-        // pins a recognizer it is read when it placed exactly one image, and refused by name when
-        // it did not. Decided on the first reading only, and only under that profile, so no other
-        // artifact pays for it.
-        if words.is_none()
-            && matches!(
-                profile.recognizer,
-                ethos_parser_core::RecognizerPin::Pinned(_)
-            )
-            && interp.text_operators == 0
-        {
+        // pins a recognizer it is read when it placed exactly one image, or several that the
+        // recognizer can compose with the fills between them (decision #156), and refused by name
+        // when it did not. Decided on the first reading only. Under a profile that pins none, the
+        // page it would read is taken too, and counted after the pages are read (decision #132);
+        // a page it would refuse here is not counted there.
+        if words.is_none() && interp.text_operators == 0 {
             let placed = interp.images.len() + interp.inline_images as usize;
+            let composite = &interp.composite;
+            // Decision #156 (review): what an image's own `/OC` makes of it, and whether the page
+            // draws an annotation over itself, which a composition does not hold.
+            let image_layer = |object: lopdf::ObjectId| {
+                doc.inner()
+                    .get_object(object)
+                    .and_then(lopdf::Object::as_stream)
+                    .ok()
+                    .and_then(|s| s.dict.get(b"OC").ok())
+                    .and_then(|oc| doc.layers().layer(doc.inner(), oc))
+            };
+            let composite_refusal = composite.refusal.or_else(|| {
+                if draws_annotations(doc.inner(), page_dict) {
+                    return Some("annotation");
+                }
+                composite.layers.iter().find_map(|layer| match *layer {
+                    crate::content::CompositeLayer::Image { index, .. } => matches!(
+                        image_layer(interp.images[index].object),
+                        Some(crate::layers::Layer::NotEvaluated)
+                    )
+                    .then_some("layer-not-read"),
+                    crate::content::CompositeLayer::Fill { .. } => None,
+                })
+            });
+            let corner = |(x, y): (f64, f64)| geom.to_top_left(x, y);
+            let shown = |r: &crate::content::PathRect| {
+                let ((ax, ay), (bx, by)) = (corner((r.x0, r.y0)), corner((r.x1, r.y1)));
+                (ax.min(bx), ay.min(by), ax.max(bx), ay.max(by))
+            };
             if interp.images.len() == 1 && interp.inline_images == 0 && images.len() == 1 {
                 let placement = &interp.images[0];
                 candidate = Some(crate::recognize::Candidate {
                     page_id,
                     object: placement.object,
-                    corners: placement.corners.map(|(x, y)| geom.to_top_left(x, y)),
+                    corners: placement.corners.map(corner),
                     visible: (visible.x0, visible.y0, visible.x1, visible.y1),
+                    composite: None,
                 });
-            } else if interp.inline_images > 0 {
-                ocr_refusal = Some("inline-image".into());
-            } else if placed > 1 {
-                ocr_refusal = Some("several-images".into());
-            } else if placed == 1 || interp.unresolved_xobjects > 0 {
-                ocr_refusal = Some("image-not-loaded".into());
+            } else if interp.images.len() > 1
+                && interp.inline_images == 0
+                && composite_refusal.is_none()
+            {
+                let paints = composite
+                    .layers
+                    .iter()
+                    .filter_map(|layer| match *layer {
+                        crate::content::CompositeLayer::Image {
+                            index,
+                            shown: s,
+                            fill,
+                        } => {
+                            let placement = &interp.images[index];
+                            // An image in a layer a viewer hides is not painted (review).
+                            image_layer(placement.object).is_none().then(|| {
+                                crate::recognize::Paint::Image {
+                                    object: placement.object,
+                                    corners: placement.corners.map(corner),
+                                    shown: shown(&s),
+                                    fill,
+                                }
+                            })
+                        }
+                        crate::content::CompositeLayer::Fill { rect, fill } => {
+                            Some(crate::recognize::Paint::Fill {
+                                rect: shown(&rect),
+                                fill,
+                            })
+                        }
+                    })
+                    .collect();
+                candidate = Some(crate::recognize::Candidate::composed(
+                    page_id,
+                    (visible.x0, visible.y0, visible.x1, visible.y1),
+                    paints,
+                ));
+            } else if matches!(
+                profile.recognizer,
+                ethos_parser_core::RecognizerPin::Pinned(_)
+            ) {
+                ocr_refusal = if interp.inline_images > 0 {
+                    Some("inline-image".into())
+                } else if placed > 1 {
+                    // Decision #156: what the composition does not hold, by name.
+                    Some(match composite_refusal {
+                        Some(why) => format!("several-images:{why}"),
+                        None => "several-images".into(),
+                    })
+                } else if placed == 1 || interp.unresolved_xobjects > 0 {
+                    Some("image-not-loaded".into())
+                } else {
+                    None
+                };
             }
         }
 
@@ -1939,6 +2063,7 @@ fn extract_page(
             width,
             height,
             rotation: geom.rotation,
+            turn: geom.turn,
             visible: (shown.x0 > 0 || shown.y0 > 0 || shown.x1 < width || shown.y1 < height)
                 .then_some(shown),
             runs,
@@ -2099,8 +2224,9 @@ struct ImageFile {
 /// # Errors
 ///
 /// [`EngineError::Unsupported`] for bytes that are not a PNG or JPEG, under a profile that does not
-/// pin `recognizer`, and for an image the recognizer refuses to read — an image file has no other
-/// page to count the refusal against; what `recognizer` returns when it fails.
+/// pin `recognizer`, for a file whose header states no size, for an image the recognizer refuses
+/// to read — an image file has no other page to count the refusal against — and for one it answers
+/// at a size the file's header does not state; what `recognizer` returns when it fails.
 pub fn extract_image(
     bytes: &[u8],
     profile: &Profile,
@@ -2114,6 +2240,14 @@ pub fn extract_image(
                 .into(),
         })?;
     let pinned = pinned_recognizer(profile, Some(recognizer.identity()))?;
+    // Decision #132: the page is built from the size the recognizer states, so it must be the size
+    // the file's own header states, as a PDF image's must be its dictionary's — read before the
+    // file is sent, and refused by its own name where the header states none.
+    let (width, height) =
+        crate::recognize::image_file_size(bytes).ok_or_else(|| EngineError::Unsupported {
+            what: "image".into(),
+            detail: format!("this {media_type}'s header states no size: `image-size-not-read`"),
+        })?;
     let answer = recognizer.read(&crate::recognize::RecognitionRequest {
         ocr_request: 1,
         id: "image".into(),
@@ -2135,6 +2269,18 @@ pub fn extract_image(
         return Err(EngineError::Unsupported {
             what: "image".into(),
             detail: format!("the recognizer did not read this {media_type}: `{why}`"),
+        });
+    }
+    // A JPEG may state a height of 0 and set it with a DNL marker after its first scan (T.81
+    // B.2.2): a height of 0 states none, and the width alone is compared.
+    if width != answer.width || (height != 0 && height != answer.height) {
+        return Err(EngineError::Unsupported {
+            what: "image".into(),
+            detail: format!(
+                "the recognizer answered this {media_type} as {} x {} pixels, which its header \
+                 does not state: `image-size-mismatch`",
+                answer.width, answer.height
+            ),
         });
     }
     let doc = Document::open_bytes(
@@ -2507,17 +2653,25 @@ fn extract_counted(
                 y.ocr_refusal = Some(why);
                 continue;
             }
-            if let crate::recognize::ImageSpec::Pdf(spec) = &request.image {
-                if (answer.width, answer.height) != (spec.width, spec.height) {
-                    y.ocr_refusal = Some("image-size-mismatch".into());
-                    continue;
-                }
-            }
-            let image = ethos_parser_core::PdfObjectNumber {
-                object: candidate.object.0,
-                generation: u32::from(candidate.object.1),
+            let size = match &request.image {
+                crate::recognize::ImageSpec::Pdf(spec) => Some((spec.width, spec.height)),
+                crate::recognize::ImageSpec::Composite(spec) => Some((spec.width, spec.height)),
+                crate::recognize::ImageSpec::File => None,
             };
-            let (words, outside) = crate::recognize::place(&candidate, &answer, Some(image))?;
+            if size.is_some_and(|s| s != (answer.width, answer.height)) {
+                y.ocr_refusal = Some("image-size-mismatch".into());
+                continue;
+            }
+            // A composed page's words were read from no one image (decision #156).
+            let image =
+                candidate
+                    .composite
+                    .is_none()
+                    .then_some(ethos_parser_core::PdfObjectNumber {
+                        object: candidate.object.0,
+                        generation: u32::from(candidate.object.1),
+                    });
+            let (words, outside) = crate::recognize::place(&candidate, &answer, image)?;
             if !words.is_empty() {
                 let again = read(
                     *page_number,
@@ -2529,6 +2683,20 @@ fn extract_counted(
                 *y = again;
             }
             y.recognized_outside = declare(y.recognized_outside, outside);
+        }
+    } else {
+        // Decision #132: with no recognizer, a page the trigger took is counted as `--ocr` would
+        // leave it — by the reason the request refuses it for, or as not requested — so a scan
+        // read without the flag is not a blank page, and the flag is offered only where it reads.
+        for (page_number, outcome) in &mut outcomes {
+            if let Some(Ok(y)) = outcome {
+                if let Some(candidate) = y.candidate.take() {
+                    y.ocr_refusal = Some(
+                        crate::recognize::request(doc.inner(), &candidate, *page_number)
+                            .map_or_else(|why| why, |_| "ocr-not-requested".into()),
+                    );
+                }
+            }
         }
     }
     // An image file's one page, which was read before it was made ([`extract_image`]).
@@ -2598,7 +2766,7 @@ fn extract_counted(
             // Not minted per page, so there is no page-local ordinal to rebase. Enumerated rather
             // than swept into a `_` arm: a sixth rebased kind added later must fail HERE, at the
             // counter, rather than silently taking a zero base and colliding every id it rewrites.
-            IdKind::Page | IdKind::Element | IdKind::Part => panic!(
+            IdKind::Page | IdKind::Element | IdKind::Part | IdKind::Proposal => panic!(
                 "{kind:?} is not rebased on the page path: extraction mints no page-local ids of \
                  this kind, so there is no base to add. A new rebased kind needs a counter above."
             ),
@@ -2817,13 +2985,78 @@ fn extract_counted(
                 }
             }
         }
+        // `type-size-v8` (decision #140): where the document declares no author structure and
+        // none of its lines ranks, labels that head its sections are level 1. A label heads a
+        // section where the last inked run before it is not bold, so it opens no line of a bold
+        // passage, and the two lines after it are text in no bold, so it is neither stacked over
+        // another bold line nor a caption over one line of value; and its sections recur: two
+        // such labels or more, set in one font at one size. A form's field, a resume's contact
+        // label, a page's one bold line stay labels.
+        if no_author_structure(structure.as_ref())
+            && read_lines.iter().all(|&(_, _, kind)| kind == 2)
+        {
+            let inked = |r: &&TextRun| !r.text.trim().is_empty();
+            let mut heads: Vec<(usize, &Vec<usize>, (String, i64))> = Vec::new();
+            for (p, (page, lines)) in pages.iter().zip(&heading_lines_by_page).enumerate() {
+                for (indices, _) in lines {
+                    let (Some(&first), Some(&last)) = (indices.first(), indices.last()) else {
+                        continue;
+                    };
+                    let Some(end) = indices.iter().rev().map(|&i| &page.runs[i]).find(inked) else {
+                        continue;
+                    };
+                    if page.runs[first].inferred_heading_level != Some(crate::headings::LABEL_LEVEL)
+                    {
+                        continue;
+                    }
+                    // A run-in label — `Note:` and the text it opens, set on along its line a
+                    // little off its baseline — heads nothing: the next run starts past its ink,
+                    // within one of its glyphs of its baseline. No width, no verdict.
+                    let runs_on = |r: &TextRun| {
+                        let chars = i64::try_from(end.text.chars().count()).unwrap_or(1);
+                        end.locator.advance.is_none_or(|w| {
+                            let glyph = w / chars.max(1);
+                            r.locator.origin_x >= end.locator.origin_x + w - glyph
+                                && (r.locator.origin_y - end.locator.origin_y).abs() < glyph
+                        })
+                    };
+                    let before = page.runs[..first].iter().rev().find(inked);
+                    let mut after = page.runs[last + 1..].iter().filter(inked);
+                    let next = after.next();
+                    let below = next.and_then(|n| {
+                        let y = n.locator.origin_y;
+                        after.find(|r| r.bold || r.locator.origin_y != y)
+                    });
+                    if !before.is_some_and(|r| r.bold)
+                        && next.is_some_and(|r| !r.bold && !runs_on(r))
+                        && below.is_some_and(|r| !r.bold)
+                    {
+                        heads.push((p, indices, (end.font_id.clone(), end.font_size)));
+                    }
+                }
+            }
+            // How many labels each style heads, counted once rather than once per label (review).
+            // A style is a font resource name and a size, and the name is its page's own: two pages
+            // naming different fonts `F1` at one size read as one style (known limit, review).
+            let mut styles: std::collections::BTreeMap<&(String, i64), usize> = Default::default();
+            for (_, _, style) in &heads {
+                *styles.entry(style).or_default() += 1;
+            }
+            for (p, indices, style) in &heads {
+                if styles[style] >= 2 {
+                    for &i in *indices {
+                        pages[*p].runs[i].inferred_heading_level = None;
+                    }
+                }
+            }
+        }
         body_em = Some(levels.body_em());
     }
 
     // Decision #38. Layout units, after headings — a heading line never shares a unit with body
     // text — and only where the document declares no author structure, whose own structure wins
     // there as it does for headings.
-    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V6
+    if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V7
         && no_author_structure(structure.as_ref())
     {
         for page in pages.iter_mut() {
@@ -3046,6 +3279,25 @@ fn extract_counted(
     Ok((artifact, positions))
 }
 
+/// Whether `page`'s `/Annots` holds an annotation a viewer draws over the page: one with an
+/// appearance, neither hidden nor unviewed (decision #156, review). A composed page holds none, so
+/// text one covers would be read.
+fn draws_annotations(doc: &lopdf::Document, page: &lopdf::Dictionary) -> bool {
+    let Some(annots) = crate::fonts::resolve_array(doc, page.get(b"Annots").ok()) else {
+        return false;
+    };
+    annots.iter().any(|a| {
+        let Some(lopdf::Object::Dictionary(d)) = crate::fonts::resolve_object(doc, Some(a)) else {
+            return false;
+        };
+        let flags = crate::fonts::resolve_object(doc, d.get(b"F").ok())
+            .and_then(|f| f.as_i64().ok())
+            .unwrap_or(0);
+        // 32000-1 Table 165: bit 2 Hidden, bit 6 NoView.
+        d.has(b"AP") && flags & (2 | 32) == 0
+    })
+}
+
 /// One page's table-detection evidence, exposed for the v2-S22 diagnostic (`cfg(test)`).
 ///
 /// The ink the three rules read, and the [`crate::tables::Detected`] they produced — the typed
@@ -3123,6 +3375,9 @@ pub(crate) fn per_page_table_diagnostics(
             }
             outcome => outcome?,
         }
+        // Read in the turn `extract` reads the page in (decision #155).
+        let turn = page_turn(&interp.shown, geom.rotation);
+        let geom = geom.turned(turn);
 
         // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
         // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
@@ -3187,7 +3442,7 @@ pub(crate) fn per_page_table_diagnostics(
             let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
             let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
             let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
-            if seg.is_horizontal() {
+            if geom.level(seg) {
                 stroke_rules.push(crate::stroke_ruled::Rule {
                     y: r.y0,
                     x0: r.x0,
@@ -3332,23 +3587,56 @@ fn reorder_page(
 
 /// What was observed about one run, beyond its text (v1-S6).
 ///
-/// Both findings come from evidence the page itself supplies — the rendering mode its content
-/// stream set, and the box it declares as visible. Neither is an appearance judgement, and
-/// neither removes anything: the run this describes is in the artifact with its text and its
-/// origin intact, which is the whole of checklist O21.
+/// Every finding comes from evidence the page itself supplies — the rendering mode its content
+/// stream set, the box it declares as visible, and since decision #139 the size its matrices draw
+/// the run at, the optional content it lies in, and the fill it and what lies beneath it were
+/// painted in. None is an appearance judgement, and none removes anything: the run this describes
+/// is in the artifact with its text and its origin intact, which is the whole of checklist O21.
 fn run_findings(
-    render_mode: i64,
+    shown: &crate::content::ShownText,
     origin_x: i64,
     origin_y: i64,
     visible: &PageBox,
 ) -> Vec<TextFinding> {
     let mut out = Vec::new();
+    let render_mode = shown.render_mode;
     // Modes 3 and 7 fill nothing and stroke nothing (32000-1 Table 106). Mode 7 also adds the
     // glyphs to the clip path, which is a different purpose and the same visible result: no ink.
     // Mode 4 through 6 DO paint and are deliberately not flagged — a rule that called every
     // clipping mode invisible would report ordinary text as hidden.
-    if render_mode == 3 || render_mode == 7 {
+    //
+    // Decision #139: mode 7 only where nothing is painted through the clip it sets before the state
+    // holding it is restored — a heading set as a clip and filled with a shading or an image shows.
+    // Not in a Type 3 font, whose glyphs mode 3 alone hides (32000-1 §9.3.6; fifth review).
+    let type3 = matches!(
+        shown.font.widths,
+        crate::fonts::WidthSource::Widths {
+            type3_scale_x: Some(_),
+            ..
+        }
+    );
+    if render_mode == 3 || (render_mode == 7 && !shown.clips_paint && !type3) {
         out.push(TextFinding::InvisibleRenderMode);
+    }
+    // Decision #139: three more, on a run that draws ink — whitespace draws nothing to hide. The
+    // rendered em, the text rendering matrix's vertical scale, under a point — except where a Type
+    // 3 font's `/FontMatrix` does not scale its glyph space by a thousandth, and nothing says how
+    // tall its em is drawn; a layer switched off; and the fill of what lies beneath.
+    if !shown.text.trim().is_empty() {
+        let type3_em_unknown = matches!(
+            shown.font.widths,
+            crate::fonts::WidthSource::Widths { type3_scale_x: Some(s), .. }
+                if s as f32 != 0.001_f32
+        );
+        if shown.em_scale_pt < 1.0 && !type3_em_unknown {
+            out.push(TextFinding::TinyText);
+        }
+        if shown.layer == Some(crate::layers::Layer::Off) {
+            out.push(TextFinding::HiddenLayer);
+        }
+        if shown.fill_matches_background {
+            out.push(TextFinding::FillMatchesBackground);
+        }
     }
     // The origin, because the origin is the run's address and the one coordinate this engine
     // treats as identity. An ink box would be a better test and most runs do not have one.
@@ -3654,6 +3942,68 @@ impl PageBox {
     }
 }
 
+/// A page reads turned where this many characters or more travel one way (decision #155).
+pub const TURN_MIN_CHARS: usize = 40;
+
+/// ...on this many lines or more: a stamp or a caption down the margin is a line or three.
+pub const TURN_MIN_LINES: usize = 4;
+
+/// Quarter turns clockwise beyond `rotation` in which a page's `shown` text reads upright
+/// (decision #155): where nine tenths of its characters that are not spaces, or more, travel one
+/// way in user space — right, up, left or down — that a declared rotation other than `rotation`
+/// would stand upright, on [`TURN_MIN_LINES`] lines or more, and [`TURN_MIN_CHARS`] or more travel
+/// that way. A run that says no way counts against every way: one of no known travel, one that
+/// does not move (a font whose widths are 0), one more than a hundredth off an axis (a diagonal
+/// watermark) and one mirrored, its glyphs standing on its right. 0 otherwise: a page with a few
+/// turned labels, a vertical axis title or a sideways stamp, reads as declared.
+pub(crate) fn page_turn(shown: &[crate::content::ShownText], rotation: i64) -> i64 {
+    turn_of(
+        shown.iter().map(|s| {
+            let n = s.text.chars().filter(|c| !c.is_whitespace()).count();
+            (s.displacement, s.glyph_up, s.origin, n)
+        }),
+        rotation,
+    )
+}
+
+/// One run for [`turn_of`]: its user-space travel, its glyphs' up, its origin, its characters.
+type TurnRun = (Option<(f64, f64)>, (f64, f64), (f64, f64), usize);
+
+/// [`page_turn`] over each run's travel, glyph up, origin and characters.
+fn turn_of(runs: impl Iterator<Item = TurnRun>, rotation: i64) -> i64 {
+    // Characters, and the lines they are on, by the rotation that stands their travel upright:
+    // 0, 90, 180, 270.
+    let mut by = [0usize; 4];
+    let mut lines: [std::collections::BTreeSet<i64>; 4] = Default::default();
+    let mut total = 0usize;
+    for (travel, (ux, uy), (ox, oy), n) in runs {
+        total += n;
+        // A run of spaces inks no line (review).
+        let Some((dx, dy)) = travel.filter(|_| n > 0) else {
+            continue;
+        };
+        // Off the axes, or its glyphs not on its left: a run that does not move is neither.
+        let along_an_axis = dx.abs().min(dy.abs()) * 100.0 <= dx.abs().max(dy.abs());
+        if !along_an_axis || dx * uy - dy * ux <= 0.0 {
+            continue;
+        }
+        let (k, line) = if dx.abs() > dy.abs() {
+            (if dx > 0.0 { 0 } else { 2 }, oy)
+        } else {
+            (if dy > 0.0 { 1 } else { 3 }, ox)
+        };
+        by[k] += n;
+        lines[k].insert(line.round() as i64);
+    }
+    let Some((k, &most)) = by.iter().enumerate().max_by_key(|&(_, n)| n) else {
+        return 0;
+    };
+    if most < TURN_MIN_CHARS || 10 * most < 9 * total || lines[k].len() < TURN_MIN_LINES {
+        return 0;
+    }
+    (90 * k as i64 - rotation).rem_euclid(360)
+}
+
 /// Page boxes and rotation, and the transform into the declared coordinate system.
 pub(crate) struct PageGeometry {
     /// The page's `/MediaBox`, normalised. **Its origin is load-bearing** — see
@@ -3668,6 +4018,9 @@ pub(crate) struct PageGeometry {
     /// than no finding at all.
     visible: PageBox,
     rotation: i64,
+    /// Quarter turns clockwise beyond `rotation` in which the page is read (decision #155): 0
+    /// where its text reads as declared. Every transform below takes the two together.
+    turn: i64,
     display_width: f64,
     display_height: f64,
 }
@@ -3739,6 +4092,7 @@ impl PageGeometry {
             media,
             visible,
             rotation,
+            turn: 0,
             display_width,
             display_height,
         })
@@ -3812,7 +4166,7 @@ impl PageGeometry {
     /// of a page as off-page, and a **fabricated** security finding is worse than no finding.
     fn to_top_left(&self, x: f64, y: f64) -> (f64, f64) {
         let b = self.media;
-        match self.rotation {
+        match self.read_as() {
             90 => (y - b.y0, x - b.x0),
             180 => (b.x1 - x, y - b.y0),
             270 => (b.y1 - y, b.x1 - x),
@@ -3826,7 +4180,7 @@ impl PageGeometry {
     ///
     /// For a run's travel and its glyphs' y axis, which are directions rather than places.
     fn to_top_left_linear(&self, dx: f64, dy: f64) -> (f64, f64) {
-        match self.rotation {
+        match self.read_as() {
             90 => (dy, dx),
             180 => (-dx, dy),
             270 => (-dy, -dx),
@@ -3867,11 +4221,43 @@ impl PageGeometry {
     /// them is the identity.
     pub(crate) fn to_user_space(&self, x: f64, y: f64) -> (f64, f64) {
         let b = self.media;
-        match self.rotation {
+        match self.read_as() {
             90 => (y + b.x0, x + b.y0),
             180 => (b.x1 - x, y + b.y0),
             270 => (b.x1 - y, b.y1 - x),
             _ => (x + b.x0, b.y1 - y),
+        }
+    }
+
+    /// The rotation the page is read in: its declared `/Rotate` and its turn (decision #155).
+    fn read_as(&self) -> i64 {
+        (self.rotation + self.turn) % 360
+    }
+
+    /// Whether `seg` is level as this page is read (review of decision #155): on a page read a
+    /// quarter turn round, a line drawn up the page as declared. A page whose `/Rotate` alone
+    /// turns it keeps the reading `stroke-ruled-v2` released, user space's.
+    fn level(&self, seg: &crate::content::PathSegment) -> bool {
+        if self.turn == 0 {
+            seg.is_horizontal()
+        } else {
+            seg.is_horizontal() == (self.read_as() % 180 == 0)
+        }
+    }
+
+    /// This page read `turn` quarter turns clockwise beyond its declared rotation (decision #155):
+    /// its display width and height exchange where the turn is odd.
+    pub(crate) fn turned(self, turn: i64) -> Self {
+        let (display_width, display_height) = if turn % 180 == 0 {
+            (self.display_width, self.display_height)
+        } else {
+            (self.display_height, self.display_width)
+        };
+        Self {
+            turn,
+            display_width,
+            display_height,
+            ..self
         }
     }
 
@@ -3931,6 +4317,7 @@ mod tests {
             media,
             visible: media,
             rotation: rot,
+            turn: 0,
             display_width: dw,
             display_height: dh,
         }
@@ -4084,6 +4471,113 @@ mod tests {
         );
     }
 
+    /// **A page reads turned where nine tenths of its characters travel one way** (decision #155):
+    /// right reads as declared; up, left and down a quarter, half and three-quarter turn; a few
+    /// turned labels, under nine tenths, or too few characters, read as declared; and a page whose
+    /// rotation already stands its text upright needs no turn.
+    #[test]
+    fn a_page_reads_turned_where_its_text_travels_one_way() {
+        // `n` characters travelling `d`, their glyphs standing on its left, over `lines` lines,
+        // beside `rest` characters set upright.
+        let up_of = |(dx, dy): (f64, f64)| (-dy, dx);
+        let runs = |d: (f64, f64), up: (f64, f64), n: usize, lines: usize, rest: usize| {
+            // Each line 12 points further across the travel than the last.
+            let across = |i: usize| (12.0 * i as f64 * d.1.abs(), 12.0 * i as f64 * d.0.abs());
+            let mut v: Vec<_> = (0..lines)
+                .map(|i| (Some(d), up, across(i), n / lines))
+                .collect();
+            v.push((Some((1.0, 0.0)), (0.0, 1.0), (0.0, 0.0), rest));
+            v
+        };
+        let page = |d: (f64, f64), n: usize, rest: usize, rotation: i64| {
+            turn_of(runs(d, up_of(d), n, 4, rest).into_iter(), rotation)
+        };
+        assert_eq!(page((1.0, 0.0), 100, 0, 0), 0);
+        assert_eq!(page((0.0, 1.0), 100, 0, 0), 90);
+        assert_eq!(page((-1.0, 0.0), 100, 0, 0), 180);
+        assert_eq!(page((0.0, -1.0), 100, 0, 0), 270);
+        assert_eq!(page((0.0, 1.0), 180, 20, 0), 90, "nine tenths");
+        assert_eq!(page((0.0, 1.0), 176, 24, 0), 0, "under nine tenths");
+        assert_eq!(page((0.0, 1.0), 36, 0, 0), 0, "too few characters");
+        assert_eq!(page((0.0, 1.0), 40, 0, 0), 90);
+        assert_eq!(page((0.0, 1.0), 100, 0, 90), 0, "declared already");
+        assert_eq!(page((0.0, -1.0), 100, 0, 90), 180);
+
+        // A run that says no way counts against a turn: one that does not move (a font whose
+        // widths are 0), one off the axes (a diagonal watermark), one mirrored (its glyphs on
+        // its right) and one of no known travel.
+        let still = (0..4).map(|i| (Some((0.0, 0.0)), (0.0, 1.0), (12.0 * i as f64, 0.0), 25));
+        assert_eq!(turn_of(still, 0), 0, "runs that do not move");
+        let mirror = runs((-1.0, 0.0), (0.0, 1.0), 100, 4, 0);
+        assert_eq!(turn_of(mirror.into_iter(), 0), 0, "a page mirrored");
+        let diagonal = (Some((1.0, 1.0)), (-1.0, 1.0), (0.0, 0.0), 100);
+        let mirrored = (Some((-1.0, 0.0)), (0.0, 1.0), (0.0, 0.0), 100);
+        let unknown = (None, (0.0, 1.0), (0.0, 0.0), 100);
+        for (name, other) in [
+            ("diagonal", diagonal),
+            ("mirrored", mirrored),
+            ("unknown", unknown),
+        ] {
+            let mut v = runs((0.0, 1.0), (-1.0, 0.0), 100, 4, 0);
+            v.push(other);
+            assert_eq!(turn_of(v.into_iter(), 0), 0, "{name}");
+        }
+        let skewed = |d| turn_of(runs(d, up_of(d), 100, 4, 0).into_iter(), 0);
+        assert_eq!(skewed((0.009, 0.999)), 90, "within a hundredth of the axis");
+        assert_eq!(skewed((0.02, 0.999)), 0, "off the axis");
+
+        // A stamp or a running caption down the margin is a line or three, not a page.
+        let lined = |lines| turn_of(runs((0.0, 1.0), (-1.0, 0.0), 120, lines, 0).into_iter(), 0);
+        assert_eq!(lined(3), 0, "three lines");
+        assert_eq!(lined(4), 90, "four lines");
+        let mut spaced = runs((0.0, 1.0), (-1.0, 0.0), 120, 1, 0);
+        spaced.extend((1..4).map(|i| (Some((0.0, 1.0)), (-1.0, 0.0), (12.0 * i as f64, 0.0), 0)));
+        assert_eq!(
+            turn_of(spaced.into_iter(), 0),
+            0,
+            "one line, three of spaces"
+        );
+    }
+
+    /// **A turned page's boxes map back to the declared frame through the record** (decision
+    /// #155): at every declared rotation and every turn, a box measured on the turned page and
+    /// mapped back by `PageRecord::to_declared` is the box the declared page measures.
+    #[test]
+    fn a_turned_page_maps_back_through_its_record() {
+        let q = |v: f64| (v * 100.0).round() as i64;
+        for rotation in [0i64, 90, 180, 270] {
+            for turn in [0i64, 90, 180, 270] {
+                let declared = geom(300.0, 400.0, rotation);
+                let turned = geom(300.0, 400.0, rotation).turned(turn);
+                let rect = |g: &PageGeometry| {
+                    let (ax, ay) = g.to_top_left(30.0, 50.0);
+                    let (bx, by) = g.to_top_left(120.0, 70.0);
+                    ethos_parser_core::QRect::new(
+                        q(ax.min(bx)),
+                        q(ay.min(by)),
+                        q(ax.max(bx)),
+                        q(ay.max(by)),
+                    )
+                    .unwrap()
+                };
+                let page = ethos_parser_core::PageRecord {
+                    id: ethos_parser_core::NodeId::from_parts(ethos_parser_core::IdKind::Page, 1),
+                    index: 1,
+                    width: q(turned.display_width),
+                    height: q(turned.display_height),
+                    rotation,
+                    turn,
+                    visible: None,
+                };
+                assert_eq!(
+                    page.to_declared(rect(&turned)),
+                    Some(rect(&declared)),
+                    "rotation {rotation}, turn {turn}"
+                );
+            }
+        }
+    }
+
     /// A vector lands where the difference of its two endpoints lands, at every rotation and on a
     /// box whose origin is not (0, 0) — so the translation really is what was left out.
     #[test]
@@ -4094,6 +4588,7 @@ mod tests {
                 media,
                 visible: media,
                 rotation,
+                turn: 0,
                 display_width: 300.0,
                 display_height: 400.0,
             };
@@ -4147,13 +4642,20 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V4,
-            "the downward sweep moved the default to the id that promises it (decision #32)"
+            ethos_parser_core::READING_ORDER_RULE_V5,
+            "the side-band join moved the default to the id that promises it (decision #133)"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V5,
+            "gutter-columns-v5",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **`-v4` keeps its exact spelling**: artifacts exist under it, and on a page with a
+        // narrow band set on its neighbour's rows they list runs in the order `-v5` changes.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V4,
             "gutter-columns-v4",
-            "the id is data on every artifact; changing the string is an identity event"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         // **`-v3` keeps its exact spelling**: artifacts exist under it, and on a page the cut never
         // divided they list runs in the order `-v4` changes.
@@ -4181,6 +4683,10 @@ mod tests {
         );
         assert_eq!(ethos_parser_core::READING_ORDER_RULE_V0, "single-column-v1");
         for (a, b) in [
+            (
+                ethos_parser_core::READING_ORDER_RULE_V5,
+                ethos_parser_core::READING_ORDER_RULE_V4,
+            ),
             (
                 ethos_parser_core::READING_ORDER_RULE_V4,
                 ethos_parser_core::READING_ORDER_RULE_V3,
@@ -4279,6 +4785,8 @@ mod tests {
                 italic: false,
                 weight: None,
                 script: None,
+                strikeout: false,
+                underline: false,
                 furniture: None,
                 reading: None,
                 text: text.to_string(),

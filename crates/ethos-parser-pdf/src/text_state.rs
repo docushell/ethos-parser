@@ -127,9 +127,37 @@ pub struct GraphicsState {
     pub ctm: Matrix,
     /// The colour the next fill paints in.
     pub fill: Fill,
+    /// Whether [`Self::fill`] was set in a device colour space — by `g`, `rg` or `k`, or `sc` or
+    /// `scn` after `cs` named `/DeviceGray`, `/DeviceRGB` or `/DeviceCMYK` — where its operands
+    /// mean one colour whatever the document (decision #139). `true` to begin with: DeviceGray.
+    pub fill_device: bool,
+    /// How many components the space [`Self::fill`] was set in has, where its components read as a
+    /// device colour's — a device space, or one the page's `/ColorSpace` resolves so — and 0 where
+    /// they do not (decision #156). 1 to begin with: DeviceGray.
+    pub fill_space: u8,
+    /// Whether a `gs` set a graphics-state parameter dictionary this reader does not resolve —
+    /// whose `/ca` may make a fill transparent, or its `/BM` blend it — since the state was last
+    /// saved (decision #139). A fill painted under one has no colour this reader compares.
+    pub ext_gstate: bool,
+    /// Whether a clip path of a shape other than one rectangle was set since the state was last
+    /// saved (decision #139): [`Self::clip`] then holds less than it should, so a fill painted
+    /// under it has no colour this reader compares.
+    pub clip_unknown: bool,
+    /// Whether a `gs` set a graphics state that may change a fill's colour as painted — a blend
+    /// mode, a soft mask, a fill alpha under one — or that this reader did not resolve, since the
+    /// state was last saved (decision #139). Text drawn under one is not compared with what lies
+    /// beneath it.
+    pub text_blends: bool,
+    /// The box a form's `/BBox` clips what it draws to, carried through its `/Matrix` and the CTM
+    /// — every enclosing form's, intersected — or `None` outside every form (decision #139). Read
+    /// only where what was painted is recorded.
+    pub form_clip: Option<crate::content::PathRect>,
     /// The colour the next stroke paints in (`point-labels-v1`), set and compared as
     /// [`Self::fill`] is: a line chart's series are told apart by it.
     pub stroke: Fill,
+    /// Whether [`Self::stroke`] was set in a device colour space, as [`Self::fill_device`] says
+    /// of the fill (decision #154): only there is a white stroke known to be white.
+    pub stroke_device: bool,
     /// The width the next stroke paints, in user space (`w`; 1 to begin with, 32000-1 Table 52).
     pub line_width: f64,
     /// The cap the next stroke ends in (`J`): 0 butt, 1 round, 2 projecting square.
@@ -140,6 +168,15 @@ pub struct GraphicsState {
     /// none is. A clip path of any other shape leaves it as it was: text and paths are clipped
     /// away only where the clip is known.
     pub clip: Option<crate::content::PathRect>,
+    /// The box around the glyphs of each text object whose runs set a clip still in force,
+    /// intersected, or `None` where none is (decision #139). Read only where paint shows a mode-7
+    /// clip: a clip that has shown paint still clips what is painted after it (review).
+    pub text_clip: Option<crate::content::PathRect>,
+    /// The box around the glyphs the open text object has set as a clip, in modes 4 to 7 and any
+    /// font but a Type 3 one, or `None` where it has set none (decision #139, fifth review): `ET`
+    /// intersects it into [`Self::text_clip`]. Saved with the state, so a `Q` inside the text
+    /// object takes back the glyphs set since its `q`, as Ghostscript does.
+    pub text_clip_glyphs: Option<crate::content::PathRect>,
 }
 
 impl Default for GraphicsState {
@@ -147,11 +184,20 @@ impl Default for GraphicsState {
         Self {
             ctm: Matrix::IDENTITY,
             fill: Fill::BLACK,
+            fill_device: true,
+            fill_space: 1,
+            ext_gstate: false,
+            clip_unknown: false,
+            text_blends: false,
+            form_clip: None,
             stroke: Fill::BLACK,
+            stroke_device: true,
             line_width: 1.0,
             line_cap: 0,
             dashed: false,
             clip: None,
+            text_clip: None,
+            text_clip_glyphs: None,
         }
     }
 }
@@ -214,6 +260,17 @@ impl Fill {
         match self.count {
             1 | 3 => used.iter().all(|&c| c >= 970),
             4 => used.iter().all(|&c| c <= 30),
+            _ => false,
+        }
+    }
+
+    /// Whether this is white exactly (decision #139): gray or RGB components of one, or CMYK of
+    /// nought, as the operands are stored, to a thousandth. No near colour is white here.
+    pub fn is_exactly_white(self) -> bool {
+        let used = &self.components[..usize::from(self.count)];
+        match self.count {
+            1 | 3 => used.iter().all(|&c| c == 1000),
+            4 => used.iter().all(|&c| c == 0),
             _ => false,
         }
     }

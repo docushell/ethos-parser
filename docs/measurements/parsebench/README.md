@@ -3,7 +3,8 @@
 **Measured 2026-10-03.** ParseBench (`run-llama/ParseBench` at `afb36bd`, dataset
 `llamaindex/ParseBench` at revision `2805a1d`, both Apache-2.0) scores a parser's Markdown on five
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
-grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**.
+grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**. Re-scored
+2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14** (below, with ParseBench-2).
 
 **Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
 It was also run to find defects, and it found them: every engine change it led to is in
@@ -15,7 +16,7 @@ here.
 
 ```bash
 git clone https://github.com/run-llama/ParseBench ~/ethos-external-benchmarks/ParseBench
-cd ~/ethos-external-benchmarks/ParseBench && git checkout 1f5b37a && uv sync
+cd ~/ethos-external-benchmarks/ParseBench && git checkout d7efdbc && uv sync
 cp <this checkout>/docs/measurements/parsebench/ethos_bench.py .
 uv run parse-bench download
 ETHOS_PARSER_BIN=<this checkout>/target/release/ethos-parser uv run python ethos_bench.py run ethos_markdown
@@ -1095,6 +1096,26 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### Re-scored with parse-bench 2.1.1, the README's rows (2026-11-19)
+
+ParseBench re-scored its leaderboard on 15–17 November with parse-bench 2.1.0 (`c61ff10`): every row
+with published outputs was scored again from them, the dataset unchanged at `2805a1d`. The build of
+`0f6c8a3`, run and scored at 2.1.1 (`d7efdbc`, later than the board's), scores exactly as it does
+at `1f5b37a`, dimension by dimension, in all four lanes. The assist lanes read decision #147's replies; places are against `leaderboard.csv` at
+`d7efdbc`, 157 rows:
+
+| Lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 64.53 | 17.30 | 67.52 | 51.39 | 59.99 | 52.14 | 113th |
+| `--ocr` | 64.54 | 17.30 | 75.48 | 52.82 | 63.28 | 54.69 | 108th |
+| Product, as written | 60.53 | 64.81 | 83.70 | 54.41 | 63.28 | 65.34 | 69th |
+| Product, unwrapped by the adapter | 85.75 | 66.67 | 84.18 | 59.75 | 63.28 | 71.93 | 31st |
+
+Overall is the mean of the five unrounded dimensions, as the leaderboard's own scripts take it; the
+52.15, 54.68 and 65.35 quoted for `26244de` were means of the rounded columns, and the scores under
+them are the same. Other rows moved with the re-score (PyMuPDF4LLM 53.49 → 50.47, Warp Ingest
+40.18 → 39.33); rows with no published outputs (`Verified=no`) keep their submitted numbers.
+
 ### After a footnote mark set against its label joins its line (decision #119, 2026-11-08)
 
 Alone on `6be3031`: a mark raised up to three fifths of an em joins its line where set against the
@@ -1541,7 +1562,7 @@ LightOnOCR-3 provider code, as its leaderboard row is.
 
 - The engine's Markdown stays, and the model's table and chart blocks follow it, each with the title
   or caption block set right before it.
-- Where the engine's Markdown holds under 30% of the words the model reads, and the model reads at
+- Where the engine's Markdown holds under 30% of the distinct words the model reads, and the model reads at
   least half as many words as the engine, the page is the model's instead. On ParseBench these are
   scans under a stray text layer, scripts and hands the engine's OCR does not read, and fonts whose
   `/ToUnicode` misleads: one maps every code to itself while its glyphs sit 29 places off, another
@@ -1608,6 +1629,121 @@ most code, and cost content a little on 9 of 100 pages; the owner chose the lane
 whole model page appended to the engine's read charts 0.6385 against 0.6555 for its chart blocks
 alone. Before it, assist Phase 0 measured Qwen2.5-VL-7B's tables appended to the engine's chart
 pages: charts 0.1726 -> 0.3982, overall 58.45.
+
+## ethos-parser + assist, through the product (decision #147, 2026-11-16)
+
+The same model's reading, merged and placed by the engine itself instead of by this adapter: each
+document is read with `extract --ocr --assist-answers <replies file>`, and its `markdown` and `html`
+are scored as the engine-only lane's are. The record holds the model's blocks as `Proposed`, the guard
+(decision #146) leaves out the lines the page contradicts, and the projections (decision #147) swap a
+page the engine barely read, add tables and charts at their reading position, leave out an exact copy
+of an engine table, and write every insertion as one block quote: its label `> **Proposed:** … by
+<model>@<version>` first, the model's blocks one quote deeper (`> > `), their text escaped, and
+`> **End of proposed text.**` last. These are still "ethos-parser + assist (LightOnOCR-3-0.8B)"
+numbers, not engine numbers.
+
+**The replies.** Decision #123's 1,578 pages, rendered again by hayro as `ethos-parser-assist` renders
+them and answered by the same model, revision and request (Phase 4a; 1 page, a JPEG 2000 image hayro
+cannot decode, has no answer). `assist_replies.py` writes one replies file per document, page 1 only,
+as #123 asked; `ethos-parser-assist render` drew all 1,577 pages byte for byte as the PNGs the model
+read. `render` prints no points, so `points` comes from the pixels and the dpi: at most 0.48 pt from
+the record's box, inside the 1 pt it is checked against. Every file loads; the 11 documents the engine
+refuses are refused with or without it. No trigger runs yet: every answered page is merged.
+
+```bash
+python3 -I assist_replies.py answers.json <the PNGs the model read> replies/ <ethos-parser-assist>
+ETHOS_BENCH_ASSIST_PRODUCT=replies/ ETHOS_BENCH_OCR=engine ETHOS_PARSER_BIN=<ethos-parser> uv run python ethos_bench.py run ethos_markdown
+```
+
+ParseBench hands the provider a copy of each source under a random name, so the adapter finds a
+document's replies file by the example's id. `ETHOS_BENCH_ASSIST_STRIP=1` unwraps each insertion in
+the Markdown scored, before its pipe tables are converted: the label and end lines and the quote
+markers go, and the escapes the product writes into model text (`&amp;`, `&lt;`, a `\` before `[`
+and `]`, before a fence's run of backticks or tildes, and before a `\` that precedes one of those)
+are undone, so the model's text reads as it wrote it. **The product never does**, and the row under
+it is reported as such. Checked on every page with an insertion: each of 26,392 unwrapped lines is
+the model's text as its reply wrote it, but for the tags the engine rewrites (`<br />` as `<br>`);
+437 of them the unwrap changed: 316 holding `&`, 40 `<`, 160 `[` or `]`.
+
+**Measured** on the engine of this tree with `--ocr`, the score ledger on; place against
+`leaderboard.csv`'s 157 rows (49th reads 69.12):
+
+| Lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| #123, Ghostscript pages, engine `bdcebe6` (the official row) | 86.36 | 65.53 | 83.94 | 59.50 | 60.04 | 71.07 | 35th |
+| #123's lane, hayro pages, engine `bdcebe6` | 86.41 | 66.17 | 83.83 | 59.44 | 60.04 | 71.18 | 34th |
+| #123's lane, hayro pages, this engine | 86.41 | 66.17 | 84.07 | 59.59 | 63.25 | 71.90 | 30th |
+| **Product, as written** | **60.53** | **64.81** | **83.71** | **54.34** | **63.25** | **65.33** | **68th** |
+| Product, unwrapped by the adapter | 85.75 | 66.67 | 84.19 | 59.68 | 63.25 | 71.91 | 30th |
+
+**As written, ParseBench reads past the quote.** The product scores 65.33 as it writes its Markdown,
+and 71.91 unwrapped, level with #123's lane on this engine (71.90) and 0.84 over #123's 71.07. The
+6.58 between them is the block quote, not the model's text: of the 236 pages that fall more than
+0.3 against #123's lane on this engine, 230 score as that lane does once unwrapped.
+
+- **Tables -25.22 for the quote**: the adapter converts a pipe table only where its line starts with
+  `|`, as every local provider's converter does, so a model table in `> > ` is never a table to the
+  table scorer. 191 table pages fall, each one whose model table the product added or swapped in;
+  190 recover unwrapped.
+- **Formatting -5.34**: ParseBench reads a title only from a `#` at a line's start, so the 33
+  swapped text pages that fall lose every heading in the quote.
+- **Charts -1.86**: 7 chart pages fall whose chart table is quoted, and recover unwrapped.
+- **Content -0.48**, 86 pages each a little: the quote markers are text to the content scorer.
+- **Two pages go the other way**, 1.0 as written and lower unwrapped (a table page 0.35, a chart page
+  0): the quote hides a model insertion that #123's lane scores just as low.
+- **Unwrapped, against #123's lane on this engine**: tables -0.66 (2 pages up, 36 down), charts
+  +0.49 (22 up, 16 down), content +0.12, formatting +0.10. The guard left out 329 contradicted lines,
+  16 unsupported lines and 30 cut last blocks on the table, chart and content pages; de-duplication
+  left out 185 model tables equal to an engine table cell for cell.
+- **Swap parity**: the product swaps every page #123's lane swaps (4 table, 3 chart, 78 text pages),
+  plus a Telugu and a Marathi page, where Python's `\w` and Rust's alphanumerics part words at
+  combining marks differently.
+
+**Pages that fall more than 0.3**, unwrapped, against #123's lane on this engine: 6, none from the
+engine. One table page is the guard's: it leaves out 30 cells of a table whose `Total` column and
+2027–2031 rows the engine does not read, while the page's prose and its totals row bear the model's
+values out. Five chart pages are the titles and placement: #123's lane writes each chart right after
+the model's own title, as a heading, while the product leaves out a title whose words the engine
+already holds and places the chart where it stands on the page. ParseBench takes a chart's labels
+only from a heading, bold text or a caption near the table, so four lose the chart's title, and one,
+four panels, places two panels out of order without their titles.
+
+## ParseBench-2 (2026-11-19)
+
+ParseBench-2 (`llamaindex/ParseBench-2`, Apache-2.0) is the same project's second set: 4,317 pages
+in 13 subsets, scored on six dimensions (text, formatting, tables, charts, visual grounding, forms)
+by the same harness, through the same adapter. Its leaderboard, `leaderboard-v2.csv`, is scored at
+the dataset revision `leaderboard/results-v2.yaml` names, `f0757ac` (v2.04), by parse-bench 2.1.0
+(`c61ff10`), and so is the row in `docs/BENCHMARKS.md`:
+
+```bash
+uv run hf download llamaindex/ParseBench-2 --repo-type dataset \
+  --revision f0757ac998ef9eb9c3c346ef170fee175b6a7d75 --local-dir data_parsebench-2
+ETHOS_PARSER_BIN=<ethos-parser> uv run python ethos_bench.py run ethos_markdown --dataset parsebench-2
+```
+
+`ETHOS_BENCH_OCR=engine` gives the `--ocr` lane. The scores are in `<output>/parsebench-2/_score/ethos_markdown/_next_score.json`. To score a finished run with
+another harness, call the adapter, never `parse-bench` directly: `python ethos_bench.py evaluation
+run <output>/parsebench-2 --next '{<subset>: {"output_dir": …, "test_cases_dir": …}}' --next_only`.
+Run without it, nothing registers the layout reader for provider `ethos`, and visual grounding
+scores 0 on every page.
+
+**Measured** on `0f6c8a3`, placed against `leaderboard-v2.csv` at `d7efdbc`, 56 rows, every one a
+hosted parsing service or an AI model:
+
+| Lane | Text | Formatting | Tables | Charts | Grounding | Forms | Overall | Place |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 57.58 | 71.36 | 49.98 | 17.94 | 67.25 | 67.20 | 55.22 | 54th |
+| `--ocr` | 61.74 | 77.57 | 51.71 | 17.94 | 66.75 | 67.20 | 57.15 | 54th |
+
+- **parse-bench 2.1.1** (`d7efdbc`) changed how forms are scored after the board was: forms read 67.39
+  under it, the overalls 55.25 and 57.18. The board's 2.1.0 is the one quoted.
+- **The earlier figures were on an earlier set.** The ParseBench-2 numbers in `CHANGELOG.md` for
+  decisions #154 and #155 (53.46, 53.91) were measured at dataset revision `d4e0eaa` with
+  parse-bench 2.0.4. Revision `f0757ac` corrects annotations, and with 2.1.0 it raises grounding
+  (61.76 → 67.25) and forms (64.80 → 67.20) on this engine, as it raises them on the leaderboard's
+  rows.
+- **The assist lane has not been run on ParseBench-2.**
 
 ## What it found that is not fixed
 

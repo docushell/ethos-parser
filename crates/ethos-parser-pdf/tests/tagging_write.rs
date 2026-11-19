@@ -74,7 +74,7 @@ fn engine_fixture(name: &str) -> Vec<u8> {
 ///
 /// The fixtures were written under `gutter-columns-v3` and stay so, because they are also the
 /// files an earlier build tagged, which `tagging_read.rs` requires the reader to keep accepting.
-/// `gutter-columns-v4` moved the profile's id and the writer writes the profile's id. The swap is
+/// `gutter-columns-v4` and `-v5` moved the profile's id and the writer writes the profile's id. The swap is
 /// the same length, so the file's own offsets hold, and the rule id is the only byte string the
 /// comparison lets differ.
 fn under_this_rule(mut bytes: Vec<u8>) -> Vec<u8> {
@@ -420,7 +420,7 @@ fn the_writer_emits_the_readers_fixture_shape() {
             attribute: vec![
                 ("Derivation".into(), "/Computed".into()),
                 ("O".into(), "/EthosParser".into()),
-                ("Rule".into(), "(gutter-columns-v4)".into()),
+                ("Rule".into(), "(gutter-columns-v5)".into()),
             ],
             has_page: false,
             ids: vec![],
@@ -430,7 +430,7 @@ fn the_writer_emits_the_readers_fixture_shape() {
                     attribute: vec![
                         ("Derivation".into(), "/Computed".into()),
                         ("O".into(), "/EthosParser".into()),
-                        ("Rule".into(), "(gutter-columns-v4)".into()),
+                        ("Rule".into(), "(gutter-columns-v5)".into()),
                     ],
                     has_page: true,
                     ids: vec![0],
@@ -441,7 +441,7 @@ fn the_writer_emits_the_readers_fixture_shape() {
                     attribute: vec![
                         ("Derivation".into(), "/Computed".into()),
                         ("O".into(), "/EthosParser".into()),
-                        ("Rule".into(), "(gutter-columns-v4)".into()),
+                        ("Rule".into(), "(gutter-columns-v5)".into()),
                     ],
                     has_page: true,
                     ids: vec![1],
@@ -770,7 +770,7 @@ fn the_two_column_page_gets_one_div_per_band_in_reading_order() {
     for needle in [
         "3 of its 3 structure element(s)",
         "15 text run(s)",
-        "gutter-columns-v4",
+        "gutter-columns-v5",
     ] {
         assert!(
             declaration.detail.contains(needle),

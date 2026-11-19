@@ -44,6 +44,14 @@
 //! **stored**: its cached `<v>`, or, when nothing was cached, the formula source as written — and
 //! [`ethos_parser_core::CellTextSource`] says which, so `SUM(B2:B2)` can never be mistaken for a number
 //! the sheet displayed.
+//!
+//! # A number format is the workbook's own statement (decision #135)
+//!
+//! `xl/styles.xml` states how each style displays a number, and a date is nothing but a number
+//! under a date format. A number cell's text is its stored or cached value as that format displays
+//! it — `46339` under `numFmtId` 14 is `2026-11-13` — with the stored value kept beside it; a format
+//! `numfmt.rs` does not render leaves the stored value, counted. No formula is evaluated for it,
+//! and no column width or print setting is read with it.
 
 use ethos_parser_core::{CellTextSource, CellValueType, EngineError};
 use quick_xml::events::{BytesStart, Event};
@@ -78,6 +86,13 @@ const WORKSHEET_REL_TYPE: &str =
 /// The relationship type that binds a workbook to its shared string table.
 const SHARED_STRINGS_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings";
+
+/// The part a workbook conventionally keeps its styles in, number formats among them.
+pub const STYLES_PART: &str = "xl/styles.xml";
+
+/// The relationship type that binds a workbook to its styles part.
+const STYLES_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
 /// Parts that carry text and that v2-S3 does not read, matched by prefix.
 ///
@@ -118,12 +133,91 @@ pub struct Cell {
     pub row: u32,
     /// The letters of the cell's `r` attribute, e.g. `B`, `AA`.
     pub column: String,
-    /// The text, as stored. Never a formatted or evaluated value.
+    /// The text: the stored value, or, for a number cell whose format this build renders, that
+    /// value as the format displays it (decision #135). Never an evaluated value.
     pub text: String,
     /// What the cell's `t` attribute says the stored value is.
     pub value_type: CellValueType,
-    /// Where [`Self::text`] came from.
+    /// Where the value behind [`Self::text`] came from.
     pub text_source: CellTextSource,
+    /// The stored value, when [`Self::text`] is it as its number format displays it.
+    pub stored_value: Option<String>,
+    /// Whether the cell is a number whose format this build does not render, so [`Self::text`] is
+    /// the stored value. Counted under `office-number-formats-not-rendered`.
+    pub format_not_rendered: bool,
+    /// Whether [`Self::text`] is a date under built-in format 14 or 22, which Excel shows in the
+    /// reader's own short-date order and this build writes in ISO 8601 — an order it chose, not
+    /// one the file states. Counted under `office-locale-dates-written-iso`.
+    pub iso_date: bool,
+}
+
+/// One `<mergeCell>` of a worksheet: the first and last row and column it spans, 1-based, columns
+/// as indices (`A` is 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Merge {
+    /// The merge's top row.
+    pub first_row: u32,
+    /// The merge's left column, `A` being 1.
+    pub first_column: u64,
+    /// The merge's bottom row.
+    pub last_row: u32,
+    /// The merge's right column.
+    pub last_column: u64,
+}
+
+/// The number formats a workbook states, and its date system (decision #135).
+///
+/// The default is a workbook with no styles part: every cell `General`, the 1900 date system.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NumberFormats {
+    /// `<numFmts>`: id to format code.
+    custom: std::collections::BTreeMap<u32, String>,
+    /// `<cellXfs>`: each style index's `numFmtId`, in order.
+    cell_formats: Vec<u32>,
+    /// Whether `<workbookPr date1904>` puts serial 0 on 1904-01-01.
+    pub date1904: bool,
+    /// Whether the styles part would not read, so no style's format is known, style zero's
+    /// included (review).
+    unread: bool,
+}
+
+impl NumberFormats {
+    /// A workbook whose styles part would not read: no cell's format is known.
+    pub(crate) fn unread() -> Self {
+        Self {
+            unread: true,
+            ..Self::default()
+        }
+    }
+
+    /// The format a style index names, applied to a stored number, and whether that format is
+    /// built-in 14 or 22 — a date the file leaves to the reader's locale, written in ISO 8601.
+    pub(crate) fn show(&self, style: Option<u32>, stored: &str) -> (crate::numfmt::Shown, bool) {
+        if self.unread {
+            return (crate::numfmt::Shown::NotRendered, false);
+        }
+        let Some(&id) = self.cell_formats.get(style.unwrap_or(0) as usize) else {
+            // No `cellXfs` at all is a workbook of `General` cells; a style index past the list
+            // names a format the file does not state.
+            return if style.unwrap_or(0) == 0 && self.cell_formats.is_empty() {
+                (crate::numfmt::Shown::General, false)
+            } else {
+                (crate::numfmt::Shown::NotRendered, false)
+            };
+        };
+        match self.custom.get(&id) {
+            Some(code) => (crate::numfmt::render(code, stored, self.date1904), false),
+            None => match crate::numfmt::builtin(id) {
+                Some(code) => {
+                    let shown = crate::numfmt::render(code, stored, self.date1904);
+                    let chosen =
+                        matches!(id, 14 | 22) && matches!(shown, crate::numfmt::Shown::Rendered(_));
+                    (shown, chosen)
+                }
+                None => (crate::numfmt::Shown::NotRendered, false),
+            },
+        }
+    }
 }
 
 /// Parts that hold an **embedded asset** and that no slice reads, matched by prefix.
@@ -177,16 +271,146 @@ pub fn unread_text_parts(entry_names: &[String]) -> u32 {
 /// reading a part that is demonstrably there is not a guess, and refusing it would reject
 /// workbooks that open everywhere else.
 pub fn shared_strings_part(rels: &[Relationship], entry_names: &[String]) -> Option<String> {
-    if let Some(rel) = rels
-        .iter()
-        .find(|r| !r.external && r.kind == SHARED_STRINGS_REL_TYPE)
-    {
+    bound_part(
+        rels,
+        entry_names,
+        SHARED_STRINGS_REL_TYPE,
+        SHARED_STRINGS_PART,
+    )
+}
+
+/// The package part holding the styles, or `None` if this workbook has none — bound the way
+/// [`shared_strings_part`] binds the string table, for its reasons.
+pub fn styles_part(rels: &[Relationship], entry_names: &[String]) -> Option<String> {
+    bound_part(rels, entry_names, STYLES_REL_TYPE, STYLES_PART)
+}
+
+fn bound_part(
+    rels: &[Relationship],
+    entry_names: &[String],
+    kind: &str,
+    conventional: &str,
+) -> Option<String> {
+    if let Some(rel) = rels.iter().find(|r| !r.external && r.kind == kind) {
         return Some(resolve_target(&rel.target, "xl"));
     }
     entry_names
         .iter()
-        .any(|n| n == SHARED_STRINGS_PART)
-        .then(|| SHARED_STRINGS_PART.to_string())
+        .any(|n| n == conventional)
+        .then(|| conventional.to_string())
+}
+
+/// Read the number formats a styles part states: each `<numFmt>` of `<numFmts>` and each
+/// `<cellXfs>` `<xf>`'s `numFmtId` (decision #135). The date system is the workbook's, set by the
+/// caller. A `<numFmt>` anywhere else — a conditional format's `<dxf>` — styles no cell's value
+/// and is not read.
+///
+/// **A `numFmtId` that is not a number names no format**: such a `<numFmt>` is passed over, and
+/// such an `<xf>` styles its cells with a format this build does not render, so they show what
+/// they store and are counted. Nothing here refuses the workbook over its formats.
+///
+/// # Errors
+///
+/// [`EngineError::Malformed`] if the XML will not parse. The caller falls back to stored values.
+pub fn read_number_formats(part: &[u8], part_name: &str) -> Result<NumberFormats, EngineError> {
+    let mut reader = new_reader(part, part_name)?;
+    let mut formats = NumberFormats::default();
+    let (mut in_cell_xfs, mut in_num_fmts) = (false, false);
+    let mut depth: i32 = 0;
+    // `(numFmtId, formatCode)`: the id `Some(None)` where it is stated and not a number.
+    type Stated = (Option<Option<u32>>, Option<String>);
+    let id_of = |start: &BytesStart<'_>| -> Result<Stated, EngineError> {
+        let mut id = None;
+        let mut code = None;
+        for attribute in start.attributes() {
+            let attribute = attribute.map_err(|e| EngineError::Malformed {
+                what: part_name.to_string(),
+                detail: format!("attribute will not parse: {e}"),
+            })?;
+            match local_name(attribute.key.as_ref()) {
+                b"numFmtId" => {
+                    id = Some(attribute_value(&attribute, part_name)?.trim().parse().ok());
+                }
+                b"formatCode" => code = Some(attribute_value(&attribute, part_name)?),
+                _ => {}
+            }
+        }
+        Ok((id, code))
+    };
+    loop {
+        let (start, empty) = match reader.read_event() {
+            Err(e) => return Err(parse_error(&reader, part_name, &e)),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(start)) => {
+                depth += 1;
+                (start, false)
+            }
+            Ok(Event::Empty(start)) => (start, true),
+            Ok(Event::End(end)) => {
+                depth -= 1;
+                match local_name(end.name().as_ref()) {
+                    b"cellXfs" => in_cell_xfs = false,
+                    b"numFmts" => in_num_fmts = false,
+                    _ => {}
+                }
+                continue;
+            }
+            Ok(_) => continue,
+        };
+        match local_name(start.name().as_ref()) {
+            b"cellXfs" => in_cell_xfs = !empty,
+            b"numFmts" => in_num_fmts = !empty,
+            b"numFmt" if in_num_fmts => {
+                if let (Some(Some(id)), Some(code)) = id_of(&start)? {
+                    formats.custom.insert(id, code);
+                }
+            }
+            b"xf" if in_cell_xfs => {
+                // No `numFmtId` is `General`, ECMA-376's default; one that is no number names
+                // no format, so its cells are counted as not rendered.
+                let id = match id_of(&start)?.0 {
+                    None => 0,
+                    Some(id) => id.unwrap_or(u32::MAX),
+                };
+                formats.cell_formats.push(id);
+            }
+            _ => {}
+        }
+    }
+    check_closed(depth, part_name)?;
+    Ok(formats)
+}
+
+/// Whether `xl/workbook.xml` puts the workbook on the 1904 date system: `<workbookPr
+/// date1904="1">` (decision #135).
+///
+/// # Errors
+///
+/// [`EngineError::Malformed`] if the XML will not parse.
+pub fn date1904(part: &[u8]) -> Result<bool, EngineError> {
+    let mut reader = new_reader(part, WORKBOOK_PART)?;
+    loop {
+        match reader.read_event() {
+            Err(e) => return Err(parse_error(&reader, WORKBOOK_PART, &e)),
+            Ok(Event::Eof) => return Ok(false),
+            Ok(Event::Start(start)) | Ok(Event::Empty(start))
+                if local_name(start.name().as_ref()) == b"workbookPr" =>
+            {
+                for attribute in start.attributes() {
+                    let attribute = attribute.map_err(|e| EngineError::Malformed {
+                        what: WORKBOOK_PART.into(),
+                        detail: format!("attribute will not parse: {e}"),
+                    })?;
+                    if local_name(attribute.key.as_ref()) == b"date1904" {
+                        let value = attribute_value(&attribute, WORKBOOK_PART)?;
+                        return Ok(matches!(value.trim(), "1" | "true"));
+                    }
+                }
+                return Ok(false);
+            }
+            Ok(_) => {}
+        }
+    }
 }
 
 /// Read the `<sheets>` list of an `xl/workbook.xml`.
@@ -432,21 +656,26 @@ pub fn read_cells(
     shared: &[String],
 ) -> Result<Vec<Cell>, EngineError> {
     let mut budget = crate::CellBudget::new(format!("`{part_name}`"));
-    read_cells_within(part, part_name, shared, &mut budget, 0)
+    let formats = NumberFormats::default();
+    read_cells_within(part, part_name, shared, &formats, &mut budget, 0).map(|(cells, _)| cells)
 }
 
-/// [`read_cells`], charging each cell to `budget` before it is kept: its text, and `address`
-/// bytes of locator strings besides its column — the sheet's name and part name, which every cell
-/// of the sheet will carry.
+/// [`read_cells`] under the workbook's number formats, charging each cell to `budget` before it is
+/// kept: its text and stored value, and `address` bytes of locator strings besides its column —
+/// the sheet's name and part name, which every cell of the sheet will carry. Returns the sheet's
+/// `<mergeCell>` ranges beside its cells; a range that is not `A1:B2`-shaped, or names one cell, is
+/// passed over, since it merges nothing a table could show.
 pub(crate) fn read_cells_within(
     part: &[u8],
     part_name: &str,
     shared: &[String],
+    formats: &NumberFormats,
     budget: &mut crate::CellBudget,
     address: usize,
-) -> Result<Vec<Cell>, EngineError> {
+) -> Result<(Vec<Cell>, Vec<Merge>), EngineError> {
     let mut reader = new_reader(part, part_name)?;
     let mut cells = Vec::new();
+    let mut merges = Vec::new();
     let mut open: Option<OpenCell> = None;
     let mut declared_row: Option<u32> = None;
     let mut collect = Collect::None;
@@ -466,6 +695,7 @@ pub(crate) fn read_cells_within(
                 depth += 1;
                 match local_name(start.name().as_ref()) {
                     b"row" => declared_row = row_number(&start, part_name)?,
+                    b"mergeCell" => merges.extend(merge(&start, part_name)?),
                     b"c" => {
                         // A `<c>` inside a `<c>` is well-formed XML and not SpreadsheetML. The
                         // inner `</c>` would close the inner cell and the outer one would find
@@ -511,6 +741,7 @@ pub(crate) fn read_cells_within(
             }
 
             Ok(Event::Empty(start)) => match local_name(start.name().as_ref()) {
+                b"mergeCell" => merges.extend(merge(&start, part_name)?),
                 // A self-closing `<c/>` holds nothing, so there is no cell to open. Its `r` is
                 // not validated either: an address with no text behind it is not evidence, and
                 // refusing a whole workbook over the spelling of an empty cell would delete
@@ -539,7 +770,7 @@ pub(crate) fn read_cells_within(
                 match local_name(end.name().as_ref()) {
                     b"c" => {
                         if let Some(cell) = open.take() {
-                            if let Some(cell) = cell.finish(part_name, shared)? {
+                            if let Some(cell) = cell.finish(part_name, shared, formats)? {
                                 // One address, one cell. A sheet that states two is not
                                 // describing one grid, and a citation to that address would have
                                 // two answers with nothing to choose between them.
@@ -557,7 +788,11 @@ pub(crate) fn read_cells_within(
                                 }
                                 // A shared string's text is a clone, so a cell stating one index
                                 // can carry a megabyte: the budget is what bounds the product.
-                                budget.admit(cell.text.len(), address + cell.column.len())?;
+                                budget.admit(
+                                    cell.text.len()
+                                        + cell.stored_value.as_ref().map_or(0, String::len),
+                                    address + cell.column.len(),
+                                )?;
                                 cells.push(cell);
                             }
                         }
@@ -602,7 +837,50 @@ pub(crate) fn read_cells_within(
     }
 
     check_closed(depth, part_name)?;
-    Ok(cells)
+    Ok((cells, merges))
+}
+
+/// A `<mergeCell ref="A1:D1">` as a [`Merge`], or `None` where its `ref` is not two A1 addresses
+/// spanning more than one cell.
+fn merge(start: &BytesStart<'_>, part_name: &str) -> Result<Option<Merge>, EngineError> {
+    for attribute in start.attributes() {
+        let attribute = attribute.map_err(|e| EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!("attribute will not parse: {e}"),
+        })?;
+        if local_name(attribute.key.as_ref()) != b"ref" {
+            continue;
+        }
+        let raw = attribute_value(&attribute, part_name)?;
+        let Some((a, b)) = raw.split_once(':') else {
+            return Ok(None);
+        };
+        let (Ok((c1, r1)), Ok((c2, r2))) =
+            (split_reference(a, part_name), split_reference(b, part_name))
+        else {
+            return Ok(None);
+        };
+        let (c1, c2) = (column_index(&c1), column_index(&c2));
+        if r2 < r1 || c2 < c1 || (r1, c1) == (r2, c2) {
+            return Ok(None);
+        }
+        return Ok(Some(Merge {
+            first_row: r1,
+            first_column: c1,
+            last_row: r2,
+            last_column: c2,
+        }));
+    }
+    Ok(None)
+}
+
+/// A column's letters as its 1-based index: `A` is 1, `Z` 26, `AA` 27. Saturating, so letters no
+/// workbook writes cannot wrap into a column that exists.
+pub(crate) fn column_index(letters: &str) -> u64 {
+    letters.bytes().fold(0u64, |n, b| {
+        n.saturating_mul(26)
+            .saturating_add(u64::from(b.saturating_sub(b'A')) + 1)
+    })
 }
 
 /// Decode SpreadsheetML's `_xHHHH_` escapes (ECMA-376 Part 1, `ST_Xstring`), once.
@@ -677,6 +955,9 @@ impl Collect {
 struct OpenCell {
     row: u32,
     column: String,
+    /// The `s` attribute: an index into `cellXfs`. One that is not a number names no style, and
+    /// is kept as one past any list so its format is counted as not rendered.
+    style: Option<u32>,
     value_type: CellValueType,
     value: String,
     has_value: bool,
@@ -738,7 +1019,12 @@ impl OpenCell {
     /// The precedence is the `t` attribute's, not a search of whichever child happens to be
     /// present: a cell that says it is a shared string is resolved as one and **fails closed** if
     /// its index does not exist, rather than falling through to some other child's text.
-    fn finish(self, part_name: &str, shared: &[String]) -> Result<Option<Cell>, EngineError> {
+    fn finish(
+        self,
+        part_name: &str,
+        shared: &[String],
+        formats: &NumberFormats,
+    ) -> Result<Option<Cell>, EngineError> {
         // **A cell stores its value in one place.** `<v>` and `<is>` are alternatives, never a
         // pair, and a cell carrying both would have one of them read and the other dropped
         // without a word — whichever the `t` attribute happened to name. A formula may accompany
@@ -825,12 +1111,33 @@ impl OpenCell {
             (true, false) => CellTextSource::FormulaSource,
         };
 
+        // **A number shows as its format displays it** (decision #135): a stored or cached
+        // `<v>` of a number cell, never a formula's source and never a string.
+        let mut stored_value = None;
+        let mut format_not_rendered = false;
+        let mut iso_date = false;
+        let mut text = text;
+        if self.value_type == CellValueType::Number && self.has_value {
+            let (shown, chosen) = formats.show(self.style, &text);
+            iso_date = chosen;
+            match shown {
+                crate::numfmt::Shown::Rendered(shown) => {
+                    stored_value = Some(std::mem::replace(&mut text, shown));
+                }
+                crate::numfmt::Shown::General => {}
+                crate::numfmt::Shown::NotRendered => format_not_rendered = true,
+            }
+        }
+
         Ok(Some(Cell {
             row: self.row,
             column: self.column,
             text,
             value_type: self.value_type,
             text_source,
+            stored_value,
+            format_not_rendered,
+            iso_date,
         }))
     }
 }
@@ -842,6 +1149,7 @@ fn open_cell(
 ) -> Result<OpenCell, EngineError> {
     let mut reference = None;
     let mut value_type = CellValueType::Number;
+    let mut style = None;
     for attribute in start.attributes() {
         let attribute = attribute.map_err(|e| EngineError::Malformed {
             what: part_name.to_string(),
@@ -849,6 +1157,10 @@ fn open_cell(
         })?;
         match local_name(attribute.key.as_ref()) {
             b"r" => reference = Some(attribute_value(&attribute, part_name)?),
+            b"s" => {
+                let raw = attribute_value(&attribute, part_name)?;
+                style = Some(raw.trim().parse::<u32>().unwrap_or(u32::MAX));
+            }
             b"t" => {
                 value_type = cell_value_type(&attribute_value(&attribute, part_name)?, part_name)?
             }
@@ -888,6 +1200,7 @@ fn open_cell(
     Ok(OpenCell {
         row,
         column,
+        style,
         value_type,
         value: String::new(),
         has_value: false,

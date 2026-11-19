@@ -1157,9 +1157,11 @@ fn page_of(p: &PageRecord) -> Page {
         index: p.index,
         width: p.width,
         height: p.height,
-        // The representation validates rotation into {0, 90, 180, 270} before this runs, so the
-        // narrowing cannot lose information; it is checked rather than asserted all the same.
-        rotation: u16::try_from(p.rotation).unwrap_or(u16::MAX),
+        // The frame the page is read in: its declared rotation, and the turn it was read in
+        // beyond it (decision #155), which a grounding page has no field for. The representation
+        // validates both into {0, 90, 180, 270} before this runs, so the narrowing cannot lose
+        // information; it is checked rather than asserted all the same.
+        rotation: u16::try_from((p.rotation + p.turn) % 360).unwrap_or(u16::MAX),
     }
 }
 
@@ -1188,6 +1190,36 @@ pub fn to_canonical_bytes(g: &GroundingSource) -> Result<Vec<u8>, EngineError> {
 
 /// The crate name, used by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "ethos-parser-grounding";
+
+#[cfg(test)]
+mod frame_tests {
+    use super::*;
+    use ethos_parser_core::{IdKind, NodeId};
+
+    /// **A page read turned states its frame as its rotation** (decision #155): a grounding page
+    /// has no `turn`, so its `rotation` is the declared one and the turn together, the frame its
+    /// width, height and boxes are in.
+    #[test]
+    fn a_page_read_turned_states_its_frame_as_its_rotation() {
+        let rotation_of = |rotation, turn| {
+            page_of(&PageRecord {
+                id: NodeId::from_parts(IdKind::Page, 1),
+                index: 1,
+                width: 40000,
+                height: 30000,
+                rotation,
+                turn,
+                visible: None,
+            })
+            .rotation
+        };
+        assert_eq!(rotation_of(0, 0), 0);
+        assert_eq!(rotation_of(90, 0), 90);
+        assert_eq!(rotation_of(0, 90), 90);
+        assert_eq!(rotation_of(90, 270), 0);
+        assert_eq!(rotation_of(270, 180), 90);
+    }
+}
 
 #[cfg(test)]
 mod span_cap_tests {
@@ -1296,6 +1328,7 @@ mod schema_limit_tests {
             tables: Vec::new(),
             outlines: Vec::new(),
             figures: Vec::new(),
+            assist: None,
             assurance: Assurance::new(
                 capabilities,
                 pages.iter().map(|p| p.index).max().unwrap_or(0),
@@ -1317,6 +1350,7 @@ mod schema_limit_tests {
             width: 60000,
             height: 80000,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
@@ -1351,6 +1385,8 @@ mod schema_limit_tests {
                     bold: false,
                     italic: false,
                     script: None,
+                    strikeout: false,
+                    underline: false,
                     furniture: None,
                     reading: None,
                 }),
@@ -1391,6 +1427,7 @@ mod schema_limit_tests {
             width: 60000,
             height: 80000,
             rotation: 0,
+            turn: 0,
             visible: None,
         };
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
@@ -1432,6 +1469,8 @@ mod schema_limit_tests {
                         bold: false,
                         italic: false,
                         script: None,
+                        strikeout: false,
+                        underline: false,
                         furniture: None,
                         reading: None,
                     }),
@@ -1498,6 +1537,7 @@ mod schema_limit_tests {
                 derivation: DerivationClass::Extracted,
                 attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
                     space_preserved: false,
+                    ..Default::default()
                 }),
             })
             .collect();

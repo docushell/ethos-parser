@@ -786,7 +786,7 @@ FIXTURES = {
     # Four things are proved here and nowhere else:
     #   /Lbl 0 + /LBody 1              an item whose own marker text the document drew
     #   a nested /L under /LBody       depth, from nested `/L` rather than from indentation
-    #   /LBody with /K [7 8]           TWO runs in one item, which is the join S2 counts
+    #   /LBody with /K [7 8]           TWO runs in one numbered item, the element's join (#128)
     #   an unmarked closing run        a non-list run ends the list rather than joining it
     "tagged-list-items": (
         "BT /F1 12 Tf "
@@ -976,7 +976,8 @@ FIXTURES = {
     # Decision #47's golden. A label set tight over the eleven body lines it names, at the body
     # size and the body leading, so the leading-gap cut gives it no block of its own and `-v4`'s
     # bold clause reads nothing. Bold by fill-then-stroke, `page-observations-v4`, so the page
-    # needs one font. Under `type-size-v5` it is a label: level 7, and a bold line in Markdown.
+    # needs one font. Under `type-size-v5` it is a label: level 7, and a bold line in Markdown;
+    # under `type-size-v8`, standing alone in a document no line of which ranks, level 1, a `#` line.
     "heading-label-line": (
         "BT /F1 10 Tf 0.3 w "
         "1 0 0 1 40 250 Tm 2 Tr (Loan terms) Tj "

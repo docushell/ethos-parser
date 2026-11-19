@@ -72,7 +72,8 @@ subcommand that emits canonical bytes, including which documents it refuses.
 **Not licensed:** anything about Linux or Windows. Both remain unbuilt and unexecuted here. This
 closes the instruction-set axis of 6.1 and leaves the operating-system axis exactly where it was —
 a filesystem, a path separator, a line ending and a locale are all OS-level and none of them are
-touched by this run.
+touched by this run. So is the platform's libm: since 2026-11-14 no chart, pie or stroke length
+calls `f64::hypot`, but the pie reader's angles still call `atan2`.
 
 `ci/release-artifacts.sh` encodes the distinction: a target is `verified` only when it was executed
 on the build host and matched, and `compiled` otherwise.

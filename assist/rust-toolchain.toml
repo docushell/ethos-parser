@@ -1,0 +1,8 @@
+# The assist binary's own compiler: hayro 0.7.1 needs Rust 1.92, and the engine's pin (1.88, at the
+# repository root) does not move. The recognizer's (ocr/rust-toolchain.toml) is reused, so the
+# project builds on two toolchains, not three. Bumping this can move `render`'s pixels: it is
+# re-measured against the stored renders on the bump (assist/README.md).
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

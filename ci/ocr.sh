@@ -2,7 +2,8 @@
 # The recognizer behind `--ocr` (docs/35-OCR-SCOPE.md): fmt, clippy and its tests, in its own
 # workspace on its own pinned toolchain (ocr/rust-toolchain.toml, 1.98.0; the engine stays on
 # 1.88.0). Its fixture test compares every answer's bytes with ocr/tests/data/expected.jsonl,
-# written on Apple silicon, so on any other CPU this is the same-bytes check of §10.1.
+# written on Apple silicon, so on any other CPU this is the same-bytes check of §10.1. Its
+# cargo-deny check is the gate's `deny` step, run from the repository root.
 #
 # Release mode: the fixture test runs both models over five pages, which a debug build of rten
 # takes minutes to do.

@@ -16,7 +16,7 @@ ethos-parser/
 │   ├── ethos-parser-pdf/         # lopdf: classify, text runs, font metrics, encoding tables
 │   ├── ethos-parser-office/      # eight office formats
 │   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1, plus the validator
-│   └── ethos-parser-cli/         # eleven subcommands; tests/oracle.rs lives here
+│   └── ethos-parser-cli/         # twelve subcommands; tests/oracle.rs lives here
 ├── ocr/                    # ethos-parser-ocr, the recognizer `--ocr` runs: its own workspace and toolchain
 ├── vendor/README.md        # what is carried, and what deliberately is not
 ├── fixtures/               # a manifest referencing four corpus roots
@@ -79,7 +79,7 @@ v1-S6, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `tag` at auto
 `crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
 
 **The CLI is a thin shell over the library**, so the two cannot diverge. Every subcommand is a
-library call plus argument parsing plus an exit-code mapping — and that rule binds all eleven, not
+library call plus argument parsing plus an exit-code mapping — and that rule binds all twelve, not
 just the four below.
 
 | Command | Input | Output | Exit codes |
@@ -179,7 +179,7 @@ test-time dependency, and its absence fails the test loudly — it never degrade
 | **Font metrics** | `skrifa` over the embedded font program — not `ttf-parser`, which the v0 scope named: RUSTSEC-2026-0192 records it unmaintained, and `skrifa` is its maintained successor, pinned to 0.39 because 0.44 needs Rust 1.89 and this workspace pins 1.88 | For measured ink boxes, with a descriptor fallback and typed absence beyond that |
 | **PDFium** | Not present. If ever, caller-provided and hash-pinned under an explicit ADR | Never a build-time download |
 | **AGPL, anywhere** | **Forbidden**, enforced by `cargo deny` | Decision #14 |
-| **Network crates** | **Forbidden** | Nothing in the happy path reaches the network |
+| **Network crates** | **Forbidden**, in every lockfile. One exception, scoped to one binary: `ethos-parser-assist` runs the system `curl` as a subprocess, and links no HTTP crate ([`37`](37-ASSIST-TRANSPORT.md), decision #144) | Nothing in the happy path reaches the network; the assist lane is opt-in, in a process of its own |
 
 **Why another parser is reference-only rather than a dependency**, since this gets re-litigated: the
 parts worth wrapping are exactly the parts that would have to be un-wrapped. In the surveyed
@@ -217,11 +217,14 @@ row's canvas rule mechanical; and one accessor, `NativeLocator::run_locator`, th
 projections read a run's place whichever variant carries it. Grounding was untouched for PDFs; an
 image file is a source its schema does not admit, refused by name.
 
-**The processor-identity rule, designed now and implemented when assist exists:** every lane declares
-its processor identity in the processing run, and a run whose drafting model and representation
-processor share an identity is **rejected mechanically** rather than caught in review. That is
-cheaper than the byte-diff CI it supplements, and it is the precondition that makes a model-assist
-lane safe to build at all.
+**The processor-identity rule, designed before assist existed and implemented with it (decision
+#145):** every lane declares its processor identity in the processing run, and a run whose drafting
+model and representation processor share an identity is **rejected mechanically** rather than caught
+in review. That is cheaper than the byte-diff CI it supplements, and it is the precondition that
+makes a model-assist lane safe to build at all. A replies file whose model id names the processor
+(`processing_run.processor.name`) or the recognizer (`ethos-parser-ocr`), trimmed and ASCII
+case-folded, is refused `assist-answers-model-is-processor`, and the seal refuses such a record on
+both construction paths.
 
 ## 7. What this architecture refuses
 

@@ -45,6 +45,7 @@
       "type": "string",
       "$comment": "`gutter-columns-v2` since D4-S2 and `gutter-columns-v1` since v1-S5, which are one cut under two ids — the second reports the regions it made and the first discards them: runs are ordered by whitespace in page space, so a two-column document reads column-major and a page showing no gutter keeps content-stream order untouched. Nothing counts lines — pdf-inspector's rule flips on min_lines < 15, so a one-line edit reorders a whole page, and the two-column-14-lines/-15-lines fixture pair exists to hold this rule to the opposite. `single-column-v1` is v0's value and still legal: content-stream order with no reordering, which leaves a multi-column document visibly wrong and declares it.",
       "examples": [
+        "gutter-columns-v5",
         "gutter-columns-v4",
         "gutter-columns-v3",
         "gutter-columns-v2",
@@ -113,9 +114,18 @@
             270
           ]
         },
+        "turn": {
+          "type": "integer",
+          "enum": [
+            90,
+            180,
+            270
+          ],
+          "$comment": "Decision #155, as on the representation's page. Absent where 0."
+        },
         "visible": {
           "$ref": "#/$defs/quant_rect",
-          "$comment": "Decision #62. The box a viewer shows, {x0, y0, x1, y1} in integer centipoints, the declared top-left system: the /CropBox clipped to the media box, where it is narrower than the page. OMITTED where the page shows the whole of its media box."
+          "$comment": "Decision #62. The box a viewer shows, {x0, y0, x1, y1} in integer centipoints, the page's top-left frame (the declared one, turned by `turn`, decision #155): the /CropBox clipped to the media box, where it is narrower than the page. OMITTED where the page shows the whole of its media box."
         },
         "runs": {
           "type": "array",
@@ -272,6 +282,14 @@
         "script": {
           "enum": ["superscript", "subscript"],
           "$comment": "Decision #40, as on the representation's text_run. Absent on a run set on its line."
+        },
+        "strikeout": {
+          "const": true,
+          "$comment": "Decision #154, as on the representation's text_run. Absent where false."
+        },
+        "underline": {
+          "const": true,
+          "$comment": "Decision #154, as on the representation's text_run. Absent where false."
         },
         "furniture": {
           "enum": ["header", "footer"],

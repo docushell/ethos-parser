@@ -98,6 +98,7 @@
       "minLength": 1,
       "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity. `gutter-columns-v2` (D4-S2) is the same cut as `gutter-columns-v1` (v1-S5) — same constants, same order — and additionally reports the regions it made, as `region` on each text run; the id moved because the artifact gained a field, not because the sequence changed. `single-column-v1` means content-stream order with no reordering. `gutter-columns-v1` took a new id rather than bumping `single-column-v1`, because those two read different evidence and can list the same runs in a different sequence.",
       "examples": [
+        "gutter-columns-v5",
         "gutter-columns-v4",
         "gutter-columns-v3",
         "gutter-columns-v1",
@@ -198,10 +199,10 @@
     "heading_inference_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the heading-inference rule in force (decision #29). `type-size-v2`: on a document that declares no author structure, a line is an inferred heading when every run of it with a measurable rendered em is at least 6/5 of the document's body em, the body em being the document's largest common size — the largest rendered em holding at least a twentieth of the body characters and running on at least ten lines, or the most common size where none does. `-v1` took the most common size and fabricated headings where dense small type dominated a document's characters. It reads the rendered em — the text rendering matrix's vertical scale — and never the `Tf` operand, which a page may set to 1 while it draws its type in the matrix. `type-size-v3` (decision #38) keeps that clause and ranks the sizes its headings are set in into levels 1 to 6, carried as `inferred_heading_level`, and adds a bold clause: a line every run of which is bold, at the body em or larger, of 2 to 80 characters mostly letters, shaped as no sentence, in a document whose body is not bold, is a heading where the leading-gap cut shows it standing apart — the one fact of position it reads. `type-size-v4` lets a bold line opening with a section number (3.1., IV.) stand apart with room above it alone. It runs only where the catalog declares no /StructTreeRoot, so a declared heading and an inferred one never coexist. Its own field, not a fold into `struct_tree_rule`: this rule runs exactly where that one found nothing. The id is the switch: `not-run-for-this-format`, which every office profile carries, runs nothing. `type-size-v5` (decision #47) adds a label tier: a line the bold clause would read but for standing apart, of at most 60 characters, whose text no three lines of the document share, is level 7, below every ranked level, written by both projections as a bold line. `type-size-v6` (decision #50): where the body em is a size set mostly bold — display type — the bold clause and the label tier read against the largest common size not set mostly bold; the size clause still reads the body em. `type-size-v7` (decision #64): a run set a weight class or more heavier than the class most of its page's characters are set in — read from the descriptor's `/FontWeight`, the embedded program's `OS/2` class, or a weight word in the font's name — counts as bold for the bold clause and the label tier, without being emphasised as bold. A profile with no such key is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
+      "description": "Version id of the heading-inference rule in force (decision #29). `type-size-v2`: on a document that declares no author structure, a line is an inferred heading when every run of it with a measurable rendered em is at least 6/5 of the document's body em, the body em being the document's largest common size — the largest rendered em holding at least a twentieth of the body characters and running on at least ten lines, or the most common size where none does. `-v1` took the most common size and fabricated headings where dense small type dominated a document's characters. It reads the rendered em — the text rendering matrix's vertical scale — and never the `Tf` operand, which a page may set to 1 while it draws its type in the matrix. `type-size-v3` (decision #38) keeps that clause and ranks the sizes its headings are set in into levels 1 to 6, carried as `inferred_heading_level`, and adds a bold clause: a line every run of which is bold, at the body em or larger, of 2 to 80 characters mostly letters, shaped as no sentence, in a document whose body is not bold, is a heading where the leading-gap cut shows it standing apart — the one fact of position it reads. `type-size-v4` lets a bold line opening with a section number (3.1., IV.) stand apart with room above it alone. It runs only where the catalog declares no /StructTreeRoot, so a declared heading and an inferred one never coexist. Its own field, not a fold into `struct_tree_rule`: this rule runs exactly where that one found nothing. The id is the switch: `not-run-for-this-format`, which every office profile carries, runs nothing. `type-size-v5` (decision #47) adds a label tier: a line the bold clause would read but for standing apart, of at most 60 characters, whose text no three lines of the document share, is level 7, below every ranked level, written by both projections as a bold line. `type-size-v6` (decision #50): where the body em is a size set mostly bold — display type — the bold clause and the label tier read against the largest common size not set mostly bold; the size clause still reads the body em. `type-size-v7` (decision #64): a run set a weight class or more heavier than the class most of its page's characters are set in — read from the descriptor's `/FontWeight`, the embedded program's `OS/2` class, or a weight word in the font's name — counts as bold for the bold clause and the label tier, without being emphasised as bold. `type-size-v8` (decision #140): where the document declares no author structure and no line of it ranks — none set large, none bold standing apart — labels heading recurring sections are level 1: the last inked run before the label is not bold, the next two lines are text in no bold, the next not run in along the label's line, and another such label shares its font and size. Every other label stays at level 7. A profile with no such key is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "type-size-v7",
-        "type-size-v6"
+        "type-size-v8",
+        "type-size-v7"
       ]
     },
     "table_detection": {
@@ -217,7 +218,7 @@
         "lines",
         "pies"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42, seven since decision #66 and eight since decision #90: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8, four since v2-S24, five since decision #38, six since decision #42, seven since decision #66, eight since decision #90 and an optional ninth, `office`, since decision #135: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -250,14 +251,19 @@
         "pies": {
           "type": "string",
           "description": "Version id of the rule that reads the numbers a pie prints at its slices back as its table (decision #90). `slice-labels-v1`. A slice is a filled path of curves whose every point but one lies one distance from that one, its centre; slices about one centre, of one radius, turning a full circle between them are a pie. Each number goes to the pie whose rim it stands nearest, within its radius, and is no slice's where it stands over the centre; a pie takes as many as it has slices, nearest its rim first and all of one kind, and matches them to its slices in their order round the centre, at the one turn that sets each within a quarter turn of its slice and all nearest; a slice clearly larger never carries a smaller number. Pies side by side sharing a colour are one table: a row per slice, named by the label beside a legend swatch of its colour or by the lines set over its number, and a column per pie, named by the label in its hole or the line just over it. A value is never read off a slice's size. Runs after `point-labels-v1`, on runs no other rule's table holds, only on a document that declares no author structure. Office profiles name it `not-run-for-this-format`."
+        },
+        "office": {
+          "type": "string",
+          "description": "Decision #135. Version id of the rule that reads a table an office file states itself: `xlsx-sheet-table-v1`, each worksheet of a workbook as one table at the addresses its cells state, or `pptx-tbl-v1`, each <a:tbl> of a slide; and since decision #136 `docx-tbl-v1`, each <w:tbl> of a Word document as the file states it — a row per <w:tr>, a cell per <w:tc>, columns counted on the table's grid from <w:gridBefore> and each cell's <w:gridSpan>, a <w:vMerge> continuing the cell above extending that cell down a row, a nested table its own, its `page` the part. Each office profile that reads tables names its own; all spend one slot budget per document. The one optional key here: absent means no office table rule ran, which is true of every PDF profile and of every profile written before it."
         }
       }
     },
     "layout_unit_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v2`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker; then each line is read as its pieces (its runs, cut wherever the gap between two is wider than the line's height), and the pieces of one unit that follow each other in reading order are cut before a piece when the piece before it ends more than ten of the piece's heights left of their widest piece's right edge. `line-units-v3` then cuts a unit of body text before a line whose first word, with its space, would have fit twice over between where the line above ends and the unit's widest piece's right edge — a break its author made, not its measure; a heading unit is not cut. `line-units-v4` (decision #63) first joins to the line before it in reading order a line set under seventeen twentieths of its height, its baseline within half that line's height, inside that line's extent past its start: a subscript, a superscript or a footnote mark on a baseline of its own. `line-units-v5` (decision #67) cuts each line into its pieces before any unit is read and reads as a line the pieces of one line that follow each other in reading order, so a baseline running across columns the reading order reads apart is a line per column; and the text the list-marker clause and the first word are read from has a space wherever two runs' boxes stand a tenth of the line's height apart or more, a word gap the page set by moving its pen. `line-units-v6` (decision #109) also parts a line where the reading order went back left between two of its runs with any gap between them, so a gutter narrower than the line's height parts its columns; ends a first word at an ideograph or a kana, which is a word of its own; and opens a unit at a body line set in by half its height, where the next line returns to the left edge of the line above. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "description": "Version id of the layout-unit rule in force (decision #38). `line-units-v2`: on a document that declares no author structure, each page's lines are read in reading order and a line joins the unit above it when its box sits no more than half its own height below that unit's, overlaps it across at least half the narrower width, is the same kind (body text, or an inferred heading of the same level) and opens with no list marker; then each line is read as its pieces (its runs, cut wherever the gap between two is wider than the line's height), and the pieces of one unit that follow each other in reading order are cut before a piece when the piece before it ends more than ten of the piece's heights left of their widest piece's right edge. `line-units-v3` then cuts a unit of body text before a line whose first word, with its space, would have fit twice over between where the line above ends and the unit's widest piece's right edge — a break its author made, not its measure; a heading unit is not cut. `line-units-v4` (decision #63) first joins to the line before it in reading order a line set under seventeen twentieths of its height, its baseline within half that line's height, inside that line's extent past its start: a subscript, a superscript or a footnote mark on a baseline of its own. `line-units-v5` (decision #67) cuts each line into its pieces before any unit is read and reads as a line the pieces of one line that follow each other in reading order, so a baseline running across columns the reading order reads apart is a line per column; and the text the list-marker clause and the first word are read from has a space wherever two runs' boxes stand a tenth of the line's height apart or more, a word gap the page set by moving its pen. `line-units-v6` (decision #109) also parts a line where the reading order went back left between two of its runs with any gap between them, so a gutter narrower than the line's height parts its columns; ends a first word at an ideograph or a kana, which is a word of its own; and opens a unit at a body line set in by half its height, where the next line returns to the left edge of the line above. `line-units-v7` (decision #129) also joins a script starting no more than a quarter of its line's height past the line's end and ending no more than that height past it, a footnote mark set against the last letter; does not cut after a piece that is a list marker alone or a label closed by a colon where the piece after it on its line is no such piece itself; and continues a unit opened by a line whose first inked run is a list marker alone with a line opening with a word within a quarter of its height of where the next run starts, within the page's body leading and a twentieth of its height more, or within its own height on a page that sets no leading — geometry and punctuation alone, no role; the quarter and the height are chosen, not measured. The unit's 1-based ordinal travels as text_run.layout_unit. Where, never what: a unit is not the author's paragraph. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
       "examples": [
+        "line-units-v7",
         "line-units-v6",
         "line-units-v5",
         "line-units-v4",
@@ -294,7 +300,7 @@
       "minLength": 1,
       "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2 and again at S3). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree or an EPUB's own `<h1>`-`<h6>`, whether a word the page broke across a line is closed up in the export, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "markdown-blocks-v13"
+        "markdown-blocks-v14"
       ]
     },
     "html_rule": {
@@ -302,7 +308,7 @@
       "minLength": 1,
       "description": "Version id of the HTML projection rule in force (v1.1-S4). Decides what `ethos.html.v1` contains. SEPARATE from `markdown_rule` and it moves independently: the two projections say different things about the same table, because GFM has no `rowspan` and `<td rowspan>` does, so one id covering both would make every artifact non-comparable each time either moved. A profile predating v1.1-S4 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "html-blocks-v13"
+        "html-blocks-v14"
       ]
     },
     "locate_rule": {
@@ -316,8 +322,9 @@
     "observation_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the image and text-finding rule in force (v1-S6). Decides which `Do` calls become image nodes, how a painted rectangle is derived from the page's own matrix, and what counts as invisible or off-page text.",
+      "description": "Version id of the image and text-finding rule in force (v1-S6). Decides which `Do` calls become image nodes, how a painted rectangle is derived from the page's own matrix, and what counts as invisible or off-page text — and since `page-observations-v5` (decision #139) as tiny text, text in a layer switched off, or text filled in the colour beneath it — and mode-7 (clip) text counts as invisible only where nothing is painted through its clip after `ET`.",
       "examples": [
+        "page-observations-v5",
         "page-observations-v4",
         "page-observations-v3"
       ]
@@ -364,6 +371,7 @@
             "det_sha256",
             "rec_sha256",
             "dict_sha256",
+            "ori_sha256",
             "runtime"
           ],
           "additionalProperties": false,
@@ -389,10 +397,58 @@
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
             },
+            "ori_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "Decision #153. SHA-256 of the page-orientation model the recognizer holds."
+            },
             "runtime": {
               "type": "string"
             }
           }
+        }
+      }
+    },
+    "assist": {
+      "type": "object",
+      "description": "Decision #145. The drafting model whose replies an assisted record holds as `proposed` blocks, and how they were asked for and read. The one optional top-level key: absent means no model's reply is in the record, which is true of every engine-only profile and of every profile written before it, so their bytes and hashes do not move. Pinned by `extract --assist-answers`, on the base or the OCR profile.",
+      "required": [
+        "rule",
+        "guard",
+        "renderer",
+        "request",
+        "model",
+        "model_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {
+          "type": "string",
+          "examples": ["assist-lightonocr-v1"],
+          "description": "The rule that reads a reply into blocks."
+        },
+        "guard": {
+          "type": "string",
+          "examples": ["assist-guard-v1"],
+          "description": "Decision #146. The guard that checks each block against the engine's runs inside its box, and drops a capped reply's last block."
+        },
+        "renderer": {
+          "type": "string",
+          "examples": ["ethos-parser-assist 0.1.0; hayro 0.7.1; pages-400dpi-5mp-v1"],
+          "description": "The program and page rule that drew each page the model saw."
+        },
+        "request": {
+          "type": "string",
+          "examples": ["lightonocr-3-grounding-v1"],
+          "description": "How each page was asked, and the reply format read."
+        },
+        "model": {
+          "type": "string",
+          "description": "The model's id, as the server reported it."
+        },
+        "model_version": {
+          "type": "string",
+          "description": "The model's version as the caller named it, or `not-reported`."
         }
       }
     }
@@ -572,12 +628,12 @@
       "font_metrics_data_version": "core14-afm-2",
       "form_annotation_rule": "form-annotations-v2",
       "furniture_rule": "margin-bands-v1",
-      "heading_inference_rule": "type-size-v7",
-      "html_rule": "html-blocks-v13",
-      "layout_unit_rule": "line-units-v6",
+      "heading_inference_rule": "type-size-v8",
+      "html_rule": "html-blocks-v14",
+      "layout_unit_rule": "line-units-v7",
       "locate_rule": "locate-scalar-exact-v1",
-      "markdown_rule": "markdown-blocks-v13",
-      "observation_rule": "page-observations-v4",
+      "markdown_rule": "markdown-blocks-v14",
+      "observation_rule": "page-observations-v5",
       "outline_rule": "outlines-v3",
       "page_budget": {
         "mode": "unlimited"
@@ -587,7 +643,7 @@
       "raster_dpi": {
         "mode": "not_emitted"
       },
-      "reading_order_rule": "gutter-columns-v4",
+      "reading_order_rule": "gutter-columns-v5",
       "recognizer": {
         "mode": "not_pinned"
       },
