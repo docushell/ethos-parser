@@ -3,7 +3,8 @@
 **Measured 2026-10-03.** ParseBench (`run-llama/ParseBench` at `afb36bd`, dataset
 `llamaindex/ParseBench` at revision `2805a1d`, both Apache-2.0) scores a parser's Markdown on five
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
-grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**.
+grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**. Re-scored
+2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14** (below, with ParseBench-2).
 
 **Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
 It was also run to find defects, and it found them: every engine change it led to is in
@@ -15,7 +16,7 @@ here.
 
 ```bash
 git clone https://github.com/run-llama/ParseBench ~/ethos-external-benchmarks/ParseBench
-cd ~/ethos-external-benchmarks/ParseBench && git checkout 1f5b37a && uv sync
+cd ~/ethos-external-benchmarks/ParseBench && git checkout d7efdbc && uv sync
 cp <this checkout>/docs/measurements/parsebench/ethos_bench.py .
 uv run parse-bench download
 ETHOS_PARSER_BIN=<this checkout>/target/release/ethos-parser uv run python ethos_bench.py run ethos_markdown
@@ -1095,6 +1096,26 @@ formatting 0.4952 -> 0.5100, 23 pages up and 4 down, a trade the owner took; con
 and one down; tables and charts unchanged on every page. Overall 49.28 -> 49.57;
 opendataloader-bench unchanged on every document.
 
+### Re-scored with parse-bench 2.1.1, the README's rows (2026-11-19)
+
+ParseBench re-scored its leaderboard on 15–17 November with parse-bench 2.1.0 (`c61ff10`): every row
+with published outputs was scored again from them, the dataset unchanged at `2805a1d`. The build of
+`0f6c8a3`, run and scored at 2.1.1 (`d7efdbc`, later than the board's), scores exactly as it does
+at `1f5b37a`, dimension by dimension, in all four lanes. The assist lanes read decision #147's replies; places are against `leaderboard.csv` at
+`d7efdbc`, 157 rows:
+
+| Lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 64.53 | 17.30 | 67.52 | 51.39 | 59.99 | 52.14 | 113th |
+| `--ocr` | 64.54 | 17.30 | 75.48 | 52.82 | 63.28 | 54.69 | 108th |
+| Product, as written | 60.53 | 64.81 | 83.70 | 54.41 | 63.28 | 65.34 | 69th |
+| Product, unwrapped by the adapter | 85.75 | 66.67 | 84.18 | 59.75 | 63.28 | 71.93 | 31st |
+
+Overall is the mean of the five unrounded dimensions, as the leaderboard's own scripts take it; the
+52.15, 54.68 and 65.35 quoted for `26244de` were means of the rounded columns, and the scores under
+them are the same. Other rows moved with the re-score (PyMuPDF4LLM 53.49 → 50.47, Warp Ingest
+40.18 → 39.33); rows with no published outputs (`Verified=no`) keep their submitted numbers.
+
 ### After a footnote mark set against its label joins its line (decision #119, 2026-11-08)
 
 Alone on `6be3031`: a mark raised up to three fifths of an em joins its line where set against the
@@ -1686,6 +1707,43 @@ the model's own title, as a heading, while the product leaves out a title whose 
 already holds and places the chart where it stands on the page. ParseBench takes a chart's labels
 only from a heading, bold text or a caption near the table, so four lose the chart's title, and one,
 four panels, places two panels out of order without their titles.
+
+## ParseBench-2 (2026-11-19)
+
+ParseBench-2 (`llamaindex/ParseBench-2`, Apache-2.0) is the same project's second set: 4,317 pages
+in 13 subsets, scored on six dimensions (text, formatting, tables, charts, visual grounding, forms)
+by the same harness, through the same adapter. Its leaderboard, `leaderboard-v2.csv`, is scored at
+the dataset revision `leaderboard/results-v2.yaml` names, `f0757ac` (v2.04), by parse-bench 2.1.0
+(`c61ff10`), and so is the row in `docs/BENCHMARKS.md`:
+
+```bash
+uv run hf download llamaindex/ParseBench-2 --repo-type dataset \
+  --revision f0757ac998ef9eb9c3c346ef170fee175b6a7d75 --local-dir data_parsebench-2
+ETHOS_PARSER_BIN=<ethos-parser> uv run python ethos_bench.py run ethos_markdown --dataset parsebench-2
+```
+
+`ETHOS_BENCH_OCR=engine` gives the `--ocr` lane. The scores are in `<output>/parsebench-2/_score/ethos_markdown/_next_score.json`. To score a finished run with
+another harness, call the adapter, never `parse-bench` directly: `python ethos_bench.py evaluation
+run <output>/parsebench-2 --next '{<subset>: {"output_dir": …, "test_cases_dir": …}}' --next_only`.
+Run without it, nothing registers the layout reader for provider `ethos`, and visual grounding
+scores 0 on every page.
+
+**Measured** on `0f6c8a3`, placed against `leaderboard-v2.csv` at `d7efdbc`, 56 rows, every one a
+hosted parsing service or an AI model:
+
+| Lane | Text | Formatting | Tables | Charts | Grounding | Forms | Overall | Place |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 57.58 | 71.36 | 49.98 | 17.94 | 67.25 | 67.20 | 55.22 | 54th |
+| `--ocr` | 61.74 | 77.57 | 51.71 | 17.94 | 66.75 | 67.20 | 57.15 | 54th |
+
+- **parse-bench 2.1.1** (`d7efdbc`) changed how forms are scored after the board was: forms read 67.39
+  under it, the overalls 55.25 and 57.18. The board's 2.1.0 is the one quoted.
+- **The earlier figures were on an earlier set.** The ParseBench-2 numbers in `CHANGELOG.md` for
+  decisions #154 and #155 (53.46, 53.91) were measured at dataset revision `d4e0eaa` with
+  parse-bench 2.0.4. Revision `f0757ac` corrects annotations, and with 2.1.0 it raises grounding
+  (61.76 → 67.25) and forms (64.80 → 67.20) on this engine, as it raises them on the leaderboard's
+  rows.
+- **The assist lane has not been run on ParseBench-2.**
 
 ## What it found that is not fixed
 

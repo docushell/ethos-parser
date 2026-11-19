@@ -89,23 +89,25 @@ LangChain tools behind an optional install: see [`packages/python/`](packages/py
 
 ## Benchmarks
 
-Measured on `26244de` with each benchmark's own scorer. Higher is better.
+Measured on `0f6c8a3` with each benchmark's own scorer, as its leaderboard is scored today. Higher
+is better.
 
 | Benchmark | ethos-parser | + `--ocr` | + assist model |
 | --- | ---: | ---: | ---: |
-| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.15 | 54.68 | 65.35 |
+| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.14 | 54.69 | 65.34 |
+| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.22 | 57.15 | — |
 | [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.813 | — | — |
 
 - **ethos-parser** is the engine alone, with no OCR and no model. This project measured it; it is
-  not on either benchmark's published list. Placed among them, it would be 2nd of the 10
-  open-source local parsers on ParseBench's leaderboard, and 9th of the 13 engines in
-  opendataloader-bench's table. Higher on ParseBench: PyMuPDF4LLM, and parsers that use AI models,
-  hosted or local. Higher on opendataloader-bench: eight engines, with and without models.
+  not on any of the three benchmarks' published lists. Placed among them, it would be 113th of 158
+  on ParseBench's leaderboard, 54th of 57 on ParseBench-2's, and 9th of the 13 engines in
+  opendataloader-bench's table. Higher on both ParseBench sets: parsers that use AI models, hosted
+  or local. Higher on opendataloader-bench: eight engines, with and without models.
 - **+ `--ocr`** adds the bundled recognizer for scanned pages: neural networks that run on your
   machine.
 - **+ assist model** adds LightOnOCR-3-0.8B, a model you run, scored as the product writes it,
-  inside its *Proposed* label. The model on its own scores 74.6 on the same leaderboard. The product
-  scores less: ParseBench reads no table or title inside a quote, and where the engine read
+  inside its *Proposed* label. The model on its own scores 74.56 on ParseBench's leaderboard. The
+  product scores less: ParseBench reads no table or title inside a quote, and where the engine read
   enough of a page the product keeps the engine's text, adding only the model's tables and charts.
 
 The ranked tables, each benchmark's pinned commit and how to reproduce every number are in
