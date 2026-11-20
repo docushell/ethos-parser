@@ -555,6 +555,11 @@ struct HtmlArgs {
     /// Leave out text the reader flagged as hidden, counted, as `markdown --drop-hidden` does.
     #[arg(long)]
     drop_hidden: bool,
+
+    /// Write the text without the elements for its style, counted, as `markdown --unstyled` does
+    /// (decision #158).
+    #[arg(long)]
+    unstyled: bool,
 }
 
 #[derive(clap::Args)]
@@ -628,6 +633,14 @@ struct MarkdownArgs {
     /// findings (decision #139).
     #[arg(long)]
     drop_hidden: bool,
+
+    /// Write every run's text without the marks for its style: no `**`, `*`, `~~`, `<u>`,
+    /// `<sup>` or `<sub>`. The text, headings, lists and tables are as without it, and every
+    /// source byte keeps its anchor. For a reader that compares text and has no use for its
+    /// look. Counted under the census code `inline-styles-not-written-v1`, once per styled run
+    /// (decision #158)
+    #[arg(long)]
+    unstyled: bool,
 }
 
 #[derive(clap::Args)]
@@ -1413,6 +1426,7 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
             args.infer_lists,
             args.drop_hidden,
             args.keep_repeated_header,
+            args.unstyled,
         ),
     ) {
         Ok(a) => a,
@@ -1470,18 +1484,20 @@ fn run_elements(args: ElementsArgs) -> ExitCode {
 }
 
 /// The projection options a `markdown` or `html` command line asks for (decisions #134, #138,
-/// #139, #151).
+/// #139, #151, #158).
 fn projection_options(
     drop_furniture: bool,
     infer_lists: bool,
     drop_hidden: bool,
     keep_repeated_header: bool,
+    unstyled: bool,
 ) -> ethos_parser_core::ProjectionOptions {
     let mut options = ethos_parser_core::ProjectionOptions::default();
     options.drop_furniture = drop_furniture;
     options.infer_lists = infer_lists;
     options.drop_flagged = drop_hidden;
     options.keep_repeated_header = keep_repeated_header;
+    options.unstyled = unstyled;
     options
 }
 
@@ -1560,6 +1576,7 @@ fn run_html(args: HtmlArgs) -> ExitCode {
             args.infer_lists,
             args.drop_hidden,
             args.keep_repeated_header,
+            args.unstyled,
         ),
     ) {
         Ok(a) => a,

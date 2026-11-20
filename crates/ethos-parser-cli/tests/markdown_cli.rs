@@ -1149,6 +1149,10 @@ fn no_cli_path_emits_markdown_without_its_map() {
                 | "--keep-repeated-header"
                 | "--infer-lists"
                 | "--drop-hidden"
+                // Decision #158: it leaves out syntax only — the style's marks — and every
+                // `source` segment is the default's, text and nodes
+                // (`unstyled_text_writes_no_style_and_counts_the_styled_runs` in core).
+                | "--unstyled"
         )),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
@@ -1214,6 +1218,16 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         hidden_help.contains("flagged-text-not-projected-v1"),
         "--drop-hidden must name the count that admits it: {hidden_help:?}"
+    );
+
+    // **`--unstyled` the same** (decision #158).
+    let unstyled_help = options
+        .split("--unstyled")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        unstyled_help.contains("inline-styles-not-written-v1"),
+        "--unstyled must name the count that admits it: {unstyled_help:?}"
     );
 
     // And the artifact itself always carries both halves.

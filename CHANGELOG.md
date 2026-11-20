@@ -32,6 +32,21 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Markdown and HTML without the marks for a run's style, on request (decision #158)
+
+`markdown --unstyled` and `html --unstyled` write every run's text without the marks for its style:
+no `**`, `*`, `~~`, `<u>`, `<sup>` or `<sub>`, no `<strong>`, `<em>`, `<s>` in HTML. The text,
+headings, lists and tables are as without the flag, and every `source` segment of the anchor map is
+the one the default writes, so a quote binds as before; only `syntax` bytes go.
+
+- For a reader that compares text and has no use for its look. opendataloader-bench's reading
+  order compares the Markdown's raw characters with a ground truth that writes no emphasis, and its
+  adapter now asks for the flag: NID 0.8912 → 0.8988, overall 0.8288 → 0.8351, 7th of 13, above
+  opendataloader (0.831). ParseBench scores bold and strikeout, and its adapter does not ask.
+- Counted as `inline-styles-not-written-v1` in the structural census, once per run that carries a
+  style; without the flag the artifact is the default's, byte for byte. Off by default; no rule id
+  moves. MCP and the SDKs do not offer it.
+
 ### A form filler's values are read beside their captions (decision #157)
 
 A tool that fills a PDF form appends its values to the end of the page's content stream, each

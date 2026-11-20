@@ -31,6 +31,14 @@ same 200 documents:
 The engine now assembles blocks from the document's own marked-content sequences, which the adapter
 could not see, and it keeps the GFM tables that joining by baseline flattened to nothing. An adapter
 that second-guesses the projection is measuring the adapter.
+
+# It asks for unstyled text (decision #158)
+
+NID compares the Markdown's raw characters with the ground truth's, and the ground truth writes no
+emphasis (one file of 200 holds `**`). So `markdown --unstyled` — a flag of the engine's, not this
+adapter's: the text and its anchors as without it, only the style's marks left out. Measured over
+`b3030f8` with decision #159: NID 0.8912 -> 0.8988, overall 0.8288 -> 0.8351. ParseBench's adapter
+does not ask for it, since ParseBench scores bold and strikeout.
 """
 
 from __future__ import annotations
@@ -80,7 +88,7 @@ def to_markdown(document_paths: Iterable[Path], input_path: Path, output_dir: Pa
                 fh.write(representation)
                 repr_path = fh.name
             try:
-                md = json.loads(_run(["markdown", repr_path]))["markdown"]
+                md = json.loads(_run(["markdown", "--unstyled", repr_path]))["markdown"]
             finally:
                 os.unlink(repr_path)
         except Exception as exc:

@@ -449,13 +449,21 @@ pub fn to_html_with(
 ) -> Result<HtmlArtifact, EngineError> {
     let payload = repr.payload();
 
-    let mut e = Emit::with_emphasis(&payload.nodes, crate::markdown::Markup::Html);
+    let (mut e, unstyled) = crate::markdown::emitter(
+        &payload.nodes,
+        crate::markdown::Markup::Html,
+        options.unstyled,
+    );
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     // **Only the two erasures GFM alone commits are dropped.** See this module's header: the other
     // table codes describe faults in the RECORD, which this projection meets identically.
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
+    // Decision #158, as in `crate::markdown`.
+    if unstyled > 0 {
+        erasures.insert(crate::markdown::INLINE_STYLES_NOT_WRITTEN, unstyled);
+    }
     let mut in_representation = 0usize;
 
     // Decision #136, as in `crate::markdown`.

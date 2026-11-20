@@ -3496,6 +3496,13 @@ pub(crate) const PAGE_FURNITURE_NOT_PROJECTED: &str = "page-furniture-not-projec
 /// [`PAGE_FURNITURE_NOT_PROJECTED`] is, and only with the option.
 pub(crate) const FLAGGED_TEXT_NOT_PROJECTED: &str = "flagged-text-not-projected-v1";
 
+/// Runs written without their style's marks because the caller asked for unstyled text (decision
+/// #158, [`ProjectionOptions::unstyled`]): counted once per run that carries a style — bold,
+/// italic, a strikeout, an underline, a superscript or a subscript — wherever it stands. No
+/// character is left out, so it counts runs, as [`LIST_ITEMS_INFERRED_FROM_MARKERS`] counts items,
+/// and only with the option.
+pub(crate) const INLINE_STYLES_NOT_WRITTEN: &str = "inline-styles-not-written-v1";
+
 /// What a projection leaves out beyond its rule, or keeps that its rule leaves out, on its
 /// caller's request (decision #134).
 ///
@@ -3556,6 +3563,28 @@ pub struct ProjectionOptions {
     /// on, and a table cell keeps its other runs. Counted as `flagged-text-not-projected-v1`. See
     /// [`flagged_runs`].
     pub drop_flagged: bool,
+    /// Write every run's text without the marks for its style (decision #158): no `**`, `*`,
+    /// `~~`, `<u>`, `<sup>` or `<sub>` in Markdown, no `<strong>`, `<em>`, `<s>`, `<u>`, `<sup>`
+    /// or `<sub>` in HTML. The text, headings, lists and tables are as without it; only the
+    /// marks go, each a `syntax` segment, so every `source` byte and its anchor stand as before.
+    /// For a reader that compares text and has no use for its look. Counted as
+    /// `inline-styles-not-written-v1`, once per styled run. See [`emitter`].
+    pub unstyled: bool,
+}
+
+/// The emitter a projection writes with: emphasis as the runs carry it, or none where the caller
+/// asked for unstyled text (decision #158), with the number of runs that carry a style, which
+/// [`INLINE_STYLES_NOT_WRITTEN`] counts.
+pub(crate) fn emitter(nodes: &[crate::Node], markup: Markup, unstyled: bool) -> (Emit, usize) {
+    if unstyled {
+        let styled = nodes
+            .iter()
+            .filter(|n| Style::of(n) != Style::default())
+            .count();
+        (Emit::new(), styled)
+    } else {
+        (Emit::with_emphasis(nodes, markup), 0)
+    }
 }
 
 /// The runs [`ProjectionOptions::drop_flagged`] leaves out: every text run carrying a finding,
@@ -4612,11 +4641,15 @@ pub(crate) fn markdown_of(
 ) -> Result<MarkdownArtifact, EngineError> {
     let payload = repr.payload();
 
-    let mut e = Emit::with_emphasis(&payload.nodes, Markup::Markdown);
+    let (mut e, unstyled) = emitter(&payload.nodes, Markup::Markdown, options.unstyled);
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
+    // Decision #158.
+    if unstyled > 0 {
+        erasures.insert(INLINE_STYLES_NOT_WRITTEN, unstyled);
+    }
     let mut in_representation = 0usize;
 
     // Decision #136: a Word header's or footer's runs, on request, before the tables are planned,
@@ -12721,6 +12754,7 @@ pub(crate) mod tests {
         infer_lists: false,
         drop_flagged: false,
         keep_repeated_header: false,
+        unstyled: false,
     };
 
     const DROP_FLAGGED: ProjectionOptions = ProjectionOptions {
@@ -12728,7 +12762,54 @@ pub(crate) mod tests {
         infer_lists: false,
         drop_flagged: true,
         keep_repeated_header: false,
+        unstyled: false,
     };
+
+    /// **Unstyled text on request** (decision #158): bold, italic, a strikeout and an underline
+    /// all go, in both projections; every `source` segment is the one the default writes, so the
+    /// text and its anchors stand; the styled runs are counted, and without the option nothing is.
+    #[test]
+    fn unstyled_text_writes_no_style_and_counts_the_styled_runs() {
+        let repr = with_marks(with_styles(styled_line(), &[0], &[2]), &[4], &[6]);
+        let unstyled = ProjectionOptions {
+            unstyled: true,
+            ..ProjectionOptions::default()
+        };
+        let styled = artifact_of(repr.clone());
+        let plain = artifact_with(&repr, unstyled);
+        assert_ne!(styled.markdown, plain.markdown, "the fixture is styled");
+        assert_eq!(plain.markdown, "Total revenue rose sharply\n");
+        let sources = |a: &MarkdownArtifact| -> Vec<(String, Vec<String>)> {
+            a.anchor_map
+                .segments
+                .iter()
+                .filter(|s| s.kind == SegmentKind::Source)
+                .map(|s| (a.markdown[s.start..s.end].to_owned(), s.node_ids.clone()))
+                .collect()
+        };
+        assert_eq!(sources(&plain), sources(&styled));
+        assert_eq!(erasure(&plain, INLINE_STYLES_NOT_WRITTEN), 4);
+        assert_eq!(erasure(&styled, INLINE_STYLES_NOT_WRITTEN), 0);
+
+        let profile = Profile::default();
+        let html = |options| {
+            crate::to_html_with(
+                &repr,
+                &profile.parser_version,
+                &profile.profile_sha256().unwrap(),
+                &profile.html_rule,
+                options,
+            )
+            .expect("projects")
+            .html
+        };
+        let (styled, plain) = (html(ProjectionOptions::default()), html(unstyled));
+        assert!(styled.contains("<strong>Total</strong>"), "{styled}");
+        for mark in ["<strong>", "<em>", "<s>", "<u>"] {
+            assert!(!plain.contains(mark), "{mark} in {plain}");
+        }
+        assert!(plain.contains("Total revenue rose sharply"), "{plain}");
+    }
 
     /// `repr` with the runs at `at` carrying a finding, resealed.
     pub(crate) fn flagged_at(
@@ -13244,6 +13325,7 @@ pub(crate) mod tests {
         infer_lists: true,
         drop_flagged: false,
         keep_repeated_header: false,
+        unstyled: false,
     };
 
     /// **A unit opening with a marker is a list item, on request, and counted** (decision #138):
