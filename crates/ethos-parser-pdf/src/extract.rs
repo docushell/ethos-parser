@@ -244,6 +244,18 @@ fn is_right_to_left_block(c: char) -> bool {
     )
 }
 
+/// Whether a label's text opens as a figure's or a table's caption does: `Figure`, `Fig.`,
+/// `Table`, `Chart` or `Exhibit`, then a number — `Figure 3.3.`, `Table 2:` (decision #159). A
+/// caption names what stands by it and heads no section; `Table of Contents` is no caption. The
+/// text is its runs' text run together, since a page may draw a line a glyph to a run.
+fn names_a_figure(text: &str) -> bool {
+    let lower = text.trim_start().to_lowercase();
+    ["figure", "fig.", "fig", "table", "chart", "exhibit"]
+        .iter()
+        .find_map(|word| lower.strip_prefix(word))
+        .is_some_and(|rest| rest.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+}
+
 fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
     match tree {
         None => true,
@@ -3022,11 +3034,21 @@ fn extract_counted(
         // another bold line nor a caption over one line of value; and its sections recur: two
         // such labels or more, set in one font at one size. A form's field, a resume's contact
         // label, a page's one bold line stay labels.
+        //
+        // Decision #159: where no style recurs, the document's first label that heads a section
+        // is level 1 alone, if it heads a paragraph: the text after it opens as a sentence does —
+        // not in a lower-case letter, which a bold phrase inside a paragraph runs on in — and its
+        // next line follows that text no farther below than that text follows the label, so the
+        // two are one paragraph, not a value over the text after it; and the label is no caption
+        // ([`names_a_figure`]).
         if no_author_structure(structure.as_ref())
             && read_lines.iter().all(|&(_, _, kind)| kind == 2)
         {
             let inked = |r: &&TextRun| !r.text.trim().is_empty();
-            let mut heads: Vec<(usize, &Vec<usize>, (String, i64))> = Vec::new();
+            // A label heading a section: its page, its runs, its style, and whether it may head
+            // the document alone (decision #159).
+            type Head<'a> = (usize, &'a Vec<usize>, (String, i64), bool);
+            let mut heads: Vec<Head<'_>> = Vec::new();
             for (p, (page, lines)) in pages.iter().zip(&heading_lines_by_page).enumerate() {
                 for (indices, _) in lines {
                     let (Some(&first), Some(&last)) = (indices.first(), indices.last()) else {
@@ -3061,7 +3083,18 @@ fn extract_counted(
                         && next.is_some_and(|r| !r.bold && !runs_on(r))
                         && below.is_some_and(|r| !r.bold)
                     {
-                        heads.push((p, indices, (end.font_id.clone(), end.font_size)));
+                        let opens = next
+                            .is_some_and(|r| !r.text.trim_start().starts_with(char::is_lowercase));
+                        let paragraph = next.zip(below).is_some_and(|(n, b)| {
+                            b.locator.origin_y - n.locator.origin_y
+                                <= n.locator.origin_y - end.locator.origin_y
+                        });
+                        let text: String = indices
+                            .iter()
+                            .map(|&i| page.runs[i].text.as_str())
+                            .collect();
+                        let alone = opens && paragraph && !names_a_figure(&text);
+                        heads.push((p, indices, (end.font_id.clone(), end.font_size), alone));
                     }
                 }
             }
@@ -3069,11 +3102,16 @@ fn extract_counted(
             // A style is a font resource name and a size, and the name is its page's own: two pages
             // naming different fonts `F1` at one size read as one style (known limit, review).
             let mut styles: std::collections::BTreeMap<&(String, i64), usize> = Default::default();
-            for (_, _, style) in &heads {
+            for (_, _, style, _) in &heads {
                 *styles.entry(style).or_default() += 1;
             }
-            for (p, indices, style) in &heads {
-                if styles[style] >= 2 {
+            let lone = if styles.values().all(|&n| n < 2) {
+                heads.iter().position(|&(_, _, _, alone)| alone)
+            } else {
+                None
+            };
+            for (k, (p, indices, style, _)) in heads.iter().enumerate() {
+                if styles[style] >= 2 || lone == Some(k) {
                     for &i in *indices {
                         pages[*p].runs[i].inferred_heading_level = None;
                     }
@@ -4339,6 +4377,30 @@ pub(crate) fn page_resources(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A caption names a figure or a table and heads no section** (decision #159): a caption
+    /// word, then a number, spaced or not, as a page drawing a glyph to a run gives it.
+    #[test]
+    fn a_caption_word_and_a_number_name_a_figure() {
+        for caption in [
+            "Figure 3.3. Biomass use",
+            "Fig. 2",
+            "FIGURE1",
+            "Table 2: Rates",
+            " Exhibit 12",
+        ] {
+            assert!(names_a_figure(caption), "{caption}");
+        }
+        for heading in [
+            "Table of Contents",
+            "Figures 2",
+            "Tablespoon 2",
+            "Chart",
+            "Scope of work",
+        ] {
+            assert!(!names_a_figure(heading), "{heading}");
+        }
+    }
 
     fn geom(w: f64, h: f64, rot: i64) -> PageGeometry {
         let (dw, dh) = if rot % 180 == 0 { (w, h) } else { (h, w) };

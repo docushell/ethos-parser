@@ -740,3 +740,49 @@ and none down; NID 0.8922, 27 up and none down; overall 0.8005 -> 0.8134; ParseB
 content and layout unchanged on every page; the gate documents' Markdown byte-identical, and on
 their tree-stripped copies only this section's joins move (a title set on two lines, a section
 number and its title, two bold cells side by side).
+
+## 17. `type-size-v8`, folded — one label heads a document nothing else heads (decision #159, 2026-11-20)
+
+§15's recurrence clause left every document whose one section title is a label with no heading at
+all: on b3030f8, 17 of opendataloader-bench's 107 documents whose ground truth holds a heading had
+no `#` line, nearly all of them a bold line over prose (`PRICE AND THE PLACEBO EFFECT`,
+`IMPLEMENTATION`, `4.3.2 Alignment Tuning`), and MHS scores such a document 0.
+
+**The rule** (folded into `type-size-v8`, unreleased): where the document declares no author
+structure, no line ranks and no label's font and size recur as §15 asks, the first label that heads
+a section as §15 reads it is level 1 alone, where it also heads a paragraph — the text after it opens
+in no lower-case letter (a bold phrase inside a paragraph runs on in one), and the line below that
+text is no farther from it than it is from the label (a value over the text after it is no
+paragraph) — and names no figure or table (`Figure 3.3.`, `Fig. 2`, `Table 2:`; `Table of Contents`
+is no caption). The caption test reads the label's runs run together, since a page may draw a line a
+glyph to a run.
+
+**How it got there** (opendataloader-bench, over b3030f8):
+
+| form | overall | MHS | docs with a GT heading changed | changed docs whose GT has none |
+| --- | ---: | ---: | ---: | ---: |
+| b3030f8 | 0.8126 | 0.6372 | — | — |
+| first label alone, no guards | 0.8284 | 0.6991 | 8 (8 up) | 4 |
+| + no caption, + heads a paragraph (shipped) | **0.8288** | **0.7006** | 8 (8 up) | **0** |
+| simulated on the Markdown: first bold line, next line not bold | 0.8337 | 0.7268 | 13 | 8 |
+
+The four false headings the first form wrote were figure captions; the paragraph clause changed no
+probe and no false heading but picked a later, real section title on one document (MHS 0.29 ->
+0.45). With decision #158's `--unstyled`: overall **0.8351**, 7th of 13.
+
+**The trade the owner took** ("Ship both"): §15's made-up probes — forms, an invoice, a resume —
+were clean under the recurrence clause; under this rule 10 of their 40 gain a `#` line: a form's
+`Total` over its value and body, an invoice's `Invoice No` and `Due date`, `Bill To` and `Ship To`
+blocks, a signature line's caption, a list's bold term, a resume's `EXPERIENCE`, a bold line wrapped
+over its sentence, `Schedule B` and `Scope` over their text. Each is one label over text in a
+document nothing else heads, and §15's sentence still holds: nothing in the type tells it from a
+section's title.
+
+**Elsewhere**: ParseBench, with and without `--ocr`, no page down and one formatting page up
+(`text_simple__minutes2` 0.917 -> 1.0); the Markdown of 58 of its pages changed, most a real section
+or chart title (`Selected Consolidated Financial Data`, `NOTE 16: OTHER COMPREHENSIVE INCOME`), some
+a form-like line (`Protection Class`, `Rate`). ParseBench-2: 141 pages' Markdown changed, formatting
+71.36 -> 71.39, nothing else moved. The bounds' eleven documents, tree kept or stripped, read as
+under §15, line for line; the gate's four tree-stripped documents give byte-identical Markdown; the
+private set's 250 runs and its resume set are unchanged.
+

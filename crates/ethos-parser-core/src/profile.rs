@@ -1680,6 +1680,17 @@ pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 /// 0.6285 -> 0.6378 over decision #141's joins alone, none down; the heading bounds' eleven
 /// documents each rank headings, so they read as under `-v7`. Without the recurrence clause MHS
 /// read 0.7024, but forms, invoices and resumes got `#` lines.
+///
+/// **And one label heads a document where no label's style recurs** (decision #159, folded in
+/// before any release carried this id): the first label that heads a section as above heads the
+/// document alone, level 1, where it heads a paragraph — the text after it opens in no lower-case
+/// letter, which a bold phrase inside a paragraph runs on in, and the line below that text is no
+/// farther from it than it is from the label, so a value over the text after it is no paragraph —
+/// and it names no figure or table (`Figure 3.3.`, `Table 2`). A book's or a paper's page with one
+/// section title over its prose was a document with no heading. **The trade:** nothing in the type
+/// tells a form's `Total`, an invoice's `Bill To` or a resume's `EXPERIENCE`, each alone over text,
+/// from that title; the review's made-up probes that #140 kept clean gain `#` lines. Measured in
+/// `docs/measurements/headings/README.md` §17.
 pub const HEADING_INFERENCE_RULE_V8: &str = "type-size-v8";
 
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.

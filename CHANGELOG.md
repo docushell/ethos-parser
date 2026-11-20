@@ -32,6 +32,25 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### One label heads a document nothing else heads (decision #159)
+
+On an untagged document where no line ranks by its type and no label's style recurs (decision
+#140), a paper's or a book's page with one section title set as a bold line over its prose came out
+with no heading at all. Now the first label that heads a section there is a level-1 heading, where it
+heads a paragraph — the text after it opens in no lower-case letter, and the line below that text is
+no farther from it than it is from the label — and names no figure or table (`Figure 3.3.`,
+`Table 2:`).
+
+- Folded into `type-size-v8`, which no release carries; the heading limitation's wording says so.
+- Measured over `b3030f8`: opendataloader-bench headings (MHS) 0.6372 → 0.7006, overall 0.8126 →
+  0.8288, 8 documents up, none down, no false heading on a document whose ground truth has none;
+  with decision #158's `--unstyled`, 0.8351. ParseBench and ParseBench-2, with `--ocr` and without:
+  no page down, formatting up a little. The heading bounds' eleven documents, the gate's documents,
+  the private set and its resume set unchanged.
+- **The trade** (`docs/measurements/headings/README.md` §17): nothing in the type tells one label
+  over text from a form's `Total`, an invoice's `Bill To` or a resume's `EXPERIENCE` alone over
+  theirs, so 10 of the 40 made-up probes decision #140 kept clean now gain a `#` line.
+
 ### Markdown and HTML without the marks for a run's style, on request (decision #158)
 
 `markdown --unstyled` and `html --unstyled` write every run's text without the marks for its style:

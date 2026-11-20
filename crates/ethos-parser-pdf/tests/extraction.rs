@@ -4388,18 +4388,20 @@ fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
 }
 
 /// **A bold line at the head of its text is a label** (`type-size-v5`, decision #47), end to end:
-/// set tight over the lines it names, it stands apart from nothing, and is read at level 7, below
-/// every ranked level; the document's limitation counts it as a label, and the Markdown writes it
-/// as a bold line, never with `#`.
+/// set tight over the lines it names, it stands apart from nothing, and the document's limitation
+/// counts it as a label. Alone over its paragraph in a document nothing else heads, it is the
+/// document's heading (decision #159), level 1, and the Markdown writes it with `#`; where a line
+/// ranks, it stays level 7, below every ranked level, a bold line
+/// (`labels_heading_recurring_sections_head_a_document_nothing_else_heads`).
 #[test]
-fn a_bold_label_set_tight_over_its_text_is_a_level_seven_label() {
+fn a_bold_label_set_tight_over_its_text_is_a_label() {
     let a = extract_ok(engine_fx("heading-label-line"));
     let headings: Vec<(String, Option<u8>)> = runs(&a)
         .iter()
         .filter(|r| r.inferred_heading)
         .map(|r| (r.text.clone(), r.inferred_heading_level))
         .collect();
-    assert_eq!(headings, [("Loan terms".to_string(), Some(7))]);
+    assert_eq!(headings, [("Loan terms".to_string(), None)]);
     let detail = &a
         .assurance
         .limitations
@@ -4422,14 +4424,83 @@ fn a_bold_label_set_tight_over_its_text_is_a_level_seven_label() {
     )
     .expect("projects")
     .markdown;
-    assert!(md.starts_with("**Loan terms**\n\n"), "{md}");
-    assert!(!md.contains('#'), "{md}");
+    assert!(md.starts_with("# Loan terms\n\n"), "{md}");
+}
+
+/// **Where no label's style recurs, the first label heading a paragraph heads the document**
+/// (`type-size-v8`, decision #159). A label over a paragraph is level 1; a caption, a label whose
+/// text runs on in lower case, and a value over the text after it — the line below farther off
+/// than the value is from the label — stay at level 7, and the next label heading a paragraph, set
+/// unlike the first, is the one that heads; where two labels recur, none heads alone.
+#[test]
+fn a_lone_label_over_a_paragraph_heads_a_document_nothing_else_heads() {
+    let lines = |y: u32, n: u32, t: &str| -> String {
+        (0..n)
+            .map(|k| format!("1 0 0 1 72 {} Tm 0 Tr ({t}) Tj ", y - 12 * k))
+            .collect()
+    };
+    let prose = "The fees are paid each month for the work done.";
+    let label = |y: u32, t: &str| format!("1 0 0 1 72 {y} Tm 2 Tr ({t}) Tj ");
+    let page = |body: String| helvetica_letter_page(&format!("BT 0.3 w /F1 10 Tf {body}ET"));
+    let levels = |a: &ExtractArtifact| -> Vec<(String, Option<u8>)> {
+        runs(a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| (r.text.clone(), r.inferred_heading_level))
+            .collect()
+    };
+    let read = |l: &[(&str, Option<u8>)]| -> Vec<(String, Option<u8>)> {
+        l.iter().map(|&(t, v)| (t.to_string(), v)).collect()
+    };
+
+    let heads = page(label(700, "Scope of work") + &lines(688, 3, prose));
+    assert_eq!(levels(&heads), read(&[("Scope of work", None)]));
+    let caption = page(label(700, "Figure 2. Fees by month") + &lines(688, 3, prose));
+    assert_eq!(
+        levels(&caption),
+        read(&[("Figure 2. Fees by month", Some(7))])
+    );
+    let runs_on = page(label(700, "Scope of work") + &lines(688, 3, "is set out in the schedule."));
+    assert_eq!(levels(&runs_on), read(&[("Scope of work", Some(7))]));
+    let value = page(label(700, "Total") + &lines(688, 1, "1,234.00") + &lines(664, 3, prose));
+    assert_eq!(levels(&value), read(&[("Total", Some(7))]));
+    let second = page(
+        label(700, "Total")
+            + &lines(688, 1, "1,234.00")
+            + &lines(664, 3, prose)
+            + "/F1 11 Tf "
+            + &label(616, "Terms")
+            + "/F1 10 Tf "
+            + &lines(604, 3, prose),
+    );
+    assert_eq!(
+        levels(&second),
+        read(&[("Total", Some(7)), ("Terms", None)]),
+        "the first label heading a paragraph heads, not the first label"
+    );
+    let recurring = page(
+        "/F1 11 Tf ".to_string()
+            + &label(700, "Overview")
+            + "/F1 10 Tf "
+            + &lines(688, 3, prose)
+            + &label(640, "Terms")
+            + &lines(628, 3, prose)
+            + &label(580, "Fees")
+            + &lines(568, 3, prose),
+    );
+    assert_eq!(
+        levels(&recurring),
+        read(&[("Overview", Some(7)), ("Terms", None), ("Fees", None)]),
+        "where sections recur, they head, and no label heads alone"
+    );
 }
 
 /// **Labels that head recurring sections head a document no line of which ranks**
 /// (`type-size-v8`, decision #140). Two labels set alike, each over two lines of text or more, are
-/// level 1; a label over one line of value, two labels stacked, a label run in to its text, two
-/// labels set in different sizes, and one label alone (`a_bold_label_set_tight_over_its_text_is_a_level_seven_label`) stay at level 7;
+/// level 1; a label over one line of value, two labels stacked, a label run in to its text, and
+/// two labels set in different sizes stay at level 7 — where no style recurs, the first label
+/// heading a paragraph heads the document alone (decision #159,
+/// `a_lone_label_over_a_paragraph_heads_a_document_nothing_else_heads`);
 /// so does every label where one line is set large, or where a tree is declared. A hanging next
 /// line, set right of the label a leading below, is text it heads.
 #[test]
@@ -4492,8 +4563,8 @@ fn labels_heading_recurring_sections_head_a_document_nothing_else_heads() {
     );
     assert_eq!(
         levels(&helvetica_letter_page(&unlike)),
-        read([Some(7); 5]),
-        "two labels set unlike are no recurring sections"
+        read([None, Some(7), Some(7), Some(7), Some(7)]),
+        "two labels set unlike are no recurring sections; the first heads the document alone"
     );
     let ranked = levels(&helvetica_letter_page(&sections(
         "/F1 20 Tf 1 0 0 1 72 740 Tm 0 Tr (Service agreement) Tj ",
@@ -5433,7 +5504,8 @@ fn a_line_set_heavier_than_its_text_reads_as_a_bold_one() {
 /// **A numbered bold line set tight over its text is a heading; the same line unnumbered is a
 /// label** (decision #38, `type-size-v4`; decision #47, `type-size-v5`). Plain prose on a 12pt
 /// leading; 30 points of space; then a bold line and, a leading below it, the prose it heads.
-/// Numbered, it needs only the room above.
+/// Numbered, it needs only the room above. Unnumbered, the limitation counts it a label, and alone
+/// over its paragraph in a document nothing else heads, it heads the document (decision #159).
 #[test]
 fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
     let page = |label: &str| {
@@ -5473,23 +5545,30 @@ fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
         ])
     };
-    let headings = |bytes: &[u8]| -> Vec<(String, Option<u8>)> {
+    let headings = |bytes: &[u8]| -> (Vec<(String, Option<u8>)>, String) {
         let a = extracted(bytes).expect("reads");
-        runs(&a)
+        let detail = a
+            .assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE)
+            .expect("the inference is declared")
+            .detail
+            .clone();
+        let lines = runs(&a)
             .iter()
             .filter(|r| r.inferred_heading)
             .map(|r| (r.text.clone(), r.inferred_heading_level))
-            .collect()
+            .collect();
+        (lines, detail)
     };
     // A run records level 1 as no level.
-    assert_eq!(
-        headings(&page("3.1. Methods")),
-        [("3.1. Methods".to_string(), None)]
-    );
-    assert_eq!(
-        headings(&page("Methods")),
-        [("Methods".to_string(), Some(7))]
-    );
+    let (numbered, detail) = headings(&page("3.1. Methods"));
+    assert_eq!(numbered, [("3.1. Methods".to_string(), None)]);
+    assert!(detail.contains("0 are labels"), "{detail}");
+    let (label, detail) = headings(&page("Methods"));
+    assert_eq!(label, [("Methods".to_string(), None)]);
+    assert!(detail.contains("1 are labels"), "{detail}");
 }
 
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
