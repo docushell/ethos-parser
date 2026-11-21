@@ -89,13 +89,13 @@ LangChain tools behind an optional install: see [`packages/python/`](packages/py
 
 ## Benchmarks
 
-Measured on `9c98a4b` (the assist column on `0f6c8a3`) with each benchmark's own scorer, as its
+Measured on `31e4f4d` (the assist column on `0f6c8a3`) with each benchmark's own scorer, as its
 leaderboard is scored today. Higher is better.
 
 | Benchmark | ethos-parser | + `--ocr` | + assist model |
 | --- | ---: | ---: | ---: |
 | [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.15 | 55.14 | 65.34 |
-| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.69 | 57.98 | — |
+| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.64 | 57.94 | — |
 | [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.835 | — | — |
 
 - **ethos-parser** is the engine alone, with no OCR and no model. This project measured it; it is

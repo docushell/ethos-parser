@@ -4,7 +4,7 @@
 `llamaindex/ParseBench` at revision `2805a1d`, both Apache-2.0) scores a parser's Markdown on five
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
 grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**. Re-scored
-2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14**; on `9c98a4b` (2026-11-21): **52.15**
+2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14**; on `31e4f4d` (2026-11-22): **52.15**
 (below, with ParseBench-2).
 
 **Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
@@ -1746,11 +1746,12 @@ hosted parsing service or an AI model:
   rows.
 - **The assist lane has not been run on ParseBench-2.**
 
-## Re-measured on `9c98a4b` (2026-11-21)
+## Re-measured on `31e4f4d` (2026-11-22)
 
 The README's rows after decisions #156 to #159: a scan stored as several images read with `--ocr`,
 a form filler's values read beside their captions, `--unstyled` (opendataloader-bench's adapter
-only), and one label heading a document nothing else heads. Both sets run at 2.1.1 (`d7efdbc`);
+only), and one label heading a document nothing else heads, with their review's fixes (`31e4f4d`).
+Both sets run at 2.1.1 (`d7efdbc`);
 ParseBench-2 scored again at the board's 2.1.0 (`c61ff10`) through the adapter, as above. The
 assist lanes were not run again; their rows stay those of `0f6c8a3`.
 
@@ -1761,12 +1762,13 @@ assist lanes were not run again; their rows stay those of `0f6c8a3`.
 
 | ParseBench-2 lane | Text | Formatting | Tables | Charts | Grounding | Forms | Overall | Place of 57 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Engine | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 70.00 | 55.69 | 54th |
-| `--ocr` | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 70.00 | 57.98 | 53rd |
+| Engine | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 69.72 | 55.64 | 54th |
+| `--ocr` | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 69.72 | 57.94 | 53rd |
 
-Under 2.1.1 ParseBench-2's forms read 70.14 and the overalls 55.71 and 58.01. Against `b3030f8`,
+Under 2.1.1 ParseBench-2's forms read 69.86 and the overalls 55.67 and 57.96. Against `b3030f8`,
 scored the same way: no ParseBench page down in any lane, one formatting page up; ParseBench-2
-forms 67.39 -> 70.14 (#157) and formatting 71.36 -> 71.39 (#159), nothing else moved.
+forms 67.39 -> 69.86 (#157, after its review: 70.14 before the caption rule kept values beside long
+captions with no colon where they were) and formatting 71.36 -> 71.39 (#159), nothing else moved.
 
 ## What it found that is not fixed
 

@@ -1,7 +1,7 @@
 # Benchmarks
 
 ethos-parser is scored on three public benchmarks, each with its own evaluator. Every ethos-parser
-number here was measured by this project on `9c98a4b` — the assist lane's on `0f6c8a3`, not run
+number here was measured by this project on `31e4f4d` — the assist lane's on `0f6c8a3`, not run
 again — and scored as the benchmark's current leaderboard is scored. Every other row is copied from that leaderboard. Higher is better.
 
 Three lanes are reported:
@@ -54,7 +54,7 @@ Every lane, placed on the whole leaderboard (158 rows with ethos-parser):
 | + assist model, as written | 65.34 | 60.53 | 64.81 | 83.70 | 54.41 | 63.28 | 69th |
 | + assist model, quote markers removed before scoring | 71.93 | 85.75 | 66.67 | 84.18 | 59.75 | 63.28 | 31st |
 
-- The two assist rows were measured on `0f6c8a3` and have not been run again on `9c98a4b`.
+- The two assist rows were measured on `0f6c8a3` and have not been run again on `31e4f4d`.
 - **As written** is what the product writes: the model's blocks inside a block quote under their
   *Proposed* label. ParseBench's converter reads no table or title inside a quote, so the last row
   shows what the model's reading scores once the benchmark's adapter removes the quote markers. The
@@ -82,9 +82,9 @@ Around ethos-parser, with the highest overall row and the assist model for scale
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | LlamaParse (Agentic Plus) (highest overall, cloud) | 90.82 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 85.56 |
 | LightOnOCR-3 0.8B (the assist model, on its own) | 77.12 | 81.24 | 80.87 | 78.58 | 61.22 | 82.90 | 77.92 |
-| **ethos-parser + `--ocr`** | **57.98** | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 70.00 |
+| **ethos-parser + `--ocr`** | **57.94** | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 69.72 |
 | Falcon-OCR | 57.78 | 64.58 | 75.93 | 72.57 | 0.69 | 64.56 | 68.33 |
-| **ethos-parser** | **55.69** | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 70.00 |
+| **ethos-parser** | **55.64** | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 69.72 |
 | jina-ocr-v1 | 48.59 | 75.13 | 79.87 | 55.00 | 8.74 | 0.00 | 72.79 |
 | Qwen3.5-4B | 42.86 | 77.32 | 74.77 | 12.86 | 6.88 | 16.14 | 69.21 |
 | gemma-4-E4B-it | 42.74 | 65.03 | 70.57 | 30.82 | 5.39 | 22.74 | 61.87 |
@@ -93,7 +93,7 @@ Around ethos-parser, with the highest overall row and the assist model for scale
   `--ocr`.
 - The assist model has not been run through the product on ParseBench-2.
 - parse-bench 2.1.1 (`d7efdbc`) changed how forms are scored after the leaderboard was: under it,
-  ethos-parser's forms read 70.14, and the two overalls 55.71 and 58.01.
+  ethos-parser's forms read 69.86, and the two overalls 55.67 and 57.96.
 - Overall is the mean of the six dimensions.
 
 ## opendataloader-bench
