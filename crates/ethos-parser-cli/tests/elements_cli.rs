@@ -233,11 +233,14 @@ fn every_node_is_in_exactly_one_place_and_every_label_is_reached() {
     assert_eq!(reasons, all.map(String::from).into(), "reasons reached");
 }
 
-/// The label tier is text, and the nine lines the reader measured off the page are counted.
+/// A lone label over its text, in a document nothing else heads, is its heading (decision #159) and
+/// a `section-header`, as both projections write it `#`; the label tier, level 7, stays `text`
+/// (`ethos_parser_core::elements`' own test). The nine lines the reader measured off the page are
+/// counted.
 #[test]
-fn a_label_line_is_text_and_its_unmeasured_lines_are_counted() {
+fn a_lone_label_heads_its_document_and_its_unmeasured_lines_are_counted() {
     let artifact = elements_of("fixtures/engine/heading-label-line/document.pdf");
-    assert_eq!(texts(&artifact)[0], ("text", "Loan terms"));
+    assert_eq!(texts(&artifact)[0], ("section-header", "Loan terms"));
     let omitted = artifact["omitted"].as_array().unwrap();
     assert_eq!(omitted.len(), 1, "{artifact}");
     assert_eq!(omitted[0]["reason"], "no-measured-box");
