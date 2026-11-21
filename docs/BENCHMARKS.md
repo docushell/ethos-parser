@@ -1,8 +1,8 @@
 # Benchmarks
 
 ethos-parser is scored on three public benchmarks, each with its own evaluator. Every ethos-parser
-number here was measured by this project on `0f6c8a3` and scored as the benchmark's current
-leaderboard is scored. Every other row is copied from that leaderboard. Higher is better.
+number here was measured by this project on `9c98a4b` — the assist lane's on `0f6c8a3`, not run
+again — and scored as the benchmark's current leaderboard is scored. Every other row is copied from that leaderboard. Higher is better.
 
 Three lanes are reported:
 
@@ -31,7 +31,7 @@ Against the open-source local parsers on its leaderboard, with the highest overa
 | Parser | Overall | Tables | Charts | Content | Formatting | Grounding |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | LlamaParse Agentic Plus (highest overall, cloud) | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 |
-| **ethos-parser** | **52.14** | 64.53 | 17.30 | 67.52 | 51.39 | 59.99 |
+| **ethos-parser** | **52.15** | 64.53 | 17.30 | 67.52 | 51.40 | 59.99 |
 | PyMuPDF4LLM | 50.47 | 56.93 | 1.63 | 75.25 | 56.66 | 61.89 |
 | Warp Ingest | 39.33 | 57.50 | 2.45 | 72.24 | 42.94 | 21.50 |
 | LiteParse (no OCR) † | 36.90 | 42.40 | 1.80 | 70.00 | 38.50 | 31.80 |
@@ -49,11 +49,12 @@ Every lane, placed on the whole leaderboard (158 rows with ethos-parser):
 
 | Lane | Overall | Tables | Charts | Content | Formatting | Grounding | Place |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ethos-parser | 52.14 | 64.53 | 17.30 | 67.52 | 51.39 | 59.99 | 113th |
-| + `--ocr` | 54.69 | 64.54 | 17.30 | 75.48 | 52.82 | 63.28 | 108th |
+| ethos-parser | 52.15 | 64.53 | 17.30 | 67.52 | 51.40 | 59.99 | 113th |
+| + `--ocr` | 55.14 | 64.54 | 17.30 | 77.39 | 53.17 | 63.30 | 107th |
 | + assist model, as written | 65.34 | 60.53 | 64.81 | 83.70 | 54.41 | 63.28 | 69th |
 | + assist model, quote markers removed before scoring | 71.93 | 85.75 | 66.67 | 84.18 | 59.75 | 63.28 | 31st |
 
+- The two assist rows were measured on `0f6c8a3` and have not been run again on `9c98a4b`.
 - **As written** is what the product writes: the model's blocks inside a block quote under their
   *Proposed* label. ParseBench's converter reads no table or title inside a quote, so the last row
   shows what the model's reading scores once the benchmark's adapter removes the quote markers. The
@@ -81,17 +82,18 @@ Around ethos-parser, with the highest overall row and the assist model for scale
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | LlamaParse (Agentic Plus) (highest overall, cloud) | 90.82 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 85.56 |
 | LightOnOCR-3 0.8B (the assist model, on its own) | 77.12 | 81.24 | 80.87 | 78.58 | 61.22 | 82.90 | 77.92 |
+| **ethos-parser + `--ocr`** | **57.98** | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 70.00 |
 | Falcon-OCR | 57.78 | 64.58 | 75.93 | 72.57 | 0.69 | 64.56 | 68.33 |
-| **ethos-parser + `--ocr`** | **57.15** | 61.74 | 77.57 | 51.71 | 17.94 | 66.75 | 67.20 |
-| **ethos-parser** | **55.22** | 57.58 | 71.36 | 49.98 | 17.94 | 67.25 | 67.20 |
+| **ethos-parser** | **55.69** | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 70.00 |
 | jina-ocr-v1 | 48.59 | 75.13 | 79.87 | 55.00 | 8.74 | 0.00 | 72.79 |
 | Qwen3.5-4B | 42.86 | 77.32 | 74.77 | 12.86 | 6.88 | 16.14 | 69.21 |
 | gemma-4-E4B-it | 42.74 | 65.03 | 70.57 | 30.82 | 5.39 | 22.74 | 61.87 |
 
-- Placed alone on the leaderboard (57 rows with it), each ethos-parser lane would be 54th.
+- Placed alone on the leaderboard (57 rows with it), ethos-parser would be 54th, and 53rd with
+  `--ocr`.
 - The assist model has not been run through the product on ParseBench-2.
 - parse-bench 2.1.1 (`d7efdbc`) changed how forms are scored after the leaderboard was: under it,
-  ethos-parser's forms read 67.39, and the two overalls 55.25 and 57.18.
+  ethos-parser's forms read 70.14, and the two overalls 55.71 and 58.01.
 - Overall is the mean of the six dimensions.
 
 ## opendataloader-bench
@@ -109,16 +111,20 @@ in its README table.
 | marker | 0.861 | 0.890 | 0.808 | 0.796 | 53.932 |
 | unstructured [hi_res] | 0.841 | 0.904 | 0.588 | 0.749 | 3.008 |
 | edgeparse | 0.837 | 0.894 | 0.717 | 0.706 | 0.036 |
+| **ethos-parser** | **0.835** | 0.899 | 0.667 | 0.706 | — |
 | opendataloader | 0.831 | 0.902 | 0.489 | 0.739 | 0.015 |
 | mineru | 0.831 | 0.857 | 0.873 | 0.743 | 5.962 |
-| **ethos-parser** | **0.813** | 0.891 | 0.667 | 0.637 | — |
 | pymupdf4llm | 0.732 | 0.885 | 0.401 | 0.412 | 0.091 |
 | unstructured | 0.686 | 0.882 | 0.000 | 0.388 | 0.077 |
 | markitdown | 0.589 | 0.844 | 0.273 | 0.000 | 0.114 |
 | liteparse | 0.576 | 0.866 | 0.000 | 0.000 | 1.061 |
 
-- ethos-parser places 9th of 13. Two hybrid variants, whose results the benchmark's repository
-  carries but whose README does not list, also score above it: 0.877 and 0.845.
+- ethos-parser places 7th of 13, above opendataloader and mineru (0.831). Two hybrid variants,
+  whose results the benchmark's repository carries but whose README does not list, also score
+  above it: 0.877 and 0.845.
+- Its adapter asks for `markdown --unstyled` (decision #158): the reading-order metric compares the
+  Markdown's raw characters, and the benchmark's ground truth writes no bold or underline, so the
+  marks for a run's style would count as wrong characters. The text is as without the flag.
 - The liteparse row is the version the benchmark measured. LiteParse's own README reports 0.886 for
   its current version (read 2026-11-18); the benchmark has not re-measured it.
 - Overall is the benchmark's own per-document mean, not the mean of the three columns: tables count

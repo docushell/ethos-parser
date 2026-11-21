@@ -89,20 +89,22 @@ LangChain tools behind an optional install: see [`packages/python/`](packages/py
 
 ## Benchmarks
 
-Measured on `0f6c8a3` with each benchmark's own scorer, as its leaderboard is scored today. Higher
-is better.
+Measured on `9c98a4b` (the assist column on `0f6c8a3`) with each benchmark's own scorer, as its
+leaderboard is scored today. Higher is better.
 
 | Benchmark | ethos-parser | + `--ocr` | + assist model |
 | --- | ---: | ---: | ---: |
-| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.14 | 54.69 | 65.34 |
-| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.22 | 57.15 | — |
-| [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.813 | — | — |
+| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.15 | 55.14 | 65.34 |
+| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.69 | 57.98 | — |
+| [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.835 | — | — |
 
 - **ethos-parser** is the engine alone, with no OCR and no model. This project measured it; it is
   not on any of the three benchmarks' published lists. Placed among them, it would be 113th of 158
-  on ParseBench's leaderboard, 54th of 57 on ParseBench-2's, and 9th of the 13 engines in
-  opendataloader-bench's table. Higher on both ParseBench sets: parsers that use AI models, hosted
-  or local. Higher on opendataloader-bench: eight engines, with and without models.
+  on ParseBench's leaderboard, 54th of 57 on ParseBench-2's (53rd with `--ocr`), and 7th of the 13
+  engines in opendataloader-bench's table, where it asks for `markdown --unstyled`, since that
+  benchmark's reading order counts a bold mark as a wrong character. Higher on both ParseBench
+  sets: parsers that use AI models, hosted or local. Higher on opendataloader-bench: six engines,
+  with and without models.
 - **+ `--ocr`** adds the bundled recognizer for scanned pages: neural networks that run on your
   machine.
 - **+ assist model** adds LightOnOCR-3-0.8B, a model you run, scored as the product writes it,

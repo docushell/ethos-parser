@@ -166,11 +166,12 @@ found every one permissively licensed, but nothing kept it so.
 - The README leads with what the parser is for, the one-line install and three commands on the
   sample, then one install line per kind of user, tested: the CLI, Claude Code's MCP, Python 3.10+
   from a git subdirectory, and Node 18+ from a shallow clone.
-- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `0f6c8a3` and placed on
+- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `9c98a4b` and placed on
   the leaderboards as they are scored today: ParseBench, re-scored by its maintainers on 15–17
-  November, 52.14 for the engine (113th of 158), 54.69 with `--ocr`, 65.34 with the assist model as
-  written; ParseBench-2, new here, 55.22 for the engine and 57.15 with `--ocr` (each 54th of 57);
-  opendataloader-bench 0.813 (9th of 13). The long install notes move to `docs/INSTALL.md`.
+  November, 52.15 for the engine (113th of 158), 55.14 with `--ocr` (107th), 65.34 with the assist
+  model as written (on `0f6c8a3`); ParseBench-2, new here, 55.69 for the engine (54th of 57) and
+  57.98 with `--ocr` (53rd); opendataloader-bench 0.835 (7th of 13). The long install notes move to
+  `docs/INSTALL.md`.
 
 ### A page drawn turned is read upright (decision #155)
 
