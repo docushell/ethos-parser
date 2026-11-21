@@ -396,6 +396,12 @@ pub(crate) const COMPOSITE_MAX_WORK: u128 = 400_000_000;
 /// The most paints a composed page may hold (decision #156, review).
 pub(crate) const COMPOSITE_MAX_LAYERS: usize = 65_536;
 
+/// The most pixels a composed page's images and their soft masks may hold between them, each
+/// counted once (decision #156, second review): the recognizer decodes every one whole before it
+/// draws, so eight one-bit masks of 6000 x 6000, a few kilobytes stored, took 2.6 GB. Seven
+/// full-page scans at 300 dpi fit; a background and its text's masks need two or three.
+pub(crate) const COMPOSITE_MAX_SOURCE_PIXELS: u128 = 64_000_000;
+
 /// A device colour as 8-bit red, green and blue (decision #156): a gray, an RGB, or a CMYK
 /// converted as the recognizer converts one (32000-1 §10.4.2, no undercolour removal); `None` for a
 /// colour this reader does not know.
@@ -605,7 +611,12 @@ fn composed(
         };
         layers.push(layer);
     }
-    if work > COMPOSITE_MAX_WORK {
+    let decoded: u128 = sources
+        .iter()
+        .flat_map(|s| std::iter::once(&s.image).chain(s.soft_mask.as_ref().map(|m| &m.image)))
+        .map(|i| u128::from(i.width) * u128::from(i.height))
+        .sum();
+    if work > COMPOSITE_MAX_WORK || decoded > COMPOSITE_MAX_SOURCE_PIXELS {
         return Err("composite-too-large".into());
     }
     Ok(RecognitionRequest {
@@ -1361,6 +1372,9 @@ mod tests {
             ("/Sh0 sh", "shading"),
             ("/GsX gs 0 0 10 10 re f", "graphics-state-not-read"),
             ("0 0 m 100 0 l 50 50 l h W n", "clip-not-rectangular"),
+            // Second review: four points doubling back on an edge enclose nothing.
+            ("0 0 m 100 0 l 100 50 l 100 0 l f", "path-not-rectangular"),
+            ("0 0 m 100 0 l 100 50 l 100 0 l W n", "clip-not-rectangular"),
             ("/P0 cs /Pat scn 0 0 10 10 re f", "fill-colour-not-read"),
             // Four operands in an RGB space: a viewer reads the last three (review).
             (
@@ -1376,6 +1390,35 @@ mod tests {
             assert_eq!(
                 reason(&artifact).as_deref(),
                 Some(format!("several-images:{why}").as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn a_space_named_and_no_colour_set_paints_its_initial_black() {
+        // Second review: `/DeviceRGB cs` sets the fill to the space's initial colour, black, and a
+        // viewer paints it; it was refused `fill-colour-not-read`. In CMYK, `0 0 0 1`.
+        let profile = Profile::ocr_v0();
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        for space in ["DeviceRGB", "DeviceCMYK", "DeviceGray"] {
+            let ops = format!("{image} /{space} cs 0 0 10 10 re f {image}");
+            let doc = Document::open_bytes(&page_with(&ops), &profile).expect("opens");
+            let mut fake = Fake::new();
+            crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert_eq!(fake.requests.len(), 1, "{space}");
+            let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+                panic!("composed: {:?}", fake.requests[0].image);
+            };
+            assert!(
+                spec.layers.iter().any(|l| matches!(
+                    l,
+                    LayerSpec::Fill {
+                        colour: [0, 0, 0],
+                        ..
+                    }
+                )),
+                "{space}: {:?}",
+                spec.layers
             );
         }
     }
@@ -1515,6 +1558,35 @@ mod tests {
             match why {
                 Some(why) => assert_eq!(got.as_deref(), Some(why), "flags {flags}"),
                 None => assert_eq!(requests.len(), 1, "a hidden annotation draws nothing"),
+            }
+        }
+        // Second review: one with no appearance a viewer draws from its own entries — a square
+        // filled white hid the text — but a link, a note, a highlight or a field draws nothing
+        // over the page (third review).
+        for (subtype, why) in [
+            ("Square", Some("several-images:annotation")),
+            ("FreeText", Some("several-images:annotation")),
+            ("Link", None),
+            ("Text", None),
+            ("Highlight", None),
+            ("Widget", None),
+        ] {
+            let bytes = edited(&page_with(&two), |doc| {
+                let annot = doc.add_object(dictionary! {
+                    "Type" => "Annot", "Subtype" => subtype,
+                    "Rect" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+                    "IC" => vec![1.into(), 1.into(), 1.into()],
+                });
+                let page = first_page(doc);
+                doc.get_object_mut(page)
+                    .and_then(Object::as_dict_mut)
+                    .expect("the page")
+                    .set("Annots", vec![annot.into()]);
+            });
+            let (got, requests) = read_ocr(&bytes);
+            match why {
+                Some(why) => assert_eq!(got.as_deref(), Some(why), "{subtype}"),
+                None => assert_eq!(requests.len(), 1, "{subtype} draws nothing"),
             }
         }
         // A transfer function maps what is painted to another colour.
@@ -1685,6 +1757,77 @@ mod tests {
         let (why, requests) = read_ocr(&page_with(&ops));
         assert!(requests.is_empty());
         assert_eq!(why.as_deref(), Some("composite-too-large"));
+    }
+
+    #[test]
+    fn images_too_large_to_decode_together_are_refused_by_name() {
+        // Second review: the recognizer decodes every image whole, so 120 million samples stored
+        // in a few bytes, painted into a corner, are refused before they are sent.
+        use lopdf::{dictionary, Stream};
+        let ops = "q 200 0 0 100 0 0 cm /Im0 Do Q q 2 0 0 2 0 0 cm /Im1 Do Q";
+        let bytes = page_with_resources(ops, |doc, resources| {
+            let big = doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image", "Width" => 12_000,
+                    "Height" => 10_000, "ImageMask" => true, "BitsPerComponent" => 1,
+                },
+                vec![0u8; 8],
+            ));
+            let xobjects = resources
+                .get_mut(b"XObject")
+                .and_then(lopdf::Object::as_dict_mut)
+                .expect("the page's images");
+            xobjects.set("Im1", big);
+        });
+        let (why, requests) = read_ocr(&bytes);
+        assert!(requests.is_empty());
+        assert_eq!(why.as_deref(), Some("composite-too-large"));
+    }
+
+    #[test]
+    fn a_device_space_named_outright_paints_its_colour() {
+        // Second review: `/ColorSpace << /Cs1 /DeviceRGB >>` names a device space outright, not in
+        // an array; it was read as no colour and the page refused.
+        use lopdf::dictionary;
+        let profile = Profile::ocr_v0();
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        let ops = format!("{image} /Cs1 cs 1 0 0 sc 0 0 10 10 re f {image}");
+        let bytes = page_with_resources(&ops, |_, resources| {
+            resources.set("ColorSpace", dictionary! { "Cs1" => "DeviceRGB" });
+        });
+        let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+        let mut fake = Fake::new();
+        crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert_eq!(fake.requests.len(), 1);
+        let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+            panic!("composed: {:?}", fake.requests[0].image);
+        };
+        assert!(spec.layers.iter().any(|l| matches!(
+            l,
+            LayerSpec::Fill {
+                colour: [255, 0, 0],
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn a_rectangle_naming_a_point_twice_is_composed() {
+        // Third review: `m a l a l b …` names a point again at once and draws a rectangle, which
+        // the second review's walk refused as a fill and as a clip.
+        let profile = Profile::ocr_v0();
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        for between in [
+            "10 10 m 10 10 l 60 10 l 60 40 l 10 40 l h f",
+            "10 10 m 60 10 l 60 40 l 10 40 l 10 40 l h f",
+            "0 0 m 0 0 l 200 0 l 200 100 l 0 100 l h W n",
+        ] {
+            let ops = format!("{image} {between} {image}");
+            let doc = Document::open_bytes(&page_with(&ops), &profile).expect("opens");
+            let mut fake = Fake::new();
+            crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert_eq!(fake.requests.len(), 1, "{between}");
+        }
     }
 
     #[test]

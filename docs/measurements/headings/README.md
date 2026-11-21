@@ -786,3 +786,13 @@ a form-like line (`Protection Class`, `Rate`). ParseBench-2: 141 pages' Markdown
 under §15, line for line; the gate's four tree-stripped documents give byte-identical Markdown; the
 private set's 250 runs and its resume set are unchanged.
 
+**Second and third reviews (2026-11-21, before the merge).** The paragraph test compared signed
+distances, so a raised mark on the value's own line or the next column's top passed as the line
+below and `Total` over a value became `#`: it now takes the next line after the text in reading
+order — the first run off the text's line by half the label's gap — and asks that it stand below.
+The caption test now reads Roman numerals (one letter only as `I`, `V` or `X`, none after
+`Exhibit`, so `EXHIBIT C` keeps its `#`), a letter before a number (`S1`, `A.2`), `Figure:`,
+`Scheme`, `Algorithm`, `Plate`, `Listing` and five other languages' words, and a caption drawn a
+word to a run. opendataloader-bench reads exactly as above (0.8288, and 0.8351 with `--unstyled`);
+the made-up probes are the same ten.
+

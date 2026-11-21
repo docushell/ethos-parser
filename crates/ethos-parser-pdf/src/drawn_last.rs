@@ -46,22 +46,31 @@
 //! 1. **On its row**, where a run of the page's own has its baseline within [`ROW`] of the run's:
 //!    right after the nearest such run that starts left of it — ending before it, or reaching
 //!    under it as a caption with its leader does (`Name: ____`, one run) or a box glyph a mark is
-//!    drawn in — up to [`ROW_REACH`] away. A leader drawn as a run of its own, or a long caption
-//!    running on under a value, anchors nothing it runs under. A run one glyph long (a
-//!    check mark, an `X`, a dingbat) is read instead beside the nearest such run on either side
-//!    within [`CHECK_REACH`]: before one to its right, the option it ticks, after one to its left.
-//!    A run whose row holds the page's text but no such run stays where it was.
+//!    drawn in — up to [`ROW_REACH`] away, where that nearest run is a caption: it ends in a
+//!    colon, a question mark or a leader, is one glyph other than a bullet (a box, a currency
+//!    sign, a form's `×` or `=`; a bullet only for a mark), or ends a phrase of at most
+//!    [`CAPTION_WORDS`] words (a leader no word) that ends no sentence, the phrase its line's runs
+//!    set less than their size apart — not a line of prose or a bullet, which a pull quote or a
+//!    figure's labels drawn last sit beside (second and third reviews). Where it is none, the run
+//!    stays where it was. A leader drawn as a run of its own, or a long
+//!    caption running on under a value, anchors nothing it runs under. A mark — one glyph that is
+//!    no letter or digit, a check, a dingbat — is read instead beside the nearest such run on
+//!    either side within [`CHECK_REACH`]: before one to its right, the option it ticks, after one
+//!    to its left; a one-letter or one-digit value reaches as any value does. A run whose row
+//!    holds the page's text but no caption stays where it was.
 //! 2. **Under a line**, where its row holds none: after the last run of the nearest line of the
 //!    page's own above it, no more than [`LINE_REACH`] above and overlapping it across — a value
 //!    set under its caption.
 //!
-//! An anchor is never in a table, and on a page the column cut divided it is in the run's own
+//! An anchor is never in a table, nor is the end of the line it is followed to, and on a page the
+//! column cut divided it is in the run's own
 //! region. A run set more than [`SIZE_RATIO`] times larger than its anchor — a watermark's
 //! letter, drawn where the page's text is split around it — stays where it was, and so does a run
 //! the page marks `/Artifact`, a watermark turned on the page, which no box measured. Where as many of the
 //! overlay's runs are drawn over the page's own text as are read beside it, the overlay is a
 //! watermark or a stamp and nothing moves. Runs read beside one run are read row by row, left to
-//! right. A page with no overlay is untouched, byte for byte.
+//! right. A page with no overlay, or an overlay of more than [`MAX_OVERLAY`] runs, is untouched,
+//! byte for byte.
 //!
 //! **Known limits**: a sidebar drawn after the page's text, in fonts of its own, short-lined and
 //! closer than the column cut's gutter, is read as values beside the lines it sits by; a stamp or
@@ -69,8 +78,9 @@
 //! value set over its caption (a signature line) is read with the line above it; a page that draws
 //! its own words in fragments, each in a font of its own, can look like a filler's; and
 //! a form whose first run (a title) has a font no later run uses is not found, since the longest
-//! stretch then starts with its captions; and a filler that draws every value in one font is not
-//! found either.
+//! stretch then starts with its captions; a filler that draws every value in one font is not
+//! found either; a value set under its caption, on a row another caption ends on, is read after
+//! that one; and a wrapped value's second line is read after the line above it, another field's.
 
 use std::collections::BTreeMap;
 
@@ -127,6 +137,34 @@ impl Drawn<'_> {
         t.ends_with("___") || t.ends_with("...") || t.ends_with('…')
     }
 
+    /// Its words that hold a letter or a digit: a leader, `____`, is none.
+    fn lettered_words(&self) -> usize {
+        self.text
+            .split_whitespace()
+            .filter(|w| w.chars().any(char::is_alphanumeric))
+            .count()
+    }
+
+    /// Whether this run is a list's bullet: one glyph a line of a list opens with.
+    fn is_bullet(&self) -> bool {
+        matches!(
+            self.text.trim(),
+            "•" | "◦"
+                | "▪"
+                | "▫"
+                | "‣"
+                | "⁃"
+                | "∙"
+                | "●"
+                | "○"
+                | "■"
+                | "-"
+                | "–"
+                | "—"
+                | "*"
+        )
+    }
+
     /// Whether this run holds a letter or a digit.
     fn has_words(&self) -> bool {
         self.text.chars().any(char::is_alphanumeric)
@@ -165,6 +203,12 @@ const FONT_SHARE: usize = 3;
 /// How many times larger than its anchor a run may be set and still be a value: a form's value is
 /// set up to twice its caption's tiny type, a watermark's letters many times the body's.
 const SIZE_RATIO: i64 = 3;
+/// The most words a caption's phrase may hold where it ends in no colon, question mark or leader:
+/// more is a line of prose, which a pull quote or a figure's labels drawn last sit beside (review).
+const CAPTION_WORDS: usize = 5;
+/// The most runs an overlay may hold: more is no form a person fills, and each run asks the page's
+/// own on its row (review: a crafted page of 32,000 and 32,000 took 27 s).
+const MAX_OVERLAY: usize = 1_000;
 
 /// Whether the last stretch from `start` qualifies as an overlay.
 fn qualifies(runs: &[Drawn<'_>], start: usize) -> bool {
@@ -223,6 +267,9 @@ pub(crate) fn place(
     order: &[usize],
 ) -> Option<Vec<usize>> {
     let start = overlay(runs)?;
+    if runs.len() - start > MAX_OVERLAY {
+        return None;
+    }
     let in_table: Vec<bool> = runs
         .iter()
         .map(|r| {
@@ -246,11 +293,44 @@ pub(crate) fn place(
         let b = own.partition_point(|&j| runs[j].y <= hi);
         &own[a..b]
     };
+    // Each own run's phrase on its line, read once for the page (second review: asked for each
+    // value it was quadratic): the line's runs set less than their size apart, their words with a
+    // letter or a digit, whether one ends in a leader, and whether the last ends a sentence.
+    let mut phrase: Vec<(usize, bool, bool)> = vec![(0, false, false); runs.len()];
+    let mut i = 0;
+    while i < own.len() {
+        let y = runs[own[i]].y;
+        let mut k = i;
+        while k < own.len() && runs[own[k]].y - y <= ROW {
+            k += 1;
+        }
+        let mut line = own[i..k].to_vec();
+        line.sort_by_key(|&j| (runs[j].x, j));
+        let mut a = 0;
+        while a < line.len() {
+            let mut b = a;
+            while b + 1 < line.len()
+                && runs[line[b]].right() + runs[line[b]].size >= runs[line[b + 1]].x
+            {
+                b += 1;
+            }
+            let part = &line[a..=b];
+            let words = part.iter().map(|&j| runs[j].lettered_words()).sum();
+            let leader = part.iter().any(|&j| runs[j].ends_in_leader());
+            let sentence = runs[line[b]].text.trim_end().ends_with(['.', '!']);
+            for &j in part {
+                phrase[j] = (words, leader, sentence);
+            }
+            a = b + 1;
+        }
+        i = k;
+    }
     // The last run, in reading order, of the line of the page's own that `j` is on.
     let line_end = |j: usize| {
         let mut p = position[j];
         while let Some(&n) = order.get(p + 1) {
-            if n >= start || (runs[n].y - runs[j].y).abs() > ROW {
+            // Review: a table continuing the line is the table's, and the value is not read in it.
+            if n >= start || in_table[n] || (runs[n].y - runs[j].y).abs() > ROW {
                 break;
             }
             p += 1;
@@ -282,24 +362,47 @@ pub(crate) fn place(
             .collect();
         let anchor = if !row.is_empty() {
             let lone = r.glyphs() == 1;
-            let limit = if lone { CHECK_REACH } else { ROW_REACH };
+            // A mark: one glyph that is no letter or digit. A one-letter or one-digit value — an
+            // initial, a count — is read as far from its caption as any value (review).
+            let limit = if lone && !r.has_words() {
+                CHECK_REACH
+            } else {
+                ROW_REACH
+            };
             row.iter()
                 .filter_map(|&j| {
                     let b = &runs[j];
                     // A caption ending in its leader, or a box the mark is drawn in.
                     let caption = (b.has_words() && b.ends_in_leader()) || b.glyphs() == 1;
+                    // A caption at all: a colon, a question mark or a leader at its end, a box a
+                    // mark is drawn in, or a short phrase that ends no sentence — never a line of
+                    // prose, nor a bullet a line of prose follows (reviews: a pull quote's lines
+                    // and a figure's labels were read into the paragraph beside them).
+                    let end = b.text.trim_end();
+                    let (words, leader, sentence) = phrase[j];
+                    // One glyph — a box, a currency sign, a form's `×` or `=` — is one, but a
+                    // bullet only for a mark (third review: bullets anchored a pull quote; the
+                    // `£` before an amount must still anchor it).
+                    let captions = (b.glyphs() == 1 && (lone || !b.is_bullet()))
+                        || leader
+                        || end.ends_with(':')
+                        || end.ends_with('?')
+                        || ((1..=CAPTION_WORDS).contains(&words) && !sentence);
                     if b.x <= r.x + TOUCH && (b.right() <= r.x + TOUCH || caption) {
                         // Ending before it, or a caption reaching under it with its leader.
-                        Some(((r.x - b.right()).max(0), j, Anchor::After(j)))
+                        Some(((r.x - b.right()).max(0), j, Anchor::After(j), captions))
                     } else if lone && b.x >= r.right() - TOUCH / 2 {
-                        Some(((b.x - r.right()).max(0), j, Anchor::Before(j)))
+                        Some(((b.x - r.right()).max(0), j, Anchor::Before(j), true))
                     } else {
                         None
                     }
                 })
                 .filter(|(d, ..)| *d <= limit)
-                .min_by_key(|(d, j, _)| (*d, *j))
-                .map(|(.., a)| a)
+                .min_by_key(|(d, j, ..)| (*d, *j))
+                // The nearest only: where it is no caption, the run stays where it was, never
+                // read after a caption farther off (second review: a value went to the field
+                // before its own).
+                .and_then(|(_, _, a, ok)| ok.then_some(a))
         } else {
             let across = |j: &&usize| {
                 let b = &runs[**j];
@@ -636,5 +739,196 @@ mod tests {
             place(&runs, &[], &regions, &order),
             Some(vec![0, 3, 1, 2, 5, 4])
         );
+    }
+
+    /// Review: text drawn last beside lines of prose — a pull quote, a figure's labels — is no
+    /// filler's values, though in fonts of its own and on the prose's rows; prose drawn a word to
+    /// a run is prose too.
+    #[test]
+    fn text_drawn_last_beside_prose_stays_where_it_was() {
+        let prose = |y: i64| {
+            run(
+                50,
+                y,
+                200,
+                "F1",
+                "that nobody expected to be close or quick",
+            )
+        };
+        let mut runs: Vec<Drawn<'_>> = (0..6).map(|k| prose(100 + 12 * k)).collect();
+        runs.extend([
+            run(300, 112, 120, "Q1", "this close."),
+            run(300, 124, 120, "Q2", "A committee member"),
+            run(300, 136, 120, "Q1", "said so"),
+        ]);
+        assert_eq!(placed(&runs), None);
+        // The same prose, a word to a run, an em apart.
+        let words = ["that", "nobody", "expected", "to", "be", "close"];
+        let mut runs: Vec<Drawn<'_>> = Vec::new();
+        for k in 0..6 {
+            for (w, word) in words.iter().enumerate() {
+                runs.push(run(50 + 40 * w as i64, 100 + 12 * k, 33, "F1", word));
+            }
+        }
+        runs.extend([
+            run(300, 112, 120, "Q1", "this close."),
+            run(300, 124, 120, "Q2", "A committee member"),
+            run(300, 136, 120, "Q1", "said so"),
+        ]);
+        assert_eq!(placed(&runs), None);
+    }
+
+    /// Review: a caption of more words than a phrase holds is still one where it ends in a colon or
+    /// a question mark.
+    #[test]
+    fn a_long_caption_ending_in_a_colon_or_a_question_mark_is_a_caption() {
+        let runs = vec![
+            run(
+                50,
+                100,
+                150,
+                "F1",
+                "Please state your full legal name here:",
+            ),
+            run(
+                50,
+                120,
+                150,
+                "F1",
+                "Are you employed by this company today?",
+            ),
+            run(50, 140, 40, "F1", "Phone:"),
+            run(210, 100, 60, "F9", "Ada Lovelace"),
+            run(210, 120, 30, "F10", "Yes"),
+            run(100, 140, 50, "F11", "555 0100"),
+        ];
+        assert_eq!(placed(&runs), Some(vec![0, 3, 1, 4, 2, 5]));
+    }
+
+    /// Review: a one-digit or one-letter value is a value, read as far from its caption as any;
+    /// only a mark keeps the check's short reach.
+    #[test]
+    fn a_one_character_value_is_read_after_its_caption() {
+        let mut runs = form();
+        runs[3] = run(180, 100, 6, "F9", "3");
+        assert_eq!(placed(&runs), Some(vec![0, 3, 1, 4, 2, 5]));
+    }
+
+    /// Review: a value under a caption whose line a table continues is read after the caption,
+    /// not inside the table.
+    #[test]
+    fn a_line_is_not_followed_into_a_table() {
+        let runs = vec![
+            run(50, 100, 50, "F1", "Charges:"),
+            run(120, 100, 40, "F1", "Item"),
+            run(120, 112, 40, "F1", "Rent"),
+            run(50, 140, 50, "F1", "Name:"),
+            run(50, 160, 50, "F1", "City:"),
+            run(55, 114, 40, "F9", "Paid"),
+            run(100, 140, 60, "F10", "Ada Lovelace"),
+            run(100, 160, 50, "F11", "London"),
+        ];
+        let table = QuantRect {
+            x0: 11_500,
+            y0: 9_000,
+            x1: 20_000,
+            y1: 12_000,
+        };
+        let order: Vec<usize> = (0..runs.len()).collect();
+        assert_eq!(
+            place(&runs, &[table], &[], &order),
+            Some(vec![0, 5, 1, 2, 3, 6, 4, 7])
+        );
+    }
+
+    /// Review: an overlay of more than [`MAX_OVERLAY`] runs is no form a person fills.
+    #[test]
+    fn a_huge_overlay_moves_nothing() {
+        let fonts: Vec<String> = (0..=MAX_OVERLAY).map(|k| format!("V{k}")).collect();
+        let mut runs = form()[..3].to_vec();
+        runs.extend(fonts.iter().map(|f| run(100, 100, 10, f, "x")));
+        assert_eq!(placed(&runs), None);
+    }
+
+    /// Third review: only the nearest run on the row is read; where it is no caption — a long
+    /// phrase ending in no colon — the value stays where it was, never read after a caption
+    /// farther off, another field's.
+    #[test]
+    fn a_value_beside_no_caption_stays_where_it_was() {
+        let runs = vec![
+            run(50, 100, 30, "F1", "Code:"),
+            run(
+                90,
+                100,
+                200,
+                "F1",
+                "Name of employer or business you work for",
+            ),
+            run(50, 120, 40, "F1", "City:"),
+            run(50, 140, 40, "F1", "Phone:"),
+            run(300, 100, 60, "F9", "Analytical Engines"),
+            run(100, 120, 50, "F10", "London"),
+            run(100, 141, 50, "F11", "555 0100"),
+        ];
+        assert_eq!(placed(&runs), Some(vec![0, 1, 2, 5, 3, 6, 4]));
+    }
+
+    /// Third review: a short line that ends a sentence — a paragraph's last — is prose, and a
+    /// pull quote beside it stays; bullets a pull quote's lines sit beside are no captions either.
+    #[test]
+    fn a_sentences_end_or_a_bullet_is_no_caption() {
+        let prose = "the committee met again on tuesday to weigh";
+        let mut runs = vec![
+            run(50, 100, 200, "F1", prose),
+            run(50, 112, 60, "F1", "end of story."),
+            run(50, 124, 200, "F1", prose),
+        ];
+        runs.extend([
+            run(300, 100, 100, "Q1", "Nobody expected"),
+            run(300, 112, 100, "Q2", "the vote to be"),
+            run(300, 124, 100, "Q1", "this close."),
+        ]);
+        assert_eq!(placed(&runs), None);
+        let runs = vec![
+            run(50, 100, 4, "F1", "•"),
+            run(50, 112, 4, "F1", "•"),
+            run(50, 124, 4, "F1", "•"),
+            run(58, 100, 100, "Q1", "Nobody expected"),
+            run(58, 112, 100, "Q2", "the vote to be"),
+            run(58, 124, 100, "Q1", "this close."),
+        ];
+        assert_eq!(placed(&runs), None);
+    }
+
+    /// Third review: a leader drawn as a run of its own is no word of its caption's phrase, and a
+    /// phrase ending in one is a caption however long.
+    #[test]
+    fn a_caption_ending_in_a_leader_run_is_one_however_long() {
+        let runs = vec![
+            run(50, 100, 150, "F1", "Name of your current employer here"),
+            run(203, 100, 60, "F1", "______"),
+            run(50, 120, 40, "F1", "City:"),
+            run(50, 140, 40, "F1", "Phone:"),
+            run(270, 100, 60, "F9", "Analytical"),
+            run(100, 120, 50, "F10", "London"),
+            run(100, 141, 50, "F11", "555 0100"),
+        ];
+        assert_eq!(placed(&runs), Some(vec![0, 1, 4, 2, 5, 3, 6]));
+    }
+
+    /// Third review's measurement: one glyph that is no bullet — a currency sign, a form's `×` —
+    /// is a caption the amount after it is read after; ParseBench-2's forms lost their amounts.
+    #[test]
+    fn a_currency_sign_is_the_caption_of_the_amount_after_it() {
+        let runs = vec![
+            run(50, 100, 120, "F1", "85 Box 77 minus box 84"),
+            run(300, 100, 6, "F1", "£"),
+            run(50, 120, 40, "F1", "City:"),
+            run(50, 140, 40, "F1", "Phone:"),
+            run(310, 100, 40, "F9", "7,126"),
+            run(100, 120, 50, "F10", "London"),
+            run(100, 141, 50, "F11", "555 0100"),
+        ];
+        assert_eq!(placed(&runs), Some(vec![0, 1, 4, 2, 5, 3, 6]));
     }
 }

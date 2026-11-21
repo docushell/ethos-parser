@@ -82,6 +82,11 @@ const MAX_PIXELS: u64 = 64_000_000;
 /// engine asks for at most 400 million.
 const MAX_WORK: u128 = 400_000_000;
 
+/// The most pixels a page's images and soft masks may hold between them, each once: every one is
+/// decoded whole before the page is drawn (second review: eight 6000 x 6000 masks took 2.6 GB).
+/// The engine asks for at most 64 million.
+const MAX_SOURCE_PIXELS: u128 = 64_000_000;
+
 /// `spec` drawn on white from `data`, or why it is not, by name.
 pub fn compose(spec: &Composite, data: &[u8]) -> Result<Bgr, String> {
     let (w, h) = (spec.width as usize, spec.height as usize);
@@ -104,7 +109,13 @@ pub fn compose(spec: &Composite, data: &[u8]) -> Result<Bgr, String> {
             Layer::Fill { rect, .. } => area(&canvas, *rect, *rect),
         })
         .sum();
-    if work > MAX_WORK {
+    let decoded: u128 = spec
+        .sources
+        .iter()
+        .flat_map(|s| std::iter::once(&s.image).chain(s.soft_mask.as_ref().map(|m| &m.image)))
+        .map(|i| u128::from(i.width) * u128::from(i.height))
+        .sum();
+    if work > MAX_WORK || decoded > MAX_SOURCE_PIXELS {
         return Err("composite-too-large".into());
     }
     // Each source's bytes, in order; each decoded once, and stood upright once for each
@@ -497,6 +508,19 @@ mod tests {
             height: 2_000,
             sources: vec![source(gray(1, 1), 1)],
             layers: (0..11).map(|_| paint(0, [0, 0, 20_000, 2_000])).collect(),
+        };
+        assert_eq!(compose(&spec, &[0]).unwrap_err(), "composite-too-large");
+    }
+
+    #[test]
+    fn images_too_large_to_decode_together_are_refused_by_name() {
+        // Second review: every source is decoded whole, so 120 million samples painted into one
+        // pixel are refused before any is decoded.
+        let spec = Composite {
+            width: 10,
+            height: 10,
+            sources: vec![source(gray(12_000, 10_000), 1)],
+            layers: vec![paint(0, [0, 0, 1, 1])],
         };
         assert_eq!(compose(&spec, &[0]).unwrap_err(), "composite-too-large");
     }

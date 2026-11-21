@@ -127,6 +127,15 @@ pub(crate) fn device_like_spaces(
         return BTreeMap::new();
     };
     let components = |o: &lopdf::Object| -> Option<u8> {
+        // A device space named outright (second review: `/CS0 /DeviceRGB` was read as no colour).
+        if let Some(lopdf::Object::Name(n)) = crate::fonts::resolve_object(doc, Some(o)) {
+            return match n.as_slice() {
+                b"DeviceGray" => Some(1),
+                b"DeviceRGB" => Some(3),
+                b"DeviceCMYK" => Some(4),
+                _ => None,
+            };
+        }
         let a = crate::fonts::resolve_array(doc, Some(o))?;
         match a.first().and_then(|f| f.as_name().ok())? {
             b"CalGray" => Some(1),

@@ -4460,10 +4460,50 @@ fn a_lone_label_over_a_paragraph_heads_a_document_nothing_else_heads() {
         levels(&caption),
         read(&[("Figure 2. Fees by month", Some(7))])
     );
+    // Third review: a caption drawn a word to a run, `Table` and `A.2` apart.
+    let split = page(
+        label(700, "Table") + "1 0 0 1 104 700 Tm 2 Tr (A.2 Fees) Tj " + &lines(688, 3, prose),
+    );
+    assert_eq!(
+        levels(&split),
+        read(&[("Table", Some(7)), ("A.2 Fees", Some(7))])
+    );
     let runs_on = page(label(700, "Scope of work") + &lines(688, 3, "is set out in the schedule."));
     assert_eq!(levels(&runs_on), read(&[("Scope of work", Some(7))]));
     let value = page(label(700, "Total") + &lines(688, 1, "1,234.00") + &lines(664, 3, prose));
     assert_eq!(levels(&value), read(&[("Total", Some(7))]));
+    // Review: a raised mark on the value's own line is no line below it.
+    let raised = page(
+        label(700, "Total")
+            + &lines(688, 1, "USD 1,234")
+            + "1 0 0 1 130 691 Tm 0 Tr (00) Tj "
+            + &lines(664, 3, prose),
+    );
+    assert_eq!(levels(&raised), read(&[("Total", Some(7))]));
+    // Nor is a lowered one: a subscript just under the value's baseline, the text far below.
+    let lowered = page(
+        label(700, "Total")
+            + &lines(688, 1, "USD 1,234")
+            + "1 0 0 1 130 685 Tm 0 Tr (a) Tj "
+            + &lines(664, 3, prose),
+    );
+    assert_eq!(levels(&lowered), read(&[("Total", Some(7))]));
+    // Review: at the foot of a column, the next line in reading order is the next column's top,
+    // above the value, and no line below it.
+    let column = |x: u32, from: u32, to: u32| -> String {
+        (0..)
+            .map(|k| from - 12 * k)
+            .take_while(|&y| y >= to)
+            .map(|y| format!("1 0 0 1 {x} {y} Tm 0 Tr ({prose}) Tj "))
+            .collect()
+    };
+    let foot = page(
+        column(72, 700, 544)
+            + &label(520, "Total")
+            + &lines(508, 1, "1,234.00")
+            + &column(330, 700, 508),
+    );
+    assert_eq!(levels(&foot), read(&[("Total", Some(7))]));
     let second = page(
         label(700, "Total")
             + &lines(688, 1, "1,234.00")

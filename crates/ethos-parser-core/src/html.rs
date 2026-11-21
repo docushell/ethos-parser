@@ -449,7 +449,7 @@ pub fn to_html_with(
 ) -> Result<HtmlArtifact, EngineError> {
     let payload = repr.payload();
 
-    let (mut e, unstyled) = crate::markdown::emitter(
+    let mut e = crate::markdown::emitter(
         &payload.nodes,
         crate::markdown::Markup::Html,
         options.unstyled,
@@ -460,10 +460,6 @@ pub fn to_html_with(
     // table codes describe faults in the RECORD, which this projection meets identically.
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
-    // Decision #158, as in `crate::markdown`.
-    if unstyled > 0 {
-        erasures.insert(crate::markdown::INLINE_STYLES_NOT_WRITTEN, unstyled);
-    }
     let mut in_representation = 0usize;
 
     // Decision #136, as in `crate::markdown`.
@@ -1067,6 +1063,13 @@ pub fn to_html_with(
     }
 
     e.finish();
+    // Decision #158, as in `crate::markdown`.
+    if e.unwritten_runs() > 0 {
+        erasures.insert(
+            crate::markdown::INLINE_STYLES_NOT_WRITTEN,
+            e.unwritten_runs(),
+        );
+    }
     let emitted_chars = e.emitted_chars;
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let html = e.markdown;

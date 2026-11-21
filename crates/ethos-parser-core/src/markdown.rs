@@ -3497,10 +3497,11 @@ pub(crate) const PAGE_FURNITURE_NOT_PROJECTED: &str = "page-furniture-not-projec
 pub(crate) const FLAGGED_TEXT_NOT_PROJECTED: &str = "flagged-text-not-projected-v1";
 
 /// Runs written without their style's marks because the caller asked for unstyled text (decision
-/// #158, [`ProjectionOptions::unstyled`]): counted once per run that carries a style — bold,
-/// italic, a strikeout, an underline, a superscript or a subscript — wherever it stands. No
-/// character is left out, so it counts runs, as [`LIST_ITEMS_INFERRED_FROM_MARKERS`] counts items,
-/// and only with the option.
+/// #158, [`ProjectionOptions::unstyled`]): counted once per run written where the styled text
+/// would have marked it — bold, italic, a strikeout, an underline, a superscript or a subscript —
+/// so not a run the projection leaves out, nor one in a table cell or a heading's bold, which no
+/// mark marks. No character is left out, so it counts runs, as
+/// [`LIST_ITEMS_INFERRED_FROM_MARKERS`] counts items, and only with the option.
 pub(crate) const INLINE_STYLES_NOT_WRITTEN: &str = "inline-styles-not-written-v1";
 
 /// What a projection leaves out beyond its rule, or keeps that its rule leaves out, on its
@@ -3566,25 +3567,25 @@ pub struct ProjectionOptions {
     /// Write every run's text without the marks for its style (decision #158): no `**`, `*`,
     /// `~~`, `<u>`, `<sup>` or `<sub>` in Markdown, no `<strong>`, `<em>`, `<s>`, `<u>`, `<sup>`
     /// or `<sub>` in HTML. The text, headings, lists and tables are as without it; only the
-    /// marks go, each a `syntax` segment, so every `source` byte and its anchor stand as before.
-    /// For a reader that compares text and has no use for its look. Counted as
-    /// `inline-styles-not-written-v1`, once per styled run. See [`emitter`].
+    /// marks go, each a `syntax` segment, and every `source` segment is the one the styled text
+    /// has — cut where a mark would have stood — so each byte keeps its anchor. For a reader that
+    /// compares text and has no use for its look. Counted as `inline-styles-not-written-v1`, once
+    /// per run a mark would have marked. See [`emitter`]. **Known limit**: Markdown escapes no
+    /// block syntax in a run's text, so a styled run opening a line with `#`, `>`, `-` or `1.`,
+    /// which its marks kept as text, reads as a heading, a quote or a list item without them, as
+    /// a plain run already does.
     pub unstyled: bool,
 }
 
-/// The emitter a projection writes with: emphasis as the runs carry it, or none where the caller
-/// asked for unstyled text (decision #158), with the number of runs that carry a style, which
-/// [`INLINE_STYLES_NOT_WRITTEN`] counts.
-pub(crate) fn emitter(nodes: &[crate::Node], markup: Markup, unstyled: bool) -> (Emit, usize) {
-    if unstyled {
-        let styled = nodes
-            .iter()
-            .filter(|n| Style::of(n) != Style::default())
-            .count();
-        (Emit::new(), styled)
-    } else {
-        (Emit::with_emphasis(nodes, markup), 0)
-    }
+/// The emitter a projection writes with: emphasis as the runs carry it, or, where the caller asked
+/// for unstyled text (decision #158), its spans opened and closed as they would be with no mark
+/// written — so each `source` segment is the one the styled text has (review: with no emphasis at
+/// all, a bold run and the plain run after it in one marked-content sequence ran into one segment
+/// naming both). [`Emit::unwritten_runs`] counts the runs written so.
+pub(crate) fn emitter(nodes: &[crate::Node], markup: Markup, unstyled: bool) -> Emit {
+    let mut e = Emit::with_emphasis(nodes, markup);
+    e.emphasis.unwritten = unstyled;
+    e
 }
 
 /// The runs [`ProjectionOptions::drop_flagged`] leaves out: every text run carrying a finding,
@@ -3965,6 +3966,14 @@ pub(crate) struct Emit {
     /// Bold and italic, where a run's font declares them (decision #38). Inert — and every byte
     /// what it was before — on a representation with no styled run.
     emphasis: Emphasis,
+    /// A style's mark would have stood here and was not written ([`ProjectionOptions::unstyled`],
+    /// decision #158): the next `source` bytes open a segment of their own, as they would after
+    /// the mark.
+    cut: bool,
+    /// The last character the styled text would have written, its unwritten marks counted
+    /// (decision #158, third review): what a rule reading the text before a span reads, so the
+    /// unstyled text decides as the styled one does.
+    tail: Option<char>,
 }
 
 /// Whether a run's font declares itself bold and italic (decision #38), whether a drawn line
@@ -4064,6 +4073,10 @@ struct Emphasis {
     heading: bool,
     table: bool,
     mark: Option<Mark>,
+    /// Decision #158: the spans open and close as they would, and their marks go unwritten.
+    unwritten: bool,
+    /// Decision #158: the runs written in a style whose marks went unwritten.
+    unwritten_runs: usize,
 }
 
 /// A mark held after a bold span (decision #83): what [`Emit::source_encoded`] or
@@ -4083,6 +4096,8 @@ impl Emit {
             segments: Vec::new(),
             emitted_chars: 0,
             emphasis: Emphasis::default(),
+            cut: false,
+            tail: None,
         }
     }
 
@@ -4117,6 +4132,12 @@ impl Emit {
         e
     }
 
+    /// The runs written in a style whose marks went unwritten (decision #158): what
+    /// [`INLINE_STYLES_NOT_WRITTEN`] counts.
+    pub(crate) fn unwritten_runs(&self) -> usize {
+        self.emphasis.unwritten_runs
+    }
+
     /// The block just opened is a heading: no span opens in it before the next line break.
     pub(crate) fn heading(&mut self) {
         self.emphasis.heading = true;
@@ -4142,8 +4163,20 @@ impl Emit {
     fn close_emphasis(&mut self) {
         if let Some(markup) = self.emphasis.markup {
             let (_, close) = self.emphasis.open.markers(markup);
-            self.write_syntax(&close);
+            self.write_mark(&close);
             self.emphasis.open = Style::default();
+        }
+    }
+
+    /// A style's mark: written, or, where the caller asked for unstyled text (decision #158), left
+    /// out with the `source` segment cut where it would have stood, so every segment is the one
+    /// the styled text has.
+    fn write_mark(&mut self, s: &str) {
+        if !self.emphasis.unwritten {
+            self.write_syntax(s);
+        } else if let Some(last) = s.chars().last() {
+            self.cut = true;
+            self.tail = Some(last);
         }
     }
 
@@ -4214,8 +4247,8 @@ impl Emit {
                 script,
                 ..Style::default()
             };
-            self.write_syntax(&script(open.script).markers(markup).1);
-            self.write_syntax(&script(style.script).markers(markup).0);
+            self.write_mark(&script(open.script).markers(markup).1);
+            self.write_mark(&script(style.script).markers(markup).0);
             self.emphasis.open = style;
             return;
         }
@@ -4228,9 +4261,9 @@ impl Emit {
                 under: false,
                 ..s
             };
-            self.write_syntax(&inner(open).markers(markup).1);
+            self.write_mark(&inner(open).markers(markup).1);
             self.flush_held();
-            self.write_syntax(&inner(style).markers(markup).0);
+            self.write_mark(&inner(style).markers(markup).0);
             self.emphasis.open = style;
             return;
         }
@@ -4245,13 +4278,13 @@ impl Emit {
                 ..style
             };
             let next = inner.markers(markup).0.chars().next().or(s.chars().next());
-            if self.markdown.ends_with(char::is_alphanumeric)
+            if self.tail.is_some_and(char::is_alphanumeric)
                 && next.is_some_and(|c| !c.is_alphanumeric())
             {
                 style.strike = false;
             }
         }
-        self.write_syntax(&style.markers(markup).0);
+        self.write_mark(&style.markers(markup).0);
         self.emphasis.open = style;
     }
 
@@ -4294,6 +4327,8 @@ impl Emit {
                 node_ids: Vec::new(),
             }),
         }
+        self.cut = false;
+        self.tail = s.chars().last();
     }
 
     /// Bytes that invert to `node`'s canonical text.
@@ -4356,6 +4391,9 @@ impl Emit {
             return;
         }
         self.before_text(node, &s);
+        if self.emphasis.unwritten && self.emphasis.open != Style::default() {
+            self.emphasis.unwritten_runs += 1;
+        }
         self.write_source(&s, chars, node, continuing);
     }
 
@@ -4379,6 +4417,8 @@ impl Emit {
             end: self.markdown.len(),
             node_ids: vec![id.to_string()],
         });
+        self.cut = false;
+        self.tail = s.chars().last();
     }
 
     fn write_source(&mut self, s: &str, chars: usize, node: &str, continuing: bool) {
@@ -4386,7 +4426,12 @@ impl Emit {
         self.markdown.push_str(s);
         let end = self.markdown.len();
         match self.segments.last_mut() {
-            Some(last) if continuing && last.kind == SegmentKind::Source && last.end == start => {
+            Some(last)
+                if continuing
+                    && !self.cut
+                    && last.kind == SegmentKind::Source
+                    && last.end == start =>
+            {
                 last.end = end;
                 if last.node_ids.iter().all(|id| id != node) {
                     last.node_ids.push(node.to_string());
@@ -4399,6 +4444,8 @@ impl Emit {
                 node_ids: vec![node.to_string()],
             }),
         }
+        self.cut = false;
+        self.tail = s.chars().last().or(self.tail);
         self.emitted_chars += chars;
     }
 
@@ -4433,6 +4480,9 @@ impl Emit {
             return;
         }
         self.before_text(first, &s);
+        if self.emphasis.unwritten && self.emphasis.open != Style::default() {
+            self.emphasis.unwritten_runs += 2;
+        }
         let start = self.markdown.len();
         self.markdown.push_str(&s);
         self.segments.push(Segment {
@@ -4441,6 +4491,8 @@ impl Emit {
             end: self.markdown.len(),
             node_ids: vec![first.to_string(), second.to_string()],
         });
+        self.cut = false;
+        self.tail = s.chars().last().or(self.tail);
         self.emitted_chars += chars;
     }
 
@@ -4641,15 +4693,11 @@ pub(crate) fn markdown_of(
 ) -> Result<MarkdownArtifact, EngineError> {
     let payload = repr.payload();
 
-    let (mut e, unstyled) = emitter(&payload.nodes, Markup::Markdown, options.unstyled);
+    let mut e = emitter(&payload.nodes, Markup::Markdown, options.unstyled);
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
-    // Decision #158.
-    if unstyled > 0 {
-        erasures.insert(INLINE_STYLES_NOT_WRITTEN, unstyled);
-    }
     let mut in_representation = 0usize;
 
     // Decision #136: a Word header's or footer's runs, on request, before the tables are planned,
@@ -5293,6 +5341,10 @@ pub(crate) fn markdown_of(
     }
 
     e.finish();
+    // Decision #158.
+    if e.unwritten_runs() > 0 {
+        erasures.insert(INLINE_STYLES_NOT_WRITTEN, e.unwritten_runs());
+    }
     let emitted_chars = e.emitted_chars;
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let markdown = e.markdown;
@@ -12790,6 +12842,73 @@ pub(crate) mod tests {
         assert_eq!(sources(&plain), sources(&styled));
         assert_eq!(erasure(&plain, INLINE_STYLES_NOT_WRITTEN), 4);
         assert_eq!(erasure(&styled, INLINE_STYLES_NOT_WRITTEN), 0);
+
+        // Review: a bold run and the plain run after it in one marked-content sequence, nothing
+        // drawn between them, keep a segment each, as the closing mark kept them apart.
+        let joined = with_styles(
+            repr_of_placed(&[
+                (
+                    "Purpose of Form",
+                    tagged_at(3),
+                    7200,
+                    7200,
+                    Some(3000),
+                    None,
+                ),
+                (
+                    ", below, sets out",
+                    tagged_at(3),
+                    10200,
+                    7200,
+                    Some(3400),
+                    None,
+                ),
+            ]),
+            &[0],
+            &[],
+        );
+        let (bold, plain_joined) = (
+            artifact_of(joined.clone()),
+            artifact_with(&joined, unstyled),
+        );
+        assert_eq!(plain_joined.markdown, "Purpose of Form, below, sets out\n");
+        assert_eq!(sources(&plain_joined), sources(&bold));
+        assert_eq!(
+            sources(&plain_joined).len(),
+            2,
+            "{:?}",
+            sources(&plain_joined)
+        );
+        assert_eq!(erasure(&plain_joined, INLINE_STYLES_NOT_WRITTEN), 1);
+        // Third review: whether a struck run opening in punctuation is written struck depends on
+        // what stands before it — after a bold run, its closing `**`. The unstyled text decides as
+        // the styled one, its marks unwritten counted, and keeps its segments and its count.
+        let struck = with_marks(
+            with_styles(
+                repr_of_placed(&[
+                    ("Price", tagged_at(3), 7200, 7200, Some(1000), None),
+                    ("(old)", tagged_at(3), 8200, 7200, Some(1000), None),
+                    ("now and then", tagged_at(3), 9200, 7200, Some(2400), None),
+                ]),
+                &[0],
+                &[],
+            ),
+            &[1],
+            &[],
+        );
+        let (styled_struck, plain_struck) = (
+            artifact_of(struck.clone()),
+            artifact_with(&struck, unstyled),
+        );
+        assert_eq!(sources(&plain_struck), sources(&styled_struck));
+        assert_eq!(styled_struck.markdown, "**Price**~~(old)~~now and then\n");
+        assert_eq!(erasure(&plain_struck, INLINE_STYLES_NOT_WRITTEN), 2);
+        // A run with no style is not counted.
+        let unstyled_run = artifact_with(
+            &repr_of_placed(&[("Plain", tagged_at(3), 7200, 7200, Some(1000), None)]),
+            unstyled,
+        );
+        assert_eq!(erasure(&unstyled_run, INLINE_STYLES_NOT_WRITTEN), 0);
 
         let profile = Profile::default();
         let html = |options| {

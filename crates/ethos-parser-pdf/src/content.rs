@@ -731,6 +731,10 @@ pub struct Interpreter<'a> {
     /// Whether a subpath of the path being built drew more than a rectangle or an axis-aligned
     /// line (decision #95), read as each subpath ends.
     path_shaped: bool,
+    /// Whether a subpath read as a rectangle names its corners without walking its edges — `m l l
+    /// l` doubling back on one edge encloses nothing (decision #156, review). Only composition and
+    /// the clip read it; table detection reads such a path as before.
+    path_unwalked: bool,
     /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
     ///
     /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
@@ -860,6 +864,7 @@ impl<'a> Interpreter<'a> {
             path_subpaths: 0,
             path_box: None,
             path_shaped: false,
+            path_unwalked: false,
             filled: Vec::new(),
             filled_repeated: Vec::new(),
             filled_rounded: Vec::new(),
@@ -1054,12 +1059,33 @@ impl<'a> Interpreter<'a> {
         self.gs.fill_space != 0 && self.gs.fill.count == self.gs.fill_space
     }
 
+    /// Decision #156: the fill a composition paints in — the colour set, where
+    /// [`Self::fill_composable`], or, where `cs` named a space and no colour was set in it since,
+    /// that space's initial colour: black, `0 0 0 1` in CMYK (second review: `/DeviceRGB cs` and a
+    /// stencil was refused, though a viewer paints it black).
+    fn composite_fill(&self) -> Option<crate::text_state::Fill> {
+        if self.fill_composable() {
+            return Some(self.gs.fill);
+        }
+        let space = self.gs.fill_space;
+        (self.gs.fill_initial && space != 0).then(|| {
+            let mut components = [0; 4];
+            if space == 4 {
+                components[3] = 1000;
+            }
+            crate::text_state::Fill {
+                components,
+                count: space,
+            }
+        })
+    }
+
     /// Decision #156: the image [`Self::images`] holds at `index`, placed over `area`.
     fn compose_image(&mut self, index: usize, area: PathRect) {
         if self.composable() != Some(true) {
             return;
         }
-        let fill = self.fill_composable().then_some(self.gs.fill);
+        let fill = self.composite_fill();
         if let Some(shown) = self.shown_part(area) {
             self.composite
                 .layers
@@ -1079,11 +1105,10 @@ impl<'a> Interpreter<'a> {
         let (true, [rect], false, 1) = (fills, &self.pending[..], shaped, subpaths) else {
             return self.uncomposable("path-not-rectangular");
         };
-        if !self.fill_composable() {
+        let Some(fill) = self.composite_fill() else {
             return self.uncomposable("fill-colour-not-read");
-        }
+        };
         if let Some(rect) = self.shown_part(*rect) {
-            let fill = self.gs.fill;
             self.composite
                 .layers
                 .push(CompositeLayer::Fill { rect, fill });
@@ -1280,6 +1305,7 @@ impl<'a> Interpreter<'a> {
         }
         if let Some(rect) = rectangle(pts) {
             self.pending.push(rect);
+            self.path_unwalked |= !walks_rectangle(pts);
         } else if let Some(rect) = rectangle(&once_each(pts)) {
             // `bar-labels-v2`: every corner named twice — a rounded corner of radius nought — still
             // draws the rectangle, and a fill makes it a bar. Only the chart rule reads it.
@@ -1524,6 +1550,7 @@ impl<'a> Interpreter<'a> {
             // yet known.
             FillGray | FillRgb | FillCmyk | FillColor | FillColorN => {
                 self.gs.fill = crate::text_state::Fill::of(operands);
+                self.gs.fill_initial = false;
                 // Decision #139: `g`, `rg` and `k` name their device space; `sc` and `scn` paint
                 // in the space `cs` named last.
                 self.gs.fill_device |= matches!(op, FillGray | FillRgb | FillCmyk);
@@ -1537,6 +1564,7 @@ impl<'a> Interpreter<'a> {
             }
             FillColorSpace => {
                 self.gs.fill = crate::text_state::Fill::UNKNOWN;
+                self.gs.fill_initial = true;
                 self.gs.fill_device = matches!(
                     operands.first(),
                     Some(lopdf::Object::Name(n))
@@ -1665,7 +1693,8 @@ impl<'a> Interpreter<'a> {
                 let fills = !matches!(op, Stroke | CloseStroke);
                 let shaped = std::mem::take(&mut self.path_shaped);
                 let subpaths = std::mem::take(&mut self.path_subpaths);
-                self.compose_path(strokes, fills, shaped, subpaths);
+                let unwalked = std::mem::take(&mut self.path_unwalked);
+                self.compose_path(strokes, fills, shaped || unwalked, subpaths);
                 // Decision #105: a path whose middle the page clips away is no chart's, nor the fill
                 // beneath an inset cell.
                 let gone = self
@@ -1840,6 +1869,7 @@ impl<'a> Interpreter<'a> {
             EndPath => {
                 self.path_box = None;
                 self.path_shaped = false;
+                self.path_unwalked = false;
                 self.path_subpaths = 0;
                 self.subpath = Subpath::default();
                 self.pending.clear();
@@ -1858,7 +1888,12 @@ impl<'a> Interpreter<'a> {
                 // read (review): a second may cut a hole in it, a rectangle drawn with each corner
                 // named twice among them.
                 self.flush_subpath();
-                if let ([r], Some(b), 1) = (&self.pending[..], self.path_box, self.path_subpaths) {
+                if let ([r], Some(b), 1, false) = (
+                    &self.pending[..],
+                    self.path_box,
+                    self.path_subpaths,
+                    self.path_unwalked,
+                ) {
                     let same = |p: f64, q: f64| approx_eq(p, q);
                     if same(r.x0, b.x0) && same(r.y0, b.y0) && same(r.x1, b.x1) && same(r.y1, b.y1)
                     {
@@ -2601,6 +2636,24 @@ fn wedge(sub: &Subpath) -> Option<Slice> {
         }
     }
     None
+}
+
+/// Whether four points, or five closing on the first, walk a rectangle's edges: each corner once,
+/// each step along one axis (decision #156, review). [`rectangle`] asks only for two `x`s and two
+/// `y`s, which a path doubling back on an edge names too while enclosing nothing. A point named
+/// again at once is one point (third review: `m a l a l b …` is a rectangle drawn so).
+fn walks_rectangle(pts: &[(f64, f64)]) -> bool {
+    let same = |a: (f64, f64), b: (f64, f64)| approx_eq(a.0, b.0) && approx_eq(a.1, b.1);
+    let pts = once_each(pts);
+    let pts = pts.as_slice();
+    let corners = match pts.len() {
+        4 => pts,
+        5 if same(pts[0], pts[4]) => &pts[..4],
+        _ => return false,
+    };
+    let step = |a: (f64, f64), b: (f64, f64)| approx_eq(a.0, b.0) != approx_eq(a.1, b.1);
+    (0..4).all(|i| step(corners[i], corners[(i + 1) % 4]))
+        && (0..4).all(|i| (i + 1..4).all(|j| !same(corners[i], corners[j])))
 }
 
 /// The rectangle four or five points draw — a fifth closing on the first — where they hold two

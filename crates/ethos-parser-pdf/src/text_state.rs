@@ -135,6 +135,9 @@ pub struct GraphicsState {
     /// device colour's — a device space, or one the page's `/ColorSpace` resolves so — and 0 where
     /// they do not (decision #156). 1 to begin with: DeviceGray.
     pub fill_space: u8,
+    /// Whether `cs` named the fill's space and no colour was set in it since, so the fill is that
+    /// space's initial colour, black (32000-1 §8.6.8; decision #156, second review).
+    pub fill_initial: bool,
     /// Whether a `gs` set a graphics-state parameter dictionary this reader does not resolve —
     /// whose `/ca` may make a fill transparent, or its `/BM` blend it — since the state was last
     /// saved (decision #139). A fill painted under one has no colour this reader compares.
@@ -186,6 +189,7 @@ impl Default for GraphicsState {
             fill: Fill::BLACK,
             fill_device: true,
             fill_space: 1,
+            fill_initial: false,
             ext_gstate: false,
             clip_unknown: false,
             text_blends: false,

@@ -37,9 +37,9 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 On an untagged document where no line ranks by its type and no label's style recurs (decision
 #140), a paper's or a book's page with one section title set as a bold line over its prose came out
 with no heading at all. Now the first label that heads a section there is a level-1 heading, where it
-heads a paragraph — the text after it opens in no lower-case letter, and the line below that text is
-no farther from it than it is from the label — and names no figure or table (`Figure 3.3.`,
-`Table 2:`).
+heads a paragraph — the text after it opens in no lower-case letter, and the next line after that
+text, in reading order, sits below it no farther than it is from the label — and names no figure or
+table (`Figure 3.3.`, `TABLE I.`, `Figure S1`, `Table A.2`, `Algorithm 1`, `Abbildung 3:`).
 
 - Folded into `type-size-v8`, which no release carries; the heading limitation's wording says so.
 - Measured over `b3030f8`: opendataloader-bench headings (MHS) 0.6372 → 0.7006, overall 0.8126 →
@@ -50,6 +50,14 @@ no farther from it than it is from the label — and names no figure or table (`
 - **The trade** (`docs/measurements/headings/README.md` §17): nothing in the type tells one label
   over text from a form's `Total`, an invoice's `Bill To` or a resume's `EXPERIENCE` alone over
   theirs, so 10 of the 40 made-up probes decision #140 kept clean now gain a `#` line.
+- A second review, before the merge: the paragraph test compared signed distances, so a raised mark
+  on the text's own line (cents, a footnote mark), or the next column's top, passed as the line
+  below, and a label over a value (`Total` over `1,234.00`) became `#`; and the caption test read
+  only a caption word and a digit, missing Roman numerals, letter labels, `Figure:`, `Scheme`,
+  `Algorithm` and other languages' words, and a caption drawn a word to a run. Both fixed, with
+  tests; one letter is read as a Roman numeral only as `I`, `V` or `X`, and never after `Exhibit`,
+  so `EXHIBIT C` still heads its attachment. Re-measured: opendataloader-bench 0.8288 (0.8351 with
+  `--unstyled`) and ParseBench formatting 51.40 as before; the made-up probes are the same ten.
 
 ### Markdown and HTML without the marks for a run's style, on request (decision #158)
 
@@ -62,9 +70,17 @@ the one the default writes, so a quote binds as before; only `syntax` bytes go.
   order compares the Markdown's raw characters with a ground truth that writes no emphasis, and its
   adapter now asks for the flag: NID 0.8912 → 0.8988, overall 0.8288 → 0.8351, 7th of 13, above
   opendataloader (0.831). ParseBench scores bold and strikeout, and its adapter does not ask.
-- Counted as `inline-styles-not-written-v1` in the structural census, once per run that carries a
-  style; without the flag the artifact is the default's, byte for byte. Off by default; no rule id
-  moves. MCP and the SDKs do not offer it.
+- Counted as `inline-styles-not-written-v1` in the structural census, once per run a mark would
+  have marked; without the flag the artifact is the default's, byte for byte. Off by default; no
+  rule id moves. MCP and the SDKs do not offer it.
+- A second review, before the merge: the first build wrote no emphasis at all, so a bold run and the
+  plain run after it in one marked-content sequence ran into one `source` segment naming both, and a
+  quote of the bold words no longer bound to its run (7 of the 8 gate documents). The spans now open
+  and close as they would with their marks unwritten, each segment cut where a mark would stand, and
+  a rule reading the text before a span (GFM's for a strikeout) reads the styled text's last
+  character, so every segment is the default's; the count no longer counts runs left out or in a
+  table cell. Known limit: Markdown escapes no block syntax in a run's text, so a styled run opening
+  a line with `#`, `>`, `-` or `1.` reads as block syntax without its marks, as a plain run does.
 
 ### A form filler's values are read beside their captions (decision #157)
 
@@ -81,8 +97,8 @@ could not tell which value answered which caption.
   ZapfDingbats `4`) beside the option it ticks. Values in a table, in another column, drawn over
   the page's own words, set more than three times larger than their caption (by the height of
   its measured box, not its `Tf` operand), or marked `/Artifact` by the page — a watermark turned
-  on it, which no box measures — stay where they were, and an overlay more drawn over words than
-  read beside them moves nothing.
+  on it, which no box measures — stay where they were, and an overlay as much drawn over words as
+  read beside them, or more, moves nothing.
 - Folded into `gutter-columns-v5`, which no release carries; no rule id or profile moves.
 - Measured: ParseBench-2 55.25 → 55.71 (forms 67.39 → 70.14), with `--ocr` 57.54 → 58.00 (54th
   → 53rd of 57); ParseBench, opendataloader-bench, the private set's 250 runs and its resume set
@@ -93,10 +109,26 @@ could not tell which value answered which caption.
   leader ran under them, read a ZapfDingbats tick as the option before it, spliced watermark tiles
   and stamps into paragraphs, and missed the font share. Fixed, each with a test; 21
   mutations of the final rule, all caught.
+- A second review, before the merge: text drawn last beside lines of prose — a pull quote, a
+  figure's labels in a form XObject — was read into the paragraph beside it. A value is now read
+  after the nearest run on its row only where that run is a caption: it ends in a colon, a question
+  mark or a leader, it is one glyph other than a bullet (a box, `£`, a form's `×`), or it ends a
+  phrase of at most five words (a leader no word) that ends no sentence, the phrase its line's runs
+  set less than their size apart; otherwise the value stays where it was, never read after a caption
+  farther off. A one-letter or one-digit value was held to a check mark's 60 pt reach and left at
+  the page's foot, and a comb field torn; it now reaches as any value does. A line followed into a
+  table put a value after the table's first row; it stops at the table. An overlay of more than
+  1,000 runs moves nothing (a crafted page of 64,000 runs took 27 s), and each line's phrases are
+  read once for the page. Each with a test. Re-measured: ParseBench-2 forms 70.14 → 69.86 (2.1.0:
+  69.72), overall 55.71 → 55.67 and with `--ocr` 58.01 → 57.96 — values beside a caption of more
+  than five words with no colon now stay where they were; nothing else moved anywhere.
 - Known limits (`crates/ethos-parser-pdf/src/drawn_last.rs`): a filler that draws every value in
   one font, a form whose title alone has a font of its own, a value set over its caption, a
-  sidebar drawn last closer than the column gutter, and a page that draws its own words in
-  fragments each in a font of its own.
+  sidebar drawn last closer than the column gutter, a page that draws its own words in fragments
+  each in a font of its own; a value set under its caption, on a row another caption ends on, is
+  read after that one; a wrapped value's second line is read after the line above it; and a
+  caption of more than five words ending in no colon, question mark or leader reads as prose, so
+  its value stays where it was.
 
 ### A scan stored as several images is read with `--ocr` (decision #156)
 
@@ -115,7 +147,8 @@ page was refused `several-images` and gave no text.
   `graphics-state-not-read` (a blend mode, soft mask, fill alpha or transfer function),
   `layer-not-read`, `fill-colour-not-read` (a space whose components do not read as gray, RGB or
   CMYK, or another number of operands than it has), `annotation` (one a viewer draws over the
-  page). The page counts under `scanned-page-not-recognized`, with or without `--ocr`, as before.
+  page). With `--ocr` the page counts under `scanned-page-not-recognized`; without it, a page the
+  trigger refuses so is not counted (`docs/35-OCR-SCOPE.md` §7).
 - The raster lies over the visible box at the finest image's density, at most 300 dpi and 40
   megapixels. Each image is sent once; a page that paints more than 400 million pixels between its
   paints, or holds more than 65,536 of them, is refused `composite-too-large`.
@@ -131,8 +164,23 @@ page was refused `several-images` and gave no text.
   through an image's own `/OC`, a transfer function, a turned form box, a stencil's soft mask, four
   operands in an RGB space and an annotation over the page, and sent an image once per paint.
   Fixed, each with a test; 29 mutations of the final code, all caught.
-- Known limit: a page of one image keeps its path, so a fill, clip, layer or annotation over a
-  single scanned image is still not read (`docs/35-OCR-SCOPE.md` §14).
+- A second review, before the merge: an annotation with no appearance that a viewer still draws from
+  its own entries (a `/Square` or `/FreeText` filled white) hid text the composition read; one of a
+  kind a viewer fills or strokes so — a square, a circle, a polygon or polyline, a line, ink, free
+  text, a stamp, a redaction — now refuses the page, while a link, a note, a highlight or a field
+  with no appearance draws nothing over the text and does not. Four points doubling back on an edge
+  name two `x`s and two `y`s and enclose nothing; such a path was filled and clipped as a whole
+  rectangle, reading text a viewer hides and losing text it shows, and is now refused; a point named
+  twice at once is one point, so a rectangle drawn so still composes. The recognizer decodes every
+  image whole, so a few kilobytes of large masks took gigabytes; a page's images may now hold 64
+  million pixels between them, checked by the engine and the recognizer. `/DeviceRGB cs` with no
+  colour set paints the space's initial black, and a `/ColorSpace` entry naming a device space
+  outright reads as one; both were refused. Each with a test. Re-measured: ParseBench's and
+  ParseBench-2's `--ocr` lanes read as before on every page (55.14; text 62.51), and so does every
+  other lane.
+- Known limits: a page of one image keeps its path, so a fill, clip, layer or annotation over a
+  single scanned image is still not read (`docs/35-OCR-SCOPE.md` §14); optional content's `/AS`
+  auto-state is not applied, so a layer a viewer turns on by it stays off.
 - The two readings the review added are shared with `--drop-hidden` (decision #139): a graphics
   state with a transfer function, and a form box its matrix turns, now leave what is painted under
   them uncompared with a run's colour there, as a blend mode and a clip of another shape already

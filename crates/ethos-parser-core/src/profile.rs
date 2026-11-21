@@ -194,7 +194,8 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 /// sits by: after the caption on its row (one ending before it, or whose own leader runs under
 /// it), else after the line above it, and a one-glyph mark beside the option it ticks. A run drawn
 /// over the page's own words, set more than three times its anchor's measured height, or marked
-/// `/Artifact` stays where it was, and a stretch more drawn over words than read beside them moves
+/// `/Artifact` stays where it was, a run is read after a caption only — never after a line of
+/// prose — and a stretch as much drawn over words as read beside them, or more, moves
 /// nothing (`crate`-private `drawn_last` in `ethos-parser-pdf`).
 pub const READING_ORDER_RULE_V5: &str = "gutter-columns-v5";
 
@@ -1684,9 +1685,11 @@ pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 /// **And one label heads a document where no label's style recurs** (decision #159, folded in
 /// before any release carried this id): the first label that heads a section as above heads the
 /// document alone, level 1, where it heads a paragraph — the text after it opens in no lower-case
-/// letter, which a bold phrase inside a paragraph runs on in, and the line below that text is no
-/// farther from it than it is from the label, so a value over the text after it is no paragraph —
-/// and it names no figure or table (`Figure 3.3.`, `Table 2`). A book's or a paper's page with one
+/// letter, which a bold phrase inside a paragraph runs on in, and the next line after that text in
+/// reading order sits below it no farther than it is from the label, so a value over the text
+/// after it is no paragraph, nor is the foot of a column or a raised mark a line below (second
+/// review) — and it names no figure or table (`Figure 3.3.`, `TABLE I.`, `Figure S1`, `Table A.2`,
+/// `Algorithm 1`, `Figure:`). A book's or a paper's page with one
 /// section title over its prose was a document with no heading. **The trade:** nothing in the type
 /// tells a form's `Total`, an invoice's `Bill To` or a resume's `EXPERIENCE`, each alone over text,
 /// from that title; the review's made-up probes that #140 kept clean gain `#` lines. Measured in

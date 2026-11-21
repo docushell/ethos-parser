@@ -244,16 +244,65 @@ fn is_right_to_left_block(c: char) -> bool {
     )
 }
 
-/// Whether a label's text opens as a figure's or a table's caption does: `Figure`, `Fig.`,
-/// `Table`, `Chart` or `Exhibit`, then a number — `Figure 3.3.`, `Table 2:` (decision #159). A
-/// caption names what stands by it and heads no section; `Table of Contents` is no caption. The
-/// text is its runs' text run together, since a page may draw a line a glyph to a run.
+/// Whether a label's text opens as a figure's or a table's caption does (decision #159): a caption
+/// word — `Figure`, `Fig.`, `Table`, `Chart`, `Exhibit`, `Scheme`, `Algorithm`, `Plate`,
+/// `Listing`, or `Abbildung`, `Tabelle`, `Tableau`, `Figura`, `Tabla`, `Tabella` — then a colon,
+/// or a label: a number (`3.3.`), a Roman numeral (`TABLE I.`; one letter only as `I`, `V` or `X`,
+/// and none after `Exhibit`, whose letters head attachments) or a letter before a number (`S1`,
+/// `A.2`). A caption names what stands by it and heads no section; `Table of Contents` and
+/// `Tablespoon 2` are none. The text is its runs' text run together, since a page may draw a line
+/// a glyph to a run.
 fn names_a_figure(text: &str) -> bool {
+    const WORDS: [&str; 15] = [
+        "figure",
+        "fig",
+        "table",
+        "chart",
+        "exhibit",
+        "scheme",
+        "algorithm",
+        "plate",
+        "listing",
+        "abbildung",
+        "tabelle",
+        "tableau",
+        "figura",
+        "tabla",
+        "tabella",
+    ];
     let lower = text.trim_start().to_lowercase();
-    ["figure", "fig.", "fig", "table", "chart", "exhibit"]
+    WORDS
         .iter()
-        .find_map(|word| lower.strip_prefix(word))
-        .is_some_and(|rest| rest.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+        .filter_map(|word| lower.strip_prefix(word).map(|rest| (*word, rest)))
+        .any(|(word, rest)| {
+            let rest = rest.strip_prefix('.').unwrap_or(rest);
+            if rest.starts_with(':') {
+                return true;
+            }
+            let label = rest.trim_start();
+            // The word ends where the label begins: a space, or a digit set against it.
+            if label.len() == rest.len() && !label.starts_with(|c: char| c.is_ascii_digit()) {
+                return false;
+            }
+            let token: String = label
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '.')
+                .collect();
+            let token = token.trim_end_matches('.');
+            let mut chars = token.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), _) if c.is_ascii_digit() => true,
+                (Some(c), Some(d)) if c.is_alphabetic() && (d.is_ascii_digit() || d == '.') => true,
+                // A Roman numeral (`IV`), but not one letter of an exhibit's or of a schedule
+                // lettered past `X`: `EXHIBIT C` heads its attachment (third review).
+                (Some(_), _) => {
+                    word != "exhibit"
+                        && token.chars().all(|c| "ivxlc".contains(c))
+                        && (token.len() > 1 || matches!(token, "i" | "v" | "x"))
+                }
+                (None, _) => false,
+            }
+        })
 }
 
 fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
@@ -3085,15 +3134,36 @@ fn extract_counted(
                     {
                         let opens = next
                             .is_some_and(|r| !r.text.trim_start().starts_with(char::is_lowercase));
-                        let paragraph = next.zip(below).is_some_and(|(n, b)| {
-                            b.locator.origin_y - n.locator.origin_y
-                                <= n.locator.origin_y - end.locator.origin_y
+                        // The line after the text, in reading order: the first run off its line by
+                        // half the label's gap or more. It must stand below the text, no farther
+                        // than the text from the label (review: a raised mark on the text's own
+                        // line, or the next column's top, passed as the line below).
+                        let paragraph = next.is_some_and(|n| {
+                            let gap = n.locator.origin_y - end.locator.origin_y;
+                            let line =
+                                page.runs[last + 1..]
+                                    .iter()
+                                    .filter(inked)
+                                    .skip(1)
+                                    .find(|r| {
+                                        2 * (r.locator.origin_y - n.locator.origin_y).abs() >= gap
+                                    });
+                            gap > 0
+                                && line.is_some_and(|r| {
+                                    let down = r.locator.origin_y - n.locator.origin_y;
+                                    down > 0 && down <= gap
+                                })
                         });
-                        let text: String = indices
+                        // Run together, as a page drawing a glyph to a run needs, and a space
+                        // apart, as one drawing a word to a run needs (third review: `Table` and
+                        // `A.2` ran into `TableA.2`).
+                        let words: Vec<&str> = indices
                             .iter()
                             .map(|&i| page.runs[i].text.as_str())
                             .collect();
-                        let alone = opens && paragraph && !names_a_figure(&text);
+                        let caption =
+                            names_a_figure(&words.concat()) || names_a_figure(&words.join(" "));
+                        let alone = opens && paragraph && !caption;
                         heads.push((p, indices, (end.font_id.clone(), end.font_size), alone));
                     }
                 }
@@ -3347,9 +3417,13 @@ fn extract_counted(
     Ok((artifact, positions))
 }
 
-/// Whether `page`'s `/Annots` holds an annotation a viewer draws over the page: one with an
-/// appearance, neither hidden nor unviewed (decision #156, review). A composed page holds none, so
-/// text one covers would be read.
+/// Whether `page`'s `/Annots` holds an annotation a viewer draws over the page: one neither hidden
+/// nor unviewed, with an appearance, or with none of a kind a viewer fills or strokes from its own
+/// entries — a square, a circle, a polygon or polyline, a line, ink, free text, a stamp, a
+/// redaction (decision #156, review: a `/Square` filled white with no `/AP` hid its text in a
+/// viewer and was read; second review: a note, a highlight, a link or a field widget with no `/AP`
+/// draws nothing over the text, and refusing them dropped scans read before). A composed page holds
+/// none, so text one covers would be read.
 fn draws_annotations(doc: &lopdf::Document, page: &lopdf::Dictionary) -> bool {
     let Some(annots) = crate::fonts::resolve_array(doc, page.get(b"Annots").ok()) else {
         return false;
@@ -3361,8 +3435,20 @@ fn draws_annotations(doc: &lopdf::Document, page: &lopdf::Dictionary) -> bool {
         let flags = crate::fonts::resolve_object(doc, d.get(b"F").ok())
             .and_then(|f| f.as_i64().ok())
             .unwrap_or(0);
+        let drawn_without_appearance = matches!(
+            d.get(b"Subtype").and_then(lopdf::Object::as_name),
+            Ok(b"Square"
+                | b"Circle"
+                | b"Polygon"
+                | b"PolyLine"
+                | b"Line"
+                | b"Ink"
+                | b"FreeText"
+                | b"Stamp"
+                | b"Redact")
+        );
         // 32000-1 Table 165: bit 2 Hidden, bit 6 NoView.
-        d.has(b"AP") && flags & (2 | 32) == 0
+        (d.has(b"AP") || drawn_without_appearance) && flags & (2 | 32) == 0
     })
 }
 
@@ -4388,6 +4474,16 @@ mod tests {
             "FIGURE1",
             "Table 2: Rates",
             " Exhibit 12",
+            "TABLE I. Rates by site",
+            "Table IV: Rates",
+            "Figure S1. Rates",
+            "Fig. A1",
+            "Table A.2",
+            "Abbildung 3: Raten",
+            "Tableau 2. Taux",
+            "Scheme 1.",
+            "Algorithm 1",
+            "Figure: Rates by site",
         ] {
             assert!(names_a_figure(caption), "{caption}");
         }
@@ -4397,6 +4493,15 @@ mod tests {
             "Tablespoon 2",
             "Chart",
             "Scope of work",
+            "Tables and Figures 2024",
+            "Figure skating rules",
+            "Table in the hall",
+            "Figural analysis",
+            "EXHIBIT C",
+            "Exhibit L",
+            "Table L of fees",
+            "EXHIBIT IV",
+            "Tablet2 setup",
         ] {
             assert!(!names_a_figure(heading), "{heading}");
         }

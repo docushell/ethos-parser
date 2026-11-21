@@ -535,8 +535,9 @@ pub fn headings_inferred_from_type(
              inked run before each is not bold, the two lines after it are text in no bold, and \
              another label in its font and size does the same; those are level 1 — and where \
              no font and size recur so, the first such label over a paragraph, the text after it \
-             opening in no lower-case letter and its next line no farther below, that names no \
-             figure or table, is level 1 alone.{ledes} A level \
+             opening in no lower-case letter and the next line after that text in reading order \
+             set below it no farther than it is from the label, that names no figure or table, \
+             is level 1 alone.{ledes} A level \
              deeper than 1 travels as \
              `inferred_heading_level`. \
              {precondition} — so EVERY heading in this artifact is this engine's measurement of \

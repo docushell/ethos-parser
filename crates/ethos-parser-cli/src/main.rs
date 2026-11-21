@@ -636,9 +636,11 @@ struct MarkdownArgs {
 
     /// Write every run's text without the marks for its style: no `**`, `*`, `~~`, `<u>`,
     /// `<sup>` or `<sub>`. The text, headings, lists and tables are as without it, and every
-    /// source byte keeps its anchor. For a reader that compares text and has no use for its
-    /// look. Counted under the census code `inline-styles-not-written-v1`, once per styled run
-    /// (decision #158)
+    /// source segment is the one the styled text has, so each byte keeps its anchor. For a reader
+    /// that compares text and has no use for its look. Counted under the census code
+    /// `inline-styles-not-written-v1`, once per run a mark would have marked (decision #158).
+    /// A styled run opening a line with `#`, `>`, `-` or `1.` reads as block syntax without its
+    /// marks, as a plain run does
     #[arg(long)]
     unstyled: bool,
 }
