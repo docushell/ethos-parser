@@ -1940,6 +1940,14 @@ pub struct TextRunAttributes {
     /// `unrecognized_flag_bits` fell into, recorded there and avoided here.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub findings: Vec<TextFinding>,
+    /// The run of the page's own this run was read beside, where it is text the page drew over
+    /// itself after its own — a form filler's value or mark (decision #157) — by node id
+    /// (decision #164): the caption on the value's row it was read after; for a value set under
+    /// its caption, the last run of the line above, which it was read after; or the option a mark
+    /// ticks. A text run on the same page, never this one. Absent on every other run. A binding
+    /// the reading-order rule made, never a reading of what the words say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_beside: Option<NodeId>,
 }
 
 /// An office run's facts: what OOXML states about a `<w:r>` and nothing else (v2-S2).
@@ -3126,6 +3134,7 @@ impl DocumentRepresentation {
         self.check_geometry_matches_its_declaration()?;
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
         self.check_attributes_agree_with_kind()?;
+        self.check_read_beside_names_a_run()?;
         self.check_readings_move_characters()?;
         self.check_recognized_placement()?;
 
@@ -3409,6 +3418,42 @@ impl DocumentRepresentation {
                         )));
                     }
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// A run read beside another names another text run on its own page (decision #164): a
+    /// binding that addresses nothing, itself, another kind or another page is a broken link,
+    /// not a value with no caption. Pays for a map only where a record carries a binding.
+    fn check_read_beside_names_a_run(&self) -> Result<(), EngineError> {
+        let nodes = &self.representation.nodes;
+        let bindings: Vec<(&Node, &NodeId)> = nodes
+            .iter()
+            .filter_map(|n| match &n.attributes {
+                NodeAttributes::TextRun(a) => a.read_beside.as_ref().map(|b| (n, b)),
+                _ => None,
+            })
+            .collect();
+        if bindings.is_empty() {
+            return Ok(());
+        }
+        let named: std::collections::BTreeSet<&str> =
+            bindings.iter().map(|(_, b)| b.as_str()).collect();
+        let targets: std::collections::BTreeMap<&str, &Node> = nodes
+            .iter()
+            .filter(|n| named.contains(n.id.as_str()))
+            .map(|n| (n.id.as_str(), n))
+            .collect();
+        for (node, beside) in bindings {
+            let ok = targets.get(beside.as_str()).is_some_and(|t| {
+                t.id != node.id && t.kind == NodeKind::TextRun && t.parent == node.parent
+            });
+            if !ok {
+                return Err(Self::malformed(format!(
+                    "run `{}` is read beside `{beside}`, which is not another text run on its page",
+                    node.id
+                )));
             }
         }
         Ok(())
@@ -3770,6 +3815,7 @@ mod tests {
             structural_locator: None,
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::TextRun(TextRunAttributes {
+                read_beside: None,
                 char_codes: vec![0x68, 0x65, 0x6c, 0x6c, 0x6f],
                 scalar_code_mismatch: false,
                 synthesized: Vec::new(),
@@ -3944,6 +3990,116 @@ mod tests {
         parsed.verify_fingerprint().unwrap();
         assert_eq!(parsed, minted);
         assert!(matches!(simple().minted, Minted::Kept(_)));
+    }
+
+    /// **A run read beside another names another text run on its page** (decision #164): one
+    /// naming nothing, itself, a run on another page or a node of another kind is refused at the
+    /// seal; and a bound run keeps its right-to-left reading.
+    #[test]
+    fn a_read_beside_naming_no_other_node_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let p = page(&mut alloc, 1);
+        let caption = node(&mut alloc, &p.id, 1, 1);
+        let mut value = node(&mut alloc, &p.id, 2, 1);
+        let g = |n: &Node| {
+            geom(
+                n,
+                GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+            )
+        };
+        let with = |value: &mut Node, beside: NodeId| {
+            if let NodeAttributes::TextRun(a) = &mut value.attributes {
+                a.read_beside = Some(beside);
+            }
+        };
+        with(&mut value, caption.id.clone());
+        let geometry = vec![g(&caption), g(&value)];
+        seal(
+            vec![caption.clone(), value.clone()],
+            vec![p.clone()],
+            geometry.clone(),
+        )
+        .expect("a declared caption");
+        // A reading survives a binding: the run reads right to left all the same.
+        with(&mut value, caption.id.clone());
+        if let NodeAttributes::TextRun(a) = &mut value.attributes {
+            a.reading = Some(Reading {
+                text: "olleh".into(),
+                synthesized: Vec::new(),
+            });
+        }
+        assert_eq!(value.reading_text(), "olleh");
+        for beside in [NodeId::from_parts(IdKind::Span, 99), value.id.clone()] {
+            with(&mut value, beside);
+            let err = seal(
+                vec![caption.clone(), value.clone()],
+                vec![p.clone()],
+                geometry.clone(),
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains("is read beside"), "{err}");
+        }
+        // A caption on another page.
+        let p2 = page(&mut alloc, 2);
+        let elsewhere = node(&mut alloc, &p2.id, 1, 2);
+        with(&mut value, elsewhere.id.clone());
+        let err = seal(
+            vec![caption.clone(), value.clone(), elsewhere.clone()],
+            vec![p.clone(), p2],
+            vec![g(&caption), g(&value), g(&elsewhere)],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("on its page"), "{err}");
+        // A node of another kind: a form field on the same page.
+        let field = Node {
+            id: NodeId::from_parts(IdKind::FormField, 1),
+            kind: NodeKind::FormField,
+            parent: p.id.clone(),
+            ordinal: 3,
+            text: String::new(),
+            native_locator: NativeLocator::PdfObject(PdfObjectLocator {
+                page: 1,
+                object: 9,
+                generation: 0,
+                rect: AnnotationRect::NotDeclared,
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::FormField(FormFieldAttributes {
+                field_name: None,
+                field_type: None,
+                label: None,
+                value: FieldValue::Absent,
+                state: None,
+                flags: Vec::new(),
+                unrecognized_flag_bits: Vec::new(),
+            }),
+        };
+        with(&mut value, field.id.clone());
+        let mut payload = payload(
+            vec![caption.clone(), value.clone(), field.clone()],
+            vec![p.clone()],
+        );
+        payload
+            .assurance
+            .limitations
+            .push(crate::assurance::Limitation::document(
+                crate::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+                "test: a field has no ink box",
+            ));
+        let err = DocumentRepresentation::seal(
+            payload,
+            vec![
+                g(&caption),
+                g(&value),
+                geom(
+                    &field,
+                    GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+                ),
+            ],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not another text run"), "{err}");
     }
 
     fn simple() -> DocumentRepresentation {

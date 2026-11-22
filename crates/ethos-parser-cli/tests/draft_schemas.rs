@@ -394,6 +394,16 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
     out.push(("check boxes".into(), "extract", as_json!(extract)));
     let repr = ethos_parser_pdf::into_representation(extract, &profile).expect("represents");
     representations.push(("check boxes".into(), repr));
+    // Decision #164: a flat form whose typed values carry the run each was read beside.
+    let flat = Document::open_bytes(&flat_form_pdf(), &profile).expect("the flat form opens");
+    let extract = ethos_parser_pdf::extract(&flat, &profile).expect("the flat form reads");
+    assert!(
+        as_json!(extract).to_string().contains("read_beside"),
+        "the flat form's values are read beside their captions"
+    );
+    out.push(("flat form".into(), "extract", as_json!(extract)));
+    let repr = ethos_parser_pdf::into_representation(extract, &profile).expect("represents");
+    representations.push(("flat form".into(), repr));
 
     let sha = profile
         .profile_sha256()
@@ -442,6 +452,48 @@ fn check_boxes_pdf() -> Vec<u8> {
     let form = doc.add_object(dictionary! { "Fields" => widgets });
     let catalog =
         doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages, "AcroForm" => form });
+    doc.trailer.set("Root", catalog);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("saves");
+    bytes
+}
+
+/// A flat form: captions, then a filler's values drawn last in fonts of their own (decision #157).
+fn flat_form_pdf() -> Vec<u8> {
+    use lopdf::{dictionary, Object, Stream};
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let mut fonts = lopdf::Dictionary::new();
+    for (name, base) in [
+        ("F1", "Helvetica"),
+        ("F2", "Courier"),
+        ("F3", "Times-Roman"),
+    ] {
+        let f = doc
+            .add_object(dictionary! { "Type" => "Font", "Subtype" => "Type1", "BaseFont" => base });
+        fonts.set(name, f);
+    }
+    let content = doc.add_object(Stream::new(
+        dictionary! {},
+        b"BT /F1 10 Tf 1 0 0 1 50 740 Tm (Please complete every part of this form.) Tj ET \
+BT /F1 10 Tf 1 0 0 1 50 700 Tm (Name:) Tj ET BT /F1 10 Tf 1 0 0 1 320 700 Tm (Date:) Tj ET \
+BT /F1 10 Tf 1 0 0 1 50 670 Tm (Town of birth:) Tj ET \
+BT /F2 10 Tf 1 0 0 1 90 700 Tm (Ada Lovelace) Tj ET BT /F3 10 Tf 1 0 0 1 355 700 Tm (10 Dec 1815) Tj ET \
+BT /F2 10 Tf 1 0 0 1 125 670 Tm (London) Tj ET"
+            .to_vec(),
+    ));
+    let page = doc.add_object(dictionary! {
+        "Type" => "Page", "Parent" => pages, "Contents" => content,
+        "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+        "Resources" => dictionary! { "Font" => fonts },
+    });
+    doc.objects.insert(
+        pages,
+        Object::Dictionary(
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        ),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
     doc.trailer.set("Root", catalog);
     let mut bytes = Vec::new();
     doc.save_to(&mut bytes).expect("saves");

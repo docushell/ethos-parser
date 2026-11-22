@@ -490,3 +490,94 @@ fn a_profile_without_form_fields_counts_no_state() {
     assert!(fields(&a).is_empty());
     assert_eq!(not_determinable(&a), None);
 }
+
+/// Decision #164: a flat form's typed values, drawn last in fonts of their own, each name the
+/// caption they were read beside — on every page, by the node ids that page's runs end up with.
+#[test]
+fn a_fillers_value_names_its_caption_by_node_id_on_every_page() {
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages_id = doc.new_object_id();
+    let mut fonts = lopdf::Dictionary::new();
+    for (name, base) in [
+        ("F1", "Helvetica"),
+        ("F2", "Courier"),
+        ("F3", "Times-Roman"),
+        ("F4", "Helvetica-Bold"),
+    ] {
+        let f = doc
+            .add_object(dictionary! { "Type" => "Font", "Subtype" => "Type1", "BaseFont" => base });
+        fonts.set(name, f);
+    }
+    // Irregular, as a real form is: a neat grid of captions and values would be read as a table,
+    // whose cells #157 leaves where they are.
+    let content = b"BT /F1 10 Tf 1 0 0 1 50 740 Tm (Please complete every part of this form.) Tj ET \
+BT /F1 10 Tf 1 0 0 1 50 700 Tm (Name:) Tj ET BT /F1 10 Tf 1 0 0 1 320 700 Tm (Date:) Tj ET \
+BT /F1 10 Tf 1 0 0 1 50 670 Tm (Town of birth:) Tj ET \
+BT /F1 10 Tf 1 0 0 1 50 640 Tm (Telephone number:) Tj ET \
+BT /F2 10 Tf 1 0 0 1 90 700 Tm (Ada Lovelace) Tj ET BT /F3 10 Tf 1 0 0 1 355 700 Tm (10 Dec 1815) Tj ET \
+BT /F4 10 Tf 1 0 0 1 125 670 Tm (London) Tj ET BT /F2 10 Tf 1 0 0 1 150 639 Tm (555 0100) Tj ET"
+        .to_vec();
+    let mut kids = Vec::new();
+    for _ in 0..2 {
+        let c = doc.add_object(Stream::new(dictionary! {}, content.clone()));
+        kids.push(Object::Reference(doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id, "Contents" => c,
+            "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+            "Resources" => dictionary! { "Font" => fonts.clone() },
+        })));
+    }
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", catalog);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("saves");
+
+    let profile = Profile::default();
+    let opened = Document::open_bytes(&bytes, &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&opened, &profile).expect("extracts");
+    let repr = ethos_parser_pdf::into_representation(extract, &profile).expect("seals");
+    let nodes = &repr.payload().nodes;
+    for page in &repr.payload().pages {
+        let on_page: Vec<_> = nodes.iter().filter(|n| n.parent == page.id).collect();
+        let id_of = |text: &str| {
+            on_page
+                .iter()
+                .find(|n| n.text == text)
+                .map(|n| n.id.clone())
+                .expect("drawn")
+        };
+        let beside = |text: &str| match &on_page.iter().find(|n| n.text == text).unwrap().attributes
+        {
+            ethos_parser_core::NodeAttributes::TextRun(a) => a.read_beside.clone(),
+            _ => None,
+        };
+        assert_eq!(
+            beside("Ada Lovelace"),
+            Some(id_of("Name:")),
+            "page {}",
+            page.index
+        );
+        assert_eq!(
+            beside("10 Dec 1815"),
+            Some(id_of("Date:")),
+            "page {}",
+            page.index
+        );
+        assert_eq!(
+            beside("London"),
+            Some(id_of("Town of birth:")),
+            "page {}",
+            page.index
+        );
+        assert_eq!(
+            beside("555 0100"),
+            Some(id_of("Telephone number:")),
+            "page {}",
+            page.index
+        );
+        assert_eq!(beside("Name:"), None, "a caption is read beside nothing");
+    }
+}

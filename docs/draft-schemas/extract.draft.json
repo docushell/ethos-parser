@@ -315,6 +315,11 @@
           },
           "$comment": "As on the representation's text_run. Omitted when empty."
         },
+        "read_beside": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "$comment": "As on the representation's text_run (decision #164): the id of the run this one was read beside. Omitted on every other run."
+        },
         "derivation": {
           "$ref": "urn:ethos-parser:draft-schema:derivation-class:0"
         },

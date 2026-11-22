@@ -444,6 +444,7 @@ fn text_node(alloc: &mut IdAllocator, parent: &ethos_parser_core::NodeId) -> Nod
         structural_locator: None,
         derivation: DerivationClass::Extracted,
         attributes: NodeAttributes::TextRun(TextRunAttributes {
+            read_beside: None,
             char_codes: vec![0x68, 0x65, 0x6c, 0x6c, 0x6f],
             scalar_code_mismatch: false,
             synthesized: Vec::new(),

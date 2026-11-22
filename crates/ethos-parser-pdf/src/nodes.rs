@@ -198,6 +198,10 @@ pub struct TextRun {
     /// observations happened to be made in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub findings: Vec<ethos_parser_core::TextFinding>,
+    /// The run of the page's own this one was read beside (decisions #157, #164). Carried onto
+    /// the record's node as [`ethos_parser_core::TextRunAttributes::read_beside`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_beside: Option<ethos_parser_core::NodeId>,
     /// Where a recognizer read this run, on a run of derivation `Recognized` (v3,
     /// `docs/35-OCR-SCOPE.md` §6): the image, and the word's corners in its pixels. Absent on every
     /// run the page drew, which therefore serialize exactly as they did before a recognizer
@@ -359,6 +363,7 @@ mod tests {
     fn run(text: &str, codes: Vec<u32>) -> TextRun {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         TextRun {
+            read_beside: None,
             id: alloc.next(IdKind::Span).unwrap(),
             region: None,
             block: None,

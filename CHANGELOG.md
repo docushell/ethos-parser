@@ -32,6 +32,32 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A filler's value names the caption it was read beside (decision #164)
+
+Decision #157 reads a form filler's values — text drawn over the page after its own, in fonts of
+its own — beside the captions they answer, by moving them in reading order; the pairing itself was
+never written down, so a program had to re-derive it from where the words fell. Each such run now
+carries `read_beside`, the node id of the run of the page's own it was read beside: the caption on
+its row it was read after (or, for a value set under its caption, the last run of the line above),
+or the option a mark ticks. A binding the reading-order rule made, never a reading of what the
+words say; the seal refuses one that names no other text run on the same page.
+
+- On `extract`'s runs and the record's text runs; omitted on every other run. Folded into
+  `gutter-columns-v5`, which no release carries. No projection reads it, and the Markdown and HTML
+  text of every benchmark document is unchanged.
+- On ParseBench-2, 5,643 bindings on 309 documents. Where a page draws its own words in fragments,
+  each in a font of its own (#157's known limit), an anchor can be a fragment of a word.
+- #157's trade re-measured on this base: without its five-word caption limit, ParseBench-2 forms
+  read 69.86 → 70.08 (2.1.0: 69.72 → 69.94) and the overall 55.67 → 55.70, many filled forms up a
+  little and one down 0.034, no other group moving. The limit stays, as #157 chose it: it guards
+  against pull quotes and figure labels drawn last, which this benchmark does not hold. Whether to
+  lift it is the owner's call.
+- Tested on `drawn_last`'s own cases (a value after its caption, under its line, a mark before its
+  option), a two-page flat form whose bindings must name each page's own nodes, the seal (no node,
+  itself, another page, another kind) and a right-to-left value's reading; nine mutations, each
+  caught; reviewed twice (QA found a pattern edit that would have dropped a bound run's
+  right-to-left reading, fixed before commit).
+
 ### A form field is an element, with its name, label, value and state (decision #163)
 
 The element view listed a form field's node under `omitted` (`form-field`): a consumer reading

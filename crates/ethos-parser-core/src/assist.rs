@@ -3171,6 +3171,7 @@ mod tests {
                 derivation: DerivationClass::Extracted,
                 attributes: crate::representation::NodeAttributes::TextRun(
                     crate::representation::TextRunAttributes {
+                        read_beside: None,
                         char_codes: vec![0x31],
                         scalar_code_mismatch: false,
                         synthesized: Vec::new(),

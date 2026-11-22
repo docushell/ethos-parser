@@ -124,6 +124,7 @@ fn run(alloc: &mut IdAllocator, parent: &NodeId, line: i64, text: String) -> (No
         structural_locator: None,
         derivation: DerivationClass::Extracted,
         attributes: NodeAttributes::TextRun(TextRunAttributes {
+            read_beside: None,
             char_codes: text.chars().map(u32::from).collect(),
             scalar_code_mismatch: false,
             synthesized: Vec::new(),

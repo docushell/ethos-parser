@@ -6315,6 +6315,7 @@ pub(crate) mod tests {
             }),
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::TextRun(TextRunAttributes {
+                read_beside: None,
                 char_codes: text.bytes().map(u32::from).collect(),
                 scalar_code_mismatch: false,
                 synthesized: Vec::new(),
@@ -8453,6 +8454,7 @@ pub(crate) mod tests {
             structural_locator: loc,
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::TextRun(TextRunAttributes {
+                read_beside: None,
                 char_codes: text.bytes().map(u32::from).collect(),
                 scalar_code_mismatch: false,
                 synthesized: Vec::new(),

@@ -257,15 +257,19 @@ enum Anchor {
     After(usize),
 }
 
-/// `order` with the page's overlay, if it has one, read where it sits; `None` where nothing moves.
-/// `runs` are in content-stream order, `regions` the column cut's per run (empty where it did not
-/// divide the page), and `tables` the accepted tables' boxes.
+/// Each run read beside another, with the run it was read beside, as content-stream positions.
+pub(crate) type Beside = Vec<(usize, usize)>;
+
+/// `order` with the page's overlay, if it has one, read where it sits, and each run read beside
+/// another with the run it was read beside (decision #164), both as content-stream positions;
+/// `None` where nothing moves. `runs` are in content-stream order, `regions` the column cut's per
+/// run (empty where it did not divide the page), and `tables` the accepted tables' boxes.
 pub(crate) fn place(
     runs: &[Drawn<'_>],
     tables: &[QuantRect],
     regions: &[Option<u32>],
     order: &[usize],
-) -> Option<Vec<usize>> {
+) -> Option<(Vec<usize>, Beside)> {
     let start = overlay(runs)?;
     if runs.len() - start > MAX_OVERLAY {
         return None;
@@ -451,7 +455,11 @@ pub(crate) fn place(
         out.extend(after.get(&i).into_iter().flatten());
     }
     debug_assert_eq!(out.len(), order.len(), "placing is a permutation");
-    Some(out)
+    let beside = anchors
+        .iter()
+        .map(|&(o, Anchor::Before(j) | Anchor::After(j))| (o, j))
+        .collect();
+    Some((out, beside))
 }
 
 /// `runs` at `picked`, read row by row — a row the runs whose baselines are within [`ROW`] of its
@@ -504,12 +512,23 @@ mod tests {
 
     fn placed(runs: &[Drawn<'_>]) -> Option<Vec<usize>> {
         let order: Vec<usize> = (0..runs.len()).collect();
-        place(runs, &[], &[], &order)
+        place(runs, &[], &[], &order).map(|(order, _)| order)
+    }
+
+    /// Decision #164: each run read beside another, with that run, in stream positions.
+    fn beside(runs: &[Drawn<'_>]) -> Vec<(usize, usize)> {
+        let order: Vec<usize> = (0..runs.len()).collect();
+        place(runs, &[], &[], &order).map_or_else(Vec::new, |(_, beside)| beside)
     }
 
     #[test]
     fn a_fillers_values_are_read_after_their_captions() {
         assert_eq!(placed(&form()), Some(vec![0, 3, 1, 4, 2, 5]));
+        assert_eq!(
+            beside(&form()),
+            [(3, 0), (4, 1), (5, 2)],
+            "each names its caption"
+        );
         // Four values: the longest stretch is read, not the last three alone.
         let mut runs = form();
         runs.insert(3, run(50, 160, 40, "F1", "Email:"));
@@ -533,6 +552,10 @@ mod tests {
         runs.insert(2, run(95, 120, 20, "F1", "(town)"));
         runs[5] = run(55, 128, 50, "F10", "London");
         assert_eq!(placed(&runs), Some(vec![0, 4, 1, 2, 5, 3, 6]));
+        assert!(
+            beside(&runs).contains(&(5, 2)),
+            "the end of the line it is read after"
+        );
     }
 
     #[test]
@@ -574,6 +597,10 @@ mod tests {
                 run(150, 100, 40, "F11", "today"),
             ];
             assert_eq!(placed(&runs), Some(vec![0, 3, 1, 5, 2, 4]), "{mark}");
+            assert!(
+                beside(&runs).contains(&(3, 1)),
+                "the mark names the option it ticks"
+            );
         }
         // A mark before a row's first option, its question too far to its left to be read by.
         let runs = vec![
@@ -730,13 +757,13 @@ mod tests {
             y1: 13_000,
         };
         assert_eq!(
-            place(&runs, &[table], &[], &order),
+            place(&runs, &[table], &[], &order).map(|(order, _)| order),
             Some(vec![0, 3, 1, 2, 5, 4])
         );
         // The city's value in another column than its caption.
         let regions = [Some(1), Some(1), Some(1), Some(1), Some(2), Some(1)];
         assert_eq!(
-            place(&runs, &[], &regions, &order),
+            place(&runs, &[], &regions, &order).map(|(order, _)| order),
             Some(vec![0, 3, 1, 2, 5, 4])
         );
     }
@@ -836,7 +863,7 @@ mod tests {
         };
         let order: Vec<usize> = (0..runs.len()).collect();
         assert_eq!(
-            place(&runs, &[table], &[], &order),
+            place(&runs, &[table], &[], &order).map(|(order, _)| order),
             Some(vec![0, 5, 1, 2, 3, 6, 4, 7])
         );
     }

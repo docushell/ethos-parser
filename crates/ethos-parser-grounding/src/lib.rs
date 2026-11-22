@@ -1371,6 +1371,7 @@ mod schema_limit_tests {
                 structural_locator: None,
                 derivation: DerivationClass::Extracted,
                 attributes: NodeAttributes::TextRun(TextRunAttributes {
+                    read_beside: None,
                     char_codes: text.chars().map(u32::from).collect(),
                     scalar_code_mismatch: false,
                     synthesized: Vec::new(),
@@ -1455,6 +1456,7 @@ mod schema_limit_tests {
                     .expect("a structural locator"),
                     derivation: DerivationClass::Extracted,
                     attributes: NodeAttributes::TextRun(TextRunAttributes {
+                        read_beside: None,
                         char_codes: text.chars().map(u32::from).collect(),
                         scalar_code_mismatch: false,
                         synthesized: Vec::new(),

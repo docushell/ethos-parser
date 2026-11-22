@@ -3507,6 +3507,13 @@ fn self_check(
                     format!("{:?}", b.reading),
                 ));
             }
+            if a.read_beside != b.read_beside {
+                return Err(differs(
+                    "read_beside",
+                    format!("{:?}", a.read_beside),
+                    format!("{:?}", b.read_beside),
+                ));
+            }
             // The binding: every sequenced run under this engine's own element with the id the
             // writer assigned; every other run exactly as it was.
             match planned.run_mcids.get(i).copied().flatten() {
@@ -5249,6 +5256,7 @@ mod tests {
                 .unwrap(),
         );
         TextRun {
+            read_beside: None,
             id: alloc.next(ethos_parser_core::IdKind::Span).unwrap(),
             text: text.to_string(),
             char_codes: text.bytes().map(u32::from).collect(),

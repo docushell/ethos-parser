@@ -337,6 +337,7 @@ pub fn into_representation(
                     // v1-S6. Carried through unchanged. The node is here because the run is
                     // here; a finding never decides whether it gets projected.
                     findings: run.findings,
+                    read_beside: run.read_beside,
                 }),
             });
         }

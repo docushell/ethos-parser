@@ -1022,6 +1022,7 @@ fn extract_page(
                     .or_insert(0) += 1;
             }
             runs.push(TextRun {
+                read_beside: None,
                 id: alloc.next(IdKind::Span)?,
                 text: shown.text,
                 char_codes: shown.codes,
@@ -1085,6 +1086,7 @@ fn extract_page(
             code_chars.push(vec![1; w.text.chars().count()]);
             clipped.push(false);
             runs.push(TextRun {
+                read_beside: None,
                 id: alloc.next(IdKind::Span)?,
                 text: w.text.clone(),
                 char_codes: Vec::new(),
@@ -1659,6 +1661,9 @@ fn extract_page(
         // exist until detection has accepted one. Running the rule first would let a cut fall
         // through a grid before anything knew it was a grid.
         let mut order: Vec<usize> = (0..runs.len()).collect();
+        // Decision #164: (value, the run it was read beside), as content-stream positions until
+        // the page's runs take their reading order and their ids.
+        let mut read_beside: Vec<(usize, usize)> = Vec::new();
         if profile.capabilities.multi_column_reading_order {
             let geometry: Vec<crate::reading_order::RunGeometry> = runs
                 .iter()
@@ -1696,6 +1701,10 @@ fn extract_page(
                     .collect();
                 crate::drawn_last::place(&drawn, &boxes, &arranged.regions, &arranged.order)
             };
+            let placed = placed.map(|(order, beside)| {
+                read_beside = beside;
+                order
+            });
             let arranged = crate::reading_order::Arrangement {
                 order: placed.unwrap_or(arranged.order),
                 regions: arranged.regions,
@@ -1755,6 +1764,17 @@ fn extract_page(
         drop(code_chars);
 
         reorder_page(&mut runs, &mut tables, &mut op_indices, &mut ems, &order);
+        // Decision #164: each value names the run it was read beside, by the id that run took in
+        // reading order.
+        if !read_beside.is_empty() {
+            let mut position = vec![0usize; order.len()];
+            for (new, &old) in order.iter().enumerate() {
+                position[old] = new;
+            }
+            for &(value, anchor) in &read_beside {
+                runs[position[value]].read_beside = Some(runs[position[anchor]].id.clone());
+            }
+        }
 
         // Decision #54. A cell holding a run read right to left reads as its runs do: their
         // readings, in reading order — the concatenation a cell's text has always been, of the
@@ -2910,6 +2930,9 @@ fn extract_counted(
         };
         for run in &mut y.page.runs {
             run.id = rebase(&run.id, IdKind::Span);
+            if let Some(beside) = &run.read_beside {
+                run.read_beside = Some(rebase(beside, IdKind::Span));
+            }
         }
         for table in &mut y.page.tables {
             let id = rebase(&table.id, IdKind::Table);
@@ -4994,6 +5017,7 @@ mod tests {
         let runs: Vec<TextRun> = PAGE
             .iter()
             .map(|&(x, y, text)| TextRun {
+                read_beside: None,
                 id: alloc.next(IdKind::Span).expect("ids"),
                 region: None,
                 block: None,
