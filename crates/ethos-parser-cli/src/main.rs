@@ -1144,7 +1144,7 @@ fn representation_for(
             });
         };
         let extract = ethos_parser_pdf::extract_image(head, profile, recognizer)?;
-        return ethos_parser_pdf::to_representation(&extract, profile);
+        return ethos_parser_pdf::into_representation(extract, profile);
     }
 
     // **v2-S10: the branch that was missing, and the last member of the shape S8 named.**
@@ -1185,7 +1185,7 @@ fn representation_for(
         Some(r) => ethos_parser_pdf::extract_recognized(&doc, profile, r)?,
         None => ethos_parser_pdf::extract(&doc, profile)?,
     };
-    ethos_parser_pdf::to_representation(&extract, profile)
+    ethos_parser_pdf::into_representation(extract, profile)
 }
 
 /// Whether `representation_for_bytes` hands these bytes to the office reader.
@@ -1238,7 +1238,7 @@ fn emit_representation(
     match result {
         Ok(artifact) => {
             // Streamed, not assembled: one buffer holding the whole artifact was the run's peak.
-            // Everything that can refuse runs before the first byte is written.
+            // Nothing reachable refuses after the first byte (`write_canonical_to`).
             let mut out = std::io::stdout().lock();
             let written = artifact.write_canonical_to(&mut out).and_then(|()| {
                 out.write_all(b"\n")

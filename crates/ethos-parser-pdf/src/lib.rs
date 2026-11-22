@@ -136,7 +136,7 @@ pub use recognize::{
     image_media_type, Base, Colour, FlateParms, ImageSpec, PdfImageSpec, Recognition,
     RecognitionRequest, Recognize, RecognizedLine, RecognizedWord,
 };
-pub use represent::{to_representation, PROCESSOR_NAME};
+pub use represent::{into_representation, to_representation, PROCESSOR_NAME};
 pub use tagging::{write_tags, TAGS_ARTIFACT_TYPE};
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

@@ -621,6 +621,8 @@ const PDF: &[&str] = &[
     "FlateParms",
     "limitations",
     "to_representation",
+    // `to_representation` taking the extract, so its runs move rather than copy.
+    "into_representation",
 ];
 
 /// `ethos-parser-grounding` — the projection, the artifact shape, and the validator.

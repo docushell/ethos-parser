@@ -55,6 +55,19 @@ pub fn to_representation(
     extract: &ExtractArtifact,
     profile: &Profile,
 ) -> Result<DocumentRepresentation, EngineError> {
+    into_representation(extract.clone(), profile)
+}
+
+/// [`to_representation`], taking the extract: its runs move into the record's nodes rather than
+/// being copied, so a caller done with the extract does not hold every run twice.
+///
+/// # Errors
+///
+/// As [`to_representation`].
+pub fn into_representation(
+    mut extract: ExtractArtifact,
+    profile: &Profile,
+) -> Result<DocumentRepresentation, EngineError> {
     // The record's identity comes from the extract and its backend from `profile`: the two must
     // be one profile, or the sealed record describes a run nobody made.
     let named = profile
@@ -82,7 +95,7 @@ pub fn to_representation(
     let mut tables: Vec<ethos_parser_core::TableRecord> = Vec::new();
     let mut figures: Vec<ethos_parser_core::FigureRecord> = Vec::new();
 
-    for page in &extract.pages {
+    for mut page in std::mem::take(&mut extract.pages) {
         let page_id = alloc.next(IdKind::Page)?;
 
         // v1-S1. Tables carry forward the ids the detector already allocated — re-allocating
@@ -239,16 +252,21 @@ pub fn to_representation(
                 .and_then(|v| ethos_parser_core::QRect::new(v.x0, v.y0, v.x1, v.y1).ok()),
         });
 
-        for (i, run) in page.runs.iter().enumerate() {
+        let run_count = page.runs.len();
+        for (i, run) in std::mem::take(&mut page.runs).into_iter().enumerate() {
+            geometry.push(NodeGeometry {
+                node: run.id.clone(),
+                presence: run.geometry,
+            });
             nodes.push(Node {
                 // The run's id is reused verbatim. Minting a second id for the same evidence
                 // would make the extract and the representation disagree about what to call it,
                 // and every consumer would then need a mapping nobody wrote.
-                id: run.id.clone(),
+                id: run.id,
                 kind: NodeKind::TextRun,
                 parent: page_id.clone(),
                 ordinal: (i + 1) as u32,
-                text: run.text.clone(),
+                text: run.text,
                 native_locator: {
                     let place = PdfLocator {
                         page: run.locator.page,
@@ -273,10 +291,10 @@ pub fn to_representation(
                 // tree: a role path where the tree cites this run, a bare marked-content id
                 // where it does not, `pdf_artifact` where the page called this furniture, and
                 // absent where the page marked nothing. Never invented at any of the four.
-                structural_locator: run.structural.clone(),
+                structural_locator: run.structural,
                 derivation: run.derivation,
                 attributes: ethos_parser_core::NodeAttributes::TextRun(TextRunAttributes {
-                    char_codes: run.char_codes.clone(),
+                    char_codes: run.char_codes,
                     scalar_code_mismatch: run.scalar_code_mismatch,
                     synthesized: run
                         .synthesized
@@ -292,7 +310,7 @@ pub fn to_representation(
                                 .unwrap_or_else(|| "unknown".into()),
                         })
                         .collect(),
-                    font_id: run.font_id.clone(),
+                    font_id: run.font_id,
                     font_size: run.font_size,
                     // D4-S2. Assigned by `gutter-columns-v2` during extraction and carried
                     // through `reorder_page` on the run itself. Absent where the cut made no
@@ -315,15 +333,11 @@ pub fn to_representation(
                     // Decision #41: set after layout units, on an undeclared document's lines.
                     furniture: run.furniture,
                     // Decision #54: set before reading order, on a right-to-left line's runs.
-                    reading: run.reading.clone(),
+                    reading: run.reading,
                     // v1-S6. Carried through unchanged. The node is here because the run is
                     // here; a finding never decides whether it gets projected.
-                    findings: run.findings.clone(),
+                    findings: run.findings,
                 }),
-            });
-            geometry.push(NodeGeometry {
-                node: run.id.clone(),
-                presence: run.geometry,
             });
         }
 
@@ -335,7 +349,7 @@ pub fn to_representation(
                 id: object.id.clone(),
                 kind: object.attributes.kind(),
                 parent: page_id.clone(),
-                ordinal: (page.runs.len() + i + 1) as u32,
+                ordinal: (run_count + i + 1) as u32,
                 text: object.text.clone(),
                 // Not a `PdfLocator`. These have no baseline, no advance and no character
                 // origin, and filling those in with plausible numbers would put coordinates on
@@ -368,7 +382,7 @@ pub fn to_representation(
                 id: image.id.clone(),
                 kind: NodeKind::Image,
                 parent: page_id.clone(),
-                ordinal: (page.runs.len() + page.objects.len() + i + 1) as u32,
+                ordinal: (run_count + page.objects.len() + i + 1) as u32,
                 // **Empty, and it stays empty.** An image node carries no text because this
                 // engine reads none from it: pixels are not decoded, nothing is recognised, and
                 // a description would be a model's opinion rather than the document's content.
