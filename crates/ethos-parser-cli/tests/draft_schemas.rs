@@ -387,6 +387,14 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         }
     }
 
+    // Decision #162: a check box in each state and a labelled field, so every state's wire shape
+    // meets the drafts, in the extract, the record and the element view.
+    let form = Document::open_bytes(&check_boxes_pdf(), &profile).expect("the form opens");
+    let extract = ethos_parser_pdf::extract(&form, &profile).expect("the form reads");
+    out.push(("check boxes".into(), "extract", as_json!(extract)));
+    let repr = ethos_parser_pdf::into_representation(extract, &profile).expect("represents");
+    representations.push(("check boxes".into(), repr));
+
     let sha = profile
         .profile_sha256()
         .expect("the default profile hashes");
@@ -395,6 +403,49 @@ fn artifacts() -> Vec<(String, &'static str, Value)> {
         project(&name, &repr, &profile, &sha, &mut out);
     }
     out
+}
+
+/// Three labelled check boxes — checked, unchecked, and one naming a state it does not draw
+/// (decision #162).
+fn check_boxes_pdf() -> Vec<u8> {
+    use lopdf::{dictionary, Object, Stream};
+    let mut doc = lopdf::Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let page = doc.new_object_id();
+    let on = doc.add_object(Stream::new(dictionary! {}, b"0 0 9 9 re f".to_vec()));
+    let mut widgets = Vec::new();
+    for (i, shown) in ["Yes", "Off", "On"].into_iter().enumerate() {
+        widgets.push(Object::Reference(doc.add_object(dictionary! {
+            "Type" => "Annot", "Subtype" => "Widget", "FT" => "Btn", "P" => page,
+            "T" => Object::string_literal(format!("box{i}")),
+            "TU" => Object::string_literal(format!("Box {i}")),
+            "Rect" => vec![10.into(), (10 + 20 * i as i64).into(), 19.into(), (19 + 20 * i as i64).into()],
+            "AS" => Object::Name(shown.as_bytes().to_vec()),
+            "AP" => dictionary! { "N" => dictionary! { "Yes" => on, "Off" => on } },
+        })));
+    }
+    let content = doc.add_object(Stream::new(dictionary! {}, Vec::new()));
+    doc.objects.insert(
+        page,
+        Object::Dictionary(dictionary! {
+            "Type" => "Page", "Parent" => pages, "Contents" => content,
+            "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
+            "Annots" => widgets.clone(),
+        }),
+    );
+    doc.objects.insert(
+        pages,
+        Object::Dictionary(
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        ),
+    );
+    let form = doc.add_object(dictionary! { "Fields" => widgets });
+    let catalog =
+        doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages, "AcroForm" => form });
+    doc.trailer.set("Root", catalog);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("saves");
+    bytes
 }
 
 /// A one-page scan: a 200 x 100 point page that paints one 20 x 10 gray image over itself and

@@ -1551,8 +1551,27 @@ pub struct FormFieldAttributes {
     /// Absent when no ancestor declares it. Not guessed from the value's shape.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field_type: Option<String>,
+    /// The name the form's author gave the field for a person to read, `/TU` (decision #162):
+    /// read from the field the widget belongs to — the widget itself where it names itself as a
+    /// field (`/T` or `/TU`), else its own parent — and never from a field above that one, whose
+    /// label names a group rather than this field.
+    ///
+    /// Absent where that field states none, or states one in bytes this engine will not decode
+    /// (counted as `form-annotation-text-undecodable`). Never taken from the page's printed text:
+    /// which words label a box is the document's statement here, not a reading of where words
+    /// lie.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
     /// The field's value, `/V`, in the shape the document wrote it.
     pub value: FieldValue,
+    /// A check box's or radio button's state as this widget shows it (decision #162).
+    ///
+    /// Present on a widget whose field is a button (`/FT /Btn`) and not a push button, and only
+    /// there. Read from the widget's own appearance state against the states its normal
+    /// appearance draws. `/V` is not read in its place: it is the field's value, shared by every
+    /// widget of a radio group, not the state a widget shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<CheckState>,
     /// `/Ff` bits this profile recognises, named, in ascending bit order.
     ///
     /// The flags a consumer needs to read a value correctly: whether it is a password, a
@@ -1570,6 +1589,39 @@ pub struct FormFieldAttributes {
     /// this on the first real form it ran.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unrecognized_flag_bits: Vec<u32>,
+}
+
+/// A check box's or radio button's state, as its widget states it (decision #162).
+///
+/// **Two states and an absence, never a third state.** A form's button is on or off; where the
+/// widget does not say which, the state is absent with its reason, and counted as
+/// `form-field-state-not-determinable`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+#[non_exhaustive]
+pub enum CheckState {
+    /// The widget shows a state its normal appearance draws, other than `Off`: the box is
+    /// checked, and this is the state's name — for a radio button, the option it stands for.
+    Checked(String),
+    /// The widget shows `Off`.
+    Unchecked,
+    /// This engine does not report which it shows: the widget states none, one it does not draw,
+    /// or a drawn one whose name is not UTF-8 (on, but which option cannot be read).
+    NotDeterminable(CheckStateAbsence),
+}
+
+/// Why a widget's [`CheckState`] cannot be told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CheckStateAbsence {
+    /// The widget names no appearance state.
+    NoAppearanceState,
+    /// The widget names a state its normal appearance does not draw, or draws no states.
+    UndeclaredAppearanceState,
+    /// The widget names a drawn state whose name is not UTF-8: read lossily, two options' names
+    /// could become one.
+    UndecodableAppearanceState,
 }
 
 /// A form field's `/V`, in the shape the document wrote it.

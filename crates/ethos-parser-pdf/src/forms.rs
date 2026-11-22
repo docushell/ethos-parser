@@ -61,8 +61,8 @@
 //! — a repair nobody recorded is a document the reader was handed instead of the one they have.
 
 use ethos_parser_core::{
-    quantize, AnnotationAttributes, AnnotationRect, FieldValue, FormFieldAttributes, QRect,
-    QUANTUM_PER_POINT,
+    quantize, AnnotationAttributes, AnnotationRect, CheckState, CheckStateAbsence, FieldValue,
+    FormFieldAttributes, QRect, QUANTUM_PER_POINT,
 };
 use lopdf::{Dictionary, Object, ObjectId};
 
@@ -149,6 +149,9 @@ pub struct PageObjects {
     pub unresolved_parents: u32,
     /// Field values and annotation `/Contents` holding bytes [`decode_content_strict`] refuses.
     pub undecodable_texts: u32,
+    /// Check box and radio button widgets whose state is [`CheckState::NotDeterminable`]
+    /// (decision #162).
+    pub states_not_determinable: u32,
 }
 
 /// Read one page's annotations and widgets.
@@ -184,6 +187,9 @@ pub fn read_page_objects(doc: &lopdf::Document, page: &Dictionary) -> PageObject
             let (attrs, resolved) = field_attributes(doc, dict, *id, &mut out.undecodable_texts);
             if !resolved {
                 out.unresolved_parents += 1;
+            }
+            if matches!(attrs.state, Some(CheckState::NotDeterminable(_))) {
+                out.states_not_determinable += 1;
             }
             out.objects.push(PageObject {
                 id: *id,
@@ -227,9 +233,27 @@ fn field_attributes(
     undecodable: &mut u32,
 ) -> (FormFieldAttributes, bool) {
     let mut names: Vec<String> = Vec::new();
+    // Decision #162: `/TU` of the field the widget belongs to — the widget itself where it names
+    // itself as a field (`/T` or `/TU`), else its own parent (§12.7.3.1: a widget is a kid of its
+    // field, named or not) — and never a group above that. Read strictly, as a title is: bytes it
+    // will not decode leave the label absent and are counted.
+    let own_field = widget.has(b"T") || widget.has(b"TU");
+    let field_of_widget = if own_field {
+        Some(widget)
+    } else {
+        resolve(doc, widget.get(b"Parent").ok()).and_then(|p| p.as_dict().ok())
+    };
+    let label = field_of_widget.and_then(|f| match resolve(doc, f.get(b"TU").ok()) {
+        Some(Object::String(bytes, _)) => decode_text_strict(bytes).or_else(|| {
+            *undecodable = undecodable.saturating_add(1);
+            None
+        }),
+        _ => None,
+    });
     let mut field_type: Option<String> = None;
     let mut value: Option<FieldValue> = None;
-    let mut flag_bits: i64 = 0;
+    // The nearest `/Ff` wins, an explicit 0 included.
+    let mut flag_bits: Option<i64> = None;
     let mut resolved = true;
 
     let mut seen: Vec<ObjectId> = vec![widget_id];
@@ -246,8 +270,8 @@ fn field_attributes(
         if value.is_none() {
             value = field_value(doc, dict, undecodable);
         }
-        if flag_bits == 0 {
-            flag_bits = int_at(doc, dict, b"Ff").unwrap_or(0);
+        if flag_bits.is_none() {
+            flag_bits = int_at(doc, dict, b"Ff");
         }
 
         depth += 1;
@@ -288,16 +312,54 @@ fn field_attributes(
     // collected them leaf-first.
     names.reverse();
 
+    let flag_bits = flag_bits.unwrap_or(0);
+    // A check box or radio button: a button that is not a push button (§12.7.4.2).
+    let toggles = field_type.as_deref() == Some("Btn") && !is_set(flag_bits, PUSHBUTTON_BIT);
+    let state = toggles.then(|| check_state(doc, widget));
+
     (
         FormFieldAttributes {
             field_name: (!names.is_empty()).then(|| names.join(".")),
             field_type,
+            label,
             value: value.unwrap_or(FieldValue::Absent),
+            state,
             flags: named_bits(flag_bits, FIELD_FLAGS),
             unrecognized_flag_bits: unnamed_bits(flag_bits, FIELD_FLAGS),
         },
         resolved,
     )
+}
+
+/// `/Ff` bit 17: a push button, which has no on or off state (§12.7.4.2.1, Table 226).
+const PUSHBUTTON_BIT: u32 = 17;
+
+/// A check box's or radio button's state, from the widget's own `/AS` against the states its own
+/// `/AP /N` declares (decision #162, §12.5.5, §12.7.4.2.3). `Off` is unchecked whatever the
+/// appearance declares; any other state is checked only where the normal appearance draws it — an
+/// entry that resolves to a stream, since a state it does not draw shows nothing a reader could
+/// call on — and only where its name is UTF-8, since a name read lossily could make two options
+/// one.
+fn check_state(doc: &lopdf::Document, widget: &Dictionary) -> CheckState {
+    let Some(Object::Name(shown)) = resolve(doc, widget.get(b"AS").ok()) else {
+        return CheckState::NotDeterminable(CheckStateAbsence::NoAppearanceState);
+    };
+    if shown.as_slice() == b"Off" {
+        return CheckState::Unchecked;
+    }
+    let drawn = resolve(doc, widget.get(b"AP").ok())
+        .and_then(|ap| ap.as_dict().ok())
+        .and_then(|ap| resolve(doc, ap.get(b"N").ok()))
+        .and_then(|normal| normal.as_dict().ok())
+        .and_then(|normal| resolve(doc, normal.get(shown).ok()))
+        .is_some_and(|appearance| appearance.as_stream().is_ok());
+    if !drawn {
+        return CheckState::NotDeterminable(CheckStateAbsence::UndeclaredAppearanceState);
+    }
+    match String::from_utf8(shown.clone()) {
+        Ok(name) => CheckState::Checked(name),
+        Err(_) => CheckState::NotDeterminable(CheckStateAbsence::UndecodableAppearanceState),
+    }
 }
 
 /// `/V`, in the shape the document wrote it.

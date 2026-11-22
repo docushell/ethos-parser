@@ -157,6 +157,7 @@ const CORE: &[&str] = &[
     "ArtifactBinding",
     "ArtifactIdentity",
     "FORM_ANNOTATION_RULE_V2",
+    "FORM_ANNOTATION_RULE_V3",
     "AnchorMap",
     "AnnotationAttributes",
     "AnnotationRect",
@@ -223,6 +224,9 @@ const CORE: &[&str] = &[
     "XlsxLocator",
     "OfficeCellAttributes",
     "CellValueType",
+    // Decision #162: a check box's or radio button's state, and why it can be absent.
+    "CheckState",
+    "CheckStateAbsence",
     "CellTextSource",
     "XLSX_READING_ORDER_RULE_V1",
     "XLSX_TEXT_CODE_RULE_V3",

@@ -685,6 +685,30 @@
       "properties": {
         "field_name": { "type": "string", "$comment": "The fully qualified name: the /T of every ancestor, root first, joined by `.`. Omitted when no /T appears anywhere up the chain." },
         "field_type": { "type": "string", "examples": ["Tx", "Btn", "Ch", "Sig"], "$comment": "/FT as the document spells it, from the nearest ancestor that declares one. Omitted when none does." },
+        "label": { "type": "string", "$comment": "Decision #162: /TU, the name the form gives the field for a person to read, from the field the widget belongs to (the widget itself where it carries /T or /TU, else its own parent), never from a group above it. Omitted when that field states none, or states one in bytes this engine will not decode." },
+        "state": {
+          "$comment": "Decision #162: a check box's or radio button's state as its widget states it, from its /AS against the states its /AP /N draws; /V, the field's shared value, is not read in its place. Present only on a /FT /Btn widget that is not a push button.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "value"],
+              "properties": { "kind": { "const": "checked" }, "value": { "type": "string", "$comment": "The on state's name, as the widget's appearance declares it." } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "const": "unchecked" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "value"],
+              "properties": { "kind": { "const": "not_determinable" }, "value": { "enum": ["no_appearance_state", "undeclared_appearance_state", "undecodable_appearance_state"] } }
+            }
+          ]
+        },
         "value": {
           "$comment": "/V, typed by what the document wrote. A widget's rendering is never read as page text.",
           "oneOf": [

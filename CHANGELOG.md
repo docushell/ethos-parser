@@ -32,6 +32,35 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A check box's state and a field's label, as each widget states them (decision #162)
+
+A form field node said what the field's `/V` was, and a radio button's widget inherited its group's
+value, so which button of a group was on could not be told, and a check box whose value was absent
+said nothing about the box at all. Each widget now carries two more facts it states itself.
+
+- `state`, on a check box or radio button (a `/FT /Btn` widget that is not a push button):
+  `checked`, with the state's name, where the widget's own `/AS` names a state its own `/AP /N`
+  draws (an entry that is a stream) other than `Off`; `unchecked` where `/AS` is `Off`;
+  `not_determinable` with its reason — `no_appearance_state`, `undeclared_appearance_state`, or
+  `undecodable_appearance_state` for a name that is not UTF-8, which read lossily could make two
+  options one — otherwise, counted in the new document-scoped limitation
+  `form-field-state-not-determinable`. `/V`, the field's value that every widget of a radio group
+  shares, is not read in its place; never a third state.
+- `label`, the field's `/TU`: from the field the widget belongs to — the widget itself where it
+  carries `/T` or `/TU`, else its own parent — and never from a group above it. Read strictly, as an
+  outline title is: bytes that do not decode leave it absent, counted in
+  `form-annotation-text-undecodable`.
+- The nearest `/Ff` decides a field's flags, an explicit 0 included; v2 read past a 0 to an
+  ancestor's flags, so a check box under a push-button parent read as a push button.
+- `form-annotations-v2` → `form-annotations-v3`; `profile_sha256` moves. `extract` changes only on
+  documents with form fields; no projection reads the two facts yet, and the Markdown and HTML text
+  of every ParseBench, ParseBench-2 and opendataloader-bench document is unchanged.
+- Tested on made-up forms: each state, indirect `/AS`, `/AP` and `/N`, `/N` a single stream, a
+  down appearance only, a null entry, a non-UTF-8 name, a radio group, an inherited push button and
+  an explicit 0 below it, a text field, an untyped widget, a group's label, a nameless field's and a
+  merged widget's label, an undecodable label, and a profile without form fields. Sixteen
+  mutations, each caught. Reviewed twice.
+
 ### Large documents read in about half the time and a third less memory, byte for byte
 
 Measured on `nist-sp-800-53r5` (492 pages, 1.15 million nodes) with a profile: of `extract`'s 4.2 s,

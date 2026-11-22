@@ -725,6 +725,22 @@ pub fn form_field_parent_unresolved(widgets: u32) -> Limitation {
     )
 }
 
+/// Check box and radio button widgets whose state this engine does not report (decision #162).
+pub fn form_field_state_not_determinable(widgets: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::FORM_FIELD_STATE_NOT_DETERMINABLE,
+        format!(
+            "{widgets} check box or radio button widget(s) carry no state this engine reports: the \
+             widget names no appearance state (`/AS`), names one its normal appearance \
+             (`/AP /N`) does not draw, or names a drawn state whose name is not UTF-8 (on, but \
+             which option cannot be read). Each carries `state` \
+             `not_determinable` with that reason. Nothing stands in for it: `/V` is the field's \
+             value, shared by every widget of a radio group, not the state a widget shows, and is \
+             not read in its place; a form has no third state, so none is reported."
+        ),
+    )
+}
+
 /// Runs whose string ends part-way through a character code (review 2026-09-26 N46).
 pub fn string_ends_mid_code(runs: u32) -> Limitation {
     Limitation::document(
@@ -748,9 +764,9 @@ pub fn form_annotation_text_undecodable(count: u32) -> Limitation {
     Limitation::document(
         ethos_parser_core::codes::FORM_ANNOTATION_TEXT_UNDECODABLE,
         format!(
-            "{count} form field value(s) and annotation `/Contents` hold bytes this engine will \
-             not decode, so those fields carry the value `unsupported` and those annotations no \
-             text, each keeping its object id, its rectangle and its flags. A PDF text string is \
+            "{count} form field value(s) and label(s) and annotation `/Contents` hold bytes this \
+             engine will not decode, so those fields carry the value `unsupported` or no label and \
+             those annotations no text, each keeping its object id, its rectangle and its flags. A PDF text string is \
              UTF-16BE or UTF-8 behind a byte-order mark and PDFDocEncoding otherwise (§7.9.2.2). \
              This engine reads PDFDocEncoding through a table qpdf, pdf.js and Ghostscript agree \
              on, and will not guess where they part — `0x1B`, `0x7F`, `0x9F` and `0xAD` — nor read \

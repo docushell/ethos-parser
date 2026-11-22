@@ -185,7 +185,7 @@
       "minLength": 1,
       "description": "Version id of the forms-and-annotations rule in force (v1-S4). Decides which form-field and annotation nodes exist: which flag bits are named, how a fully-qualified field name is built, and the fact that a widget's rendering is never read as page text. Named for what it does rather than the structure it reads, because ethos-parser-core carries no format concept.",
       "examples": [
-        "form-annotations-v2"
+        "form-annotations-v3"
       ]
     },
     "struct_tree_rule": {
@@ -626,7 +626,7 @@
       },
       "figure_rule": "figure-regions-v1",
       "font_metrics_data_version": "core14-afm-2",
-      "form_annotation_rule": "form-annotations-v2",
+      "form_annotation_rule": "form-annotations-v3",
       "furniture_rule": "margin-bands-v1",
       "heading_inference_rule": "type-size-v8",
       "html_rule": "html-blocks-v14",

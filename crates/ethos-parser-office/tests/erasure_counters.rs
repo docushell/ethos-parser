@@ -95,7 +95,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 23] = [
+const PDF_COUNTERS: [&str; 24] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -104,6 +104,8 @@ const PDF_COUNTERS: [&str; 23] = [
     "encoding_dropped_runs",
     "props_by_name",
     "unresolved_field_parents",
+    // Decision #162: check box and radio button widgets that do not state whether they are on.
+    "field_states_not_determinable",
     // v2.2-S2. The `Do` arm that returned `None` and counted nothing. It arrived here because
     // `the_counter_list_is_complete` derived it and this list did not have it — which is the
     // whole reason that derivation exists, and the first time it has caught a real addition.

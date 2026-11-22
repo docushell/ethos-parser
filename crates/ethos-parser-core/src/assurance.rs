@@ -470,6 +470,13 @@ pub mod codes {
     /// field carries the value `unsupported`, and such an annotation no text.
     pub const FORM_ANNOTATION_TEXT_UNDECODABLE: &str = "form-annotation-text-undecodable";
 
+    /// Check box and radio button widgets whose state this engine does not report (decision #162):
+    /// none stated, one not drawn, or a drawn one whose name is not UTF-8.
+    ///
+    /// Document-scoped and conditional: such a widget's `state` is absent with its reason, and
+    /// never read from the field's shared value.
+    pub const FORM_FIELD_STATE_NOT_DETERMINABLE: &str = "form-field-state-not-determinable";
+
     /// Nodes whose kind `ethos.grounding.v1` cannot express, omitted from the projection (v1-S4).
     ///
     /// Document-scoped and conditional, and **distinct from

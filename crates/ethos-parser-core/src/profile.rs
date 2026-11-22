@@ -1905,6 +1905,16 @@ pub const RIGHT_TO_LEFT_RULE_V1: &str = "right-to-left-lines-v1";
 /// U+FFFD.
 pub const FORM_ANNOTATION_RULE_V2: &str = "form-annotations-v2";
 
+/// v3 (decision #162): a widget's own facts a decision reads, beside v2's. A field's `/TU` is its
+/// `label`, read strictly from the field the widget belongs to (the widget where it carries `/T` or
+/// `/TU`, else its parent) and never from a group above it. A check box or radio button carries
+/// `state`: checked, with the state's name, where its `/AS` names a state its own `/AP /N` draws
+/// other than `Off`; unchecked where `/AS` is `Off`; absent with its reason, and counted as
+/// `form-field-state-not-determinable`, where it names none, one its appearance does not draw, or
+/// one that is not UTF-8. `/V`, which every widget of a radio group shares, is not read in its
+/// place. And the nearest `/Ff` wins, an explicit 0 included, where v2 read past a 0.
+pub const FORM_ANNOTATION_RULE_V3: &str = "form-annotations-v3";
+
 /// Identity of the character-decoding data this profile carries.
 ///
 /// Names what is **actually** vendored rather than what was planned. At M3 that is the
@@ -2987,7 +2997,7 @@ pub struct Profile {
     pub locate_rule: String,
     /// Version id of the forms-and-annotations rule in force. New at v1-S4.
     ///
-    /// See [`FORM_ANNOTATION_RULE_V2`].
+    /// See [`FORM_ANNOTATION_RULE_V3`].
     pub form_annotation_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
@@ -3157,7 +3167,7 @@ impl Default for Profile {
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V14.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V14.to_string(),
-            form_annotation_rule: FORM_ANNOTATION_RULE_V2.to_string(),
+            form_annotation_rule: FORM_ANNOTATION_RULE_V3.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
@@ -4552,7 +4562,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field or rule id. Update this vector and the hash below from this test's own output \
@@ -4562,7 +4572,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:78f195efa7ae5cdae0fc35295b0fd58ae04ef91d3d1e3de23c9f50ea7c29c241"
+            "sha256:abb7da9c90e7a260f66d4c9f8497b8892a5446e539eb8a35be90f0990ba15de4"
         );
     }
 
