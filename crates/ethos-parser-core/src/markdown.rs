@@ -2014,6 +2014,11 @@ fn line_tail<'a>(
 /// bounds overlap at one glyph, and ParseBench-2 breaks both — `manu` in a face drawn once
 /// (`deloitte-2025-global-automotive-consumer-study-january-2025_p17`), and a hyphen set 475
 /// centipoints inside a justified letter's advance (`text_multicolumns__simple2col2`).
+///
+/// **The tail opens the next line**, not the hyphen's line going on: a run within [`same_line`]'s
+/// tolerance of the hyphen's baseline, measured in the hyphen's face or else the word's, is a
+/// line set skewed, as the paragraph reads it, where `non` / `-` / `escrowed` three centipoints
+/// lower closed up `nonescrowed`. Kept here: [`line_tail`]'s exact test is the same-run rule's too.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lone_hyphen_tail<'a>(
     prev: Option<&crate::Node>,
@@ -2054,8 +2059,17 @@ pub(crate) fn lone_hyphen_tail<'a>(
     {
         return None;
     }
+    let face = |n: &crate::Node| {
+        let a = text_run_attributes(n)?;
+        pitch.get(&(a.font_id.clone(), a.font_size)).copied()
+    };
+    let along = |tail: &crate::Node| {
+        line_key(node)
+            .zip(face(node).or_else(|| face(prev)))
+            .is_some_and(|(line, measure)| same_line(line, tail, measure))
+    };
     line_tail(node, next, owner).filter(|(tail, text)| {
-        text.starts_with(char::is_lowercase) && Style::of(tail) == Style::of(node)
+        text.starts_with(char::is_lowercase) && Style::of(tail) == Style::of(node) && !along(tail)
     })
 }
 
@@ -7041,8 +7055,8 @@ pub(crate) mod tests {
     /// in the run or as one, past a gap, inside a line, opening a line, before a number, before a
     /// capital, inside a URL, an email or a `www.` address, after a word holding a hyphen or in
     /// capitals, before a tail struck or underlined where the hyphen is not, drawn with its space
-    /// in its own run, and drawn back along its line over the word or over its last glyph; a letter
-    /// run is no hyphen.
+    /// in its own run, drawn back along its line over the word or over its last glyph, and before
+    /// a tail going on along a line set skewed; a letter run is no hyphen.
     #[test]
     fn a_hyphen_run_that_breaks_no_word_stays() {
         let cases: [&[UnitLine]; 16] = [
@@ -7143,6 +7157,20 @@ pub(crate) mod tests {
             &[],
             &[2, 3],
         ));
+        // The tail three centipoints off the hyphen's baseline: a line set skewed going on, which
+        // the paragraph reads as one line ([`same_line`]), not the next line; and so with the
+        // hyphen in a face of its own, unmeasured, by the word's.
+        let skewed = repr_of_placed(&[
+            ("the observer non", None, 7200, 7200, Some(6800), None),
+            ("-", None, 14000, 7200, Some(300), None),
+            ("escrowed", None, 14300, 7203, Some(3200), None),
+        ]);
+        let mut own = skewed.payload().clone();
+        if let NodeAttributes::TextRun(a) = &mut own.nodes[1].attributes {
+            a.font_id = "F2".into();
+        }
+        reprs.push(DocumentRepresentation::seal(own, skewed.geometry().to_vec()).unwrap());
+        reprs.push(skewed);
         for (k, repr) in reprs.into_iter().enumerate() {
             let a = artifact_of(repr);
             assert!(

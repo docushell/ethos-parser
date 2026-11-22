@@ -47,8 +47,11 @@ hyphen is counted in `hyphenation-rejoin-dropped-v1` as that one is.
 - Review fixes (CodeRabbit, PR #55): both rules now take a header or footer the reader found on an
   untagged page for page furniture, as they took one the page marks. The same-run rule had joined a
   line's last word onto the running foot below it: opendataloader-bench `01030000000017` read
-  `nipart iv:`, ParseBench-2 `text_multicolumns__delays` `insurJul y 2000`. And where lists are
-  inferred, an item a marker opens is no word's tail.
+  `nipart iv:`, ParseBench-2 `text_multicolumns__delays` `insurJul y 2000`. Where lists are
+  inferred, an item a marker opens is no word's tail. And the tail must open the next line, not
+  sit within the tolerance a skewed line keeps: ParseBench-2 `annotated__076523s007lbl_p2` sets its
+  columns on baselines a few centipoints apart, and the rule had closed `dur-` onto the next
+  column's `ample` (`durample`, with `transamidrug` and `erygiven` on that page).
 - It stays where the word before it holds a `/`, an `@`, `www.` or a hyphen already — an address or
   a slug broken at its own characters, or a compound — or has no lower-case letter (`HWCVD-` /
   `deposited`, `X-` / `ray`), and where the run after it is struck through, underlined, bold or
