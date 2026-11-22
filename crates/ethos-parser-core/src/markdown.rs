@@ -147,7 +147,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
-/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131); a DOCX heading, list item and table as the file declares them, a heading's line break one space and a list paragraph's runs one item, and a layout table — a cell of two paragraphs or more, or a nested table — written as its blocks in document order, counted as `layout-table-as-blocks-v1` (decision #136) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131); a DOCX heading, list item and table as the file declares them, a heading's line break one space and a list paragraph's runs one item, and a layout table — a cell of two paragraphs or more, or a nested table — written as its blocks in document order, counted as `layout-table-as-blocks-v1` (decision #136); a line's last hyphen drawn as a run of its own closes its word up (decision #160) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -1939,7 +1939,17 @@ pub(crate) fn hyphen_tail<'a>(
     if !stem.chars().next_back().is_some_and(char::is_alphabetic) || heading_level(head).is_some() {
         return None;
     }
+    let (next, tail) = line_tail(head, next, owner)?;
+    Some((next, format!("{stem}{tail}")))
+}
 
+/// The run after `head` that finishes a word broken at the end of `head`'s line, and its emitted
+/// text: [`hyphen_tail`]'s clauses on the tail, which [`lone_hyphen_tail`] shares.
+fn line_tail<'a>(
+    head: &crate::Node,
+    next: Option<&'a crate::Node>,
+    owner: &std::collections::BTreeMap<&str, usize>,
+) -> Option<(&'a crate::Node, String)> {
     let next = next?;
     if next.parent != head.parent
         || dropped_code(next.kind).is_some()
@@ -1952,12 +1962,83 @@ pub(crate) fn hyphen_tail<'a>(
     {
         return None;
     }
-
     let tail = normalize(next.reading_text());
-    if !tail.starts_with(char::is_alphabetic) {
+    tail.starts_with(char::is_alphabetic)
+        .then_some((next, tail))
+}
+
+/// The next run, when this one is a line's last hyphen drawn as a run of its own (decision #160):
+/// the run the open block ended on ends in a letter and its ink meets the hyphen's on one line,
+/// with no space drawn between, [`hyphen_tail`]'s clauses hold for the run after, and that run
+/// opens in lower case. Returns that run and its emitted text, which goes onto the open block with
+/// no separator, the hyphen counted in [`HYPHENATION_REJOIN_DROPPED`] as [`hyphen_tail`]'s is.
+///
+/// **Lower case**, because a word the line broke goes on in its own case, and a capital after a
+/// line's last hyphen is a compound's next word: `Dupont-` / `Steilacoom` (decision #81's case),
+/// `Eco-` / `Circle`, `ex-` / `For example`. A compound whose next word is in lower case
+/// (`cost-` / `effective`) closes up as [`hyphen_tail`] closes one drawn in one run: telling the
+/// two apart needs a dictionary, the policy this module's header states.
+///
+/// A producer that sets each line in a marked-content sequence of its own can put the break's
+/// hyphen in one of its own too, so the hyphen was a block and both halves of the word were
+/// blocks: opendataloader-bench `01030000000001` read `mod` / `-` / `el`. Where nothing declared
+/// sequences, the hyphen joined its line and the next line never closed the word up, since
+/// [`hyphen_tail`] reads a run's own text and `-` has no letter in front of it.
+///
+/// **Not in an address**: where the word the hyphen ends — the open block's text after its last
+/// space — holds a `/`, an `@` or `www.`, the hyphen is the URL's or the email's own, since a line
+/// breaks an address at its characters and no typesetter hyphenates one. ParseBench-2's text pages
+/// break links that way (`…esa-supply-use-input-` / `tables/…`), and without this clause wrote
+/// `inputtables`.
+///
+/// **Not after a word typesetting does not break**: one that holds a hyphen already, which is a
+/// compound or a slug broken at its own hyphen (`state-of-the-` / `art`; a link's last line,
+/// `…-pelo-temporal-` / `cjmg9….html`, whose `/` is lines back), or one with no lower-case letter,
+/// which is an acronym or a capital in front of a compound's next word (`HWCVD-` / `deposited`,
+/// `X-` / `ray`).
+///
+/// **Not onto a tail marked otherwise than the hyphen**, since the joined text is written in the
+/// hyphen's marks and the tail's would be lost: `per-` / `~~sonal~~` wrote `personal` with no
+/// strikeout.
+///
+/// `prev` is the open block's last run, `None` where no block is open or the open block is a
+/// heading, a list item or a cell, and `block` the open block's text. The run before the hyphen
+/// must end in a letter **in its own text**, so `foo ` + `-` is a dash standing as its own word, as
+/// [`hyphen_tail`] has it; a hyphen inside a line is the author's, as there, since the run after
+/// must be on another line.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn lone_hyphen_tail<'a>(
+    prev: Option<&crate::Node>,
+    block: &str,
+    node: &crate::Node,
+    text: &str,
+    next: Option<&'a crate::Node>,
+    owner: &std::collections::BTreeMap<&str, usize>,
+    pending_space: bool,
+    stretches: &Stretches<'_>,
+    pitch: &PitchReference,
+) -> Option<(&'a crate::Node, String)> {
+    let prev = prev.filter(|_| text == "-" && !pending_space)?;
+    if prev.parent != node.parent
+        || is_page_artifact(prev) != is_page_artifact(node)
+        || region_of(prev) != region_of(node)
+        || on_different_lines(prev, node)
+        || !prev.reading_text().ends_with(char::is_alphabetic)
+        || !read_together(stretches, prev, node)
+            .unwrap_or_else(|| ink_contiguous(prev, node, pitch))
+    {
         return None;
     }
-    Some((next, format!("{stem}{tail}")))
+    let word = block.rsplit(char::is_whitespace).next().unwrap_or_default();
+    if word.contains(&['/', '@', '-'][..])
+        || word.contains("www.")
+        || !word.chars().any(char::is_lowercase)
+    {
+        return None;
+    }
+    line_tail(node, next, owner).filter(|(tail, text)| {
+        text.starts_with(char::is_lowercase) && Style::of(tail) == Style::of(node)
+    })
 }
 
 /// How many characters already painted [`overprinted_runs`] reads under one run, so a page printing
@@ -4590,7 +4671,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    breaks ([`projected_text`]), and a DOCX paragraph's runs are one block (decision #130).
 /// 7. **A word broken across a line is closed up** — v1.1-S3's one cosmetic, and the only clause
 ///    here that removes a character that is not whitespace (rule 6 collapses runs of it, and
-///    counts them too). The conditions are [`hyphen_tail`]'s, the joined bytes are one `source`
+///    counts them too). The conditions are [`hyphen_tail`]'s, or [`lone_hyphen_tail`]'s where
+///    the line's hyphen is a run of its own (decision #160), the joined bytes are one `source`
 ///    segment naming both runs, and the hyphen is counted in `HYPHENATION_REJOIN_DROPPED`.
 ///    **The representation is untouched**: `extract` still holds both halves with the hyphen
 ///    verbatim, so the joined word is readable and *not* citable, and the map says which two
@@ -4999,6 +5081,33 @@ pub(crate) fn markdown_of(
         });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = group_key(node);
+        // Decision #160: a line's last hyphen drawn as a run of its own goes onto its line's
+        // block, and the word it broke closes up there. The block goes on from the tail as the
+        // block the tail would have opened went on: in its sequence, along its line.
+        if let Some((tail, joined)) = lone_hyphen_tail(
+            open_prev.filter(|_| !open_heading && matches!(last, Some(Block::Standalone))),
+            &block_text,
+            node,
+            &text,
+            next,
+            &owner,
+            pending_space,
+            &stretches,
+            &pitch,
+        ) {
+            e.joined_source(&joined, node.id.as_str(), tail.id.as_str());
+            block_text.push_str(&joined);
+            let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
+            b.0 += 1;
+            b.1 += 1;
+            open_group = group_key(tail);
+            open_prev = Some(tail);
+            open_at = Some(i + 1);
+            line_ink = ink_reach(tail, &pitch).map(|(x, r)| (tail, x, r));
+            open_line = line_ink.and(line_key(tail));
+            joined_tail = true;
+            continue;
+        }
         let mut across: Option<SequenceJoin> = None;
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
@@ -6796,6 +6905,222 @@ pub(crate) mod tests {
             .expect("one join happened");
         assert_eq!(b.chars, 1, "one hyphen removed, not two");
         assert!(a.coverage.balances());
+    }
+
+    /// A run as [`unit_lines`] places it: text, left and right edge and top in points, unit.
+    type UnitLine<'a> = (&'a str, i64, i64, i64, u32);
+
+    /// Runs placed as [`unit_lines`] places them, in the marked-content sequences `mcids` names
+    /// one a run, as a producer draws a line and its break's hyphen; in none where it names none.
+    pub(crate) fn lone_hyphen_lines(
+        specs: &[(&str, i64, i64, i64, u32)],
+        mcids: &[i64],
+    ) -> DocumentRepresentation {
+        let repr = unit_lines(specs);
+        let mut payload = repr.payload().clone();
+        for (node, &mcid) in payload.nodes.iter_mut().zip(mcids) {
+            node.structural_locator = Some(StructuralLocator::PdfMcid(mcid));
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// A line's last word broken at its end, the break's hyphen a run of its own, and the next
+    /// line going on from the tail along its line.
+    pub(crate) const LONE_HYPHEN: &[(&str, i64, i64, i64, u32)] = &[
+        ("the observer mod", 72, 140, 50, 1),
+        ("-", 140, 143, 50, 1),
+        ("el", 72, 80, 65, 1),
+        ("s fit the data.", 80, 150, 65, 1),
+    ];
+
+    /// [`LONE_HYPHEN`]'s sequences as a producer sets them: a line, its hyphen, the next line.
+    pub(crate) const LONE_HYPHEN_MCIDS: &[i64] = &[1, 2, 3, 3];
+
+    /// **Decision #160: a line's last hyphen drawn as a run of its own closes its word up**, in a
+    /// sequence of its own or in none, and is counted as a hyphen in one run is.
+    #[test]
+    fn a_line_end_hyphen_drawn_as_its_own_run_closes_its_word_up() {
+        for mcids in [LONE_HYPHEN_MCIDS, &[]] {
+            let repr = lone_hyphen_lines(LONE_HYPHEN, mcids);
+            let id = |k: usize| repr.payload().nodes[k].id.as_str().to_string();
+            let (hyphen, tail) = (id(1), id(2));
+            let a = artifact_of(repr.clone());
+            assert_eq!(
+                a.markdown, "the observer models fit the data.\n",
+                "sequences: {mcids:?}"
+            );
+            let naming: Vec<_> = a
+                .anchor_map
+                .segments
+                .iter()
+                .filter(|s| s.node_ids.contains(&hyphen))
+                .collect();
+            assert_eq!(naming.len(), 1, "the hyphen is in one segment");
+            assert!(naming[0].node_ids.contains(&tail), "with the tail");
+            let b = a
+                .coverage
+                .dropped
+                .iter()
+                .find(|b| b.code == HYPHENATION_REJOIN_DROPPED)
+                .expect("the removed hyphen is a named bucket");
+            assert_eq!((b.chars, b.nodes), (1, 1));
+            a.validate().expect("tiles and balances");
+        }
+        // Struck through whole, hyphen and tail alike, it closes up struck.
+        let struck = with_marks(lone_hyphen_lines(LONE_HYPHEN, &[]), &[0, 1, 2, 3], &[]);
+        assert_eq!(
+            artifact_of(struck).markdown,
+            "~~the observer models fit the data.~~\n"
+        );
+    }
+
+    /// A hyphen run that ends no line's word stays where the page drew it: after a space drawn
+    /// in the run or as one, past a gap, inside a line, opening a line, before a number, before a
+    /// capital, inside a URL, an email or a `www.` address, after a word holding a hyphen or in
+    /// capitals, and before a tail struck or underlined where the hyphen is not; a letter run is
+    /// no hyphen.
+    #[test]
+    fn a_hyphen_run_that_breaks_no_word_stays() {
+        let cases: [&[UnitLine]; 13] = [
+            &[
+                ("observer mod ", 72, 134, 50, 1),
+                ("-", 134, 137, 50, 1),
+                ("el applied", 72, 120, 65, 1),
+            ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                (" ", 131, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("el applied", 72, 120, 65, 1),
+            ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                ("-", 136, 139, 50, 1),
+                ("el applied", 72, 120, 65, 1),
+            ],
+            &[
+                ("pseudo", 72, 100, 50, 1),
+                ("-", 100, 103, 50, 1),
+                ("condition", 103, 140, 50, 1),
+            ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                ("-", 72, 75, 65, 1),
+                ("el applied", 72, 120, 80, 1),
+            ],
+            &[
+                ("pages mod", 72, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("12 apply", 72, 120, 65, 1),
+            ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                ("e", 132, 135, 50, 1),
+                ("l applied", 72, 120, 65, 1),
+            ],
+            &[
+                ("a meeting in Dupont", 72, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("Steilacoom today", 72, 150, 65, 1),
+            ],
+            &[
+                ("see https://example.org/supply-use-input", 72, 180, 50, 1),
+                ("-", 180, 183, 50, 1),
+                ("tables/data.html", 72, 150, 65, 1),
+            ],
+            &[
+                ("write to info@ex", 72, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("ample.org today", 72, 150, 65, 1),
+            ],
+            &[
+                ("visit www.eco", 72, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("ecole.org today", 72, 150, 65, 1),
+            ],
+            &[
+                ("a link's pelo-temporal", 72, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("cjmg9h.html today", 72, 150, 65, 1),
+            ],
+            &[
+                ("passivation in HWCVD", 72, 132, 50, 1),
+                ("-", 132, 135, 50, 1),
+                ("deposited films", 72, 150, 65, 1),
+            ],
+        ];
+        // Each case in sequences and in none, then the tail struck through and underlined.
+        let mut reprs: Vec<_> = cases
+            .iter()
+            .flat_map(|specs| [&[1, 2, 3, 4][..], &[]].map(|mcids| lone_hyphen_lines(specs, mcids)))
+            .collect();
+        reprs.push(with_marks(
+            lone_hyphen_lines(LONE_HYPHEN, LONE_HYPHEN_MCIDS),
+            &[2, 3],
+            &[],
+        ));
+        reprs.push(with_marks(
+            lone_hyphen_lines(LONE_HYPHEN, &[]),
+            &[],
+            &[2, 3],
+        ));
+        for (k, repr) in reprs.into_iter().enumerate() {
+            let a = artifact_of(repr);
+            assert!(
+                a.coverage
+                    .dropped
+                    .iter()
+                    .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+                "representation {k}: {:?}",
+                a.markdown
+            );
+            a.validate().expect("tiles and balances");
+        }
+    }
+
+    /// Nor across a block boundary: out of a heading, across a column, or between page furniture
+    /// and body text.
+    #[test]
+    fn a_hyphen_run_does_not_join_across_a_block_boundary() {
+        let repr = lone_hyphen_lines(LONE_HYPHEN, LONE_HYPHEN_MCIDS);
+        for (what, repr) in [
+            ("heading", with_inferred_headings(repr.clone(), &[0])),
+            ("column", in_regions(&repr, &[1, 2, 2, 2])),
+            ("furniture", mark_artifact(&repr, 0)),
+        ] {
+            let a = artifact_of(repr);
+            assert!(
+                a.coverage
+                    .dropped
+                    .iter()
+                    .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+                "{what}: {:?}",
+                a.markdown
+            );
+        }
+        // Out of a list item, as `crate::html` has it, which joins onto a paragraph only.
+        let item = [
+            ("•", 72, 75, 50, 1),
+            ("the observer mod", 80, 140, 50, 1),
+            ("-", 140, 143, 50, 1),
+            ("el", 80, 88, 65, 1),
+            ("s fit the data.", 88, 150, 65, 1),
+            ("•", 72, 75, 80, 2),
+            ("Kept safe.", 80, 125, 80, 2),
+        ];
+        let a = artifact_with(
+            &lone_hyphen_lines(&item, &[1, 2, 3, 4, 4, 5, 6]),
+            INFER_LISTS,
+        );
+        assert!(a.markdown.starts_with("- • "), "{:?}", a.markdown);
+        assert!(
+            a.coverage
+                .dropped
+                .iter()
+                .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+            "item: {:?}",
+            a.markdown
+        );
     }
 
     /// **The branch the corpus cannot reach.** No fixture in either corpus carries a heading role,

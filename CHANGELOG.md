@@ -32,6 +32,35 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A line's last hyphen drawn as a run of its own closes its word up (decision #160)
+
+Where a producer draws a line's last hyphen as a run of its own — in a marked-content sequence of its
+own, or untagged — the Markdown and HTML projections never rejoined the word the line broke:
+opendataloader-bench `01030000000001` read `mod` / `-` / `el`, each half a block of its own. Now they
+close such a word up, as they already close one whose hyphen ends the run with its letters, and the
+hyphen is counted in `hyphenation-rejoin-dropped-v1` as that one is.
+
+- The hyphen meets the letter before it on its line with no space drawn between, and the run after
+  it opens the next line in lower case and passes every clause the same-run rule has: same page,
+  same column, and no heading, list item, cell or page furniture on either side.
+- It stays where the word before it holds a `/`, an `@`, `www.` or a hyphen already — an address or
+  a slug broken at its own characters, or a compound — or has no lower-case letter (`HWCVD-` /
+  `deposited`, `X-` / `ray`), and where the run after it is struck through, underlined, bold or
+  italic otherwise than the hyphen, whose marks the joined text is written in.
+- Folded into `markdown-blocks-v14` and `html-blocks-v14`, which no release carries; `extract` is
+  unchanged, and no rule id or profile field moves.
+- Measured against `main` (`7bca4fe`): ParseBench 52.15 → 52.18, content 67.52 → 67.65 (with
+  `--ocr`, 55.14 → 55.17); ParseBench-2 unchanged at 55.67, and 57.96 with `--ocr`;
+  opendataloader-bench 0.8351 → 0.8349 with `--unstyled` (0.8288 → 0.8287 without), because its
+  ground truth keeps most printed line-break hyphens (`infer-`), so a correct close reads as an edit.
+  13 documents of the private set change, each only by hyphens closed and the bold or italic marks
+  a close merges; no new refusal, crash or timeout, and the resume set is unchanged. Speed is the
+  same on the gate's largest document.
+- **The trade**: a compound whose next word is in lower case, broken at its own hyphen at a line end,
+  closes up (`tenure-` / `eligible`, `pre-` / `existing`, a suspended `Species-` / `and`), as one
+  drawn in one run already did; telling the two apart needs a dictionary, which this module's policy
+  declines.
+
 ### One label heads a document nothing else heads (decision #159)
 
 On an untagged document where no line ranks by its type and no label's style recurs (decision

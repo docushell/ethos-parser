@@ -408,7 +408,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 ///    inside a quote a consumer is likely to lift.
 /// 6. **Node text is normalized** by [`normalize`] and then entity-escaped.
 /// 7. **A word broken across a line is closed up**, by the same [`hyphen_tail`] the Markdown
-///    projection calls. The joined word is readable here too, and citable on neither artifact.
+///    projection calls, and [`crate::markdown::lone_hyphen_tail`] where the line's hyphen is a run
+///    of its own (decision #160). The joined word is readable here too, and citable on neither artifact.
 /// 8. **U+0000 is not written**, by the same writer and under the same count as the Markdown
 ///    projection: an HTML parser drops it, and reads `&#0;` as U+FFFD. See
 ///    [`crate::markdown::NULL_CHARACTERS_NOT_PROJECTED`].
@@ -742,6 +743,36 @@ pub fn to_html_with(
         });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = crate::markdown::group_key(node);
+        // Decision #160, as in `crate::markdown`: onto an open paragraph only.
+        if let Some((tail, joined)) = crate::markdown::lone_hyphen_tail(
+            open_prev.filter(|_| open_block == Some(None)),
+            &block_text,
+            node,
+            &text,
+            next,
+            &owner,
+            pending_space,
+            &stretches,
+            &pitch,
+        ) {
+            e.joined_source_encoded(
+                &escape(&joined),
+                joined.chars().count(),
+                node.id.as_str(),
+                tail.id.as_str(),
+            );
+            block_text.push_str(&joined);
+            let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
+            b.0 += 1;
+            b.1 += 1;
+            open_group = crate::markdown::group_key(tail);
+            open_prev = Some(tail);
+            open_at = Some(i + 1);
+            line_ink = crate::markdown::ink_reach(tail, &pitch).map(|(x, r)| (tail, x, r));
+            open_line = line_ink.and(crate::markdown::line_key(tail));
+            joined_tail = true;
+            continue;
+        }
         let mut across: Option<crate::markdown::SequenceJoin> = None;
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
@@ -2405,6 +2436,36 @@ mod tests {
     // ---------------------------------------------------------------------------------------
     // The hyphen join — the same rule, called rather than copied
     // ---------------------------------------------------------------------------------------
+
+    /// Decision #160, from the same predicate.
+    #[test]
+    fn a_line_end_hyphen_drawn_as_its_own_run_closes_its_word_up_here_too() {
+        use crate::markdown::tests::{lone_hyphen_lines, LONE_HYPHEN, LONE_HYPHEN_MCIDS};
+        for mcids in [LONE_HYPHEN_MCIDS, &[]] {
+            let a = artifact_of(lone_hyphen_lines(LONE_HYPHEN, mcids));
+            assert_eq!(a.html, "<p>the observer models fit the data.</p>\n");
+            assert_tiles(&a);
+            let b = a
+                .coverage
+                .dropped
+                .iter()
+                .find(|b| b.code == HYPHENATION_REJOIN_DROPPED)
+                .expect("the removed hyphen is a named bucket");
+            assert_eq!((b.chars, b.nodes), (1, 1));
+        }
+        // Out of a heading, onto an open paragraph only.
+        let heading =
+            with_inferred_headings(lone_hyphen_lines(LONE_HYPHEN, LONE_HYPHEN_MCIDS), &[0]);
+        let a = artifact_of(heading);
+        assert!(
+            a.coverage
+                .dropped
+                .iter()
+                .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+            "{:?}",
+            a.html
+        );
+    }
 
     #[test]
     fn a_hyphen_at_a_line_end_is_joined_here_too_and_counted_once() {
