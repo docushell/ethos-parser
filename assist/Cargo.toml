@@ -1,0 +1,19 @@
+[package]
+name = "ethos-parser-assist"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "The assist lane's own process: renders a PDF's pages with hayro for a model to read"
+
+# Exact versions: `render` was measured equal to Phase 4a's renderer on these (assist/README.md).
+[dependencies]
+hayro = "=0.7.1"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+
+[profile.release]
+debug = false
+
+# Its own workspace and its own toolchain (rust-toolchain.toml): a member of neither the engine's
+# workspace nor the recognizer's, so neither of their lockfiles moves for hayro's crates.
+[workspace]

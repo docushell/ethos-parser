@@ -188,7 +188,7 @@ fn html_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.html.v1");
     assert_eq!(a["schema_version"], "1.0.0");
-    assert_eq!(a["html_rule"], "html-blocks-v13");
+    assert_eq!(a["html_rule"], "html-blocks-v14");
     assert_eq!(a["html"], "<p>Hello Ethos</p>\n");
 
     for key in [
@@ -384,28 +384,36 @@ fn the_two_projections_disagree_about_the_merge_and_say_so() {
 
 /// The one erasure HTML **does** commit, declared rather than quietly inherited.
 ///
-/// Two sibling `/LI`s have identical role paths, so nothing in the representation distinguishes
-/// "the rest of this item" from "the next item". Both projections guess, both guess the same way,
-/// and both say how often.
+/// Two sibling `/LI`s have identical role paths. Where the file numbers both runs' elements, one
+/// number is one item and the join is the element's (decision #128); where it leaves one
+/// unnumbered, nothing in the representation distinguishes "the rest of this item" from "the next
+/// item". Both projections join the same way, and both say how often under the same code.
 #[test]
 fn the_list_item_join_is_declared_on_both_projections() {
     let dir = scratch("listjoin");
     let repr = extract_to(&dir, &engine_fixture("tagged-list-items"));
     let (h, m) = (html_of(&repr), markdown_of(&repr));
 
-    let count = |a: &Value| -> u64 {
-        a["coverage"]["structural_erasures"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|e| e["code"] == "gfm-list-item-run-joins-v1")
-            .and_then(|e| e["count"].as_u64())
-            .unwrap_or(0)
+    let count = |a: &Value| -> (u64, u64) {
+        let code = |code: &str| {
+            a["coverage"]["structural_erasures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["code"] == code)
+                .and_then(|e| e["count"].as_u64())
+                .unwrap_or(0)
+        };
+        (
+            code("gfm-list-item-run-joins-v1"),
+            code("block-element-run-joins-v1"),
+        )
     };
-    assert_eq!(count(&m), 1);
+    // The fixture's two body runs sit in one numbered `/LBody`: the element's join, no guess.
+    assert_eq!(count(&m), (0, 1));
     assert_eq!(
         count(&h),
-        1,
+        (0, 1),
         "HTML joins the same two runs, so it owes the same count: {:?}",
         h["coverage"]["structural_erasures"]
     );
@@ -769,7 +777,7 @@ fn an_odts_own_outline_level_projects_as_an_h_element() {
         "one heading and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
          heading:\n{html}"
     );
-    assert_eq!(a["html_rule"], "html-blocks-v13");
+    assert_eq!(a["html_rule"], "html-blocks-v14");
     // **The negative, and it is the one that earns its place.** A heading that projected at its
     // own depth flattened nothing — the only guard that a predicate which forgot to short-circuit
     // on a level it CAN write would fail.

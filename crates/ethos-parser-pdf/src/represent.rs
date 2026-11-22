@@ -233,6 +233,7 @@ pub fn to_representation(
             width: page.width,
             height: page.height,
             rotation: page.rotation,
+            turn: page.turn,
             visible: page
                 .visible
                 .and_then(|v| ethos_parser_core::QRect::new(v.x0, v.y0, v.x1, v.y1).ok()),
@@ -308,6 +309,9 @@ pub fn to_representation(
                     bold: run.bold,
                     italic: run.italic,
                     script: run.script,
+                    // Decision #154: set after scripts, from the page's drawn lines.
+                    strikeout: run.strikeout,
+                    underline: run.underline,
                     // Decision #41: set after layout units, on an undeclared document's lines.
                     furniture: run.furniture,
                     // Decision #54: set before reading order, on a right-to-left line's runs.
@@ -591,6 +595,7 @@ pub fn to_representation(
         // catalog and re-walking it here would be a second place for it to come from.
         outlines: extract.outlines.clone(),
         figures,
+        assist: None,
         assurance,
     };
 

@@ -98,6 +98,9 @@ pub enum IdKind {
     /// — `word/document.xml` — and every page-less node names it in its own locator, so the
     /// artifact says which part a part id means without a second declaration list.
     Part,
+    /// A block a drafting model proposed (decision #145): never a node, since model text has no
+    /// native locator, so it is uncitable by construction.
+    Proposal,
 }
 
 impl IdKind {
@@ -112,6 +115,7 @@ impl IdKind {
             Self::Annotation => "a",
             Self::Image => "i",
             Self::Part => "d",
+            Self::Proposal => "m",
         }
     }
 }
@@ -134,6 +138,7 @@ pub struct IdAllocator {
     next_annotation: u64,
     next_image: u64,
     next_part: u64,
+    next_proposal: u64,
 }
 
 impl IdAllocator {
@@ -149,6 +154,7 @@ impl IdAllocator {
             next_annotation: 1,
             next_image: 1,
             next_part: 1,
+            next_proposal: 1,
         }
     }
 
@@ -173,6 +179,7 @@ impl IdAllocator {
             IdKind::Annotation => &mut self.next_annotation,
             IdKind::Image => &mut self.next_image,
             IdKind::Part => &mut self.next_part,
+            IdKind::Proposal => &mut self.next_proposal,
         };
         if *counter > crate::MAX_SAFE_INT as u64 {
             return Err(EngineError::ResourceLimit {
@@ -196,6 +203,7 @@ impl IdAllocator {
             IdKind::Annotation => self.next_annotation,
             IdKind::Image => self.next_image,
             IdKind::Part => self.next_part,
+            IdKind::Proposal => self.next_proposal,
         }) - 1
     }
 }
@@ -249,6 +257,7 @@ mod tests {
         assert_eq!(a.next(IdKind::Element).unwrap().as_str(), "e1");
         assert_eq!(a.next(IdKind::Span).unwrap().as_str(), "s1");
         assert_eq!(a.next(IdKind::Table).unwrap().as_str(), "t1");
+        assert_eq!(a.next(IdKind::Proposal).unwrap().as_str(), "m1");
     }
 
     #[test]

@@ -1446,7 +1446,7 @@ fn legend(
     let dist = |r: QuantRect, x: i64, y: i64| -> i64 {
         let dx = (r.x0 - x).max(0).max(x - r.x1);
         let dy = (r.y0 - y).max(0).max(y - r.y1);
-        ((dx as f64).hypot(dy as f64)) as i64
+        hypot_floor(dx, dy)
     };
     let swatches: Vec<Bar> = ink
         .iter()
@@ -1730,6 +1730,26 @@ pub(crate) fn is_year(text: &str) -> bool {
     text.len() == 4
         && text.chars().all(|c| c.is_ascii_digit())
         && (text.starts_with("19") || text.starts_with("20"))
+}
+
+/// `dx² + dy²`, exact: two squares of an `i64` cannot overflow a `u128`.
+fn sum_of_squares(dx: i64, dy: i64) -> u128 {
+    let (x, y) = (u128::from(dx.unsigned_abs()), u128::from(dy.unsigned_abs()));
+    x * x + y * y
+}
+
+/// The length of `(dx, dy)`, rounded down. Integer arithmetic: `f64::hypot` calls the platform's
+/// libm, which need not agree with another operating system's in the last place.
+pub(crate) fn hypot_floor(dx: i64, dy: i64) -> i64 {
+    i64::try_from(sum_of_squares(dx, dy).isqrt()).unwrap_or(i64::MAX)
+}
+
+/// The length of `(dx, dy)`, rounded to the nearest whole number: `n + 1` where `dx² + dy²`
+/// exceeds `n² + n`, `n` its root rounded down — the root of a whole number is never a half.
+pub(crate) fn hypot_round(dx: i64, dy: i64) -> i64 {
+    let s = sum_of_squares(dx, dy);
+    let n = s.isqrt();
+    i64::try_from(n + u128::from(s - n * n > n)).unwrap_or(i64::MAX)
 }
 
 /// Whether a label opens with a value: an optional bracket and currency sign, then digits, a
@@ -3268,5 +3288,28 @@ mod tests {
         assert!(starts_with_value("0.4919–TEC") && starts_with_value("0.6644 CP–2024"));
         assert!(only_years("Revenue (2015-2024)") && !only_years("Figure 1.7 Population"));
         assert!(number("10").unwrap() < number("10.5").unwrap());
+    }
+
+    /// A length is the exact integer root on every platform, where a float's can be one off.
+    #[test]
+    fn a_length_is_the_exact_integer_root() {
+        for (dx, dy) in [(3, 4), (-3, 4), (3, -4), (-4, -3)] {
+            assert_eq!((hypot_floor(dx, dy), hypot_round(dx, dy)), (5, 5));
+        }
+        assert_eq!((hypot_floor(0, 0), hypot_round(0, 0)), (0, 0));
+        // One less than a perfect square: `(2k², 2k)` spans `√((2k² + 1)² − 1)`. At `k = 2²⁰` the
+        // float root `2⁴¹ + 1 − 2⁻⁴²` rounds to `2⁴¹ + 1` before it is cut; the floor is `2⁴¹`.
+        let k: i64 = 1 << 20;
+        assert_eq!(hypot_floor(2 * k * k, 2 * k), 2 * k * k);
+        assert_eq!(hypot_round(2 * k * k, 2 * k), 2 * k * k + 1);
+        // Just under a half: `√(n² + n)` is `n + ½ − 1/8n`. At `n = 2³⁰` the float root is `n + ½`,
+        // which `f64::round` takes up; the nearest whole number is `n`.
+        assert_eq!(hypot_round(1 << 30, 1 << 15), 1 << 30);
+        // √20 and √157.
+        assert_eq!((hypot_round(4, 2), hypot_round(11, 6)), (4, 13));
+        // Past 2⁵³ an `i64` has no `f64`; at the extremes the length saturates.
+        assert_eq!(hypot_floor((1 << 53) + 1, 0), (1 << 53) + 1);
+        assert_eq!(hypot_floor(i64::MIN, i64::MIN), i64::MAX);
+        assert_eq!(hypot_round(i64::MAX, 0), i64::MAX);
     }
 }

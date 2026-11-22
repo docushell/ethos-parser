@@ -200,16 +200,8 @@ pub fn slabs(runs: &[RunGeometry], regions: &[Option<u32>]) -> Vec<u32> {
     }
     let mut lines_of_band: std::collections::BTreeMap<u32, Vec<i64>> =
         std::collections::BTreeMap::new();
-    for (band, mut ys) in bands {
-        ys.sort_unstable();
-        let mut lines: Vec<i64> = Vec::new();
-        for y in ys {
-            match lines.last() {
-                Some(&last) if y - last <= LINE_TOLERANCE => {}
-                _ => lines.push(y),
-            }
-        }
-        lines_of_band.insert(band, lines);
+    for (band, ys) in bands {
+        lines_of_band.insert(band, lines(ys));
     }
 
     // Per band: which line indices start a new subdivision.
@@ -245,11 +237,25 @@ pub fn slabs(runs: &[RunGeometry], regions: &[Option<u32>]) -> Vec<u32> {
     subdivision
 }
 
+/// One baseline per line, top to bottom: `ys` sorted, and each within [`LINE_TOLERANCE`] of the
+/// line above it folded into that line. Also `crate::reading_order`'s lines (`#133`).
+pub(crate) fn lines(mut ys: Vec<i64>) -> Vec<i64> {
+    ys.sort_unstable();
+    let mut lines: Vec<i64> = Vec::new();
+    for y in ys {
+        match lines.last() {
+            Some(&last) if y - last <= LINE_TOLERANCE => {}
+            _ => lines.push(y),
+        }
+    }
+    lines
+}
+
 /// The band's modal binned gap, or `None` when the band is not a text flow.
 ///
 /// Returns `None` rather than a fallback: §5's guard is the difference between a leading and a
 /// table-column interleave pitch, and a band that fails it has no leading this rule may use.
-fn modal_leading(lines: &[i64]) -> Option<i64> {
+pub(crate) fn modal_leading(lines: &[i64]) -> Option<i64> {
     if lines.len() < 2 {
         return None;
     }

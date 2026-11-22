@@ -315,14 +315,34 @@ fn type3_page(
     descent: i64,
     charproc: &str,
 ) -> Vec<u8> {
+    type3_page_drawing(
+        "BT /F1 10 Tf 50 50 Td (abcde) Tj ET",
+        font_matrix,
+        widths,
+        ascent,
+        descent,
+        charproc,
+    )
+}
+
+/// [`type3_page`] drawing `content` instead, where `/F2` names Helvetica.
+fn type3_page_drawing(
+    content: &str,
+    font_matrix: &str,
+    widths: &str,
+    ascent: i64,
+    descent: i64,
+    charproc: &str,
+) -> Vec<u8> {
     let stream = |data: &str| format!("<< /Length {} >>\nstream\n{data}\nendstream", data.len());
     let objects: Vec<Vec<u8>> = vec![
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] \
-           /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+           /Resources << /Font << /F1 5 0 R /F2 << /Type /Font /Subtype /Type1 \
+           /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>"
             .to_vec(),
-        stream("BT /F1 10 Tf 50 50 Td (abcde) Tj ET").into_bytes(),
+        stream(content).into_bytes(),
         format!(
             "<< /Type /Font /Subtype /Type3 /FontBBox [0 {descent} {widths} {ascent}] \
              /FontMatrix [{font_matrix}] /CharProcs << /a 7 0 R >> /Encoding << /Type /Encoding \
@@ -1116,6 +1136,49 @@ fn text_turned_upright_on_a_turned_page_advances_along_its_line() {
     assert_eq!(md.trim(), "ABCD", "one line, its runs abutting");
 }
 
+/// Markdown for one [`helvetica_page`].
+fn page_markdown(rotate: u32, stream: &[u8]) -> String {
+    let profile = Profile::default();
+    let rep = ethos_parser_pdf::to_representation(&helvetica_page(rotate, stream), &profile)
+        .expect("projects");
+    ethos_parser_core::to_markdown(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects")
+    .markdown
+}
+
+/// **A line drawn through text on a page read a quarter turn round strikes it** (review of
+/// decision #155): read in its text's frame, a line drawn up the declared page is level.
+#[test]
+fn a_line_through_text_on_a_quarter_turned_page_strikes_it() {
+    // Four lines set up the page, 48 characters: the page is read turned a quarter.
+    let mut stream = String::from("BT /F1 10 Tf");
+    for x in [100, 120, 140, 160] {
+        stream.push_str(&format!(" 0 1 -1 0 {x} 50 Tm (Struck words) Tj"));
+    }
+    stream.push_str(" ET 97 49 m 97 111 l S");
+    let md = page_markdown(0, stream.as_bytes());
+    assert!(md.starts_with("~~Struck words~~"), "{md}");
+    assert_eq!(md.matches("~~").count(), 2, "{md}");
+}
+
+/// **An outline stroked white or dashed strikes nothing** (review of decision #154): only a solid
+/// line a reader sees marks a run, as a stroked segment does.
+#[test]
+fn an_outline_stroked_white_or_dashed_strikes_nothing() {
+    let page = |paint: &str| {
+        let stream = format!("BT /F1 10 Tf 50 100 Td (Struck) Tj ET {paint} 49 103 32 0.5 re S");
+        page_markdown(0, stream.as_bytes())
+    };
+    assert_eq!(page("0 0 0 RG").trim(), "~~Struck~~", "solid black");
+    assert_eq!(page("1 1 1 RG").trim(), "Struck", "white");
+    assert_eq!(page("0 0 0 RG [2 2] 0 d").trim(), "Struck", "dashed");
+}
+
 /// **A travel off the declared x, or backward along it, keeps the value measured before any
 /// rotation** (decision #61): text turned 30° on a quarter-turned page, which advances 5 pt along
 /// the declared x and 8.66 along the text matrix's, and text mirrored by its CTM, which runs back.
@@ -1526,7 +1589,7 @@ fn the_artifact_carries_a_full_identity_envelope() {
     );
     assert_eq!(
         a.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert_eq!(a.source.media_type, "application/pdf");
 }
@@ -1597,7 +1660,7 @@ fn two_columns_reads_column_major_under_the_new_rule() {
 
     assert_eq!(
         a.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert_ne!(
         a.reading_order_rule,
@@ -1626,7 +1689,7 @@ fn one_added_line_does_not_reorder_the_page() {
         let a = extract_ok(engine_fx(name));
         assert_eq!(
             a.reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V4
+            ethos_parser_core::READING_ORDER_RULE_V5
         );
         assert!(
             a.pages.iter().all(|p| p.tables.is_empty()),
@@ -3734,7 +3797,7 @@ fn reading_the_structure_tree_changes_no_earlier_slices_answer() {
     let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
     assert_eq!(
         two.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
     assert_eq!(
@@ -4089,7 +4152,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     );
     assert_eq!(
         two.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
 }
@@ -4325,18 +4388,20 @@ fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
 }
 
 /// **A bold line at the head of its text is a label** (`type-size-v5`, decision #47), end to end:
-/// set tight over the lines it names, it stands apart from nothing, and is read at level 7, below
-/// every ranked level; the document's limitation counts it as a label, and the Markdown writes it
-/// as a bold line, never with `#`.
+/// set tight over the lines it names, it stands apart from nothing, and the document's limitation
+/// counts it as a label. Alone over its paragraph in a document nothing else heads, it is the
+/// document's heading (decision #159), level 1, and the Markdown writes it with `#`; where a line
+/// ranks, it stays level 7, below every ranked level, a bold line
+/// (`labels_heading_recurring_sections_head_a_document_nothing_else_heads`).
 #[test]
-fn a_bold_label_set_tight_over_its_text_is_a_level_seven_label() {
+fn a_bold_label_set_tight_over_its_text_is_a_label() {
     let a = extract_ok(engine_fx("heading-label-line"));
     let headings: Vec<(String, Option<u8>)> = runs(&a)
         .iter()
         .filter(|r| r.inferred_heading)
         .map(|r| (r.text.clone(), r.inferred_heading_level))
         .collect();
-    assert_eq!(headings, [("Loan terms".to_string(), Some(7))]);
+    assert_eq!(headings, [("Loan terms".to_string(), None)]);
     let detail = &a
         .assurance
         .limitations
@@ -4359,8 +4424,294 @@ fn a_bold_label_set_tight_over_its_text_is_a_level_seven_label() {
     )
     .expect("projects")
     .markdown;
-    assert!(md.starts_with("**Loan terms**\n\n"), "{md}");
-    assert!(!md.contains('#'), "{md}");
+    assert!(md.starts_with("# Loan terms\n\n"), "{md}");
+}
+
+/// **Where no label's style recurs, the first label heading a paragraph heads the document**
+/// (`type-size-v8`, decision #159). A label over a paragraph is level 1; a caption, a label whose
+/// text runs on in lower case, and a value over the text after it — the line below farther off
+/// than the value is from the label — stay at level 7, and the next label heading a paragraph, set
+/// unlike the first, is the one that heads; where two labels recur, none heads alone.
+#[test]
+fn a_lone_label_over_a_paragraph_heads_a_document_nothing_else_heads() {
+    let lines = |y: u32, n: u32, t: &str| -> String {
+        (0..n)
+            .map(|k| format!("1 0 0 1 72 {} Tm 0 Tr ({t}) Tj ", y - 12 * k))
+            .collect()
+    };
+    let prose = "The fees are paid each month for the work done.";
+    let label = |y: u32, t: &str| format!("1 0 0 1 72 {y} Tm 2 Tr ({t}) Tj ");
+    let page = |body: String| helvetica_letter_page(&format!("BT 0.3 w /F1 10 Tf {body}ET"));
+    let levels = |a: &ExtractArtifact| -> Vec<(String, Option<u8>)> {
+        runs(a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| (r.text.clone(), r.inferred_heading_level))
+            .collect()
+    };
+    let read = |l: &[(&str, Option<u8>)]| -> Vec<(String, Option<u8>)> {
+        l.iter().map(|&(t, v)| (t.to_string(), v)).collect()
+    };
+
+    let heads = page(label(700, "Scope of work") + &lines(688, 3, prose));
+    assert_eq!(levels(&heads), read(&[("Scope of work", None)]));
+    let caption = page(label(700, "Figure 2. Fees by month") + &lines(688, 3, prose));
+    assert_eq!(
+        levels(&caption),
+        read(&[("Figure 2. Fees by month", Some(7))])
+    );
+    // Third review: a caption drawn a word to a run, `Table` and `A.2` apart.
+    let split = page(
+        label(700, "Table") + "1 0 0 1 104 700 Tm 2 Tr (A.2 Fees) Tj " + &lines(688, 3, prose),
+    );
+    assert_eq!(
+        levels(&split),
+        read(&[("Table", Some(7)), ("A.2 Fees", Some(7))])
+    );
+    let runs_on = page(label(700, "Scope of work") + &lines(688, 3, "is set out in the schedule."));
+    assert_eq!(levels(&runs_on), read(&[("Scope of work", Some(7))]));
+    let value = page(label(700, "Total") + &lines(688, 1, "1,234.00") + &lines(664, 3, prose));
+    assert_eq!(levels(&value), read(&[("Total", Some(7))]));
+    // Review: a raised mark on the value's own line is no line below it.
+    let raised = page(
+        label(700, "Total")
+            + &lines(688, 1, "USD 1,234")
+            + "1 0 0 1 130 691 Tm 0 Tr (00) Tj "
+            + &lines(664, 3, prose),
+    );
+    assert_eq!(levels(&raised), read(&[("Total", Some(7))]));
+    // Nor is a lowered one: a subscript just under the value's baseline, the text far below.
+    let lowered = page(
+        label(700, "Total")
+            + &lines(688, 1, "USD 1,234")
+            + "1 0 0 1 130 685 Tm 0 Tr (a) Tj "
+            + &lines(664, 3, prose),
+    );
+    assert_eq!(levels(&lowered), read(&[("Total", Some(7))]));
+    // Review: at the foot of a column, the next line in reading order is the next column's top,
+    // above the value, and no line below it.
+    let column = |x: u32, from: u32, to: u32| -> String {
+        (0..)
+            .map(|k| from - 12 * k)
+            .take_while(|&y| y >= to)
+            .map(|y| format!("1 0 0 1 {x} {y} Tm 0 Tr ({prose}) Tj "))
+            .collect()
+    };
+    let foot = page(
+        column(72, 700, 544)
+            + &label(520, "Total")
+            + &lines(508, 1, "1,234.00")
+            + &column(330, 700, 508),
+    );
+    assert_eq!(levels(&foot), read(&[("Total", Some(7))]));
+    let second = page(
+        label(700, "Total")
+            + &lines(688, 1, "1,234.00")
+            + &lines(664, 3, prose)
+            + "/F1 11 Tf "
+            + &label(616, "Terms")
+            + "/F1 10 Tf "
+            + &lines(604, 3, prose),
+    );
+    assert_eq!(
+        levels(&second),
+        read(&[("Total", Some(7)), ("Terms", None)]),
+        "the first label heading a paragraph heads, not the first label"
+    );
+    let recurring = page(
+        "/F1 11 Tf ".to_string()
+            + &label(700, "Overview")
+            + "/F1 10 Tf "
+            + &lines(688, 3, prose)
+            + &label(640, "Terms")
+            + &lines(628, 3, prose)
+            + &label(580, "Fees")
+            + &lines(568, 3, prose),
+    );
+    assert_eq!(
+        levels(&recurring),
+        read(&[("Overview", Some(7)), ("Terms", None), ("Fees", None)]),
+        "where sections recur, they head, and no label heads alone"
+    );
+}
+
+/// **Labels that head recurring sections head a document no line of which ranks**
+/// (`type-size-v8`, decision #140). Two labels set alike, each over two lines of text or more, are
+/// level 1; a label over one line of value, two labels stacked, a label run in to its text, and
+/// two labels set in different sizes stay at level 7 — where no style recurs, the first label
+/// heading a paragraph heads the document alone (decision #159,
+/// `a_lone_label_over_a_paragraph_heads_a_document_nothing_else_heads`);
+/// so does every label where one line is set large, or where a tree is declared. A hanging next
+/// line, set right of the label a leading below, is text it heads.
+#[test]
+fn labels_heading_recurring_sections_head_a_document_nothing_else_heads() {
+    let text = |x: u32, y: u32, n: u32| -> String {
+        (0..n)
+            .map(|k| {
+                format!(
+                    "1 0 0 1 {x} {} Tm 0 Tr (The fees are paid each month for the work done.) Tj ",
+                    y - 12 * k
+                )
+            })
+            .collect()
+    };
+    let label = |y: u32, t: &str| format!("1 0 0 1 72 {y} Tm 2 Tr ({t}) Tj ");
+    let sections = |title: &str, x: u32| {
+        format!(
+            "BT 0.3 w {title}/F1 10 Tf {}{}{}{}{}{}{}{}{}ET",
+            label(700, "Scope of work"),
+            text(x, 688, 1) + &text(72, 676, 2),
+            label(652, "Fees and costs"),
+            text(x, 640, 1) + &text(72, 628, 2),
+            label(604, "Contact"),
+            text(72, 592, 1),
+            label(580, "Article 4"),
+            label(568, "Payment terms"),
+            text(72, 556, 4),
+        )
+    };
+    let levels = |a: &ExtractArtifact| -> Vec<(String, Option<u8>)> {
+        runs(a)
+            .iter()
+            .filter(|r| r.inferred_heading)
+            .map(|r| (r.text.clone(), r.inferred_heading_level))
+            .collect()
+    };
+    let read = |l: [Option<u8>; 5]| -> Vec<(String, Option<u8>)> {
+        [
+            "Scope of work",
+            "Fees and costs",
+            "Contact",
+            "Article 4",
+            "Payment terms",
+        ]
+        .into_iter()
+        .map(String::from)
+        .zip(l)
+        .collect()
+    };
+    let headed = read([None, None, Some(7), Some(7), Some(7)]);
+    assert_eq!(levels(&helvetica_letter_page(&sections("", 72))), headed);
+    assert_eq!(
+        levels(&helvetica_letter_page(&sections("", 150))),
+        headed,
+        "a hanging next line is text the label heads"
+    );
+    let unlike = sections("", 72).replace(
+        "1 0 0 1 72 652 Tm 2 Tr (Fees and costs) Tj ",
+        "/F1 11 Tf 1 0 0 1 72 652 Tm 2 Tr (Fees and costs) Tj /F1 10 Tf ",
+    );
+    assert_eq!(
+        levels(&helvetica_letter_page(&unlike)),
+        read([None, Some(7), Some(7), Some(7), Some(7)]),
+        "two labels set unlike are no recurring sections; the first heads the document alone"
+    );
+    let ranked = levels(&helvetica_letter_page(&sections(
+        "/F1 20 Tf 1 0 0 1 72 740 Tm 0 Tr (Service agreement) Tj ",
+        72,
+    )));
+    assert_eq!(ranked[0], ("Service agreement".to_string(), None));
+    assert_eq!(ranked[1..], read([Some(7); 5])[..], "{ranked:?}");
+
+    // Run in: each label's text goes on along its line, a little off its baseline.
+    let run_in = helvetica_letter_page(&format!(
+        "BT 0.3 w /F1 10 Tf {}1 0 0 1 150 699.6 Tm 0 Tr (is set out below.) Tj {}\
+         {}1 0 0 1 150 651.6 Tm 0 Tr (are set out below.) Tj {}ET",
+        label(700, "Scope of work"),
+        text(72, 688, 3),
+        label(652, "Fees and costs"),
+        text(72, 640, 3),
+    ));
+    assert_eq!(
+        levels(&run_in),
+        read([Some(7), Some(7), None, None, None])[..2]
+    );
+
+    // A tree that tags no heading: the same two sections stay labels.
+    let mut content = String::new();
+    for (k, (t, y)) in [("Scope of work", 700), ("Fees and costs", 644)]
+        .into_iter()
+        .enumerate()
+    {
+        content.push_str(&format!(
+            "/P << /MCID {} >> BDC BT /F2 12 Tf 72 {y} Td ({t}) Tj ET EMC\n",
+            2 * k
+        ));
+        content.push_str(&format!(
+            "/P << /MCID {} >> BDC BT /F1 12 Tf 72 {} Td (The fees are paid each month.) Tj \
+             0 -14 Td (The fees are paid each month.) Tj 0 -14 Td (The fees are paid each \
+             month.) Tj ET EMC\n",
+            2 * k + 1,
+            y - 14
+        ));
+    }
+    let tagged = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R \
+           /F2 9 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        b"<< /Type /StructTreeRoot /K [7 0 R 8 0 R] >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K [0 2] >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K [1 3] >>".to_vec(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
+    ]);
+    assert_eq!(
+        levels(&extracted(&tagged).expect("reads")),
+        read([Some(7), Some(7), None, None, None])[..2]
+    );
+}
+
+/// **Heading runs a tree cites stay as its elements put them** (decision #141). The projections
+/// join heading runs across marked-content sequences no tree cites by the unit clauses an untagged
+/// page's take; a tree that tags no heading, so the heading rule reads its type, but cites a
+/// heading's number and its title as two elements keeps them two lines, as before.
+#[test]
+fn heading_runs_a_tree_cites_are_not_joined_across_its_elements() {
+    let mut content = String::from(
+        "/P << /MCID 0 >> BDC BT /F1 16 Tf 72 700 Td (1.) Tj ET EMC\n\
+         /P << /MCID 1 >> BDC BT /F1 16 Tf 95 700 Td (Quarterly) Tj ET EMC\n\
+         /P << /MCID 2 >> BDC BT /F1 12 Tf 72 670 Td",
+    );
+    for _ in 0..5 {
+        content.push_str(" (The fees are paid each month for the work done.) Tj 0 -14 Td");
+    }
+    content.push_str(" ET EMC\n");
+    let pdf = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        b"<< /Type /StructTreeRoot /K [7 0 R 8 0 R 9 0 R] >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K 0 >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K 1 >>".to_vec(),
+        b"<< /Type /StructElem /S /P /P 6 0 R /Pg 3 0 R /K 2 >>".to_vec(),
+    ]);
+    let a = extracted(&pdf).expect("reads");
+    let profile = Profile::default();
+    let rep = ethos_parser_pdf::to_representation(&a, &profile).expect("projects");
+    let md = ethos_parser_core::to_markdown(
+        &rep,
+        &profile.parser_version,
+        &profile.profile_sha256().unwrap(),
+        &profile.markdown_rule,
+    )
+    .expect("projects")
+    .markdown;
+    assert!(md.starts_with("# 1.\n\n# Quarterly\n\n"), "{md}");
 }
 
 /// **A font program that states its weight is read for it** (`page-observations-v4`), end to end: a
@@ -4599,6 +4950,82 @@ fn a_line_is_read_where_the_reading_order_reads_it_and_its_words_where_they_stan
         [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2],
         "{contents:?}"
     );
+}
+
+/// **Small pieces stay with their text** (`line-units-v7`), end to end, on three pages the reading
+/// order does not divide. A footnote mark raised against a line's last letter is that line's: it
+/// lay past the line's end and was a unit of its own. A list item whose `1.` stands apart from its
+/// text, set a line and a half apart, is one unit with its next line at the hanging indent: the
+/// marker ended short and was cut, and the next line started too far right of the marker — and so
+/// is one whose `1.` is one piece with its text, as Word sets a hanging indent. And a label closed
+/// by a colon keeps its value beside it, where the label ended short and was cut, though a label
+/// with no value does not take the next label's.
+#[test]
+fn small_pieces_stay_with_their_text() {
+    let units = |content: &str| -> Vec<(String, u32)> {
+        let a = helvetica_letter_page(content);
+        runs(&a)
+            .into_iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .map(|r| {
+                assert!(
+                    r.region.is_none(),
+                    "the reading order divides none of these"
+                );
+                (
+                    r.text.clone(),
+                    r.layout_unit.expect("every line has a unit"),
+                )
+            })
+            .collect()
+    };
+    let of = |units: &[(String, u32)]| units.iter().map(|(_, u)| *u).collect::<Vec<_>>();
+
+    let mark = units(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm \
+         (The rate of interest was revised in that year under the new notification.) Tj \
+         /F1 7 Tf 4 Ts (1) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 686 Tm (All invoices raised after that date carry the new rate.) Tj ET",
+    );
+    assert_eq!(of(&mark), [1, 1, 1], "{mark:?}");
+
+    // A title across the whole page leaves no gutter for the reading order to divide it at.
+    let list = units(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over the list and its markers) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 700 Tm (1.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 96 700 Tm \
+         (Payment is due within fifteen days of the invoice date. Late payments) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 96 682 Tm (carry interest at eighteen per cent a year.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 664 Tm (2.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 96 664 Tm (Goods once sold will not be taken back.) Tj ET",
+    );
+    assert_eq!(of(&list), [1, 2, 2, 2, 3, 3], "{list:?}");
+    // Word's own hanging indent: the item's text 18 points right of its `1.`, one piece with it.
+    let word = units(
+        "BT /F1 12 Tf 1 0 0 1 72 740 Tm \
+         (A title set across the whole width of the page, over the list and its markers) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 72 700 Tm (1.) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 90 700 Tm \
+         (Payment is due within fifteen days of the invoice date. Late payments) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 90 682 Tm (carry interest at eighteen per cent a year.) Tj ET",
+    );
+    assert_eq!(of(&word), [1, 2, 2, 2], "{word:?}");
+
+    let labels = units(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm (Invoice No:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 160 700 Tm (ST/26-27/0198) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 330 700 Tm (Date:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 380 700 Tm (13/11/2026) Tj ET",
+    );
+    assert_eq!(of(&labels), [1, 1, 2, 2], "{labels:?}");
+    // A label with no value leads into no other label.
+    let empty = units(
+        "BT /F1 12 Tf 1 0 0 1 72 700 Tm (Name:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 330 700 Tm (Date:) Tj ET\n\
+         BT /F1 12 Tf 1 0 0 1 380 700 Tm (13/11/2026) Tj ET",
+    );
+    assert_eq!(of(&empty), [1, 2, 2], "{empty:?}");
 }
 
 /// **A line set at its page's own leading continues its unit** (decision #103), end to end: 12-point
@@ -5117,7 +5544,8 @@ fn a_line_set_heavier_than_its_text_reads_as_a_bold_one() {
 /// **A numbered bold line set tight over its text is a heading; the same line unnumbered is a
 /// label** (decision #38, `type-size-v4`; decision #47, `type-size-v5`). Plain prose on a 12pt
 /// leading; 30 points of space; then a bold line and, a leading below it, the prose it heads.
-/// Numbered, it needs only the room above.
+/// Numbered, it needs only the room above. Unnumbered, the limitation counts it a label, and alone
+/// over its paragraph in a document nothing else heads, it heads the document (decision #159).
 #[test]
 fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
     let page = |label: &str| {
@@ -5157,23 +5585,30 @@ fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
         ])
     };
-    let headings = |bytes: &[u8]| -> Vec<(String, Option<u8>)> {
+    let headings = |bytes: &[u8]| -> (Vec<(String, Option<u8>)>, String) {
         let a = extracted(bytes).expect("reads");
-        runs(&a)
+        let detail = a
+            .assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE)
+            .expect("the inference is declared")
+            .detail
+            .clone();
+        let lines = runs(&a)
             .iter()
             .filter(|r| r.inferred_heading)
             .map(|r| (r.text.clone(), r.inferred_heading_level))
-            .collect()
+            .collect();
+        (lines, detail)
     };
     // A run records level 1 as no level.
-    assert_eq!(
-        headings(&page("3.1. Methods")),
-        [("3.1. Methods".to_string(), None)]
-    );
-    assert_eq!(
-        headings(&page("Methods")),
-        [("Methods".to_string(), Some(7))]
-    );
+    let (numbered, detail) = headings(&page("3.1. Methods"));
+    assert_eq!(numbered, [("3.1. Methods".to_string(), None)]);
+    assert!(detail.contains("0 are labels"), "{detail}");
+    let (label, detail) = headings(&page("Methods"));
+    assert_eq!(label, [("Methods".to_string(), None)]);
+    assert!(detail.contains("1 are labels"), "{detail}");
 }
 
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
@@ -5831,6 +6266,603 @@ fn off_page_text_is_flagged_against_the_visible_box() {
     assert!(l.detail.contains("none was removed"));
 }
 
+/// One 300 x 400 page of 10-point Helvetica drawing `stream`, its catalog declaring two
+/// optional-content groups — 6 0 R switched off by `/D`, 7 0 R left on — and its `/Properties`
+/// naming them `/Off` and `/On`, and `/Both` an `/OCMD` over the two. `catalog_d` replaces the
+/// default configuration, and `form` is the stream of a form XObject the page names `/Fm`, whose
+/// dictionary also holds `form_dict` — its `/BBox`, its `/OC`. The page names a one-pixel image
+/// `/Im`, and `/F2` a font that states no widths.
+fn layered_page(catalog_d: &str, form_dict: &str, form: &str, stream: &str) -> ExtractArtifact {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let stream_object = |dict: &str, body: &str| {
+        format!(
+            "<< {dict} /Length {} >>\nstream\n{body}\nendstream",
+            body.len()
+        )
+        .into_bytes()
+    };
+    let objects: Vec<Vec<u8>> = vec![
+        format!(
+            "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [6 0 R 7 0 R] /D {catalog_d} >> >>"
+        )
+        .into_bytes(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R \
+          /F2 11 0 R >> /Properties << /Off 6 0 R /On 7 0 R /Both 8 0 R >> /XObject << /Fm 9 0 R \
+          /Im 10 0 R >> /ExtGState << /Blend << /BM /Difference >> /Plain << /CA 1 /ca 1 >> >> >> \
+          /Contents 4 0 R >>"
+            .to_vec(),
+        stream_object("", stream),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+        b"<< /Type /OCG /Name (Hidden layer) >>".to_vec(),
+        b"<< /Type /OCG /Name (Shown layer) >>".to_vec(),
+        b"<< /Type /OCMD /OCGs [6 0 R 7 0 R] /P /AnyOn >>".to_vec(),
+        stream_object(
+            &format!(
+                "/Type /XObject /Subtype /Form {form_dict} /Resources << /Font \
+                 << /F1 5 0 R >> /Properties << /Off 7 0 R /On 6 0 R >> >>"
+            ),
+            form,
+        ),
+        stream_object(
+            "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+             /BitsPerComponent 8",
+            "0",
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /NoWidthsGiven >>".to_vec(),
+    ];
+    let profile = Profile::default();
+    let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+    ethos_parser_pdf::extract(&d, &profile).expect("extracts")
+}
+
+/// Each run's text beside its findings, in reading order.
+fn findings_of(a: &ExtractArtifact) -> Vec<(String, Vec<ethos_parser_core::TextFinding>)> {
+    runs(a)
+        .iter()
+        .map(|r| (r.text.clone(), r.findings.clone()))
+        .collect()
+}
+
+/// How many runs `a` counts under `code`, or `None` where it declares none.
+fn counted(a: &ExtractArtifact, code: &str) -> Option<String> {
+    a.assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == code)
+        .map(|l| l.detail.split(' ').next().unwrap_or_default().to_owned())
+}
+
+/// **Text a reader of the page does not see is flagged and kept** (decision #139): a run under a
+/// point, a run in a layer the document switches off, and a run filled in the colour beneath it —
+/// white on the bare page, grey on a grey box — beside the two findings v1-S6 shipped. White on a
+/// black box, a layer left on, and a black run beside them carry nothing; a run in a membership
+/// dictionary is counted, not flagged. Every run is in the artifact.
+#[test]
+fn hidden_text_is_flagged_and_never_removed() {
+    use ethos_parser_core::TextFinding::{
+        FillMatchesBackground, HiddenLayer, InvisibleRenderMode, OffPage, TinyText,
+    };
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "BT /F1 10 Tf 1 0 0 1 20 380 Tm (Visible line) Tj ET \
+         q /GS0 gs 0 g 150 375 140 20 re f Q BT /F1 10 Tf 1 0 0 1 160 380 Tm (Behind a gs) Tj ET \
+         q 1 g BT /F1 10 Tf 1 0 0 1 160 360 Tm ( ) Tj ET Q \
+         q BT 3 Tr /F1 10 Tf 1 0 0 1 20 360 Tm (Render mode three) Tj ET Q \
+         BT /F1 0.5 Tf 1 0 0 1 20 340 Tm (Half point text) Tj ET \
+         BT /F1 1 Tf 10 0 0 0.9 20 330 Tm (Squashed flat) Tj ET \
+         /OC /Off BDC BT /F1 10 Tf 1 0 0 1 20 320 Tm (Layer switched off) Tj ET EMC \
+         /OC /On BDC BT /F1 10 Tf 1 0 0 1 20 300 Tm (Layer switched on) Tj ET EMC \
+         /OC /Both BDC BT /F1 10 Tf 1 0 0 1 20 280 Tm (Membership dictionary) Tj ET EMC \
+         q 1 g BT /F1 10 Tf 1 0 0 1 20 260 Tm (White on white) Tj ET Q \
+         q 1 g 0 G 2 Tr BT /F1 10 Tf 1 0 0 1 120 260 Tm (Outlined) Tj ET Q \
+         q 0.5 g 10 230 200 20 re f BT /F1 10 Tf 1 0 0 1 20 235 Tm (Grey on grey) Tj ET Q \
+         q 0 g 10 200 200 20 re f 1 1 1 rg BT /F1 10 Tf 1 0 0 1 20 205 Tm (White on black) Tj ET Q \
+         q 0.5 0.5 0.5 rg 10 170 200 20 re f 0.5 g BT /F1 10 Tf 1 0 0 1 20 175 Tm (Grey in two \
+         spaces) Tj ET Q \
+         q 0.5 g 10 140 60 20 re f BT /F1 10 Tf 1 0 0 1 20 145 Tm (Half on a grey box) Tj ET Q \
+         q /CS0 cs 1 scn BT /F1 10 Tf 1 0 0 1 20 125 Tm (Spot colour) Tj ET Q \
+         q 0 g 10 100 200 20 re 12 102 196 16 re f* BT /F1 10 Tf 1 0 0 1 20 105 Tm (Inside a \
+         frame) Tj ET Q \
+         q 200 0 0 20 10 75 cm BI /W 1 /H 1 /CS /G /BPC 8 ID 0 EI Q \
+         q 1 g BT /F1 10 Tf 1 0 0 1 20 80 Tm (Over a picture) Tj ET Q \
+         q 0 G 20 w 10 55 m 210 55 l S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 52 Tm (On a wide stroke) \
+         Tj ET Q \
+         q 10 15 190 20 re W n 0 g 10 15 280 20 re f Q \
+         BT /F1 10 Tf 1 0 0 1 210 20 Tm (Beside a clip) Tj ET \
+         q 10 10 50 10 re W n 1 g BT /F1 10 Tf 1 0 0 1 230 120 Tm (Clipped away) Tj ET Q \
+         BT /F1 10 Tf 1 0 0 1 20 500 Tm (Above the page) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("Visible line", &[]),
+        want("Behind a gs", &[]),
+        want(" ", &[]),
+        want("Render mode three", &[InvisibleRenderMode]),
+        want("Half point text", &[TinyText]),
+        want("Squashed flat", &[TinyText]),
+        want("Layer switched off", &[HiddenLayer]),
+        want("Layer switched on", &[]),
+        want("Membership dictionary", &[]),
+        want("White on white", &[FillMatchesBackground]),
+        want("Outlined", &[]),
+        want("Grey on grey", &[FillMatchesBackground]),
+        want("White on black", &[]),
+        want("Grey in two spaces", &[]),
+        want("Half on a grey box", &[]),
+        want("Spot colour", &[]),
+        want("Inside a frame", &[]),
+        want("Over a picture", &[]),
+        want("On a wide stroke", &[]),
+        want("Beside a clip", &[]),
+        want("Clipped away", &[]),
+        want("Above the page", &[OffPage]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+
+    for (code, n) in [
+        (ethos_parser_core::codes::TINY_TEXT, "2"),
+        (ethos_parser_core::codes::HIDDEN_LAYER_TEXT, "1"),
+        (ethos_parser_core::codes::FILL_MATCHES_BACKGROUND_TEXT, "2"),
+        (
+            ethos_parser_core::codes::OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED,
+            "1",
+        ),
+    ] {
+        assert_eq!(counted(&a, code).as_deref(), Some(n), "{code}");
+    }
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::FILL_MATCHES_BACKGROUND_TEXT)
+        .expect("counted");
+    assert_eq!(l.scope, ethos_parser_core::LimitationScope::Document);
+    assert!(l.detail.contains("none was removed"), "{}", l.detail);
+}
+
+/// **A run is compared only with paint this reader recorded in full** (decision #139, review of
+/// 2026-11-14): a shading, an image drawn by `Do`, an XObject that does not resolve, a stroke of
+/// any shape, paint in a layer switched off, paint a form's `/BBox` clips, and a fill under a clip
+/// that is not one rectangle each leave nothing flagged; white set by `cs /DeviceRGB` then `sc`
+/// is device white, a parent's paint is beneath a form's text, near white is not white, a
+/// stroked frame leaves its inside compared, paint under a membership dictionary is not compared,
+/// a `BDC /OC` with an inline property list is not read, and text set in mode 7 is invisible only
+/// where nothing is painted through its clip — which a form's ends with the form.
+#[test]
+fn hidden_text_is_measured_against_paint_recorded_in_full() {
+    use ethos_parser_core::TextFinding::{FillMatchesBackground, InvisibleRenderMode};
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 50]",
+        "0 0 0.5 rg BT /F1 10 Tf 1 0 0 1 160 35 Tm (Navy in a form) Tj ET 0 g 0 0 300 400 re f \
+         BT 7 Tr /F1 10 Tf 1 0 0 1 20 40 Tm (Form clip) Tj ET",
+        "q 10 375 280 18 re W n /Sh0 sh Q q 1 g BT /F1 10 Tf 1 0 0 1 20 380 Tm (Over a shading) Tj \
+         ET Q \
+         q 280 0 0 18 10 350 cm /Im Do Q q 1 g BT /F1 10 Tf 1 0 0 1 20 355 Tm (Over an image) Tj ET Q \
+         q 280 0 0 18 10 325 cm /Lost Do Q q 1 g BT /F1 10 Tf 1 0 0 1 20 330 Tm (Over a lost one) Tj \
+         ET Q \
+         q /DeviceRGB cs 1 1 1 sc BT /F1 10 Tf 1 0 0 1 20 305 Tm (White by cs) Tj ET Q \
+         q 0.99 g BT /F1 10 Tf 1 0 0 1 20 285 Tm (Almost white) Tj ET Q \
+         /OC /Both BDC q 0 g 150 280 140 15 re f Q EMC BT /F1 10 Tf 1 0 0 1 160 285 Tm (Under a \
+         set) Tj ET \
+         q 0 G 1 w 150 255 140 20 re S Q q 1 g BT /F1 10 Tf 1 0 0 1 160 262 Tm (In a frame) Tj ET Q \
+         /OC << /Type /OCG /Name (Inline) >> BDC BT /F1 10 Tf 1 0 0 1 20 265 Tm (Inline layer) Tj ET \
+         EMC \
+         q 0 G 15 w 10 236 280 12 re S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 240 Tm (On a stroked box) Tj \
+         ET Q \
+         q 0 G 15 w 10 215 m 290 218 l S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 213 Tm (On a slope) Tj ET Q \
+         q 0 G 15 w [40 1] 0 d 10 192 m 290 192 l S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 189 Tm (On a \
+         dash) Tj ET Q \
+         q 0 G 15 w 10 165 m 100 172 200 172 290 165 c S Q q 1 g BT /F1 10 Tf 1 0 0 1 20 165 Tm (On \
+         a curve) Tj ET Q \
+         /OC /Off BDC q 0 g 10 135 280 18 re f Q EMC BT /F1 10 Tf 1 0 0 1 20 140 Tm (Over a hidden \
+         box) Tj ET \
+         q 200 115 m 200 125 210 130 220 130 c 230 130 240 125 240 115 c 240 105 230 100 220 100 c \
+         210 100 200 105 200 115 c W n 0 g 10 100 280 30 re f Q \
+         BT /F1 10 Tf 1 0 0 1 20 110 Tm (Outside a round clip) Tj ET \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 80 Tm (Clip title) Tj ET /Sh0 sh Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 160 80 Tm (Clip only) Tj ET Q \
+         q 0 0 0.5 rg 150 30 140 20 re f Q /Fm Do \
+         BT /F1 10 Tf 1 0 0 1 20 60 Tm (Outside the form box) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("Over a shading", &[]),
+        want("Over an image", &[]),
+        want("Over a lost one", &[]),
+        want("White by cs", &[FillMatchesBackground]),
+        want("Almost white", &[]),
+        want("Under a set", &[]),
+        want("In a frame", &[FillMatchesBackground]),
+        want("Inline layer", &[]),
+        want("On a stroked box", &[]),
+        want("On a slope", &[]),
+        want("On a dash", &[]),
+        want("On a curve", &[]),
+        want("Over a hidden box", &[]),
+        want("Outside a round clip", &[]),
+        want("Clip title", &[]),
+        want("Clip only", &[InvisibleRenderMode]),
+        want("Navy in a form", &[FillMatchesBackground]),
+        want("Form clip", &[InvisibleRenderMode]),
+        want("Outside the form box", &[]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **What a second review found** (decision #139, 2026-11-14): text set as a clip (`Tr 4` to
+/// `7`) leaves the paint after it of no known shape, so body text over a page-size fill clipped to
+/// a logo is not flagged; a rule thinner than the glyphs is not their background; a mode-7 run is
+/// shown only by paint drawn after the clip takes effect at `ET` and touching its glyphs; text
+/// painted through such a clip shows it; and text under a `gs` that blends, masks, sets an alpha
+/// or is not resolved is not compared, where a plain `gs` leaves it compared.
+#[test]
+fn hidden_text_after_text_clips_rules_and_blends() {
+    use ethos_parser_core::TextFinding::{FillMatchesBackground, InvisibleRenderMode};
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "0 g 10 303 280 0.8 re f BT /F1 10 Tf 1 0 0 1 20 300 Tm (Rule through text) Tj ET \
+         0 g 10 282.5 280 2 re f BT /F1 10 Tf 1 0 0 1 20 280 Tm (Struck text) Tj ET \
+         q BT /F1 10 Tf 1 0 0 1 20 260 Tm 7 Tr (IGNORE THIS) Tj 0 Tr ( ) Tj ET Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 240 Tm (FAR AWAY) Tj ET 0 0 1 rg 200 200 50 20 re f Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 220 Tm (Clipped word) Tj ET \
+         BT 0 Tr /F1 10 Tf 1 0 0 1 20 220 Tm (Painted over it) Tj ET Q \
+         q /Blend gs 1 g BT /F1 10 Tf 1 0 0 1 20 180 Tm (Blended white) Tj ET Q \
+         q /Plain gs 1 g BT /F1 10 Tf 1 0 0 1 20 160 Tm (Plain white) Tj ET Q \
+         q /Missing gs 1 g BT /F1 10 Tf 1 0 0 1 20 140 Tm (Unknown state white) Tj ET Q \
+         q 0 0 0.5 rg 60 115 230 20 re f Q q 1 g BT /F2 14 Tf 1 0 0 1 55 120 Tm (No widths) Tj ET Q \
+         q BT 7 Tr /F1 20 Tf 1 0 0 1 20 100 Tm (LOGO) Tj ET 0 g 0 0 300 400 re f Q \
+         BT /F1 10 Tf 1 0 0 1 20 80 Tm (Body under a logo) Tj ET \
+         q BT 4 Tr /F1 20 Tf 1 0 0 1 20 50 Tm (LOGO4) Tj ET 0 0 0.5 rg 0 0 300 400 re f Q \
+         0 0 0.5 rg BT /F1 10 Tf 1 0 0 1 20 30 Tm (Navy body) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("Rule through text", &[]),
+        want("Struck text", &[]),
+        want("IGNORE THIS", &[InvisibleRenderMode]),
+        want(" ", &[]),
+        want("FAR AWAY", &[InvisibleRenderMode]),
+        want("Clipped word", &[]),
+        want("Painted over it", &[]),
+        want("Blended white", &[]),
+        want("Plain white", &[FillMatchesBackground]),
+        want("Unknown state white", &[]),
+        want("LOGO", &[]),
+        want("Body under a logo", &[]),
+        want("LOGO4", &[]),
+        want("No widths", &[]),
+        want("Navy body", &[]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **What CodeRabbit's second review found** (decision #139): a fill whose second subpath is a
+/// rectangle drawn with each corner named twice cuts a hole, so black text in it is not on black;
+/// a string spread a glyph a run is compared and clips glyph by glyph, so a box under its first
+/// glyph alone flags that glyph, and paint touching one glyph of a mode-7 string shows that one;
+/// and text a layer switches off, or a clip keeps from the page, paints nothing through a mode-7
+/// clip.
+#[test]
+fn hidden_text_holes_spread_glyphs_and_text_that_paints_nothing() {
+    use ethos_parser_core::TextFinding::{FillMatchesBackground, HiddenLayer, InvisibleRenderMode};
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "q 0 g 10 340 280 50 re 30 350 m 30 350 l 270 350 l 270 350 l 270 380 l 270 380 l 30 380 l \
+         30 380 l h f* Q BT /F1 10 Tf 1 0 0 1 40 360 Tm (In the hole) Tj ET \
+         q 0 g 18 295 8 15 re f BT /F1 10 Tf 12 Tc 1 0 0 1 20 300 Tm (AB) Tj ET Q \
+         q BT 7 Tr /F1 10 Tf 12 Tc 1 0 0 1 20 250 Tm (CD) Tj ET 0 g 18 245 8 15 re f Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 200 Tm (Clip word) Tj ET /OC /Off BDC BT 0 Tr /F1 10 Tf \
+         1 0 0 1 20 200 Tm (Off over it) Tj ET EMC Q \
+         q BT 7 Tr /F1 10 Tf 1 0 0 1 20 150 Tm (Clip two) Tj ET 250 0 10 10 re W n BT 0 Tr /F1 10 \
+         Tf 1 0 0 1 20 150 Tm (Clipped over it) Tj ET Q",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let want = |t: &str, f: &[ethos_parser_core::TextFinding]| (t.to_owned(), f.to_vec());
+    let mut expected = vec![
+        want("In the hole", &[]),
+        want("A", &[FillMatchesBackground]),
+        want("B", &[]),
+        want("C", &[]),
+        want("D", &[InvisibleRenderMode]),
+        want("Clip word", &[InvisibleRenderMode]),
+        want("Off over it", &[HiddenLayer]),
+        want("Clip two", &[InvisibleRenderMode]),
+        want("Clipped over it", &[]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **A clip with a hole is not its outer rectangle** (CodeRabbit's third review of decision
+/// #139): a rectangle and, inside it, one drawn with each corner named twice, clipped by `W*`,
+/// leave the hole unpainted, so black text in it after `Q` is not black on black. A clip of one
+/// rectangle still narrows the fill drawn through it.
+#[test]
+fn a_clip_with_a_hole_is_no_rectangle() {
+    use ethos_parser_core::TextFinding::FillMatchesBackground;
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "q 10 340 280 50 re 30 350 m 30 350 l 270 350 l 270 350 l 270 380 l 270 380 l 30 380 l \
+         30 380 l h W* n 0 g 0 330 300 70 re f Q BT /F1 10 Tf 1 0 0 1 40 360 Tm (In the hole) Tj ET \
+         q 10 240 280 50 re W n 0 g 0 230 300 70 re f Q BT /F1 10 Tf 1 0 0 1 40 260 Tm (In the \
+         clip) Tj ET",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let mut expected = vec![
+        ("In the hole".to_owned(), vec![]),
+        ("In the clip".to_owned(), vec![FillMatchesBackground]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **A mode-7 clip is found where its glyphs lie, and ends with the state that set it** (review
+/// of decision #139, which indexed the clips standing by cell): a small fill shows a clip set in
+/// glyphs too large to list by cell, and one set before a `q`, but not one the `Q` took away. A
+/// clip that has shown paint still clips (review): the fill under `BIG` lies outside `Kept clip`,
+/// whose clip stands, so it paints nothing and shows `BIG` nothing. A text object's clip is all
+/// its mode-7 runs: a fill over `Two` alone shows it.
+#[test]
+fn a_text_clip_is_found_by_its_glyphs_and_ends_with_its_state() {
+    use ethos_parser_core::TextFinding::InvisibleRenderMode;
+    let a = layered_page(
+        "<< /OFF [6 0 R] >>",
+        "/BBox [0 0 300 400]",
+        "",
+        "q BT 7 Tr /F1 10 Tf 1 0 0 1 20 360 Tm (Two) Tj 0 -12 Td (runs) Tj ET \
+         0 g 15 358 40 12 re f Q \
+         q BT 7 Tr /F1 400 Tf 1 0 0 1 10 20 Tm (WIDE) Tj ET 0 g 20 30 5 5 re f Q \
+         BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (Kept clip) Tj ET \
+         q BT /F1 10 Tf 1 0 0 1 160 300 Tm (Gone clip) Tj ET Q 0 g 10 295 280 20 re f \
+         q BT /F1 400 Tf 1 0 0 1 10 20 Tm (BIG) Tj ET 0 g 20 30 5 5 re f Q",
+    );
+    let mut got = findings_of(&a);
+    got.sort();
+    let mut expected = vec![
+        ("Two".to_owned(), vec![]),
+        ("runs".to_owned(), vec![InvisibleRenderMode]),
+        ("WIDE".to_owned(), vec![]),
+        ("Kept clip".to_owned(), vec![]),
+        ("Gone clip".to_owned(), vec![InvisibleRenderMode]),
+        ("BIG".to_owned(), vec![InvisibleRenderMode]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **A text object's clip is its glyphs in every clipping mode** (CodeRabbit's fifth review of
+/// decision #139): `Tr 4` to `7` each add the glyphs to the clip `ET` sets (32000-1 Table 106).
+/// `Seven` in mode 7 and `Four` in mode 4 clip together, so a fill over a later mode-7 run where
+/// `Four` lies shows it; with `Four` in mode 0 the two clips miss, and nothing shows it. Either
+/// way the later clip leaves out `Seven`, so a fill over it shows nothing (Ghostscript 10.06 draws
+/// all four so).
+#[test]
+fn a_text_objects_clip_is_its_glyphs_in_every_clipping_mode() {
+    use ethos_parser_core::TextFinding::InvisibleRenderMode;
+    let findings = |mode: &str| {
+        let a = layered_page(
+            "<< /OFF [6 0 R] >>",
+            "/BBox [0 0 300 400]",
+            "",
+            &format!(
+                "q BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (Seven) Tj {mode} Tr 1 0 0 1 160 300 Tm \
+                 (Four) Tj ET BT 7 Tr /F1 10 Tf 1 0 0 1 160 300 Tm (Later) Tj ET \
+                 0 g 155 295 40 15 re f 15 295 40 15 re f Q"
+            ),
+        );
+        let mut got = findings_of(&a);
+        got.sort();
+        got
+    };
+    let want = |later: &[ethos_parser_core::TextFinding]| {
+        let mut out = vec![
+            ("Seven".to_owned(), vec![InvisibleRenderMode]),
+            ("Four".to_owned(), vec![]),
+            ("Later".to_owned(), later.to_vec()),
+        ];
+        out.sort();
+        out
+    };
+    assert_eq!(findings("4"), want(&[]));
+    assert_eq!(findings("0"), want(&[InvisibleRenderMode]));
+}
+
+/// **A form's `/BBox` clips its paint whether its numbers are stated or referenced** (review of
+/// decision #139): `[0 0 300 7 0 R]` dropped the reference, read no box, and the form's black
+/// fill reached text above it, flagged as black on black.
+#[test]
+fn a_forms_bbox_with_a_referenced_coordinate_still_clips() {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let findings = |bbox: &str| {
+        let page = "/Fm Do BT /F1 10 Tf 1 0 0 1 20 200 Tm (Above the box) Tj ET";
+        let form = "0 g 0 0 300 400 re f";
+        let objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 \
+              0 R >> /XObject << /Fm 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            format!("<< /Length {} >>\nstream\n{page}\nendstream", page.len()).into_bytes(),
+            format!(
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+                 /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+            )
+            .into_bytes(),
+            format!(
+                "<< /Type /XObject /Subtype /Form /BBox {bbox} /Length {} >>\nstream\n{form}\nendstream",
+                form.len()
+            )
+            .into_bytes(),
+            b"50".to_vec(),
+        ];
+        let profile = Profile::default();
+        let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+        findings_of(&a)
+    };
+    let clear = vec![("Above the box".to_owned(), Vec::new())];
+    assert_eq!(findings("[0 0 300 50]"), clear);
+    assert_eq!(findings("[0 0 300 7 0 R]"), clear);
+}
+
+/// **A Type 3 font's em is measured only at the default `/FontMatrix`** (decision #139): drawn at
+/// half a point it is tiny text there, and under a matrix of a hundredth nothing says how tall its
+/// em is drawn, so it carries no finding.
+#[test]
+fn a_type3_em_is_measured_only_at_the_default_font_matrix() {
+    let profile = Profile::default();
+    let findings = |matrix: &str, width: &str| {
+        let pdf = type3_page(
+            matrix,
+            width,
+            700,
+            -200,
+            "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+        );
+        // `10` and `.5` are as long, so no offset moves.
+        let text = String::from_utf8_lossy(&pdf).replace("/F1 10 Tf", "/F1 .5 Tf");
+        let d = Document::open_bytes(text.as_bytes(), &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+        runs(&a)[0].findings.clone()
+    };
+    assert_eq!(
+        findings("0.001 0 0 0.001 0 0", "500"),
+        vec![ethos_parser_core::TextFinding::TinyText]
+    );
+    assert_eq!(findings("0.01 0 0 0.01 0 0", "50"), Vec::new());
+}
+
+/// **A Type 3 font's text is not compared with what lies beneath it** (decision #139, review of
+/// 2026-11-14): its glyph procedures paint in colours and to heights of their own, so white text
+/// in one on a bare page carries no `fill-matches-background`.
+#[test]
+fn type3_text_is_not_compared_with_its_background() {
+    let profile = Profile::default();
+    let pdf = type3_page_drawing(
+        "1 g BT /F1 10 Tf 50 50 Td (abcde) Tj ET",
+        "0.001 0 0 0.001 0 0",
+        "500",
+        700,
+        -200,
+        "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+    );
+    let d = Document::open_bytes(&pdf, &profile).expect("opens");
+    let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+    assert_eq!(runs(&a)[0].findings, Vec::new());
+}
+
+/// **A Type 3 font's text in mode 7 is drawn, and sets no clip** (CodeRabbit's fifth review of
+/// decision #139): only mode 3 hides a Type 3 glyph (32000-1 §9.3.6). So `aa` is not hidden; its
+/// text object narrows no clip, and a fill shows the mode-7 run `Later` beside it; `aaa`, drawn
+/// over the clip `Under` sets, shows `Under`; `a`, in mode 3, is hidden. Ghostscript 10.06 agrees
+/// but on `Later`: it adds the glyphs to no clip, then clips away all paint after a text object of
+/// them alone. Read as the specification has it, `Later` is kept: the lenient side.
+#[test]
+fn type3_text_in_mode_7_is_drawn_and_sets_no_clip() {
+    use ethos_parser_core::TextFinding::InvisibleRenderMode;
+    let profile = Profile::default();
+    let pdf = type3_page_drawing(
+        "q BT 7 Tr /F1 10 Tf 1 0 0 1 20 300 Tm (ab) Tj ET \
+         BT 7 Tr /F2 10 Tf 1 0 0 1 160 300 Tm (Later) Tj ET 0 g 155 295 40 15 re f Q \
+         q BT 7 Tr /F2 10 Tf 1 0 0 1 20 200 Tm (Under) Tj ET \
+         BT 7 Tr /F1 10 Tf 1 0 0 1 20 200 Tm (abc) Tj ET Q \
+         BT 3 Tr /F1 10 Tf 1 0 0 1 20 100 Tm (a) Tj ET",
+        "0.001 0 0 0.001 0 0",
+        "500",
+        700,
+        -200,
+        "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+    );
+    let d = Document::open_bytes(&pdf, &profile).expect("opens");
+    let mut got = findings_of(&ethos_parser_pdf::extract(&d, &profile).expect("extracts"));
+    got.sort();
+    let mut expected = vec![
+        ("aa".to_owned(), vec![]),
+        ("Later".to_owned(), vec![]),
+        ("Under".to_owned(), vec![]),
+        ("aaa".to_owned(), vec![]),
+        ("a".to_owned(), vec![InvisibleRenderMode]),
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+/// **What a layer is switched off by** (decision #139): `/BaseState /OFF` hides every group `/ON`
+/// does not name; a form XObject whose `/OC` is off hides what it draws, and a `BDC /OC` inside a
+/// form names the form's own `/Properties`; a document whose catalog declares no default
+/// configuration hides nothing.
+#[test]
+fn a_layer_is_off_where_the_default_configuration_says_so() {
+    use ethos_parser_core::TextFinding::HiddenLayer;
+    let page = "/OC /Off BDC BT /F1 10 Tf 1 0 0 1 20 320 Tm (Named off) Tj ET EMC \
+                /OC /On BDC BT /F1 10 Tf 1 0 0 1 20 300 Tm (Named on) Tj ET EMC \
+                /Fm Do";
+    let form = "BT /F1 10 Tf 1 0 0 1 20 200 Tm (Form text) Tj ET \
+                /OC /Off BDC BT /F1 10 Tf 1 0 0 1 20 180 Tm (Form names on) Tj ET EMC \
+                /OC /On BDC BT /F1 10 Tf 1 0 0 1 20 160 Tm (Form names off) Tj ET EMC";
+    const BBOX: &str = "/BBox [0 0 300 400]";
+    const OC_OFF: &str = "/BBox [0 0 300 400] /OC 6 0 R";
+    let hidden = |a: &ExtractArtifact| -> Vec<String> {
+        let mut out: Vec<String> = findings_of(a)
+            .into_iter()
+            .filter(|(_, f)| f.contains(&HiddenLayer))
+            .map(|(t, _)| t)
+            .collect();
+        out.sort();
+        out
+    };
+    assert_eq!(
+        hidden(&layered_page("<< /OFF [6 0 R] >>", BBOX, form, page)),
+        vec!["Form names off", "Named off"],
+        "a form's `BDC /OC` names its own `/Properties`, where `/On` is the group switched off"
+    );
+    assert_eq!(
+        hidden(&layered_page(
+            "<< /BaseState /OFF /ON [6 0 R] >>",
+            BBOX,
+            form,
+            page
+        )),
+        vec!["Form names on", "Named on"],
+        "under `/BaseState /OFF` only what `/ON` names is shown"
+    );
+    assert_eq!(
+        hidden(&layered_page("<< /OFF [6 0 R] >>", OC_OFF, form, page)),
+        vec!["Form names off", "Form names on", "Form text", "Named off"],
+        "a form whose own `/OC` is off hides everything it draws"
+    );
+    assert_eq!(
+        hidden(&layered_page("<< >>", OC_OFF, form, page)),
+        Vec::<String>::new(),
+        "a configuration that switches nothing off hides nothing"
+    );
+}
+
 /// **The overlay is deterministic, and it does not touch what it draws on** (v1-S6).
 ///
 /// Byte identity holds per fresh build, which is the whole of the trap: lopdf's writer mutates the
@@ -5875,6 +6907,125 @@ fn the_overlay_is_byte_identical_and_leaves_the_source_alone() {
     );
 }
 
+/// **The overlay draws a turned page's boxes where a viewer sees its text** (decision #155): a
+/// made-up page whose four lines are drawn upside down (and invisible, so the overlay marks them),
+/// read half a turn, has their boxes drawn back in user space around the text — under the declared
+/// transform alone they would land mirrored — and its page note on the page.
+#[test]
+fn the_overlay_draws_a_turned_page_where_its_text_is() {
+    let content = "q -1 0 0 -1 300 400 cm BT 3 Tr /F1 10 Tf 20 300 Td \
+                   (Upside down text drawn to try the overlay) Tj 0 -15 Td \
+                   (A second made-up line of it) Tj 0 -15 Td (A third made-up line of it) Tj \
+                   0 -15 Td (A fourth made-up line of it) Tj ET Q";
+    let mut stream = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+    stream.extend_from_slice(content.as_bytes());
+    stream.extend_from_slice(b"\nendstream");
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_vec(),
+        stream,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ]);
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+    assert_eq!(extract.pages[0].turn, 180);
+    let overlay = ethos_parser_pdf::build_overlay(&doc, &extract, &profile).expect("overlays");
+    let out = lopdf::Document::load_mem(&overlay).expect("the overlay is a PDF");
+    let page = out.get_pages()[&1];
+    let annots = out
+        .get_dictionary(page)
+        .unwrap()
+        .get(b"Annots")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone();
+    let rects: Vec<[f64; 4]> = annots
+        .iter()
+        .filter_map(|a| {
+            let d = out.dereference(a).ok()?.1.as_dict().ok()?.clone();
+            let r = d.get(b"Rect").ok()?.as_array().ok()?.clone();
+            let n: Vec<f64> = r
+                .iter()
+                .filter_map(|v| {
+                    v.as_float()
+                        .ok()
+                        .map(f64::from)
+                        .or(v.as_i64().ok().map(|i| i as f64))
+                })
+                .collect();
+            (n.len() == 4).then(|| [n[0], n[1], n[2], n[3]])
+        })
+        .collect();
+    // The text starts at user space (280, 100) and runs left, its glyphs below that baseline.
+    let around = |x: f64, y: f64| {
+        rects
+            .iter()
+            .any(|r| r[0] <= x && x <= r[2] && r[1] <= y && y <= r[3])
+    };
+    assert!(around(270.0, 97.0), "{rects:?}");
+    assert!(!around(30.0, 303.0), "not mirrored: {rects:?}");
+    for r in &rects {
+        assert!(
+            0.0 <= r[0]
+                && r[0] < r[2]
+                && r[2] <= 300.0
+                && 0.0 <= r[1]
+                && r[1] < r[3]
+                && r[3] <= 400.0,
+            "on the page: {rects:?}"
+        );
+    }
+}
+
+/// **A page read turned keeps its upright running head and folio as furniture** (decision #155): a
+/// made-up page whose lines run up it, read a quarter turn round, with a running head and foot set
+/// upright along its declared top and bottom edges, which in the turned frame run down its sides.
+/// They are still a header and a footer; the turned lines are not furniture.
+#[test]
+fn a_page_read_turned_keeps_its_upright_head_and_folio_as_furniture() {
+    let mut content = String::from("q 0 1 -1 0 612 0 cm BT /F1 10 Tf 72 540 Td ");
+    for row in 1..=25 {
+        content += &format!("(Made-up row {row} of the turned table) Tj 0 -14 Td ");
+    }
+    content += "ET Q BT /F1 9 Tf 90 30 Td (Made-up Annual Report 2026) Tj ET \
+                BT /F1 9 Tf 520 30 Td (Page 1) Tj ET \
+                BT /F1 9 Tf 300 726 Td (Made-up running head) Tj ET";
+    let mut stream = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+    stream.extend_from_slice(content.as_bytes());
+    stream.extend_from_slice(b"\nendstream");
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_vec(),
+        stream,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ]);
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+    let page = &extract.pages[0];
+    assert_eq!(page.turn, 90);
+    let flagged: Vec<(&str, Option<ethos_parser_core::Furniture>)> = page
+        .runs
+        .iter()
+        .filter(|r| r.furniture.is_some() || !r.text.starts_with("Made-up row"))
+        .map(|r| (r.text.as_str(), r.furniture))
+        .collect();
+    let foot = Some(ethos_parser_core::Furniture::Footer);
+    let head = Some(ethos_parser_core::Furniture::Header);
+    assert_eq!(
+        flagged,
+        [
+            ("Made-up Annual Report 2026", foot),
+            ("Made-up running head", head),
+            ("Page 1", foot)
+        ]
+    );
+}
+
 /// **Earlier slices are untouched by images and findings** (v1-S6).
 #[test]
 fn observing_images_changes_no_earlier_slices_answer() {
@@ -5887,7 +7038,7 @@ fn observing_images_changes_no_earlier_slices_answer() {
     );
     assert_eq!(
         two.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
     assert!(

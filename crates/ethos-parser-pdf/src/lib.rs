@@ -67,7 +67,9 @@ pub(crate) mod cid_unicode;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;
+pub(crate) mod decorations;
 pub(crate) mod document;
+pub(crate) mod drawn_last;
 pub(crate) mod encoding;
 pub(crate) mod extract;
 // Decision #46. Figure regions: paths a page paints, read as one drawing.
@@ -81,6 +83,8 @@ pub(crate) mod freed;
 mod furniture;
 pub(crate) mod headings;
 pub(crate) mod images;
+// Decision #139. Optional content a document's default configuration hides.
+pub(crate) mod layers;
 pub(crate) mod lines;
 pub(crate) mod magic;
 pub(crate) mod metrics;

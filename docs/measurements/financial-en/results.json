@@ -1,0 +1,4835 @@
+{
+ "binary": {
+  "path": "target/proto/measure/bin/c9b364c/ethos-parser",
+  "sha256": "7e819094cf441dcf4aab3f759858b9e2819b497a41dae8eef1e1a6f0ecf012c4",
+  "version": "ethos-parser 0.66.0-dev.1"
+ },
+ "by_format": {
+  "docx": {
+   "account": {
+    "passed": 2,
+    "rate": 1.0,
+    "total": 2
+   },
+   "amounts": {
+    "passed": 109,
+    "rate": 1.0,
+    "total": 109
+   },
+   "dates": {
+    "passed": 20,
+    "rate": 1.0,
+    "total": 20
+   },
+   "footer": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 5
+   },
+   "gstin": {
+    "passed": 6,
+    "rate": 1.0,
+    "total": 6
+   },
+   "header": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 5
+   },
+   "headings_level": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 13
+   },
+   "headings_line": {
+    "passed": 13,
+    "rate": 1.0,
+    "total": 13
+   },
+   "invoice_no": {
+    "passed": 3,
+    "rate": 1.0,
+    "total": 3
+   },
+   "lines_normalised": {
+    "passed": 17,
+    "rate": 0.3778,
+    "total": 45
+   },
+   "lines_normalised:br-in-run": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 15
+   },
+   "lines_normalised:br-run": {
+    "passed": 9,
+    "rate": 1.0,
+    "total": 9
+   },
+   "lines_normalised:tab-in-run": {
+    "passed": 8,
+    "rate": 1.0,
+    "total": 8
+   },
+   "lines_normalised:tab-run": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 13
+   },
+   "lines_strict": {
+    "passed": 9,
+    "rate": 0.2,
+    "total": 45
+   },
+   "one_line": {
+    "passed": 5,
+    "rate": 1.0,
+    "total": 5
+   },
+   "rupee_adjacent": {
+    "passed": 5,
+    "rate": 0.625,
+    "total": 8
+   },
+   "table_cells_text": {
+    "passed": 335,
+    "rate": 0.997,
+    "total": 336
+   },
+   "table_rows": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 69
+   },
+   "table_rows_exact": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 69
+   },
+   "totals": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 19
+   }
+  },
+  "pdf": {
+   "account": {
+    "passed": 3,
+    "rate": 1.0,
+    "total": 3
+   },
+   "amounts": {
+    "passed": 120,
+    "rate": 1.0,
+    "total": 120
+   },
+   "dates": {
+    "passed": 33,
+    "rate": 1.0,
+    "total": 33
+   },
+   "gstin": {
+    "passed": 6,
+    "rate": 1.0,
+    "total": 6
+   },
+   "headings_level": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 15
+   },
+   "headings_line": {
+    "passed": 15,
+    "rate": 1.0,
+    "total": 15
+   },
+   "invoice_no": {
+    "passed": 3,
+    "rate": 1.0,
+    "total": 3
+   },
+   "lines_normalised": {
+    "passed": 24,
+    "rate": 0.4706,
+    "total": 51
+   },
+   "lines_normalised:html-br": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 27
+   },
+   "lines_normalised:html-label": {
+    "passed": 24,
+    "rate": 1.0,
+    "total": 24
+   },
+   "lines_strict": {
+    "passed": 24,
+    "rate": 0.4706,
+    "total": 51
+   },
+   "one_line": {
+    "passed": 6,
+    "rate": 1.0,
+    "total": 6
+   },
+   "rupee_adjacent": {
+    "passed": 10,
+    "rate": 0.9091,
+    "total": 11
+   },
+   "table_cells_text": {
+    "passed": 379,
+    "rate": 0.9974,
+    "total": 380
+   },
+   "table_rows": {
+    "passed": 63,
+    "rate": 0.7412,
+    "total": 85
+   },
+   "table_rows_exact": {
+    "passed": 40,
+    "rate": 0.4706,
+    "total": 85
+   },
+   "totals": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 22
+   }
+  },
+  "xlsx": {
+   "account": {
+    "passed": 2,
+    "rate": 1.0,
+    "total": 2
+   },
+   "amounts": {
+    "passed": 3,
+    "rate": 0.0366,
+    "total": 82
+   },
+   "dates": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 20
+   },
+   "gstin": {
+    "passed": 4,
+    "rate": 1.0,
+    "total": 4
+   },
+   "invoice_no": {
+    "passed": 2,
+    "rate": 1.0,
+    "total": 2
+   },
+   "rupee_adjacent": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 7
+   },
+   "table_cells_text": {
+    "passed": 171,
+    "rate": 0.5856,
+    "total": 292
+   },
+   "table_rows": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 74
+   },
+   "table_rows_exact": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 74
+   },
+   "text": {
+    "passed": 32,
+    "rate": 1.0,
+    "total": 32
+   },
+   "totals": {
+    "passed": 0,
+    "rate": 0.0,
+    "total": 15
+   }
+  }
+ },
+ "checks": {
+  "account": {
+   "passed": 7,
+   "rate": 1.0,
+   "total": 7
+  },
+  "amounts": {
+   "passed": 232,
+   "rate": 0.746,
+   "total": 311
+  },
+  "dates": {
+   "passed": 53,
+   "rate": 0.726,
+   "total": 73
+  },
+  "footer": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 5
+  },
+  "gstin": {
+   "passed": 16,
+   "rate": 1.0,
+   "total": 16
+  },
+  "header": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 5
+  },
+  "headings_level": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 28
+  },
+  "headings_line": {
+   "passed": 28,
+   "rate": 1.0,
+   "total": 28
+  },
+  "invoice_no": {
+   "passed": 8,
+   "rate": 1.0,
+   "total": 8
+  },
+  "lines_normalised": {
+   "passed": 41,
+   "rate": 0.4271,
+   "total": 96
+  },
+  "lines_normalised:br-in-run": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 15
+  },
+  "lines_normalised:br-run": {
+   "passed": 9,
+   "rate": 1.0,
+   "total": 9
+  },
+  "lines_normalised:html-br": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 27
+  },
+  "lines_normalised:html-label": {
+   "passed": 24,
+   "rate": 1.0,
+   "total": 24
+  },
+  "lines_normalised:tab-in-run": {
+   "passed": 8,
+   "rate": 1.0,
+   "total": 8
+  },
+  "lines_normalised:tab-run": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 13
+  },
+  "lines_strict": {
+   "passed": 33,
+   "rate": 0.3438,
+   "total": 96
+  },
+  "one_line": {
+   "passed": 11,
+   "rate": 1.0,
+   "total": 11
+  },
+  "rupee_adjacent": {
+   "passed": 15,
+   "rate": 0.5769,
+   "total": 26
+  },
+  "table_cells_text": {
+   "passed": 885,
+   "rate": 0.878,
+   "total": 1008
+  },
+  "table_rows": {
+   "passed": 63,
+   "rate": 0.2763,
+   "total": 228
+  },
+  "table_rows_exact": {
+   "passed": 40,
+   "rate": 0.1754,
+   "total": 228
+  },
+  "text": {
+   "passed": 32,
+   "rate": 1.0,
+   "total": 32
+  },
+  "totals": {
+   "passed": 0,
+   "rate": 0.0,
+   "total": 56
+  }
+ },
+ "documents": {
+  "invoice-01.docx": {
+   "checks": {
+    "amounts": [
+     23,
+     23
+    ],
+    "dates": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     3
+    ],
+    "headings_line": [
+     3,
+     3
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "lines_normalised": [
+     2,
+     11
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     6
+    ],
+    "lines_normalised:tab-in-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     3
+    ],
+    "lines_strict": [
+     0,
+     11
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     80,
+     80
+    ],
+    "table_rows": [
+     0,
+     16
+    ],
+    "table_rows_exact": [
+     0,
+     16
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Tamarind Electricals"
+    ],
+    [
+     "lines_strict",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_strict",
+     "Hyderabad 500003, Telangana"
+    ],
+    [
+     "lines_strict",
+     "GSTIN\t: 36ARYCT3645M1ZG"
+    ],
+    [
+     "lines_strict",
+     "Invoice No.\t: ST-2627-0941"
+    ],
+    [
+     "lines_strict",
+     "Invoice Date\t: 02-04-2026"
+    ],
+    [
+     "lines_strict",
+     "Place of Supply\t: Telangana (36)"
+    ],
+    [
+     "lines_strict",
+     "Juniper Hollow Foods Pvt Ltd"
+    ],
+    [
+     "lines_strict",
+     "41 Temple Street"
+    ],
+    [
+     "lines_strict",
+     "Hyderabad 500003, Telangana"
+    ],
+    [
+     "lines_strict",
+     "GSTIN\t: 36FYYCJ8410W1ZQ"
+    ],
+    [
+     "lines_normalised",
+     "Tamarind Electricals"
+    ],
+    [
+     "lines_normalised",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_normalised",
+     "Hyderabad 500003, Telangana"
+    ],
+    [
+     "lines_normalised",
+     "GSTIN : 36ARYCT3645M1ZG"
+    ],
+    [
+     "lines_normalised",
+     "Invoice Date : 02-04-2026"
+    ],
+    [
+     "lines_normalised",
+     "Juniper Hollow Foods Pvt Ltd"
+    ],
+    [
+     "lines_normalised",
+     "41 Temple Street"
+    ],
+    [
+     "lines_normalised",
+     "Hyderabad 500003, Telangana"
+    ],
+    [
+     "lines_normalised",
+     "GSTIN : 36FYYCJ8410W1ZQ"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Tamarind Electricals"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Hyderabad 500003, Telangana"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Juniper Hollow Foods Pvt Ltd"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "41 Temple Street"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Hyderabad 500003, Telangana"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "GSTIN : 36ARYCT3645M1ZG"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Invoice Date : 02-04-2026"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "GSTIN : 36FYYCJ8410W1ZQ"
+    ],
+    [
+     "headings_level",
+     "# TAX INVOICE"
+    ],
+    [
+     "headings_level",
+     "## Bill To"
+    ],
+    [
+     "headings_level",
+     "## HSN Summary"
+    ],
+    [
+     "table_rows",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows",
+     "1 | PVC Conduit Pipe 25 mm | 3917 | 184 | Length | 95.50 | 17,572.00"
+    ],
+    [
+     "table_rows",
+     "2 | Annual Maintenance Service | 998713 | 16 | Job | 24,082.50 | 3,85,320.00"
+    ],
+    [
+     "table_rows",
+     "3 | TMT Steel Bar 12 mm | 7214 | 19 | Tonne | 58,005.00 | 11,02,095.00"
+    ],
+    [
+     "table_rows",
+     "4 | Copper Wire 2.5 sq mm | 8544 | 14 | Coil | 1,844.25 | 25,819.50"
+    ],
+    [
+     "table_rows",
+     "5 | LED Panel Light 18 W | 9405 | 176 | Nos | 634.50 | 1,11,672.00"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | 16,42,478.50"
+    ],
+    [
+     "table_rows",
+     "CGST @ 9% | 1,47,823.07"
+    ],
+    [
+     "table_rows",
+     "SGST @ 9% | 1,47,823.07"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹19,38,124.64"
+    ],
+    [
+     "table_rows",
+     "HSN/SAC | Taxable Value | CGST 9% | SGST 9% | Total Tax"
+    ],
+    [
+     "table_rows",
+     "3917 | 17,572.00 | 1,581.48 | 1,581.48 | 3,162.96"
+    ],
+    [
+     "table_rows",
+     "998713 | 3,85,320.00 | 34,678.80 | 34,678.80 | 69,357.60"
+    ],
+    [
+     "table_rows",
+     "7214 | 11,02,095.00 | 99,188.55 | 99,188.55 | 1,98,377.10"
+    ],
+    [
+     "table_rows",
+     "8544 | 25,819.50 | 2,323.76 | 2,323.76 | 4,647.52"
+    ],
+    [
+     "table_rows",
+     "9405 | 1,11,672.00 | 10,050.48 | 10,050.48 | 20,100.96"
+    ],
+    [
+     "table_rows_exact",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows_exact",
+     "1 | PVC Conduit Pipe 25 mm | 3917 | 184 | Length | 95.50 | 17,572.00"
+    ],
+    [
+     "table_rows_exact",
+     "2 | Annual Maintenance Service | 998713 | 16 | Job | 24,082.50 | 3,85,320.00"
+    ],
+    [
+     "table_rows_exact",
+     "3 | TMT Steel Bar 12 mm | 7214 | 19 | Tonne | 58,005.00 | 11,02,095.00"
+    ],
+    [
+     "table_rows_exact",
+     "4 | Copper Wire 2.5 sq mm | 8544 | 14 | Coil | 1,844.25 | 25,819.50"
+    ],
+    [
+     "table_rows_exact",
+     "5 | LED Panel Light 18 W | 9405 | 176 | Nos | 634.50 | 1,11,672.00"
+    ],
+    [
+     "table_rows_exact",
+     "Taxable Value | 16,42,478.50"
+    ],
+    [
+     "table_rows_exact",
+     "CGST @ 9% | 1,47,823.07"
+    ],
+    [
+     "table_rows_exact",
+     "SGST @ 9% | 1,47,823.07"
+    ],
+    [
+     "table_rows_exact",
+     "Grand Total | ₹19,38,124.64"
+    ],
+    [
+     "table_rows_exact",
+     "HSN/SAC | Taxable Value | CGST 9% | SGST 9% | Total Tax"
+    ],
+    [
+     "table_rows_exact",
+     "3917 | 17,572.00 | 1,581.48 | 1,581.48 | 3,162.96"
+    ],
+    [
+     "table_rows_exact",
+     "998713 | 3,85,320.00 | 34,678.80 | 34,678.80 | 69,357.60"
+    ],
+    [
+     "table_rows_exact",
+     "7214 | 11,02,095.00 | 99,188.55 | 99,188.55 | 1,98,377.10"
+    ],
+    [
+     "table_rows_exact",
+     "8544 | 25,819.50 | 2,323.76 | 2,323.76 | 4,647.52"
+    ],
+    [
+     "table_rows_exact",
+     "9405 | 1,11,672.00 | 10,050.48 | 10,050.48 | 20,100.96"
+    ],
+    [
+     "footer",
+     "Subject to Hyderabad jurisdiction. Tamarind Electricals"
+    ],
+    [
+     "header",
+     "ORIGINAL FOR RECIPIENT"
+    ],
+    [
+     "totals",
+     "Taxable Value … 16,42,478.50"
+    ],
+    [
+     "totals",
+     "CGST @ 9% … 1,47,823.07"
+    ],
+    [
+     "totals",
+     "SGST @ 9% … 1,47,823.07"
+    ],
+    [
+     "totals",
+     "Grand Total … 19,38,124.64"
+    ]
+   ],
+   "markdown_sha256": "f186d86beadc097cddf668539770183b6ba0a22dfb3447b4edc0c285adb6efb9",
+   "sha256": "bffd669c9501952c38224c06156be87efae3cb184ccabf86a12dafff1d1ec339"
+  },
+  "invoice-02.pdf": {
+   "checks": {
+    "amounts": [
+     12,
+     12
+    ],
+    "dates": [
+     1,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "headings_level": [
+     0,
+     3
+    ],
+    "headings_line": [
+     3,
+     3
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "lines_normalised": [
+     5,
+     11
+    ],
+    "lines_normalised:html-br": [
+     0,
+     6
+    ],
+    "lines_normalised:html-label": [
+     5,
+     5
+    ],
+    "lines_strict": [
+     5,
+     11
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     2,
+     2
+    ],
+    "table_cells_text": [
+     50,
+     50
+    ],
+    "table_rows": [
+     8,
+     11
+    ],
+    "table_rows_exact": [
+     8,
+     11
+    ],
+    "totals": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Coralnest Office Solutions LLP"
+    ],
+    [
+     "lines_strict",
+     "3rd Floor, Lakeview Towers"
+    ],
+    [
+     "lines_strict",
+     "Kochi 682011, Kerala"
+    ],
+    [
+     "lines_strict",
+     "Northmere College"
+    ],
+    [
+     "lines_strict",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_strict",
+     "Bengaluru 560001, Karnataka"
+    ],
+    [
+     "lines_normalised",
+     "Coralnest Office Solutions LLP"
+    ],
+    [
+     "lines_normalised",
+     "3rd Floor, Lakeview Towers"
+    ],
+    [
+     "lines_normalised",
+     "Kochi 682011, Kerala"
+    ],
+    [
+     "lines_normalised",
+     "Northmere College"
+    ],
+    [
+     "lines_normalised",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_normalised",
+     "Bengaluru 560001, Karnataka"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Coralnest Office Solutions LLP"
+    ],
+    [
+     "lines_normalised:html-br",
+     "3rd Floor, Lakeview Towers"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Kochi 682011, Kerala"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Northmere College"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Bengaluru 560001, Karnataka"
+    ],
+    [
+     "headings_level",
+     "# TAX INVOICE"
+    ],
+    [
+     "headings_level",
+     "## Bill To"
+    ],
+    [
+     "headings_level",
+     "## HSN Summary"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | ₹4,93,098.50"
+    ],
+    [
+     "table_rows",
+     "IGST @ 18% | 88,757.73"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹5,81,856.23"
+    ],
+    [
+     "table_rows_exact",
+     "Taxable Value | ₹4,93,098.50"
+    ],
+    [
+     "table_rows_exact",
+     "IGST @ 18% | 88,757.73"
+    ],
+    [
+     "table_rows_exact",
+     "Grand Total | ₹5,81,856.23"
+    ],
+    [
+     "totals",
+     "Taxable Value … 4,93,098.50"
+    ],
+    [
+     "totals",
+     "IGST @ 18% … 88,757.73"
+    ],
+    [
+     "totals",
+     "Grand Total … 5,81,856.23"
+    ]
+   ],
+   "markdown_sha256": "b7122ac2b57dfe8ac5cff8e936ccfdc1b9e49a848bf0ec9efdcb7d0adfa8f1d2",
+   "sha256": "c841020eb7418a42fa5cc1e0438181aab6c2469a861915605349be3992556d45"
+  },
+  "invoice-03.xlsx": {
+   "checks": {
+    "amounts": [
+     1,
+     15
+    ],
+    "dates": [
+     0,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     0,
+     1
+    ],
+    "table_cells_text": [
+     44,
+     66
+    ],
+    "table_rows": [
+     0,
+     17
+    ],
+    "table_rows_exact": [
+     0,
+     17
+    ],
+    "text": [
+     10,
+     10
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "table_rows",
+     "GSTIN | 33WTTCG3689L1Z4"
+    ],
+    [
+     "table_rows",
+     "Invoice No. | INV/2026-27/0379"
+    ],
+    [
+     "table_rows",
+     "Invoice Date | 18-06-2026"
+    ],
+    [
+     "table_rows",
+     "Place of Supply | Tamil Nadu (33)"
+    ],
+    [
+     "table_rows",
+     "GSTIN | 33SMDCR9255Q1ZJ"
+    ],
+    [
+     "table_rows",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows",
+     "1 | Annual Maintenance Service | 998713 | 16 | Job | 18,653.25 | 2,98,452.00"
+    ],
+    [
+     "table_rows",
+     "2 | Wall Putty 40 kg | 3214 | 119 | Bag | 747.00 | 88,893.00"
+    ],
+    [
+     "table_rows",
+     "3 | TMT Steel Bar 12 mm | 7214 | 15 | Tonne | 55,089.50 | 8,26,342.50"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | 12,13,687.50"
+    ],
+    [
+     "table_rows",
+     "CGST @ 2.5% | 30,342.19"
+    ],
+    [
+     "table_rows",
+     "SGST @ 2.5% | 30,342.19"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹12,74,371.88"
+    ],
+    [
+     "table_rows",
+     "HSN/SAC | Taxable Value | CGST 2.5% | SGST 2.5% | Total Tax"
+    ],
+    [
+     "table_rows",
+     "998713 | 2,98,452.00 | 7,461.30 | 7,461.30 | 14,922.60"
+    ],
+    [
+     "table_rows",
+     "3214 | 88,893.00 | 2,222.33 | 2,222.33 | 4,444.66"
+    ],
+    [
+     "table_rows",
+     "7214 | 8,26,342.50 | 20,658.56 | 20,658.56 | 41,317.12"
+    ],
+    [
+     "table_rows_exact",
+     "GSTIN | 33WTTCG3689L1Z4"
+    ],
+    [
+     "table_rows_exact",
+     "Invoice No. | INV/2026-27/0379"
+    ],
+    [
+     "table_rows_exact",
+     "Invoice Date | 18-06-2026"
+    ],
+    [
+     "table_rows_exact",
+     "Place of Supply | Tamil Nadu (33)"
+    ],
+    [
+     "table_rows_exact",
+     "GSTIN | 33SMDCR9255Q1ZJ"
+    ],
+    [
+     "table_rows_exact",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows_exact",
+     "1 | Annual Maintenance Service | 998713 | 16 | Job | 18,653.25 | 2,98,452.00"
+    ],
+    [
+     "table_rows_exact",
+     "2 | Wall Putty 40 kg | 3214 | 119 | Bag | 747.00 | 88,893.00"
+    ],
+    [
+     "table_rows_exact",
+     "3 | TMT Steel Bar 12 mm | 7214 | 15 | Tonne | 55,089.50 | 8,26,342.50"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | Taxable Value | 12,13,687.50"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | CGST @ 2.5% | 30,342.19"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | SGST @ 2.5% | 30,342.19"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | Grand Total | ₹12,74,371.88"
+    ],
+    [
+     "table_rows_exact",
+     "HSN/SAC | Taxable Value | CGST 2.5% | SGST 2.5% | Total Tax"
+    ],
+    [
+     "table_rows_exact",
+     "998713 | 2,98,452.00 | 7,461.30 | 7,461.30 | 14,922.60"
+    ],
+    [
+     "table_rows_exact",
+     "3214 | 88,893.00 | 2,222.33 | 2,222.33 | 4,444.66"
+    ],
+    [
+     "table_rows_exact",
+     "7214 | 8,26,342.50 | 20,658.56 | 20,658.56 | 41,317.12"
+    ],
+    [
+     "table_cells_text",
+     "18-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "18,653.25"
+    ],
+    [
+     "table_cells_text",
+     "2,98,452.00"
+    ],
+    [
+     "table_cells_text",
+     "88,893.00"
+    ],
+    [
+     "table_cells_text",
+     "55,089.50"
+    ],
+    [
+     "table_cells_text",
+     "8,26,342.50"
+    ],
+    [
+     "table_cells_text",
+     "12,13,687.50"
+    ],
+    [
+     "table_cells_text",
+     "30,342.19"
+    ],
+    [
+     "table_cells_text",
+     "30,342.19"
+    ],
+    [
+     "table_cells_text",
+     "₹12,74,371.88"
+    ],
+    [
+     "table_cells_text",
+     "2,98,452.00"
+    ],
+    [
+     "table_cells_text",
+     "7,461.30"
+    ],
+    [
+     "table_cells_text",
+     "7,461.30"
+    ],
+    [
+     "table_cells_text",
+     "14,922.60"
+    ],
+    [
+     "table_cells_text",
+     "88,893.00"
+    ],
+    [
+     "table_cells_text",
+     "2,222.33"
+    ],
+    [
+     "table_cells_text",
+     "2,222.33"
+    ],
+    [
+     "table_cells_text",
+     "4,444.66"
+    ],
+    [
+     "table_cells_text",
+     "8,26,342.50"
+    ],
+    [
+     "table_cells_text",
+     "20,658.56"
+    ],
+    [
+     "table_cells_text",
+     "20,658.56"
+    ],
+    [
+     "table_cells_text",
+     "41,317.12"
+    ],
+    [
+     "amounts",
+     "18,653.25"
+    ],
+    [
+     "amounts",
+     "2,98,452.00"
+    ],
+    [
+     "amounts",
+     "88,893.00"
+    ],
+    [
+     "amounts",
+     "55,089.50"
+    ],
+    [
+     "amounts",
+     "8,26,342.50"
+    ],
+    [
+     "amounts",
+     "12,13,687.50"
+    ],
+    [
+     "amounts",
+     "30,342.19"
+    ],
+    [
+     "amounts",
+     "12,74,371.88"
+    ],
+    [
+     "amounts",
+     "7,461.30"
+    ],
+    [
+     "amounts",
+     "14,922.60"
+    ],
+    [
+     "amounts",
+     "2,222.33"
+    ],
+    [
+     "amounts",
+     "4,444.66"
+    ],
+    [
+     "amounts",
+     "20,658.56"
+    ],
+    [
+     "amounts",
+     "41,317.12"
+    ],
+    [
+     "dates",
+     "18-06-2026"
+    ],
+    [
+     "totals",
+     "Taxable Value … 12,13,687.50"
+    ],
+    [
+     "totals",
+     "CGST @ 2.5% … 30,342.19"
+    ],
+    [
+     "totals",
+     "SGST @ 2.5% … 30,342.19"
+    ],
+    [
+     "totals",
+     "Grand Total … 12,74,371.88"
+    ],
+    [
+     "rupee_adjacent",
+     "₹12,74,371.88"
+    ]
+   ],
+   "markdown_sha256": "ebdcee08c2aff1f98a63c6e243a6a6b01dbc4e41707069307d1ca2046e6f3deb",
+   "sha256": "63acfc9e98f112e29ce3cc8ce29216264a222a0ac3827e51485af2fc016d9f4f"
+  },
+  "invoice-04.docx": {
+   "checks": {
+    "amounts": [
+     15,
+     15
+    ],
+    "dates": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     3
+    ],
+    "headings_line": [
+     3,
+     3
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "lines_normalised": [
+     8,
+     11
+    ],
+    "lines_normalised:br-run": [
+     6,
+     6
+    ],
+    "lines_normalised:tab-in-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     3
+    ],
+    "lines_strict": [
+     6,
+     11
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     1,
+     2
+    ],
+    "table_cells_text": [
+     55,
+     55
+    ],
+    "table_rows": [
+     0,
+     10
+    ],
+    "table_rows_exact": [
+     0,
+     10
+    ],
+    "totals": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "GSTIN\t: 29GNACS2699T1ZC"
+    ],
+    [
+     "lines_strict",
+     "Invoice No.\t: ST-2627-0258"
+    ],
+    [
+     "lines_strict",
+     "Invoice Date\t: 15-07-2026"
+    ],
+    [
+     "lines_strict",
+     "Place of Supply\t: Telangana (36)"
+    ],
+    [
+     "lines_strict",
+     "GSTIN\t: 36CTGCM5068V1ZC"
+    ],
+    [
+     "lines_normalised",
+     "GSTIN : 29GNACS2699T1ZC"
+    ],
+    [
+     "lines_normalised",
+     "Invoice Date : 15-07-2026"
+    ],
+    [
+     "lines_normalised",
+     "GSTIN : 36CTGCM5068V1ZC"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "GSTIN : 29GNACS2699T1ZC"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Invoice Date : 15-07-2026"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "GSTIN : 36CTGCM5068V1ZC"
+    ],
+    [
+     "headings_level",
+     "# TAX INVOICE"
+    ],
+    [
+     "headings_level",
+     "## Bill To"
+    ],
+    [
+     "headings_level",
+     "## HSN Summary"
+    ],
+    [
+     "table_rows",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows",
+     "1 | TMT Steel Bar 12 mm | 7214 | 12 | Tonne | 60,025.00 | 7,20,300.00"
+    ],
+    [
+     "table_rows",
+     "2 | PVC Conduit Pipe 25 mm | 3917 | 24 | Length | 100.00 | 2,400.00"
+    ],
+    [
+     "table_rows",
+     "3 | Wall Putty 40 kg | 3214 | 263 | Bag | 833.00 | 2,19,079.00"
+    ],
+    [
+     "table_rows",
+     "4 | Copper Wire 2.5 sq mm | 8544 | 284 | Coil | 2,171.00 | 6,16,564.00"
+    ],
+    [
+     "table_rows",
+     "HSN/SAC | Taxable Value | IGST 12% | Total Tax"
+    ],
+    [
+     "table_rows",
+     "7214 | 7,20,300.00 | 86,436.00 | 86,436.00"
+    ],
+    [
+     "table_rows",
+     "3917 | 2,400.00 | 288.00 | 288.00"
+    ],
+    [
+     "table_rows",
+     "3214 | 2,19,079.00 | 26,289.48 | 26,289.48"
+    ],
+    [
+     "table_rows",
+     "8544 | 6,16,564.00 | 73,987.68 | 73,987.68"
+    ],
+    [
+     "table_rows_exact",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows_exact",
+     "1 | TMT Steel Bar 12 mm | 7214 | 12 | Tonne | 60,025.00 | 7,20,300.00"
+    ],
+    [
+     "table_rows_exact",
+     "2 | PVC Conduit Pipe 25 mm | 3917 | 24 | Length | 100.00 | 2,400.00"
+    ],
+    [
+     "table_rows_exact",
+     "3 | Wall Putty 40 kg | 3214 | 263 | Bag | 833.00 | 2,19,079.00"
+    ],
+    [
+     "table_rows_exact",
+     "4 | Copper Wire 2.5 sq mm | 8544 | 284 | Coil | 2,171.00 | 6,16,564.00"
+    ],
+    [
+     "table_rows_exact",
+     "HSN/SAC | Taxable Value | IGST 12% | Total Tax"
+    ],
+    [
+     "table_rows_exact",
+     "7214 | 7,20,300.00 | 86,436.00 | 86,436.00"
+    ],
+    [
+     "table_rows_exact",
+     "3917 | 2,400.00 | 288.00 | 288.00"
+    ],
+    [
+     "table_rows_exact",
+     "3214 | 2,19,079.00 | 26,289.48 | 26,289.48"
+    ],
+    [
+     "table_rows_exact",
+     "8544 | 6,16,564.00 | 73,987.68 | 73,987.68"
+    ],
+    [
+     "footer",
+     "Subject to Bengaluru jurisdiction. Silverbirch Hardware Co."
+    ],
+    [
+     "header",
+     "ORIGINAL FOR RECIPIENT"
+    ],
+    [
+     "totals",
+     "Taxable Value … 15,58,343.00"
+    ],
+    [
+     "totals",
+     "IGST @ 12% … 1,87,001.16"
+    ],
+    [
+     "totals",
+     "Grand Total … 17,45,344.16"
+    ],
+    [
+     "rupee_adjacent",
+     "₹15,58,343.00"
+    ]
+   ],
+   "markdown_sha256": "547fea42bcbbfe05e7056fb0088791c42abe8b623b3ab443301aa525be240b8d",
+   "sha256": "4b80a413aba1b0a083bb643d0dce5f34facda0550ca7f61d0a95aa35933fe27d"
+  },
+  "invoice-05.pdf": {
+   "checks": {
+    "amounts": [
+     19,
+     19
+    ],
+    "dates": [
+     1,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "headings_level": [
+     0,
+     3
+    ],
+    "headings_line": [
+     3,
+     3
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "lines_normalised": [
+     5,
+     11
+    ],
+    "lines_normalised:html-br": [
+     0,
+     6
+    ],
+    "lines_normalised:html-label": [
+     5,
+     5
+    ],
+    "lines_strict": [
+     5,
+     11
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     0,
+     1
+    ],
+    "table_cells_text": [
+     67,
+     68
+    ],
+    "table_rows": [
+     10,
+     14
+    ],
+    "table_rows_exact": [
+     10,
+     14
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Marigold Paper Mart"
+    ],
+    [
+     "lines_strict",
+     "Survey No. 19, Industrial Area"
+    ],
+    [
+     "lines_strict",
+     "Pune 411001, Maharashtra"
+    ],
+    [
+     "lines_strict",
+     "Ambervale Logistics Pvt Ltd"
+    ],
+    [
+     "lines_strict",
+     "41 Temple Street"
+    ],
+    [
+     "lines_strict",
+     "Pune 411001, Maharashtra"
+    ],
+    [
+     "lines_normalised",
+     "Marigold Paper Mart"
+    ],
+    [
+     "lines_normalised",
+     "Survey No. 19, Industrial Area"
+    ],
+    [
+     "lines_normalised",
+     "Pune 411001, Maharashtra"
+    ],
+    [
+     "lines_normalised",
+     "Ambervale Logistics Pvt Ltd"
+    ],
+    [
+     "lines_normalised",
+     "41 Temple Street"
+    ],
+    [
+     "lines_normalised",
+     "Pune 411001, Maharashtra"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Marigold Paper Mart"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Survey No. 19, Industrial Area"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Pune 411001, Maharashtra"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Ambervale Logistics Pvt Ltd"
+    ],
+    [
+     "lines_normalised:html-br",
+     "41 Temple Street"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Pune 411001, Maharashtra"
+    ],
+    [
+     "headings_level",
+     "# TAX INVOICE"
+    ],
+    [
+     "headings_level",
+     "## Bill To"
+    ],
+    [
+     "headings_level",
+     "## HSN Summary"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | 8,13,966.75"
+    ],
+    [
+     "table_rows",
+     "CGST @ 9% | 73,257.01"
+    ],
+    [
+     "table_rows",
+     "SGST @ 9% | 73,257.01"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹9,60,480.77"
+    ],
+    [
+     "table_rows_exact",
+     "Taxable Value | 8,13,966.75"
+    ],
+    [
+     "table_rows_exact",
+     "CGST @ 9% | 73,257.01"
+    ],
+    [
+     "table_rows_exact",
+     "SGST @ 9% | 73,257.01"
+    ],
+    [
+     "table_rows_exact",
+     "Grand Total | ₹9,60,480.77"
+    ],
+    [
+     "table_cells_text",
+     "₹9,60,480.77"
+    ],
+    [
+     "totals",
+     "Taxable Value … 8,13,966.75"
+    ],
+    [
+     "totals",
+     "CGST @ 9% … 73,257.01"
+    ],
+    [
+     "totals",
+     "SGST @ 9% … 73,257.01"
+    ],
+    [
+     "totals",
+     "Grand Total … 9,60,480.77"
+    ],
+    [
+     "rupee_adjacent",
+     "₹9,60,480.77"
+    ]
+   ],
+   "markdown_sha256": "3d7dbeb1f4f1f75171b384f4545e5b9cb30fd07ecf24154323a0746989d824eb",
+   "sha256": "6349e01c0acd576e42495e8c92b7c9f6b68a5ad300716ad06be5c237ab3720bf"
+  },
+  "invoice-06.xlsx": {
+   "checks": {
+    "amounts": [
+     2,
+     15
+    ],
+    "dates": [
+     0,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     0,
+     2
+    ],
+    "table_cells_text": [
+     49,
+     71
+    ],
+    "table_rows": [
+     0,
+     18
+    ],
+    "table_rows_exact": [
+     0,
+     18
+    ],
+    "text": [
+     10,
+     10
+    ],
+    "totals": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "table_rows",
+     "GSTIN | 23TFVCQ6622Q1ZS"
+    ],
+    [
+     "table_rows",
+     "Invoice No. | INV/2026-27/0645"
+    ],
+    [
+     "table_rows",
+     "Invoice Date | 08-08-2026"
+    ],
+    [
+     "table_rows",
+     "Place of Supply | Tamil Nadu (33)"
+    ],
+    [
+     "table_rows",
+     "GSTIN | 33ULBCP1944U1ZR"
+    ],
+    [
+     "table_rows",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows",
+     "1 | Office Chair Mesh Back | 9401 | 285 | Nos | 4,384.00 | 12,49,440.00"
+    ],
+    [
+     "table_rows",
+     "2 | Copper Wire 2.5 sq mm | 8544 | 42 | Coil | 2,319.25 | 97,408.50"
+    ],
+    [
+     "table_rows",
+     "3 | A4 Copier Paper 75 gsm | 4802 | 42 | Ream | 296.50 | 12,453.00"
+    ],
+    [
+     "table_rows",
+     "4 | Portland Cement 53 Grade | 2523 | 135 | Bag | 417.50 | 56,362.50"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | ₹14,15,664.00"
+    ],
+    [
+     "table_rows",
+     "IGST @ 18% | 2,54,819.52"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹16,70,483.52"
+    ],
+    [
+     "table_rows",
+     "HSN/SAC | Taxable Value | IGST 18% | Total Tax"
+    ],
+    [
+     "table_rows",
+     "9401 | 12,49,440.00 | 2,24,899.20 | 2,24,899.20"
+    ],
+    [
+     "table_rows",
+     "8544 | 97,408.50 | 17,533.53 | 17,533.53"
+    ],
+    [
+     "table_rows",
+     "4802 | 12,453.00 | 2,241.54 | 2,241.54"
+    ],
+    [
+     "table_rows",
+     "2523 | 56,362.50 | 10,145.25 | 10,145.25"
+    ],
+    [
+     "table_rows_exact",
+     "GSTIN | 23TFVCQ6622Q1ZS"
+    ],
+    [
+     "table_rows_exact",
+     "Invoice No. | INV/2026-27/0645"
+    ],
+    [
+     "table_rows_exact",
+     "Invoice Date | 08-08-2026"
+    ],
+    [
+     "table_rows_exact",
+     "Place of Supply | Tamil Nadu (33)"
+    ],
+    [
+     "table_rows_exact",
+     "GSTIN | 33ULBCP1944U1ZR"
+    ],
+    [
+     "table_rows_exact",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows_exact",
+     "1 | Office Chair Mesh Back | 9401 | 285 | Nos | 4,384.00 | 12,49,440.00"
+    ],
+    [
+     "table_rows_exact",
+     "2 | Copper Wire 2.5 sq mm | 8544 | 42 | Coil | 2,319.25 | 97,408.50"
+    ],
+    [
+     "table_rows_exact",
+     "3 | A4 Copier Paper 75 gsm | 4802 | 42 | Ream | 296.50 | 12,453.00"
+    ],
+    [
+     "table_rows_exact",
+     "4 | Portland Cement 53 Grade | 2523 | 135 | Bag | 417.50 | 56,362.50"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | Taxable Value | ₹14,15,664.00"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | IGST @ 18% | 2,54,819.52"
+    ],
+    [
+     "table_rows_exact",
+     " |  |  |  |  | Grand Total | ₹16,70,483.52"
+    ],
+    [
+     "table_rows_exact",
+     "HSN/SAC | Taxable Value | IGST 18% | Total Tax"
+    ],
+    [
+     "table_rows_exact",
+     "9401 | 12,49,440.00 | 2,24,899.20 | 2,24,899.20"
+    ],
+    [
+     "table_rows_exact",
+     "8544 | 97,408.50 | 17,533.53 | 17,533.53"
+    ],
+    [
+     "table_rows_exact",
+     "4802 | 12,453.00 | 2,241.54 | 2,241.54"
+    ],
+    [
+     "table_rows_exact",
+     "2523 | 56,362.50 | 10,145.25 | 10,145.25"
+    ],
+    [
+     "table_cells_text",
+     "08-08-2026"
+    ],
+    [
+     "table_cells_text",
+     "4,384.00"
+    ],
+    [
+     "table_cells_text",
+     "12,49,440.00"
+    ],
+    [
+     "table_cells_text",
+     "2,319.25"
+    ],
+    [
+     "table_cells_text",
+     "97,408.50"
+    ],
+    [
+     "table_cells_text",
+     "12,453.00"
+    ],
+    [
+     "table_cells_text",
+     "56,362.50"
+    ],
+    [
+     "table_cells_text",
+     "₹14,15,664.00"
+    ],
+    [
+     "table_cells_text",
+     "2,54,819.52"
+    ],
+    [
+     "table_cells_text",
+     "₹16,70,483.52"
+    ],
+    [
+     "table_cells_text",
+     "12,49,440.00"
+    ],
+    [
+     "table_cells_text",
+     "2,24,899.20"
+    ],
+    [
+     "table_cells_text",
+     "2,24,899.20"
+    ],
+    [
+     "table_cells_text",
+     "97,408.50"
+    ],
+    [
+     "table_cells_text",
+     "17,533.53"
+    ],
+    [
+     "table_cells_text",
+     "17,533.53"
+    ],
+    [
+     "table_cells_text",
+     "12,453.00"
+    ],
+    [
+     "table_cells_text",
+     "2,241.54"
+    ],
+    [
+     "table_cells_text",
+     "2,241.54"
+    ],
+    [
+     "table_cells_text",
+     "56,362.50"
+    ],
+    [
+     "table_cells_text",
+     "10,145.25"
+    ],
+    [
+     "table_cells_text",
+     "10,145.25"
+    ],
+    [
+     "amounts",
+     "4,384.00"
+    ],
+    [
+     "amounts",
+     "12,49,440.00"
+    ],
+    [
+     "amounts",
+     "2,319.25"
+    ],
+    [
+     "amounts",
+     "97,408.50"
+    ],
+    [
+     "amounts",
+     "12,453.00"
+    ],
+    [
+     "amounts",
+     "56,362.50"
+    ],
+    [
+     "amounts",
+     "14,15,664.00"
+    ],
+    [
+     "amounts",
+     "2,54,819.52"
+    ],
+    [
+     "amounts",
+     "16,70,483.52"
+    ],
+    [
+     "amounts",
+     "2,24,899.20"
+    ],
+    [
+     "amounts",
+     "17,533.53"
+    ],
+    [
+     "amounts",
+     "2,241.54"
+    ],
+    [
+     "amounts",
+     "10,145.25"
+    ],
+    [
+     "dates",
+     "08-08-2026"
+    ],
+    [
+     "totals",
+     "Taxable Value … 14,15,664.00"
+    ],
+    [
+     "totals",
+     "IGST @ 18% … 2,54,819.52"
+    ],
+    [
+     "totals",
+     "Grand Total … 16,70,483.52"
+    ],
+    [
+     "rupee_adjacent",
+     "₹14,15,664.00"
+    ],
+    [
+     "rupee_adjacent",
+     "₹16,70,483.52"
+    ]
+   ],
+   "markdown_sha256": "d16555a514564dc2c75ced226891b4498c9e91ee1c9078a4f5d200d04f336989",
+   "sha256": "ec4bd5b07775b4e5e8f6ebedfac89584bf6007d1d7d3530bb0314c8ec760398c"
+  },
+  "invoice-07.docx": {
+   "checks": {
+    "amounts": [
+     15,
+     15
+    ],
+    "dates": [
+     1,
+     1
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     3
+    ],
+    "headings_line": [
+     3,
+     3
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "lines_normalised": [
+     2,
+     11
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     6
+    ],
+    "lines_normalised:tab-in-run": [
+     2,
+     2
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     3
+    ],
+    "lines_strict": [
+     0,
+     11
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     1,
+     1
+    ],
+    "table_cells_text": [
+     56,
+     56
+    ],
+    "table_rows": [
+     0,
+     12
+    ],
+    "table_rows_exact": [
+     0,
+     12
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Kestrelwick Steel Agency"
+    ],
+    [
+     "lines_strict",
+     "88 Ring Road"
+    ],
+    [
+     "lines_strict",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_strict",
+     "GSTIN\t: 08ZMBCK2498H1ZY"
+    ],
+    [
+     "lines_strict",
+     "Invoice No.\t: ST-2627-0637"
+    ],
+    [
+     "lines_strict",
+     "Invoice Date\t: 24-04-2026"
+    ],
+    [
+     "lines_strict",
+     "Place of Supply\t: Rajasthan (08)"
+    ],
+    [
+     "lines_strict",
+     "Vellora Softworks Pvt Ltd"
+    ],
+    [
+     "lines_strict",
+     "41 Temple Street"
+    ],
+    [
+     "lines_strict",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_strict",
+     "GSTIN\t: 08FMBCV4591G1ZB"
+    ],
+    [
+     "lines_normalised",
+     "Kestrelwick Steel Agency"
+    ],
+    [
+     "lines_normalised",
+     "88 Ring Road"
+    ],
+    [
+     "lines_normalised",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_normalised",
+     "GSTIN : 08ZMBCK2498H1ZY"
+    ],
+    [
+     "lines_normalised",
+     "Invoice Date : 24-04-2026"
+    ],
+    [
+     "lines_normalised",
+     "Vellora Softworks Pvt Ltd"
+    ],
+    [
+     "lines_normalised",
+     "41 Temple Street"
+    ],
+    [
+     "lines_normalised",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_normalised",
+     "GSTIN : 08FMBCV4591G1ZB"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Kestrelwick Steel Agency"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "88 Ring Road"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Vellora Softworks Pvt Ltd"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "41 Temple Street"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "GSTIN : 08ZMBCK2498H1ZY"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Invoice Date : 24-04-2026"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "GSTIN : 08FMBCV4591G1ZB"
+    ],
+    [
+     "headings_level",
+     "# TAX INVOICE"
+    ],
+    [
+     "headings_level",
+     "## Bill To"
+    ],
+    [
+     "headings_level",
+     "## HSN Summary"
+    ],
+    [
+     "table_rows",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows",
+     "1 | PVC Conduit Pipe 25 mm | 3917 | 118 | Length | 120.00 | 14,160.00"
+    ],
+    [
+     "table_rows",
+     "2 | Office Chair Mesh Back | 9401 | 121 | Nos | 6,733.50 | 8,14,753.50"
+    ],
+    [
+     "table_rows",
+     "3 | A4 Copier Paper 75 gsm | 4802 | 281 | Ream | 253.00 | 71,093.00"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | 9,00,006.50"
+    ],
+    [
+     "table_rows",
+     "CGST @ 9% | 81,000.59"
+    ],
+    [
+     "table_rows",
+     "SGST @ 9% | 81,000.59"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹10,62,007.68"
+    ],
+    [
+     "table_rows",
+     "HSN/SAC | Taxable Value | CGST 9% | SGST 9% | Total Tax"
+    ],
+    [
+     "table_rows",
+     "3917 | 14,160.00 | 1,274.40 | 1,274.40 | 2,548.80"
+    ],
+    [
+     "table_rows",
+     "9401 | 8,14,753.50 | 73,327.82 | 73,327.82 | 1,46,655.64"
+    ],
+    [
+     "table_rows",
+     "4802 | 71,093.00 | 6,398.37 | 6,398.37 | 12,796.74"
+    ],
+    [
+     "table_rows_exact",
+     "Sl. | Description | HSN/SAC | Qty | Unit | Rate (₹) | Amount (₹)"
+    ],
+    [
+     "table_rows_exact",
+     "1 | PVC Conduit Pipe 25 mm | 3917 | 118 | Length | 120.00 | 14,160.00"
+    ],
+    [
+     "table_rows_exact",
+     "2 | Office Chair Mesh Back | 9401 | 121 | Nos | 6,733.50 | 8,14,753.50"
+    ],
+    [
+     "table_rows_exact",
+     "3 | A4 Copier Paper 75 gsm | 4802 | 281 | Ream | 253.00 | 71,093.00"
+    ],
+    [
+     "table_rows_exact",
+     "Taxable Value | 9,00,006.50"
+    ],
+    [
+     "table_rows_exact",
+     "CGST @ 9% | 81,000.59"
+    ],
+    [
+     "table_rows_exact",
+     "SGST @ 9% | 81,000.59"
+    ],
+    [
+     "table_rows_exact",
+     "Grand Total | ₹10,62,007.68"
+    ],
+    [
+     "table_rows_exact",
+     "HSN/SAC | Taxable Value | CGST 9% | SGST 9% | Total Tax"
+    ],
+    [
+     "table_rows_exact",
+     "3917 | 14,160.00 | 1,274.40 | 1,274.40 | 2,548.80"
+    ],
+    [
+     "table_rows_exact",
+     "9401 | 8,14,753.50 | 73,327.82 | 73,327.82 | 1,46,655.64"
+    ],
+    [
+     "table_rows_exact",
+     "4802 | 71,093.00 | 6,398.37 | 6,398.37 | 12,796.74"
+    ],
+    [
+     "footer",
+     "Subject to Jaipur jurisdiction. Kestrelwick Steel Agency"
+    ],
+    [
+     "header",
+     "ORIGINAL FOR RECIPIENT"
+    ],
+    [
+     "totals",
+     "Taxable Value … 9,00,006.50"
+    ],
+    [
+     "totals",
+     "CGST @ 9% … 81,000.59"
+    ],
+    [
+     "totals",
+     "SGST @ 9% … 81,000.59"
+    ],
+    [
+     "totals",
+     "Grand Total … 10,62,007.68"
+    ]
+   ],
+   "markdown_sha256": "aef9d0c59dc6446a8bc5f2e5836a76dcdfba142c4610ef3f0a6a3e8fa6f0acd8",
+   "sha256": "ba79eb6e14a733c94cfe4c494594ea1cbfb583d8401be53b876d8ad7aa75ce4e"
+  },
+  "invoice-08.pdf": {
+   "checks": {
+    "amounts": [
+     12,
+     12
+    ],
+    "dates": [
+     1,
+     1
+    ],
+    "gstin": [
+     2,
+     2
+    ],
+    "headings_level": [
+     0,
+     3
+    ],
+    "headings_line": [
+     3,
+     3
+    ],
+    "invoice_no": [
+     1,
+     1
+    ],
+    "lines_normalised": [
+     5,
+     11
+    ],
+    "lines_normalised:html-br": [
+     0,
+     6
+    ],
+    "lines_normalised:html-label": [
+     5,
+     5
+    ],
+    "lines_strict": [
+     5,
+     11
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     2,
+     2
+    ],
+    "table_cells_text": [
+     50,
+     50
+    ],
+    "table_rows": [
+     8,
+     11
+    ],
+    "table_rows_exact": [
+     8,
+     11
+    ],
+    "totals": [
+     0,
+     3
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Ambervale Building Supplies Pvt Ltd"
+    ],
+    [
+     "lines_strict",
+     "Shop 7, Market Yard"
+    ],
+    [
+     "lines_strict",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_strict",
+     "Brightmarsh Constructions Pvt Ltd"
+    ],
+    [
+     "lines_strict",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_strict",
+     "Chennai 600002, Tamil Nadu"
+    ],
+    [
+     "lines_normalised",
+     "Ambervale Building Supplies Pvt Ltd"
+    ],
+    [
+     "lines_normalised",
+     "Shop 7, Market Yard"
+    ],
+    [
+     "lines_normalised",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_normalised",
+     "Brightmarsh Constructions Pvt Ltd"
+    ],
+    [
+     "lines_normalised",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_normalised",
+     "Chennai 600002, Tamil Nadu"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Ambervale Building Supplies Pvt Ltd"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Shop 7, Market Yard"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Jaipur 302001, Rajasthan"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Brightmarsh Constructions Pvt Ltd"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Unit 5, Riverside Estate"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Chennai 600002, Tamil Nadu"
+    ],
+    [
+     "headings_level",
+     "# TAX INVOICE"
+    ],
+    [
+     "headings_level",
+     "## Bill To"
+    ],
+    [
+     "headings_level",
+     "## HSN Summary"
+    ],
+    [
+     "table_rows",
+     "Taxable Value | ₹11,08,693.75"
+    ],
+    [
+     "table_rows",
+     "IGST @ 5% | 55,434.69"
+    ],
+    [
+     "table_rows",
+     "Grand Total | ₹11,64,128.44"
+    ],
+    [
+     "table_rows_exact",
+     "Taxable Value | ₹11,08,693.75"
+    ],
+    [
+     "table_rows_exact",
+     "IGST @ 5% | 55,434.69"
+    ],
+    [
+     "table_rows_exact",
+     "Grand Total | ₹11,64,128.44"
+    ],
+    [
+     "totals",
+     "Taxable Value … 11,08,693.75"
+    ],
+    [
+     "totals",
+     "IGST @ 5% … 55,434.69"
+    ],
+    [
+     "totals",
+     "Grand Total … 11,64,128.44"
+    ]
+   ],
+   "markdown_sha256": "3bec000d316b25403803cfca8db5aee326880d9e1d8991b2a817a578b5e0c602",
+   "sha256": "9ede28155a3030f67745cecad88dc8202071f0332907e5ce66e9c2d5f33661be"
+  },
+  "statement-01.docx": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     31,
+     31
+    ],
+    "dates": [
+     9,
+     9
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     2
+    ],
+    "headings_line": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     1,
+     6
+    ],
+    "lines_normalised:br-in-run": [
+     0,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     0,
+     6
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     1,
+     2
+    ],
+    "table_cells_text": [
+     83,
+     84
+    ],
+    "table_rows": [
+     0,
+     19
+    ],
+    "table_rows_exact": [
+     0,
+     19
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Ambervale Co-operative Bank"
+    ],
+    [
+     "lines_strict",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_strict",
+     "IFSC: AMBV0320361"
+    ],
+    [
+     "lines_strict",
+     "Account Holder\t: Asha Iyer"
+    ],
+    [
+     "lines_strict",
+     "Account Number\t: XXXXXXXX7931"
+    ],
+    [
+     "lines_strict",
+     "Statement Period\t: 01-09-2026 to 28-09-2026"
+    ],
+    [
+     "lines_normalised",
+     "Ambervale Co-operative Bank"
+    ],
+    [
+     "lines_normalised",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_normalised",
+     "IFSC: AMBV0320361"
+    ],
+    [
+     "lines_normalised",
+     "Account Holder : Asha Iyer"
+    ],
+    [
+     "lines_normalised",
+     "Statement Period : 01-09-2026 to 28-09-2026"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Ambervale Co-operative Bank"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_normalised:br-in-run",
+     "IFSC: AMBV0320361"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Account Holder : Asha Iyer"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Statement Period : 01-09-2026 to 28-09-2026"
+    ],
+    [
+     "headings_level",
+     "# Statement of Account"
+    ],
+    [
+     "headings_level",
+     "## Account Summary"
+    ],
+    [
+     "table_rows",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows",
+     "03-09-2026 | ACH/DR/Electricity bill/50872352 | 527213 | 33,149.96 | 11,47,953.00"
+    ],
+    [
+     "table_rows",
+     "03-09-2026 | NEFT/CR/842603687168/Coralnest Office Solutions LLP/Refund | 687168 | 51,969.62 | 11,99,922.62"
+    ],
+    [
+     "table_rows",
+     "03-09-2026 | NEFT/CR/272867022288/BRIGHTMARSH CONSTRUCTIONS PVT LTD/SALARY SEP 2026 | 022288 | 1,69,735.00 | 13,69,657.62"
+    ],
+    [
+     "table_rows",
+     "04-09-2026 | NEFT/CR/547153527208/Coralnest Office Solutions LLP/Refund | 527208 | 2,34,938.14 | 16,04,595.76"
+    ],
+    [
+     "table_rows",
+     "04-09-2026 | IMPS/P2A/837937072253/Farhan M/Rent | 072253 | 71,759.57 | 15,32,836.19"
+    ],
+    [
+     "table_rows",
+     "06-09-2026 | CHQ PAID/875988/Coralnest Office Solutions LLP | 978254 | 2,275.14 | 15,30,561.05"
+    ],
+    [
+     "table_rows",
+     "09-09-2026 | NEFT/CR/209253767194/Quillmere Tech Services Pvt Ltd/Refund | 767194 | 1,26,929.72 | 16,57,490.77"
+    ],
+    [
+     "table_rows",
+     "10-09-2026 | CHQ PAID/587808/Marigold Paper Mart | 225329 | 38,477.02 | 16,19,013.75"
+    ],
+    [
+     "table_rows",
+     "11-09-2026 | NEFT/CR/907787497478/Tamarind Electricals/Refund | 497478 | 2,55,849.20 | 18,74,862.95"
+    ],
+    [
+     "table_rows",
+     "11-09-2026 | CHQ PAID/434096/Tamarind Electricals | 701887 | 59,651.64 | 18,15,211.31"
+    ],
+    [
+     "table_rows",
+     "13-09-2026 | ACH/DR/Electricity bill/14990669 | 697190 | 64,260.87 | 17,50,950.44"
+    ],
+    [
+     "table_rows",
+     "14-09-2026 | IMPS/P2A/760783007964/Arjun N/Rent | 007964 | 6,247.62 | 17,44,702.82"
+    ],
+    [
+     "table_rows",
+     "14-09-2026 | IMPS/P2A/248996558568/Kavya K/Rent | 558568 | 14,959.45 | 17,29,743.37"
+    ],
+    [
+     "table_rows",
+     "17-09-2026 | NEFT/CR/611322803768/Kestrelwick Steel Agency/Refund | 803768 | 2,85,579.02 | 20,15,322.39"
+    ],
+    [
+     "table_rows",
+     "Opening Balance | ₹11,81,102.96"
+    ],
+    [
+     "table_rows",
+     "Total Credits | 11,25,000.70"
+    ],
+    [
+     "table_rows",
+     "Total Debits | 2,90,781.27"
+    ],
+    [
+     "table_rows",
+     "Closing Balance | ₹20,15,322.39"
+    ],
+    [
+     "table_rows_exact",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows_exact",
+     "03-09-2026 | ACH/DR/Electricity bill/50872352 | 527213 | 33,149.96 |  | 11,47,953.00"
+    ],
+    [
+     "table_rows_exact",
+     "03-09-2026 | NEFT/CR/842603687168/Coralnest Office Solutions LLP/Refund | 687168 |  | 51,969.62 | 11,99,922.62"
+    ],
+    [
+     "table_rows_exact",
+     "03-09-2026 | NEFT/CR/272867022288/BRIGHTMARSH CONSTRUCTIONS PVT LTD/SALARY SEP 2026 | 022288 |  | 1,69,735.00 | 13,69,657.62"
+    ],
+    [
+     "table_rows_exact",
+     "04-09-2026 | NEFT/CR/547153527208/Coralnest Office Solutions LLP/Refund | 527208 |  | 2,34,938.14 | 16,04,595.76"
+    ],
+    [
+     "table_rows_exact",
+     "04-09-2026 | IMPS/P2A/837937072253/Farhan M/Rent | 072253 | 71,759.57 |  | 15,32,836.19"
+    ],
+    [
+     "table_rows_exact",
+     "06-09-2026 | CHQ PAID/875988/Coralnest Office Solutions LLP | 978254 | 2,275.14 |  | 15,30,561.05"
+    ],
+    [
+     "table_rows_exact",
+     "09-09-2026 | NEFT/CR/209253767194/Quillmere Tech Services Pvt Ltd/Refund | 767194 |  | 1,26,929.72 | 16,57,490.77"
+    ],
+    [
+     "table_rows_exact",
+     "10-09-2026 | CHQ PAID/587808/Marigold Paper Mart | 225329 | 38,477.02 |  | 16,19,013.75"
+    ],
+    [
+     "table_rows_exact",
+     "11-09-2026 | NEFT/CR/907787497478/Tamarind Electricals/Refund | 497478 |  | 2,55,849.20 | 18,74,862.95"
+    ],
+    [
+     "table_rows_exact",
+     "11-09-2026 | CHQ PAID/434096/Tamarind Electricals | 701887 | 59,651.64 |  | 18,15,211.31"
+    ],
+    [
+     "table_rows_exact",
+     "13-09-2026 | ACH/DR/Electricity bill/14990669 | 697190 | 64,260.87 |  | 17,50,950.44"
+    ],
+    [
+     "table_rows_exact",
+     "14-09-2026 | IMPS/P2A/760783007964/Arjun N/Rent | 007964 | 6,247.62 |  | 17,44,702.82"
+    ],
+    [
+     "table_rows_exact",
+     "14-09-2026 | IMPS/P2A/248996558568/Kavya K/Rent | 558568 | 14,959.45 |  | 17,29,743.37"
+    ],
+    [
+     "table_rows_exact",
+     "17-09-2026 | NEFT/CR/611322803768/Kestrelwick Steel Agency/Refund | 803768 |  | 2,85,579.02 | 20,15,322.39"
+    ],
+    [
+     "table_rows_exact",
+     "Opening Balance | ₹11,81,102.96"
+    ],
+    [
+     "table_rows_exact",
+     "Total Credits | 11,25,000.70"
+    ],
+    [
+     "table_rows_exact",
+     "Total Debits | 2,90,781.27"
+    ],
+    [
+     "table_rows_exact",
+     "Closing Balance | ₹20,15,322.39"
+    ],
+    [
+     "table_cells_text",
+     "₹11,81,102.96"
+    ],
+    [
+     "footer",
+     "Page 1 of 1"
+    ],
+    [
+     "header",
+     "Ambervale Co-operative Bank · Statement of Account"
+    ],
+    [
+     "totals",
+     "Opening Balance … 11,81,102.96"
+    ],
+    [
+     "totals",
+     "Total Credits … 11,25,000.70"
+    ],
+    [
+     "totals",
+     "Total Debits … 2,90,781.27"
+    ],
+    [
+     "totals",
+     "Closing Balance … 20,15,322.39"
+    ],
+    [
+     "rupee_adjacent",
+     "₹11,81,102.96"
+    ]
+   ],
+   "markdown_sha256": "5d3d27874209ed3942cb7c3a657f1375b844e9352bd5265ca9ce441a7ab9af66",
+   "sha256": "bf7c0ebcf95d118366154bd9607c729c087f52a93d717a13940b85afa6bc5214"
+  },
+  "statement-02.pdf": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     25,
+     25
+    ],
+    "dates": [
+     10,
+     10
+    ],
+    "headings_level": [
+     0,
+     2
+    ],
+    "headings_line": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     3,
+     6
+    ],
+    "lines_normalised:html-br": [
+     0,
+     3
+    ],
+    "lines_normalised:html-label": [
+     3,
+     3
+    ],
+    "lines_strict": [
+     3,
+     6
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     2,
+     2
+    ],
+    "table_cells_text": [
+     69,
+     69
+    ],
+    "table_rows": [
+     12,
+     16
+    ],
+    "table_rows_exact": [
+     12,
+     16
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Riverlace Urban Bank"
+    ],
+    [
+     "lines_strict",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_strict",
+     "IFSC: RVLU0292599"
+    ],
+    [
+     "lines_normalised",
+     "Riverlace Urban Bank"
+    ],
+    [
+     "lines_normalised",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_normalised",
+     "IFSC: RVLU0292599"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Riverlace Urban Bank"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_normalised:html-br",
+     "IFSC: RVLU0292599"
+    ],
+    [
+     "headings_level",
+     "# Statement of Account"
+    ],
+    [
+     "headings_level",
+     "## Account Summary"
+    ],
+    [
+     "table_rows",
+     "Opening Balance | ₹3,77,442.58"
+    ],
+    [
+     "table_rows",
+     "Total Credits | 9,81,502.94"
+    ],
+    [
+     "table_rows",
+     "Total Debits | 1,60,149.22"
+    ],
+    [
+     "table_rows",
+     "Closing Balance | ₹11,98,796.30"
+    ],
+    [
+     "table_rows_exact",
+     "Opening Balance | ₹3,77,442.58"
+    ],
+    [
+     "table_rows_exact",
+     "Total Credits | 9,81,502.94"
+    ],
+    [
+     "table_rows_exact",
+     "Total Debits | 1,60,149.22"
+    ],
+    [
+     "table_rows_exact",
+     "Closing Balance | ₹11,98,796.30"
+    ],
+    [
+     "totals",
+     "Opening Balance … 3,77,442.58"
+    ],
+    [
+     "totals",
+     "Total Credits … 9,81,502.94"
+    ],
+    [
+     "totals",
+     "Total Debits … 1,60,149.22"
+    ],
+    [
+     "totals",
+     "Closing Balance … 11,98,796.30"
+    ]
+   ],
+   "markdown_sha256": "2cb0a892e369bbbd00c6eef8a04e8ccd75bd12f629f8019b08ac31c9d4cbc4a0",
+   "sha256": "eb0b6dd674a2aee27eee813607f375478bd17bc0aea289282a8dc81c65974fa8"
+  },
+  "statement-03.xlsx": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     0,
+     29
+    ],
+    "dates": [
+     0,
+     9
+    ],
+    "rupee_adjacent": [
+     0,
+     2
+    ],
+    "table_cells_text": [
+     42,
+     85
+    ],
+    "table_rows": [
+     0,
+     21
+    ],
+    "table_rows_exact": [
+     0,
+     21
+    ],
+    "text": [
+     6,
+     6
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "table_rows",
+     "Account Holder | Arjun Deshpande"
+    ],
+    [
+     "table_rows",
+     "Account Number | XXXXXXXX6058"
+    ],
+    [
+     "table_rows",
+     "Statement Period | 01-06-2026 to 28-06-2026"
+    ],
+    [
+     "table_rows",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows",
+     "03-06-2026 | ACH/DR/Electricity bill/80012245 | 453201 | 43,203.02 | 10,15,421.79"
+    ],
+    [
+     "table_rows",
+     "06-06-2026 | CHQ PAID/938879/Granitefold Traders | 769323 | 59,993.74 | 9,55,428.05"
+    ],
+    [
+     "table_rows",
+     "07-06-2026 | NEFT/CR/267736399723/AMBERVALE LOGISTICS PVT LTD/SALARY JUN 2026 | 399723 | 2,26,774.00 | 11,82,202.05"
+    ],
+    [
+     "table_rows",
+     "07-06-2026 | ACH/DR/Electricity bill/43777323 | 234275 | 14,491.08 | 11,67,710.97"
+    ],
+    [
+     "table_rows",
+     "08-06-2026 | CHQ PAID/281950/Kestrelwick Steel Agency | 693312 | 48,111.72 | 11,19,599.25"
+    ],
+    [
+     "table_rows",
+     "11-06-2026 | UPI/DR/433535101316/Ritu D/Groceries | 101316 | 36,435.43 | 10,83,163.82"
+    ],
+    [
+     "table_rows",
+     "11-06-2026 | IMPS/P2A/970450253821/Farhan S/Rent | 253821 | 27,624.74 | 10,55,539.08"
+    ],
+    [
+     "table_rows",
+     "13-06-2026 | NEFT/CR/843383993580/Kestrelwick Steel Agency/Refund | 993580 | 3,35,080.08 | 13,90,619.16"
+    ],
+    [
+     "table_rows",
+     "13-06-2026 | CHQ PAID/215366/Marigold Paper Mart | 078143 | 4,176.88 | 13,86,442.28"
+    ],
+    [
+     "table_rows",
+     "15-06-2026 | ACH/DR/Electricity bill/13029094 | 948460 | 70,215.89 | 13,16,226.39"
+    ],
+    [
+     "table_rows",
+     "17-06-2026 | CHQ PAID/467937/Silverbirch Hardware Co. | 094954 | 48,896.42 | 12,67,329.97"
+    ],
+    [
+     "table_rows",
+     "18-06-2026 | NEFT/CR/103180488839/Marigold Paper Mart/Refund | 488839 | 1,32,663.53 | 13,99,993.50"
+    ],
+    [
+     "table_rows",
+     "18-06-2026 | ATM WDL/Kakkanad Kochi | 966570 | 42,926.61 | 13,57,066.89"
+    ],
+    [
+     "table_rows",
+     "Opening Balance | ₹10,58,624.81"
+    ],
+    [
+     "table_rows",
+     "Total Credits | 6,94,517.61"
+    ],
+    [
+     "table_rows",
+     "Total Debits | 3,96,075.53"
+    ],
+    [
+     "table_rows",
+     "Closing Balance | ₹13,57,066.89"
+    ],
+    [
+     "table_rows_exact",
+     "Account Holder | Arjun Deshpande"
+    ],
+    [
+     "table_rows_exact",
+     "Account Number | XXXXXXXX6058"
+    ],
+    [
+     "table_rows_exact",
+     "Statement Period | 01-06-2026 to 28-06-2026"
+    ],
+    [
+     "table_rows_exact",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows_exact",
+     "03-06-2026 | ACH/DR/Electricity bill/80012245 | 453201 | 43,203.02 |  | 10,15,421.79"
+    ],
+    [
+     "table_rows_exact",
+     "06-06-2026 | CHQ PAID/938879/Granitefold Traders | 769323 | 59,993.74 |  | 9,55,428.05"
+    ],
+    [
+     "table_rows_exact",
+     "07-06-2026 | NEFT/CR/267736399723/AMBERVALE LOGISTICS PVT LTD/SALARY JUN 2026 | 399723 |  | 2,26,774.00 | 11,82,202.05"
+    ],
+    [
+     "table_rows_exact",
+     "07-06-2026 | ACH/DR/Electricity bill/43777323 | 234275 | 14,491.08 |  | 11,67,710.97"
+    ],
+    [
+     "table_rows_exact",
+     "08-06-2026 | CHQ PAID/281950/Kestrelwick Steel Agency | 693312 | 48,111.72 |  | 11,19,599.25"
+    ],
+    [
+     "table_rows_exact",
+     "11-06-2026 | UPI/DR/433535101316/Ritu D/Groceries | 101316 | 36,435.43 |  | 10,83,163.82"
+    ],
+    [
+     "table_rows_exact",
+     "11-06-2026 | IMPS/P2A/970450253821/Farhan S/Rent | 253821 | 27,624.74 |  | 10,55,539.08"
+    ],
+    [
+     "table_rows_exact",
+     "13-06-2026 | NEFT/CR/843383993580/Kestrelwick Steel Agency/Refund | 993580 |  | 3,35,080.08 | 13,90,619.16"
+    ],
+    [
+     "table_rows_exact",
+     "13-06-2026 | CHQ PAID/215366/Marigold Paper Mart | 078143 | 4,176.88 |  | 13,86,442.28"
+    ],
+    [
+     "table_rows_exact",
+     "15-06-2026 | ACH/DR/Electricity bill/13029094 | 948460 | 70,215.89 |  | 13,16,226.39"
+    ],
+    [
+     "table_rows_exact",
+     "17-06-2026 | CHQ PAID/467937/Silverbirch Hardware Co. | 094954 | 48,896.42 |  | 12,67,329.97"
+    ],
+    [
+     "table_rows_exact",
+     "18-06-2026 | NEFT/CR/103180488839/Marigold Paper Mart/Refund | 488839 |  | 1,32,663.53 | 13,99,993.50"
+    ],
+    [
+     "table_rows_exact",
+     "18-06-2026 | ATM WDL/Kakkanad Kochi | 966570 | 42,926.61 |  | 13,57,066.89"
+    ],
+    [
+     "table_rows_exact",
+     "Opening Balance | ₹10,58,624.81"
+    ],
+    [
+     "table_rows_exact",
+     "Total Credits | 6,94,517.61"
+    ],
+    [
+     "table_rows_exact",
+     "Total Debits | 3,96,075.53"
+    ],
+    [
+     "table_rows_exact",
+     "Closing Balance | ₹13,57,066.89"
+    ],
+    [
+     "table_cells_text",
+     "03-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "43,203.02"
+    ],
+    [
+     "table_cells_text",
+     "10,15,421.79"
+    ],
+    [
+     "table_cells_text",
+     "06-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "59,993.74"
+    ],
+    [
+     "table_cells_text",
+     "9,55,428.05"
+    ],
+    [
+     "table_cells_text",
+     "07-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "2,26,774.00"
+    ],
+    [
+     "table_cells_text",
+     "11,82,202.05"
+    ],
+    [
+     "table_cells_text",
+     "07-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "14,491.08"
+    ],
+    [
+     "table_cells_text",
+     "11,67,710.97"
+    ],
+    [
+     "table_cells_text",
+     "08-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "48,111.72"
+    ],
+    [
+     "table_cells_text",
+     "11,19,599.25"
+    ],
+    [
+     "table_cells_text",
+     "11-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "36,435.43"
+    ],
+    [
+     "table_cells_text",
+     "10,83,163.82"
+    ],
+    [
+     "table_cells_text",
+     "11-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "27,624.74"
+    ],
+    [
+     "table_cells_text",
+     "10,55,539.08"
+    ],
+    [
+     "table_cells_text",
+     "13-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "3,35,080.08"
+    ],
+    [
+     "table_cells_text",
+     "13,90,619.16"
+    ],
+    [
+     "table_cells_text",
+     "13-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "4,176.88"
+    ],
+    [
+     "table_cells_text",
+     "13,86,442.28"
+    ],
+    [
+     "table_cells_text",
+     "15-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "70,215.89"
+    ],
+    [
+     "table_cells_text",
+     "13,16,226.39"
+    ],
+    [
+     "table_cells_text",
+     "17-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "48,896.42"
+    ],
+    [
+     "table_cells_text",
+     "12,67,329.97"
+    ],
+    [
+     "table_cells_text",
+     "18-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "1,32,663.53"
+    ],
+    [
+     "table_cells_text",
+     "13,99,993.50"
+    ],
+    [
+     "table_cells_text",
+     "18-06-2026"
+    ],
+    [
+     "table_cells_text",
+     "42,926.61"
+    ],
+    [
+     "table_cells_text",
+     "13,57,066.89"
+    ],
+    [
+     "table_cells_text",
+     "₹10,58,624.81"
+    ],
+    [
+     "table_cells_text",
+     "6,94,517.61"
+    ],
+    [
+     "table_cells_text",
+     "3,96,075.53"
+    ],
+    [
+     "table_cells_text",
+     "₹13,57,066.89"
+    ],
+    [
+     "amounts",
+     "43,203.02"
+    ],
+    [
+     "amounts",
+     "10,15,421.79"
+    ],
+    [
+     "amounts",
+     "59,993.74"
+    ],
+    [
+     "amounts",
+     "9,55,428.05"
+    ],
+    [
+     "amounts",
+     "2,26,774.00"
+    ],
+    [
+     "amounts",
+     "11,82,202.05"
+    ],
+    [
+     "amounts",
+     "14,491.08"
+    ],
+    [
+     "amounts",
+     "11,67,710.97"
+    ],
+    [
+     "amounts",
+     "48,111.72"
+    ],
+    [
+     "amounts",
+     "11,19,599.25"
+    ],
+    [
+     "amounts",
+     "36,435.43"
+    ],
+    [
+     "amounts",
+     "10,83,163.82"
+    ],
+    [
+     "amounts",
+     "27,624.74"
+    ],
+    [
+     "amounts",
+     "10,55,539.08"
+    ],
+    [
+     "amounts",
+     "3,35,080.08"
+    ],
+    [
+     "amounts",
+     "13,90,619.16"
+    ],
+    [
+     "amounts",
+     "4,176.88"
+    ],
+    [
+     "amounts",
+     "13,86,442.28"
+    ],
+    [
+     "amounts",
+     "70,215.89"
+    ],
+    [
+     "amounts",
+     "13,16,226.39"
+    ],
+    [
+     "amounts",
+     "48,896.42"
+    ],
+    [
+     "amounts",
+     "12,67,329.97"
+    ],
+    [
+     "amounts",
+     "1,32,663.53"
+    ],
+    [
+     "amounts",
+     "13,99,993.50"
+    ],
+    [
+     "amounts",
+     "42,926.61"
+    ],
+    [
+     "amounts",
+     "13,57,066.89"
+    ],
+    [
+     "amounts",
+     "10,58,624.81"
+    ],
+    [
+     "amounts",
+     "6,94,517.61"
+    ],
+    [
+     "amounts",
+     "3,96,075.53"
+    ],
+    [
+     "dates",
+     "03-06-2026"
+    ],
+    [
+     "dates",
+     "06-06-2026"
+    ],
+    [
+     "dates",
+     "07-06-2026"
+    ],
+    [
+     "dates",
+     "08-06-2026"
+    ],
+    [
+     "dates",
+     "11-06-2026"
+    ],
+    [
+     "dates",
+     "13-06-2026"
+    ],
+    [
+     "dates",
+     "15-06-2026"
+    ],
+    [
+     "dates",
+     "17-06-2026"
+    ],
+    [
+     "dates",
+     "18-06-2026"
+    ],
+    [
+     "totals",
+     "Opening Balance … 10,58,624.81"
+    ],
+    [
+     "totals",
+     "Total Credits … 6,94,517.61"
+    ],
+    [
+     "totals",
+     "Total Debits … 3,96,075.53"
+    ],
+    [
+     "totals",
+     "Closing Balance … 13,57,066.89"
+    ],
+    [
+     "rupee_adjacent",
+     "₹10,58,624.81"
+    ],
+    [
+     "rupee_adjacent",
+     "₹13,57,066.89"
+    ]
+   ],
+   "markdown_sha256": "3b89deb2ed41101d5aba82b32452ff947c100cbee6a4762fbddc818426021dbf",
+   "sha256": "eceba9f9edbb00f8045ee62fd78d07055899e3e0cae5ef9b1cd6c02f052353bc"
+  },
+  "statement-04.docx": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     25,
+     25
+    ],
+    "dates": [
+     8,
+     8
+    ],
+    "footer": [
+     0,
+     1
+    ],
+    "header": [
+     0,
+     1
+    ],
+    "headings_level": [
+     0,
+     2
+    ],
+    "headings_line": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     4,
+     6
+    ],
+    "lines_normalised:br-run": [
+     3,
+     3
+    ],
+    "lines_normalised:tab-in-run": [
+     1,
+     1
+    ],
+    "lines_normalised:tab-run": [
+     0,
+     2
+    ],
+    "lines_strict": [
+     3,
+     6
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     1,
+     2
+    ],
+    "table_cells_text": [
+     61,
+     61
+    ],
+    "table_rows": [
+     0,
+     12
+    ],
+    "table_rows_exact": [
+     0,
+     12
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Account Holder\t: Asha Sethi"
+    ],
+    [
+     "lines_strict",
+     "Account Number\t: XXXXXXXX2880"
+    ],
+    [
+     "lines_strict",
+     "Statement Period\t: 01-04-2026 to 28-04-2026"
+    ],
+    [
+     "lines_normalised",
+     "Account Holder : Asha Sethi"
+    ],
+    [
+     "lines_normalised",
+     "Statement Period : 01-04-2026 to 28-04-2026"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Account Holder : Asha Sethi"
+    ],
+    [
+     "lines_normalised:tab-run",
+     "Statement Period : 01-04-2026 to 28-04-2026"
+    ],
+    [
+     "headings_level",
+     "# Statement of Account"
+    ],
+    [
+     "headings_level",
+     "## Account Summary"
+    ],
+    [
+     "table_rows",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows",
+     "01-04-2026 | ATM WDL/Malviya Nagar Hyderabad | 149717 | 47,772.07 | 10,21,397.39"
+    ],
+    [
+     "table_rows",
+     "01-04-2026 | UPI/DR/799291081806/Leela H/Books | 081806 | 74,726.11 | 9,46,671.28"
+    ],
+    [
+     "table_rows",
+     "02-04-2026 | NEFT/CR/379094640281/JUNIPER HOLLOW FOODS PVT LTD/SALARY APR 2026 | 640281 | 1,83,320.00 | 11,29,991.28"
+    ],
+    [
+     "table_rows",
+     "03-04-2026 | CHQ PAID/499775/Tamarind Electricals | 474012 | 32,305.86 | 10,97,685.42"
+    ],
+    [
+     "table_rows",
+     "05-04-2026 | NEFT/CR/105274076941/Ambervale Building Supplies Pvt Ltd/Refund | 076941 | 53,452.11 | 11,51,137.53"
+    ],
+    [
+     "table_rows",
+     "06-04-2026 | CHQ PAID/241817/Granitefold Traders | 294688 | 29,020.60 | 11,22,116.93"
+    ],
+    [
+     "table_rows",
+     "06-04-2026 | NEFT/CR/827747914186/Ambervale Building Supplies Pvt Ltd/Refund | 914186 | 2,03,331.59 | 13,25,448.52"
+    ],
+    [
+     "table_rows",
+     "08-04-2026 | ATM WDL/Malviya Nagar Hyderabad | 701940 | 9,433.24 | 13,16,015.28"
+    ],
+    [
+     "table_rows",
+     "08-04-2026 | IMPS/P2A/776612452074/Anika H/Rent | 452074 | 50,119.68 | 12,65,895.60"
+    ],
+    [
+     "table_rows",
+     "11-04-2026 | NEFT/CR/862219805889/Marigold Paper Mart/Refund | 805889 | 2,49,797.26 | 15,15,692.86"
+    ],
+    [
+     "table_rows",
+     "12-04-2026 | ATM WDL/Malviya Nagar Hyderabad | 855169 | 12,391.43 | 15,03,301.43"
+    ],
+    [
+     "table_rows_exact",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows_exact",
+     "01-04-2026 | ATM WDL/Malviya Nagar Hyderabad | 149717 | 47,772.07 |  | 10,21,397.39"
+    ],
+    [
+     "table_rows_exact",
+     "01-04-2026 | UPI/DR/799291081806/Leela H/Books | 081806 | 74,726.11 |  | 9,46,671.28"
+    ],
+    [
+     "table_rows_exact",
+     "02-04-2026 | NEFT/CR/379094640281/JUNIPER HOLLOW FOODS PVT LTD/SALARY APR 2026 | 640281 |  | 1,83,320.00 | 11,29,991.28"
+    ],
+    [
+     "table_rows_exact",
+     "03-04-2026 | CHQ PAID/499775/Tamarind Electricals | 474012 | 32,305.86 |  | 10,97,685.42"
+    ],
+    [
+     "table_rows_exact",
+     "05-04-2026 | NEFT/CR/105274076941/Ambervale Building Supplies Pvt Ltd/Refund | 076941 |  | 53,452.11 | 11,51,137.53"
+    ],
+    [
+     "table_rows_exact",
+     "06-04-2026 | CHQ PAID/241817/Granitefold Traders | 294688 | 29,020.60 |  | 11,22,116.93"
+    ],
+    [
+     "table_rows_exact",
+     "06-04-2026 | NEFT/CR/827747914186/Ambervale Building Supplies Pvt Ltd/Refund | 914186 |  | 2,03,331.59 | 13,25,448.52"
+    ],
+    [
+     "table_rows_exact",
+     "08-04-2026 | ATM WDL/Malviya Nagar Hyderabad | 701940 | 9,433.24 |  | 13,16,015.28"
+    ],
+    [
+     "table_rows_exact",
+     "08-04-2026 | IMPS/P2A/776612452074/Anika H/Rent | 452074 | 50,119.68 |  | 12,65,895.60"
+    ],
+    [
+     "table_rows_exact",
+     "11-04-2026 | NEFT/CR/862219805889/Marigold Paper Mart/Refund | 805889 |  | 2,49,797.26 | 15,15,692.86"
+    ],
+    [
+     "table_rows_exact",
+     "12-04-2026 | ATM WDL/Malviya Nagar Hyderabad | 855169 | 12,391.43 |  | 15,03,301.43"
+    ],
+    [
+     "footer",
+     "Page 1 of 1"
+    ],
+    [
+     "header",
+     "Kestrelwick Bank Ltd · Statement of Account"
+    ],
+    [
+     "totals",
+     "Opening Balance … 10,69,169.46"
+    ],
+    [
+     "totals",
+     "Total Credits … 6,89,900.96"
+    ],
+    [
+     "totals",
+     "Total Debits … 2,55,768.99"
+    ],
+    [
+     "totals",
+     "Closing Balance … 15,03,301.43"
+    ],
+    [
+     "rupee_adjacent",
+     "₹15,03,301.43"
+    ]
+   ],
+   "markdown_sha256": "7c4799ebd5cf7382a45d34b8ebefa9bfe77564c9d4cf07de61fd1a6cbafdc43a",
+   "sha256": "5dcc80e01dea6122fa2a4a6856a95853c03e1d39847059f4ce37aaf0024a5a7f"
+  },
+  "statement-05.pdf": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     27,
+     27
+    ],
+    "dates": [
+     11,
+     11
+    ],
+    "headings_level": [
+     0,
+     2
+    ],
+    "headings_line": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     3,
+     6
+    ],
+    "lines_normalised:html-br": [
+     0,
+     3
+    ],
+    "lines_normalised:html-label": [
+     3,
+     3
+    ],
+    "lines_strict": [
+     3,
+     6
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     2,
+     2
+    ],
+    "table_cells_text": [
+     74,
+     74
+    ],
+    "table_rows": [
+     13,
+     17
+    ],
+    "table_rows_exact": [
+     1,
+     17
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Ambervale Co-operative Bank"
+    ],
+    [
+     "lines_strict",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_strict",
+     "IFSC: AMBV0753082"
+    ],
+    [
+     "lines_normalised",
+     "Ambervale Co-operative Bank"
+    ],
+    [
+     "lines_normalised",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_normalised",
+     "IFSC: AMBV0753082"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Ambervale Co-operative Bank"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Adyar Branch, Pune 411001"
+    ],
+    [
+     "lines_normalised:html-br",
+     "IFSC: AMBV0753082"
+    ],
+    [
+     "headings_level",
+     "# Statement of Account"
+    ],
+    [
+     "headings_level",
+     "## Account Summary"
+    ],
+    [
+     "table_rows",
+     "Opening Balance | ₹7,94,653.24"
+    ],
+    [
+     "table_rows",
+     "Total Credits | 2,38,534.12"
+    ],
+    [
+     "table_rows",
+     "Total Debits | 5,00,214.55"
+    ],
+    [
+     "table_rows",
+     "Closing Balance | ₹5,32,972.81"
+    ],
+    [
+     "table_rows_exact",
+     "02-09-2026 | NEFT/CR/117119659496/Kestrelwick Steel Agency/Refund | 659496 |  | 12,737.12 | 8,07,390.36"
+    ],
+    [
+     "table_rows_exact",
+     "03-09-2026 | ATM WDL/Adyar Pune | 095232 | 84,633.82 |  | 7,22,756.54"
+    ],
+    [
+     "table_rows_exact",
+     "04-09-2026 | NEFT/CR/649646831618/NORTHMERE COLLEGE/SALARY SEP 2026 | 831618 |  | 2,25,797.00 | 9,48,553.54"
+    ],
+    [
+     "table_rows_exact",
+     "05-09-2026 | CHQ PAID/228402/Ambervale Building Supplies Pvt Ltd | 651739 | 55,627.05 |  | 8,92,926.49"
+    ],
+    [
+     "table_rows_exact",
+     "05-09-2026 | IMPS/P2A/586745184949/Priya P/Rent | 184949 | 40,173.22 |  | 8,52,753.27"
+    ],
+    [
+     "table_rows_exact",
+     "06-09-2026 | ACH/DR/Electricity bill/51261944 | 440237 | 43,235.82 |  | 8,09,517.45"
+    ],
+    [
+     "table_rows_exact",
+     "07-09-2026 | ATM WDL/Adyar Pune | 702166 | 12,617.88 |  | 7,96,899.57"
+    ],
+    [
+     "table_rows_exact",
+     "08-09-2026 | ATM WDL/Adyar Pune | 000477 | 63,706.72 |  | 7,33,192.85"
+    ],
+    [
+     "table_rows_exact",
+     "09-09-2026 | IMPS/P2A/466625812861/Leela R/Rent | 812861 | 42,574.33 |  | 6,90,618.52"
+    ],
+    [
+     "table_rows_exact",
+     "10-09-2026 | UPI/DR/698685324707/Vikram C/Mobile recharge | 324707 | 74,017.25 |  | 6,16,601.27"
+    ],
+    [
+     "table_rows_exact",
+     "11-09-2026 | ACH/DR/Electricity bill/66509181 | 818386 | 73,751.70 |  | 5,42,849.57"
+    ],
+    [
+     "table_rows_exact",
+     "12-09-2026 | UPI/DR/960719153751/Arjun H/Groceries | 153751 | 9,876.76 |  | 5,32,972.81"
+    ],
+    [
+     "table_rows_exact",
+     "Opening Balance | ₹7,94,653.24"
+    ],
+    [
+     "table_rows_exact",
+     "Total Credits | 2,38,534.12"
+    ],
+    [
+     "table_rows_exact",
+     "Total Debits | 5,00,214.55"
+    ],
+    [
+     "table_rows_exact",
+     "Closing Balance | ₹5,32,972.81"
+    ],
+    [
+     "totals",
+     "Opening Balance … 7,94,653.24"
+    ],
+    [
+     "totals",
+     "Total Credits … 2,38,534.12"
+    ],
+    [
+     "totals",
+     "Total Debits … 5,00,214.55"
+    ],
+    [
+     "totals",
+     "Closing Balance … 5,32,972.81"
+    ]
+   ],
+   "markdown_sha256": "808d3755b92a0fd55421005a1bd1dfb85f03e753c3f9653ff0bf1a44470700cc",
+   "sha256": "4d34bcccd9a5118467461d97b7f89f5b477bd7bf5df6cc12fedf689e76e6f549"
+  },
+  "statement-06.xlsx": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     0,
+     23
+    ],
+    "dates": [
+     0,
+     9
+    ],
+    "rupee_adjacent": [
+     0,
+     2
+    ],
+    "table_cells_text": [
+     36,
+     70
+    ],
+    "table_rows": [
+     0,
+     18
+    ],
+    "table_rows_exact": [
+     0,
+     18
+    ],
+    "text": [
+     6,
+     6
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "table_rows",
+     "Account Holder | Leela Bhatt"
+    ],
+    [
+     "table_rows",
+     "Account Number | XXXXXXXX6093"
+    ],
+    [
+     "table_rows",
+     "Statement Period | 01-09-2026 to 28-09-2026"
+    ],
+    [
+     "table_rows",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows",
+     "04-09-2026 | UPI/DR/636789237085/Farhan D/Books | 237085 | 45,019.47 | 3,95,905.70"
+    ],
+    [
+     "table_rows",
+     "05-09-2026 | UPI/DR/102514750103/Ishita K/School fees | 750103 | 43,881.57 | 3,52,024.13"
+    ],
+    [
+     "table_rows",
+     "07-09-2026 | NEFT/CR/165456311462/BRIGHTMARSH CONSTRUCTIONS PVT LTD/SALARY SEP 2026 | 311462 | 1,28,547.00 | 4,80,571.13"
+    ],
+    [
+     "table_rows",
+     "08-09-2026 | CHQ PAID/555411/Ambervale Building Supplies Pvt Ltd | 407710 | 21,956.29 | 4,58,614.84"
+    ],
+    [
+     "table_rows",
+     "10-09-2026 | ATM WDL/Adyar Chennai | 170084 | 57,015.76 | 4,01,599.08"
+    ],
+    [
+     "table_rows",
+     "12-09-2026 | CHQ PAID/927487/Coralnest Office Solutions LLP | 709626 | 66,030.24 | 3,35,568.84"
+    ],
+    [
+     "table_rows",
+     "14-09-2026 | NEFT/CR/746292590123/Granitefold Traders/Refund | 590123 | 76,234.96 | 4,11,803.80"
+    ],
+    [
+     "table_rows",
+     "14-09-2026 | UPI/DR/153104331821/Neel P/School fees | 331821 | 58,452.23 | 3,53,351.57"
+    ],
+    [
+     "table_rows",
+     "17-09-2026 | CHQ PAID/800755/Coralnest Office Solutions LLP | 172775 | 46,231.75 | 3,07,119.82"
+    ],
+    [
+     "table_rows",
+     "18-09-2026 | ATM WDL/Adyar Chennai | 338026 | 3,737.70 | 3,03,382.12"
+    ],
+    [
+     "table_rows",
+     "Opening Balance | ₹4,40,925.17"
+    ],
+    [
+     "table_rows",
+     "Total Credits | 2,04,781.96"
+    ],
+    [
+     "table_rows",
+     "Total Debits | 3,42,325.01"
+    ],
+    [
+     "table_rows",
+     "Closing Balance | ₹3,03,382.12"
+    ],
+    [
+     "table_rows_exact",
+     "Account Holder | Leela Bhatt"
+    ],
+    [
+     "table_rows_exact",
+     "Account Number | XXXXXXXX6093"
+    ],
+    [
+     "table_rows_exact",
+     "Statement Period | 01-09-2026 to 28-09-2026"
+    ],
+    [
+     "table_rows_exact",
+     "Date | Narration | Ref No. | Debit | Credit | Balance"
+    ],
+    [
+     "table_rows_exact",
+     "04-09-2026 | UPI/DR/636789237085/Farhan D/Books | 237085 | 45,019.47 |  | 3,95,905.70"
+    ],
+    [
+     "table_rows_exact",
+     "05-09-2026 | UPI/DR/102514750103/Ishita K/School fees | 750103 | 43,881.57 |  | 3,52,024.13"
+    ],
+    [
+     "table_rows_exact",
+     "07-09-2026 | NEFT/CR/165456311462/BRIGHTMARSH CONSTRUCTIONS PVT LTD/SALARY SEP 2026 | 311462 |  | 1,28,547.00 | 4,80,571.13"
+    ],
+    [
+     "table_rows_exact",
+     "08-09-2026 | CHQ PAID/555411/Ambervale Building Supplies Pvt Ltd | 407710 | 21,956.29 |  | 4,58,614.84"
+    ],
+    [
+     "table_rows_exact",
+     "10-09-2026 | ATM WDL/Adyar Chennai | 170084 | 57,015.76 |  | 4,01,599.08"
+    ],
+    [
+     "table_rows_exact",
+     "12-09-2026 | CHQ PAID/927487/Coralnest Office Solutions LLP | 709626 | 66,030.24 |  | 3,35,568.84"
+    ],
+    [
+     "table_rows_exact",
+     "14-09-2026 | NEFT/CR/746292590123/Granitefold Traders/Refund | 590123 |  | 76,234.96 | 4,11,803.80"
+    ],
+    [
+     "table_rows_exact",
+     "14-09-2026 | UPI/DR/153104331821/Neel P/School fees | 331821 | 58,452.23 |  | 3,53,351.57"
+    ],
+    [
+     "table_rows_exact",
+     "17-09-2026 | CHQ PAID/800755/Coralnest Office Solutions LLP | 172775 | 46,231.75 |  | 3,07,119.82"
+    ],
+    [
+     "table_rows_exact",
+     "18-09-2026 | ATM WDL/Adyar Chennai | 338026 | 3,737.70 |  | 3,03,382.12"
+    ],
+    [
+     "table_rows_exact",
+     "Opening Balance | ₹4,40,925.17"
+    ],
+    [
+     "table_rows_exact",
+     "Total Credits | 2,04,781.96"
+    ],
+    [
+     "table_rows_exact",
+     "Total Debits | 3,42,325.01"
+    ],
+    [
+     "table_rows_exact",
+     "Closing Balance | ₹3,03,382.12"
+    ],
+    [
+     "table_cells_text",
+     "04-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "45,019.47"
+    ],
+    [
+     "table_cells_text",
+     "3,95,905.70"
+    ],
+    [
+     "table_cells_text",
+     "05-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "43,881.57"
+    ],
+    [
+     "table_cells_text",
+     "3,52,024.13"
+    ],
+    [
+     "table_cells_text",
+     "07-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "1,28,547.00"
+    ],
+    [
+     "table_cells_text",
+     "4,80,571.13"
+    ],
+    [
+     "table_cells_text",
+     "08-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "21,956.29"
+    ],
+    [
+     "table_cells_text",
+     "4,58,614.84"
+    ],
+    [
+     "table_cells_text",
+     "10-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "57,015.76"
+    ],
+    [
+     "table_cells_text",
+     "4,01,599.08"
+    ],
+    [
+     "table_cells_text",
+     "12-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "66,030.24"
+    ],
+    [
+     "table_cells_text",
+     "3,35,568.84"
+    ],
+    [
+     "table_cells_text",
+     "14-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "76,234.96"
+    ],
+    [
+     "table_cells_text",
+     "4,11,803.80"
+    ],
+    [
+     "table_cells_text",
+     "14-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "58,452.23"
+    ],
+    [
+     "table_cells_text",
+     "3,53,351.57"
+    ],
+    [
+     "table_cells_text",
+     "17-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "46,231.75"
+    ],
+    [
+     "table_cells_text",
+     "3,07,119.82"
+    ],
+    [
+     "table_cells_text",
+     "18-09-2026"
+    ],
+    [
+     "table_cells_text",
+     "3,737.70"
+    ],
+    [
+     "table_cells_text",
+     "3,03,382.12"
+    ],
+    [
+     "table_cells_text",
+     "₹4,40,925.17"
+    ],
+    [
+     "table_cells_text",
+     "2,04,781.96"
+    ],
+    [
+     "table_cells_text",
+     "3,42,325.01"
+    ],
+    [
+     "table_cells_text",
+     "₹3,03,382.12"
+    ],
+    [
+     "amounts",
+     "45,019.47"
+    ],
+    [
+     "amounts",
+     "3,95,905.70"
+    ],
+    [
+     "amounts",
+     "43,881.57"
+    ],
+    [
+     "amounts",
+     "3,52,024.13"
+    ],
+    [
+     "amounts",
+     "1,28,547.00"
+    ],
+    [
+     "amounts",
+     "4,80,571.13"
+    ],
+    [
+     "amounts",
+     "21,956.29"
+    ],
+    [
+     "amounts",
+     "4,58,614.84"
+    ],
+    [
+     "amounts",
+     "57,015.76"
+    ],
+    [
+     "amounts",
+     "4,01,599.08"
+    ],
+    [
+     "amounts",
+     "66,030.24"
+    ],
+    [
+     "amounts",
+     "3,35,568.84"
+    ],
+    [
+     "amounts",
+     "76,234.96"
+    ],
+    [
+     "amounts",
+     "4,11,803.80"
+    ],
+    [
+     "amounts",
+     "58,452.23"
+    ],
+    [
+     "amounts",
+     "3,53,351.57"
+    ],
+    [
+     "amounts",
+     "46,231.75"
+    ],
+    [
+     "amounts",
+     "3,07,119.82"
+    ],
+    [
+     "amounts",
+     "3,737.70"
+    ],
+    [
+     "amounts",
+     "3,03,382.12"
+    ],
+    [
+     "amounts",
+     "4,40,925.17"
+    ],
+    [
+     "amounts",
+     "2,04,781.96"
+    ],
+    [
+     "amounts",
+     "3,42,325.01"
+    ],
+    [
+     "dates",
+     "04-09-2026"
+    ],
+    [
+     "dates",
+     "05-09-2026"
+    ],
+    [
+     "dates",
+     "07-09-2026"
+    ],
+    [
+     "dates",
+     "08-09-2026"
+    ],
+    [
+     "dates",
+     "10-09-2026"
+    ],
+    [
+     "dates",
+     "12-09-2026"
+    ],
+    [
+     "dates",
+     "14-09-2026"
+    ],
+    [
+     "dates",
+     "17-09-2026"
+    ],
+    [
+     "dates",
+     "18-09-2026"
+    ],
+    [
+     "totals",
+     "Opening Balance … 4,40,925.17"
+    ],
+    [
+     "totals",
+     "Total Credits … 2,04,781.96"
+    ],
+    [
+     "totals",
+     "Total Debits … 3,42,325.01"
+    ],
+    [
+     "totals",
+     "Closing Balance … 3,03,382.12"
+    ],
+    [
+     "rupee_adjacent",
+     "₹4,40,925.17"
+    ],
+    [
+     "rupee_adjacent",
+     "₹3,03,382.12"
+    ]
+   ],
+   "markdown_sha256": "ce947f4b2eb5a94f77fb2bf5af052680d14326aa62e810ef4e423e86491ab1c6",
+   "sha256": "df8b004e0947521c2d706a5eaee0fcbc76037eeaae9dfb9398959c68ac096c46"
+  },
+  "statement-07.pdf": {
+   "checks": {
+    "account": [
+     1,
+     1
+    ],
+    "amounts": [
+     25,
+     25
+    ],
+    "dates": [
+     9,
+     9
+    ],
+    "headings_level": [
+     0,
+     2
+    ],
+    "headings_line": [
+     2,
+     2
+    ],
+    "lines_normalised": [
+     3,
+     6
+    ],
+    "lines_normalised:html-br": [
+     0,
+     3
+    ],
+    "lines_normalised:html-label": [
+     3,
+     3
+    ],
+    "lines_strict": [
+     3,
+     6
+    ],
+    "one_line": [
+     1,
+     1
+    ],
+    "rupee_adjacent": [
+     2,
+     2
+    ],
+    "table_cells_text": [
+     69,
+     69
+    ],
+    "table_rows": [
+     12,
+     16
+    ],
+    "table_rows_exact": [
+     1,
+     16
+    ],
+    "totals": [
+     0,
+     4
+    ]
+   },
+   "exit": 0,
+   "failed": [
+    [
+     "lines_strict",
+     "Coralnest Bank Ltd"
+    ],
+    [
+     "lines_strict",
+     "Navrangpura Branch, Kochi 682011"
+    ],
+    [
+     "lines_strict",
+     "IFSC: CRNB0363295"
+    ],
+    [
+     "lines_normalised",
+     "Coralnest Bank Ltd"
+    ],
+    [
+     "lines_normalised",
+     "Navrangpura Branch, Kochi 682011"
+    ],
+    [
+     "lines_normalised",
+     "IFSC: CRNB0363295"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Coralnest Bank Ltd"
+    ],
+    [
+     "lines_normalised:html-br",
+     "Navrangpura Branch, Kochi 682011"
+    ],
+    [
+     "lines_normalised:html-br",
+     "IFSC: CRNB0363295"
+    ],
+    [
+     "headings_level",
+     "# Statement of Account"
+    ],
+    [
+     "headings_level",
+     "## Account Summary"
+    ],
+    [
+     "table_rows",
+     "Opening Balance | ₹6,08,569.56"
+    ],
+    [
+     "table_rows",
+     "Total Credits | 4,77,348.72"
+    ],
+    [
+     "table_rows",
+     "Total Debits | 3,11,541.66"
+    ],
+    [
+     "table_rows",
+     "Closing Balance | ₹7,74,376.62"
+    ],
+    [
+     "table_rows_exact",
+     "03-08-2026 | IMPS/P2A/133996522623/Yash B/Rent | 522623 | 80,572.62 |  | 5,27,996.94"
+    ],
+    [
+     "table_rows_exact",
+     "03-08-2026 | NEFT/CR/983625331163/Quillmere Tech Services Pvt Ltd/Refund | 331163 |  | 63,461.87 | 5,91,458.81"
+    ],
+    [
+     "table_rows_exact",
+     "03-08-2026 | NEFT/CR/274016781334/AMBERVALE LOGISTICS PVT LTD/SALARY AUG 2026 | 781334 |  | 1,02,279.00 | 6,93,737.81"
+    ],
+    [
+     "table_rows_exact",
+     "05-08-2026 | ACH/DR/Electricity bill/22336592 | 920135 | 17,745.77 |  | 6,75,992.04"
+    ],
+    [
+     "table_rows_exact",
+     "08-08-2026 | ACH/DR/Electricity bill/41660446 | 468011 | 17,276.47 |  | 6,58,715.57"
+    ],
+    [
+     "table_rows_exact",
+     "10-08-2026 | NEFT/CR/128728313716/Kestrelwick Steel Agency/Refund | 313716 |  | 1,96,260.46 | 8,54,976.03"
+    ],
+    [
+     "table_rows_exact",
+     "11-08-2026 | ATM WDL/Navrangpura Kochi | 414920 | 70,676.03 |  | 7,84,300.00"
+    ],
+    [
+     "table_rows_exact",
+     "12-08-2026 | UPI/DR/214510601055/Neel R/School fees | 601055 | 49,743.63 |  | 7,34,556.37"
+    ],
+    [
+     "table_rows_exact",
+     "14-08-2026 | UPI/DR/176721685338/Anika J/Mobile recharge | 685338 | 25,602.97 |  | 7,08,953.40"
+    ],
+    [
+     "table_rows_exact",
+     "16-08-2026 | NEFT/CR/518510747634/Marigold Paper Mart/Refund | 747634 |  | 1,15,347.39 | 8,24,300.79"
+    ],
+    [
+     "table_rows_exact",
+     "19-08-2026 | IMPS/P2A/623591490863/Kavya G/Rent | 490863 | 49,924.17 |  | 7,74,376.62"
+    ],
+    [
+     "table_rows_exact",
+     "Opening Balance | ₹6,08,569.56"
+    ],
+    [
+     "table_rows_exact",
+     "Total Credits | 4,77,348.72"
+    ],
+    [
+     "table_rows_exact",
+     "Total Debits | 3,11,541.66"
+    ],
+    [
+     "table_rows_exact",
+     "Closing Balance | ₹7,74,376.62"
+    ],
+    [
+     "totals",
+     "Opening Balance … 6,08,569.56"
+    ],
+    [
+     "totals",
+     "Total Credits … 4,77,348.72"
+    ],
+    [
+     "totals",
+     "Total Debits … 3,11,541.66"
+    ],
+    [
+     "totals",
+     "Closing Balance … 7,74,376.62"
+    ]
+   ],
+   "markdown_sha256": "a699ad14da75d65e0e443e65e7bded108a849f88ce60727c6068ccf610c09d92",
+   "sha256": "d9e64d8b3d42e3db56f21cdf8f510151338efebb9ed27e9d28f994c979c31792"
+  }
+ },
+ "documents_scored": 15,
+ "generator": [
+  "financial-en/1"
+ ],
+ "producers": [
+  "Google Chrome 157.0.8103.51"
+ ],
+ "set": "target/measure-sets/financial-en"
+}

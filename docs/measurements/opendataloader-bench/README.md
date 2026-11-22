@@ -12,6 +12,11 @@ Its row comes from this directory's adapter and the harness's own evaluators; ev
 copied from the harness's published `evaluation.json` files, never re-run here. Before #108, O26 in
 [`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md) kept these numbers unpublished.
 
+**Since decision #158 (2026-11-20) the adapter asks for `markdown --unstyled`.** NID compares the
+Markdown's raw characters, and the ground truth writes no emphasis, so every `**` and `<u>` the
+projection writes counted as a wrong character; the flag leaves the style's marks out and nothing
+else. Measured over `b3030f8` with decision #159: NID 0.8912 -> 0.8988, overall 0.8288 -> 0.8351.
+
 **The units do not travel.** TEDS is a tree edit distance over an HTML DOM; `table-gate-v1.md`
 reports macro cell-slot F1. A TEDS number from here **cannot** be placed beside 69‰ — the same
 mistake six documents made about 0.489 until it was measured.

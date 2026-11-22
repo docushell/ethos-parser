@@ -74,7 +74,8 @@ pub mod codes {
     ///
     /// **Anydoc's A14, declared erasure, applied to a package rather than a page.** A `.docx`
     /// commonly carries headers, footers, footnotes, endnotes and comments as their own parts,
-    /// and v2-S2 reads `word/document.xml` alone. A reader that silently returned the body would
+    /// and v2-S2 read `word/document.xml` alone; since decision #136 the headers, footers and
+    /// footnotes it references are read, and the rest stay counted here. A reader that silently returned the body would
     /// let a caller conclude a phrase is absent from a document that contains it — so the parts
     /// are counted and named, and the count is the honest measure of what this artifact is not.
     pub const OFFICE_PARTS_NOT_READ: &str = "office-parts-not-read";
@@ -103,6 +104,24 @@ pub mod codes {
     /// already count **every** entry the reader did not consume, media included, and their prose
     /// already says so. This code exists because the three OOXML readers ask the narrower question.
     pub const OFFICE_EMBEDDED_PARTS_NOT_READ: &str = "office-embedded-parts-not-read";
+    /// Spreadsheet number cells whose number format this build does not render (decision #135).
+    ///
+    /// The cell's text is its stored value — `46339`, not the date it shows — and the count says
+    /// how many cells read that way. [`crate::XLSX_TEXT_CODE_RULE_V4`] lists the codes rendered.
+    pub const OFFICE_NUMBER_FORMATS_NOT_RENDERED: &str = "office-number-formats-not-rendered";
+    /// Office tables a file states and this build does not emit as a table (decision #135): those
+    /// that would take one document's tables past [`crate::OFFICE_TABLE_MAX_SLOTS`] slots between
+    /// them. Their cells are still nodes, projected one block each, and the count says how many
+    /// tables read that way.
+    pub const OFFICE_TABLES_NOT_BUILT: &str = "office-tables-not-built";
+    /// Office table cells holding text that a merge covers, so they take no slot (decision
+    /// #135): a cell inside another's merged range, or one marked `hMerge`/`vMerge`. The
+    /// application shows the merge; the text stays in nodes, projected after the table.
+    pub const OFFICE_COVERED_CELLS_NOT_PLACED: &str = "office-covered-cells-not-placed";
+    /// Spreadsheet dates under built-in number format 14 or 22, which Excel shows in the reader's
+    /// own short-date order, written `yyyy-mm-dd` by this build: an order it chose, not one the
+    /// file states (decision #135).
+    pub const OFFICE_LOCALE_DATES_WRITTEN_ISO: &str = "office-locale-dates-written-iso";
     /// A table edge the document never drew is **not supplied**, so a grid can come back short.
     ///
     /// The leftover after v1-S8, and the third code to hold this position. Each replaced its
@@ -241,6 +260,22 @@ pub mod codes {
     ///
     /// Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
     pub const OFF_PAGE_TEXT: &str = "off-page-text";
+    /// Text on this document was drawn with a rendered em under one point (decision #139).
+    ///
+    /// Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
+    pub const TINY_TEXT: &str = "tiny-text";
+    /// Text on this document lies in optional content its default configuration hides (decision
+    /// #139). Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
+    pub const HIDDEN_LAYER_TEXT: &str = "hidden-layer-text";
+    /// Text on this document is filled in the colour of what was painted beneath it, or white
+    /// where nothing was (decision #139). Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted,
+    /// never removed.
+    pub const FILL_MATCHES_BACKGROUND_TEXT: &str = "fill-matches-background-text";
+    /// Runs inside optional content an `/OCMD` membership dictionary governs, which this profile
+    /// does not evaluate (decision #139): whether a viewer shows them is not known, and they carry
+    /// no `hidden-layer` finding. Document-scoped and counted.
+    pub const OPTIONAL_CONTENT_MEMBERSHIP_NOT_EVALUATED: &str =
+        "optional-content-membership-not-evaluated";
     /// Form XObjects were drawn on this document and not descended into (v2.2-S2).
     ///
     /// **Document-scoped, where `form-xobject-text-not-descended` is profile-scoped**, and the
@@ -251,11 +286,14 @@ pub mod codes {
     /// blank page.
     pub const FORM_XOBJECTS_NOT_DESCENDED: &str = "form-xobjects-not-descended";
     /// A page that showed no text and placed an image was not read by the recognizer the profile
-    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail.
+    /// pins (v3, `docs/35-OCR-SCOPE.md` §7). Page-scoped, its reason named in the detail. Under a
+    /// profile that pins none, a page `--ocr` would read is counted here as `ocr-not-requested`
+    /// (decision #132).
     pub const SCANNED_PAGE_NOT_RECOGNIZED: &str = "scanned-page-not-recognized";
     /// Recognized words left unwritten because the page's visible box does not show where they lie.
     pub const RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX: &str = "recognized-words-outside-visible-box";
-    /// Under the OCR profile: text turned within an upright image is not turned before it is read.
+    /// Under the OCR profile: text turned within an upright page is not turned before it is read;
+    /// a whole page turned is (decision #153).
     pub const RECOGNIZED_TEXT_ORIENTATION_NOT_CORRECTED: &str =
         "recognized-text-orientation-not-corrected";
     /// Under the OCR profile: a recognized run has no font, so no emphasis and no font size.
@@ -273,11 +311,13 @@ pub mod codes {
     pub const FORM_XOBJECT_MCIDS_NOT_BOUND: &str = "form-xobject-mcids-not-bound";
     /// Low-contrast text is not detected, at any threshold (v1-S6).
     ///
-    /// The leftover beside the two findings that did ship. Nothing in this profile reads colour:
-    /// the twelve colour operators are accepted and discarded, `/ExtGState` is never resolved, so
-    /// alpha is unreachable, and the graphics state carries no colour slot to put a value in.
-    /// Detecting contrast would need all of that plus a threshold — and a threshold over
-    /// appearance is the `garbled` trap this project already refuses once.
+    /// The leftover beside the findings that did ship. Since decision #139 the PDF reader
+    /// compares a run's fill with the fill painted beneath it, operand for operand
+    /// ([`crate::TextFinding::FillMatchesBackground`]), which catches white on white and nothing
+    /// that is merely faint: `/ExtGState` is never resolved, so alpha is unreachable, and no
+    /// colour is converted or measured against another. Detecting contrast would need a
+    /// threshold, and a threshold over appearance is the `garbled` trap this project already
+    /// refuses once.
     pub const LOW_CONTRAST_NOT_DETECTED: &str = "low-contrast-not-detected";
     /// The document's own author-declared metadata is not read, under any profile.
     ///
@@ -704,7 +744,7 @@ impl Capabilities {
                  profile emits images; a drawing made of paths has no record at all.",
             ));
         }
-        if tables {
+        if tables && measured_ink_boxes {
             // **A limitation partnering a TRUE capability**, and not the only one. This said
             // "every other arm here declares what a `false` capability does not do" until
             // v2-S13.5, and that stopped being true at **v1-S5**, three slices before this
@@ -740,7 +780,12 @@ impl Capabilities {
                  is not emitted. And curves are never flattened into \
                  ruling lines, so a grid drawn with Béziers is missed rather than approximated.",
             ));
-        } else {
+        } else if !tables {
+            // Decision #135: `tables` with no measured ink reaches neither arm. That is a page-less
+            // profile reading the grid its file states (an XLSX sheet, a PPTX `<a:tbl>`, and since
+            // decision #136 a DOCX `<w:tbl>`); no rule the arm above describes runs there — each
+            // reads drawn ink — so its scope is not this profile's to declare, and it did look,
+            // so it owes no absence either.
             out.push(Limitation::profile(
                 codes::TABLES_NOT_EXTRACTED,
                 "No table is detected, reconstructed, or emitted. Ruling lines may still be \
@@ -789,17 +834,23 @@ impl Capabilities {
             ));
         }
         // Declared unconditionally, because it is true under every profile this build can
-        // produce: no code path reads colour at all.
+        // produce: no code path measures contrast.
         out.push(Limitation::profile(
             codes::LOW_CONTRAST_NOT_DETECTED,
-            "Text that is invisible BY COLOUR — white on white, or fully transparent — is not \
-             detected, and no threshold for it exists. The twelve colour operators are recognised \
-             and discarded, `/ExtGState` is never resolved so alpha is unreachable, and the \
-             graphics state carries no colour to compare. This is deliberately not approximated: \
-             a contrast threshold is the same shape as the vowel-frequency test this project \
+            "Text that is hard to see BY COLOUR — light grey on white, colour on a near colour, \
+             or transparent — is not detected, and no threshold for it exists. The one colour \
+             test this build makes is exact: under `page-observations-v5` a PDF run filled in a \
+             device colour the same as the last rectangle a fill painted beneath it, or exactly \
+             white where nothing was painted beneath it, carries `fill-matches-background`. \
+             Colours are compared operand for operand and never converted; `/ExtGState` is never \
+             resolved, so alpha, blend modes and soft masks are unreachable, and a fill painted \
+             under one is not compared, nor text drawn under one that may blend or mask it; \
+             text over an image, a shading, a stroke, a path that is not one rectangle or a \
+             text clip is not compared; and paint laid over a run is not read. No \
+             other format's reader reads colour. A contrast threshold is deliberately \
+             not approximated: it is the same shape as the vowel-frequency test this project \
              refuses for `garbled`, and a wrong one would flag ordinary light-grey body text as \
-             hidden. The findings that ARE reported — invisible rendering mode and off-page text \
-             — rest on the content stream's own state rather than on an appearance judgement.",
+             hidden.",
         ));
         // Declared unconditionally, for the reason above it: no reader in this workspace opens a
         // metadata part for its values, in any of the nine formats, so it is true of every run
@@ -849,7 +900,9 @@ impl Capabilities {
                  is never consulted as a sorter, because emitting nodes in `/K` order is a \
                  different rule and would need its own id. Second, a run whose font supplies no \
                  advance has an UNKNOWN horizontal extent, so the rule gives it a fixed minimum \
-                 rather than a measured width and judges gutters against that floor. No extent is \
+                 rather than a measured width and judges gutters against that floor, and \
+                 whether a band is narrow enough to be set on its neighbour's rows, which joins \
+                 it to that neighbour rather than reading it as a column. No extent is \
                  ever derived from a font size. Where the rule finds no gutter it moves only \
                  whole stretches its leading separates, and a page with no such gap keeps \
                  content-stream order, which is what a single-column page means and not a \

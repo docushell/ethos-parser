@@ -186,6 +186,32 @@ unchanged, then:
    compiled-only binary is an untested claim for an engine whose product is byte-identical reruns;
    Linux and Windows come from the workflow below, which executes them on their own machines.
 
+   **Each archive carries two binaries** (amended 2026-11-14): `ethos-parser` and, beside it where
+   `--ocr` looks, the recognizer `ethos-parser-ocr`, with `LICENSE`, `NOTICE` and `README.md`. The
+   recognizer is built in `ocr/` by its own pinned compiler (`ocr/rust-toolchain.toml`, 1.98.0),
+   which the script installs and asserts, and the fingerprint reads one committed scan with
+   `extract --ocr`. The recognizer refuses an x86-64 CPU without AVX2 and FMA. Rosetta 2 reports
+   both only under `ROSETTA_ADVERTISE_AVX=1`, which the script sets: measured 2026-11-14 on macOS
+   26, the `x86_64-apple-darwin` pair under Rosetta then gives the arm64 build's fingerprint byte
+   for byte, the `--ocr` row included. Under a Rosetta that ignores the variable the `--ocr` row is
+   refused and the run fails by that row; build without `x86_64-apple-darwin` (`--target`).
+
+   **And a third, `ethos-parser-assist`** (decision #148, the owner's call of 2026-11-15): the
+   assist lane's own process (`assist/README.md`), built in `assist/` on its own pinned compiler
+   (`assist/rust-toolchain.toml`, 1.98.0), which the script installs and asserts as it does the
+   recognizer's. Its fingerprint row is `identity` — the build, hayro's version and the page rule —
+   so every runner must print the same one; its `render` pixels are not compared, being unmeasured
+   on other CPUs. **No model file ships.** Before packaging, the script requires the staged
+   directory to hold exactly the three binaries, `LICENSE`, `NOTICE` and `README.md`, and fails
+   the target on any other file, whatever its name. `NOTICE` carries the assist binary's section:
+   hayro's built-in fonts and CMaps, and every crate `assist/Cargo.lock` locks, held to that
+   lockfile by a test in `assist/`.
+
+   **`install.sh` reads these names.** It finds its archive in `SHA256SUMS.txt` by the line
+   `<digest>  ./ethos-parser-<version>-<target>.tar.gz`, expects one directory of that name inside,
+   and installs whichever of the three binaries it holds. A change to the archive's name, layout or
+   manifest line changes `install.sh` in the same commit.
+
 2. **Push the tag**, then create the release from those files and nothing else:
 
    ```bash
@@ -195,8 +221,14 @@ unchanged, then:
    ```
 
    The notes say which platforms were verified and which were not built, so no reader infers a
-   platform from its absence. Pushing the tag also starts the workflow below; a release that is to
-   carry its binaries waits for its `verify` job.
+   platform from its absence. They also say that the Linux binaries need glibc 2.35 or newer, and
+   that on an x86-64 CPU without AVX2 and FMA `ethos-parser-ocr` refuses by name
+   (`cpu-lacks-avx2-fma`), so there `extract --ocr` fails by name on any document with a scanned
+   page (decision #120). They say that every archive carries `ethos-parser-assist` and no model,
+   and that on Windows its `ask` and `check` are refused `curl-not-run`, since the page reaches
+   `curl` through `/dev/fd` (decision #144), while `render` and `identity` work.
+   Pushing the tag also starts the workflow below; a release that is to carry
+   its binaries waits for its `verify` job.
 
    **Amended 2026-09-20, measured on GitHub at 0.60.0: a published release is immutable here, so
    the assets are whatever the first click attached.** Editing them afterwards fails with *"You
@@ -248,12 +280,20 @@ release, so that is a fact about the workflow rather than a promise in it.
 - **What each runner does.** Checks out the ref, installs the pinned 1.88.0 and asserts the pin,
   asserts it is the machine its matrix entry names, then runs
   `ci/release-artifacts.sh --native --tag v0.58.0` — the script from step 1, restricted to the
-  runner's own target. That builds the binary, EXECUTES it over all eight gate documents, writes
-  its `.fingerprint`, refuses if any document was refused, packages the tarball with `LICENSE` and
-  `README.md`, and uploads it as `built-<target>`. `--tag` refuses a tag that does not name
-  Cargo.toml's version. Four runners, each native: `ubuntu-24.04` → `x86_64-unknown-linux-gnu`,
-  `windows-latest` → `x86_64-pc-windows-msvc`, `macos-latest` → `aarch64-apple-darwin`,
-  `macos-15-intel` → `x86_64-apple-darwin`. Nothing is cross-compiled.
+  runner's own target. That installs the recognizer's and the assist binary's 1.98.0 and asserts
+  both pins too, builds the engine, the recognizer and the assist binary, stages them side by
+  side, EXECUTES them over all eight gate documents, one scan read with `--ocr` and the assist
+  binary's `identity`, writes its `.fingerprint`, refuses if any of those was refused, packages the
+  tarball with `LICENSE`, `NOTICE` and `README.md` and nothing else, and uploads it as
+  `built-<target>`. `--tag` refuses a tag that does not name Cargo.toml's version. Four runners,
+  each native: `ubuntu-22.04` → `x86_64-unknown-linux-gnu`, `windows-latest` →
+  `x86_64-pc-windows-msvc`, `macos-latest` → `aarch64-apple-darwin`, `macos-15-intel` →
+  `x86_64-apple-darwin`. Nothing is cross-compiled.
+- **The glibc floor.** On Linux the script prints the highest `GLIBC_` version each binary
+  references (`objdump -T`) and fails the leg above 2.35, Ubuntu 22.04's. 0.65.0 was built on
+  `ubuntu-24.04` and needs 2.39, for two weak symbols (`pidfd_spawnp`, `pidfd_getpid`) whose
+  version entry the loader enforces anyway. GitHub supports `ubuntu-22.04` until 2027-04-17
+  (actions/runner-images#14254); after that the floor needs a 22.04 container or a musl leg.
 - **`verify`.** Downloads every `built-*` and runs `ci/release-artifacts.sh --assemble dist`. The
   fingerprints must be whole and byte-identical, and each tarball must digest to what its runner
   recorded; only then is `SHA256SUMS.txt` written, with every target `verified`. **`verified`
@@ -271,8 +311,10 @@ release, so that is a fact about the workflow rather than a promise in it.
 
 - **When a macOS leg cannot run.** The arm64 runner has 7 GB and the largest gate document's
   extract peaks at 4.7 GB (`docs/measurements/memory-ceiling`); the Intel label is GitHub's to
-  retire. Leave the leg out of `targets`, build that target locally with step 1, and hold the
-  local binary to the runners' bytes before shipping it:
+  retire; and an Intel runner whose CPU lacks AVX2 or FMA makes the recognizer refuse the `--ocr`
+  row, so that leg fails and `verify`, which needs every leg, makes no bundle (CI's Intel runner
+  had both on 2026-11-10). Leave the leg out of `targets`, build that target locally with step 1,
+  and hold the local binary to the runners' bytes before shipping it:
 
   ```bash
   diff target/release-artifacts/ethos-parser-0.58.0-<target>.fingerprint \

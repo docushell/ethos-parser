@@ -190,6 +190,7 @@ fn the_same_document_with_a_page_seals_and_projects() {
         width: 30000,
         height: 14400,
         rotation: 0,
+        turn: 0,
         visible: None,
     };
     let node = text_node(&mut alloc, &page.id);
@@ -233,6 +234,7 @@ fn a_page_less_representation_is_refused_by_project() {
         derivation: DerivationClass::Extracted,
         attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
             space_preserved: false,
+            ..Default::default()
         }),
     };
     let geometry = NodeGeometry {
@@ -288,6 +290,7 @@ fn an_xlsx_representation_is_refused_by_project() {
         attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
             value_type: CellValueType::Number,
             text_source: CellTextSource::StoredValue,
+            stored_value: None,
         }),
     };
     let geometry = NodeGeometry {
@@ -335,12 +338,15 @@ fn a_pptx_representation_is_refused_by_project() {
             shape: 1,
             paragraph: 1,
             run: 1,
+            row: None,
+            column: None,
         }),
         structural_locator: None,
         derivation: DerivationClass::Extracted,
         attributes: NodeAttributes::OfficeSlideRun(OfficeSlideRunAttributes {
             shape_id: 2,
             shape_name: "Title 1".into(),
+            line_break_before: false,
         }),
     };
     let geometry = NodeGeometry {
@@ -452,6 +458,8 @@ fn text_node(alloc: &mut IdAllocator, parent: &ethos_parser_core::NodeId) -> Nod
             bold: false,
             italic: false,
             script: None,
+            strikeout: false,
+            underline: false,
             furniture: None,
             reading: None,
         }),
@@ -501,6 +509,7 @@ fn payload(nodes: Vec<Node>, pages: Vec<PageRecord>) -> RepresentationPayload {
         tables: Vec::new(),
         outlines: Vec::new(),
         figures: Vec::new(),
+        assist: None,
         assurance: Assurance::new(Capabilities::V0, authorized, states, limitations)
             .expect("the assurance block is well-formed"),
     }

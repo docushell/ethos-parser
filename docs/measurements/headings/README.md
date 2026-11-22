@@ -661,3 +661,138 @@ NID one document up and none down; TEDS and MHS unchanged.
 
 **Measured beside it and not used:** a heading inside a figure region read as text. The ground truth
 calls many infographic labels section headers: grounding 0.5546, 32 pages up and 50 down.
+
+## 15. `type-size-v8` — labels heading recurring sections head a document nothing else heads (2026-11-14)
+
+opendataloader-bench's heading score reads a document whose ground truth holds a heading and whose
+Markdown holds none as **0**. Read class by class — every ground-truth heading matched to the line
+we write, every `#` line we write matched back, each class patched into the Markdown alone and
+rescored with the harness's own evaluator — the losses at `-v7` (MHS 0.5903 over 107 documents, 193
+headings) were: a heading written as a **bold line**, 33 headings on 21 documents, worth +0.118 if
+written with `#` — 25 of them label-tier lines; a heading **split** over several lines or blocks, 29
+on 24 documents, +0.093 (§16); false headings, 52 on 21 documents, +0.040; a heading written as a
+plain line, 5, +0.009; text not read at all, 8. A wrong level costs nothing: the evaluator reads
+every level as one. **18 of the 107 documents scored 0, and 15 of those had their heading as a
+label**: the label tier is level 7, below every ranked level, and where nothing in the document
+ranks, nothing was written as a heading at all.
+
+**The rule**: where the document declares no author structure and none of its lines ranks — none
+set large, none bold standing apart — a label is level 1 where it heads a section: the last inked
+run before it in reading order is not bold; the next inked run is in no bold and does not run in
+along the label's line a little off its baseline; the next line below that is in no bold either;
+and another label of the document does the same in the same font at the same size. Every other
+label stays at level 7, and a document with one ranked line, or a tag tree, reads as under `-v7`.
+
+**How it got there, step by step** (opendataloader-bench MHS / NID; the review's made-up probes —
+forms, an invoice's key-value row and `Bill To` blocks, a resume's contact labels, a signature
+line, a caption, a page number, a bold line inside a paragraph, a definition list — counted as the
+probes that gain a `#` line they should not):
+
+| form | MHS | NID | false `#` probes |
+| --- | ---: | ---: | ---: |
+| `-v7`, with §16's joins | 0.6285 | 0.8921 | 0 |
+| every label where nothing ranks (simulated on the Markdown: 0.6639 alone) | — | — | — |
+| a label with no label just before or after | 0.7197 | 0.8923 | — |
+| … untagged only, last run before it not bold, no run-in | 0.7163 | 0.8923 | 14 |
+| … the next run not bold (rather than no label) | 0.7111 | 0.8923 | 12 |
+| … heading two lines of text in no bold | 0.7024 | 0.8922 | 12 |
+| **… recurring: two such labels set alike** (shipped) | **0.6378** | **0.8922** | **0** |
+
+**The recurrence clause costs 0.065 MHS, and it is the one that removes every false heading.** A
+document whose one heading is a label over its text — a single section's title — reads exactly
+like a form's `Total` over its value and body, a resume's `EXPERIENCE`, a page's `Schedule B`, or a
+caption: nothing in the type tells them apart. A section title recurs; those do not. The owner's
+standing rule is that a false heading in a form, an invoice or a resume costs a user more than a
+missed one on the bench.
+
+**Measured and refused before that.** Every label of such a document: the bench's MHS higher
+(0.6639, simulated on the Markdown), but five ParseBench formatting pages fell — a label set on two
+lines, an article's number over its title, stacked field captions, a list of names in three
+languages, became one `#` line run together, which no title rule matches — and eleven content pages
+fell. Every label of every document, ranked or not, simulated on the Markdown: nine bench documents
+fell, a list's bold item labels read as headings under a real one. Labels on a tagged document
+whose tree tags no heading, and a bold line inside a bold passage, cost three ParseBench content
+pages (two tagged, one bold passage).
+
+**The bounds**: the eleven documents of §7.1.1 each rank headings, so neither tier moves on any of
+them, tree kept or stripped.
+
+## 16. A heading set a marked-content sequence to a word (decision #141, 2026-11-14)
+
+143 of opendataloader-bench's 200 documents carry runs in marked-content sequences no structure tree
+cites (`pdf_mcid`). Both projections join a run of another sequence only through `sequence_join`,
+whose line clause asks for a tagged parent, and the unit joins an untagged page's heading takes —
+its next line, its section number's title, its words set apart on one line — are off wherever any
+sequence is declared. A producer that opens a sequence at each word therefore wrote a heading's
+number and each of its words as a `#` line of its own, though the heading rule read one line and
+the units rule one unit; a heading set on two lines, each line a sequence, was two `#` lines.
+
+**The rule** (folded into `markdown-blocks-v14` / `html-blocks-v14`, unreleased): two runs read as
+headings or labels, neither cited by a tree — a bare `pdf_mcid`, or no locator — join by those unit
+clauses across their sequences. A run a tree cites joins only as the tree says, as before. Body
+text keeps its blocks. The heading rule and the bounds are untouched: the representation does not
+change.
+
+**Measured** (strict comparison, any change counted): `#141` alone, MHS 0.5903 -> 0.6285,
+16 documents up and none down; NID 0.8918 -> 0.8921, 26 up and none down; TEDS unchanged; ParseBench
+formatting and content unchanged on every page. With `type-size-v8`: MHS **0.6378**, 17 up
+and none down; NID 0.8922, 27 up and none down; overall 0.8005 -> 0.8134; ParseBench formatting,
+content and layout unchanged on every page; the gate documents' Markdown byte-identical, and on
+their tree-stripped copies only this section's joins move (a title set on two lines, a section
+number and its title, two bold cells side by side).
+
+## 17. `type-size-v8`, folded — one label heads a document nothing else heads (decision #159, 2026-11-20)
+
+§15's recurrence clause left every document whose one section title is a label with no heading at
+all: on b3030f8, 17 of opendataloader-bench's 107 documents whose ground truth holds a heading had
+no `#` line, nearly all of them a bold line over prose (`PRICE AND THE PLACEBO EFFECT`,
+`IMPLEMENTATION`, `4.3.2 Alignment Tuning`), and MHS scores such a document 0.
+
+**The rule** (folded into `type-size-v8`, unreleased): where the document declares no author
+structure, no line ranks and no label's font and size recur as §15 asks, the first label that heads
+a section as §15 reads it is level 1 alone, where it also heads a paragraph — the text after it opens
+in no lower-case letter (a bold phrase inside a paragraph runs on in one), and the line below that
+text is no farther from it than it is from the label (a value over the text after it is no
+paragraph) — and names no figure or table (`Figure 3.3.`, `Fig. 2`, `Table 2:`; `Table of Contents`
+is no caption). The caption test reads the label's runs run together, since a page may draw a line a
+glyph to a run.
+
+**How it got there** (opendataloader-bench, over b3030f8):
+
+| form | overall | MHS | docs with a GT heading changed | changed docs whose GT has none |
+| --- | ---: | ---: | ---: | ---: |
+| b3030f8 | 0.8126 | 0.6372 | — | — |
+| first label alone, no guards | 0.8284 | 0.6991 | 8 (8 up) | 4 |
+| + no caption, + heads a paragraph (shipped) | **0.8288** | **0.7006** | 8 (8 up) | **0** |
+| simulated on the Markdown: first bold line, next line not bold | 0.8337 | 0.7268 | 13 | 8 |
+
+The four false headings the first form wrote were figure captions; the paragraph clause changed no
+probe and no false heading but picked a later, real section title on one document (MHS 0.29 ->
+0.45). With decision #158's `--unstyled`: overall **0.8351**, 7th of 13.
+
+**The trade the owner took** ("Ship both"): §15's made-up probes — forms, an invoice, a resume —
+were clean under the recurrence clause; under this rule 10 of their 40 gain a `#` line: a form's
+`Total` over its value and body, an invoice's `Invoice No` and `Due date`, `Bill To` and `Ship To`
+blocks, a signature line's caption, a list's bold term, a resume's `EXPERIENCE`, a bold line wrapped
+over its sentence, `Schedule B` and `Scope` over their text. Each is one label over text in a
+document nothing else heads, and §15's sentence still holds: nothing in the type tells it from a
+section's title.
+
+**Elsewhere**: ParseBench, with and without `--ocr`, no page down and one formatting page up
+(`text_simple__minutes2` 0.917 -> 1.0); the Markdown of 58 of its pages changed, most a real section
+or chart title (`Selected Consolidated Financial Data`, `NOTE 16: OTHER COMPREHENSIVE INCOME`), some
+a form-like line (`Protection Class`, `Rate`). ParseBench-2: 141 pages' Markdown changed, formatting
+71.36 -> 71.39, nothing else moved. The bounds' eleven documents, tree kept or stripped, read as
+under §15, line for line; the gate's four tree-stripped documents give byte-identical Markdown; the
+private set's 250 runs and its resume set are unchanged.
+
+**Second and third reviews (2026-11-21, before the merge).** The paragraph test compared signed
+distances, so a raised mark on the value's own line or the next column's top passed as the line
+below and `Total` over a value became `#`: it now takes the next line after the text in reading
+order — the first run off the text's line by half the label's gap — and asks that it stand below.
+The caption test now reads Roman numerals (one letter only as `I`, `V` or `X`, none after
+`Exhibit`, so `EXHIBIT C` keeps its `#`), a letter before a number (`S1`, `A.2`), `Figure:`,
+`Scheme`, `Algorithm`, `Plate`, `Listing` and five other languages' words, and a caption drawn a
+word to a run. opendataloader-bench reads exactly as above (0.8288, and 0.8351 with `--unstyled`);
+the made-up probes are the same ten.
+

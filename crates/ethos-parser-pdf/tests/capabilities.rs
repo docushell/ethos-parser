@@ -530,7 +530,7 @@ fn multi_column_order_is_read_and_single_column_is_left_alone() {
     );
     assert_eq!(
         a.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
 
     // Half one: the content stream writes the right column first, and the artifact does not.
@@ -580,7 +580,7 @@ fn multi_column_order_is_read_and_single_column_is_left_alone() {
     );
     assert_eq!(
         single.reading_order_rule,
-        ethos_parser_core::READING_ORDER_RULE_V4
+        ethos_parser_core::READING_ORDER_RULE_V5
     );
 
     // Classification declares the capability too: it belongs to the profile, not to one stage.

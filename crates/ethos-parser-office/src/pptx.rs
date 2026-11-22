@@ -119,18 +119,59 @@ const UNREAD_TEXT_PART_PREFIXES: [&str; 8] = [
 /// One `<a:r>` of a slide, with the addresses the part states for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlideRun {
-    /// 1-based position of the `<p:sp>` within this part, in document order.
+    /// 1-based position of the `<p:sp>` within this part, in document order — or, for a run in a
+    /// table cell, of the `<p:graphicFrame>` among the part's graphic frames (decision #135).
     pub shape: u32,
     /// The `id` on the shape's `<p:cNvPr>` — a label the file states, not the address.
     pub shape_id: u32,
     /// The `name` on the shape's `<p:cNvPr>`, e.g. `Title 1`.
     pub shape_name: String,
-    /// 1-based position of the `<a:p>` within this shape's `<p:txBody>`.
+    /// 1-based position of the `<a:p>` within this shape's `<p:txBody>`, or the cell's.
     pub paragraph: u32,
     /// 1-based position of the `<a:r>` within that paragraph.
     pub run: u32,
+    /// For a run in a table cell: 1-based `<a:tr>` within the `<a:tbl>`.
+    pub row: Option<u32>,
+    /// For a run in a table cell: 1-based `<a:tc>` within the `<a:tr>`, its grid column.
+    pub column: Option<u32>,
+    /// For a run in a table cell: whether its paragraph holds an `<a:br>` before it, after any run
+    /// before it (review of decision #135), so the cell's text does not weld `North` and `America`
+    /// into one word. Always `false` in a shape, whose runs no projection joins.
+    pub line_break_before: bool,
     /// The text, concatenated from this run's `<a:t>` elements, verbatim.
     pub text: String,
+}
+
+/// One `<a:tbl>` of a slide: the grid it states (decision #135).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlideTable {
+    /// 1-based position of its `<p:graphicFrame>` among the part's graphic frames.
+    pub frame: u32,
+    /// How many `<a:tr>` it holds, less any in an `<mc:AlternateContent>` branch passed over.
+    pub rows: u32,
+    /// The most `<a:tc>` any of its rows holds, less any in a branch passed over.
+    pub columns: u32,
+    /// Every `<a:tc>` inside an `<a:tr>`, in document order, but those in a branch passed over:
+    /// the file states the same row twice there, and only the branch read is the table's (review).
+    pub cells: Vec<SlideTableCell>,
+}
+
+/// One `<a:tc>`, with the span its `gridSpan` and `rowSpan` state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlideTableCell {
+    /// 1-based `<a:tr>`, as a locator counts it: every one the file holds.
+    pub row: u32,
+    /// 1-based `<a:tc>` within it, counted so.
+    pub column: u32,
+    /// Its 1-based row and column in the table's grid: the `<a:tr>` and `<a:tc>` read, one in an
+    /// `<mc:AlternateContent>` branch passed over not counted (review).
+    pub grid: (u32, u32),
+    /// `rowSpan`, 1 when absent.
+    pub rowspan: u32,
+    /// `gridSpan`, 1 when absent.
+    pub colspan: u32,
+    /// `hMerge` or `vMerge`: the file says a merge from another cell covers this one.
+    pub covered: bool,
 }
 
 /// What one slide part yielded, plus what it passed over.
@@ -138,8 +179,11 @@ pub struct SlideRun {
 pub struct SlideContent {
     /// The runs, in the part's own document order.
     pub runs: Vec<SlideRun>,
-    /// Shapes whose text this slice does not read: `<p:graphicFrame>` (tables, charts) and
-    /// `<a:fld>` (slide numbers, dates). Counted rather than dropped in silence (**A14**).
+    /// The `<a:tbl>` grids, in document order (decision #135). Their runs are in [`Self::runs`].
+    pub tables: Vec<SlideTable>,
+    /// Shapes whose text this slice does not read: a `<p:graphicFrame>` holding no table (a chart,
+    /// SmartArt, an embedded object) and `<a:fld>` (slide numbers, dates). Counted rather than
+    /// dropped in silence (**A14**).
     pub shapes_not_read: u32,
     /// `<mc:AlternateContent>` branches that held text and were passed over — a second or later
     /// `<mc:Choice>`, or an `<mc:Fallback>`.
@@ -336,9 +380,23 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
     let mut paragraph: u32 = 0;
     let mut run_in_paragraph: u32 = 0;
     let mut open_run: Option<SlideRun> = None;
+    // An `<a:br>` read in a table cell's paragraph since its last run (review of decision #135).
+    let mut line_break = false;
     let mut in_text = false;
     let mut depth: i32 = 0;
-    let mut seen: std::collections::BTreeSet<(u32, u32, u32)> = Default::default();
+    // `(shape, row, column, paragraph, run)`, row and column 0 outside a table: each is 1-based.
+    let mut seen: std::collections::BTreeSet<(u32, u32, u32, u32, u32)> = Default::default();
+    // Decision #135: the graphic frame open, its position among the part's frames, the table it
+    // holds, and the cell being read — `(row, column)` within it.
+    let mut in_frame = false;
+    let mut frame_ordinal: u32 = 0;
+    let mut tables: Vec<SlideTable> = Vec::new();
+    let mut table: Option<SlideTable> = None;
+    let mut cell: Option<(u32, u32)> = None;
+    let mut table_row: u32 = 0;
+    let mut table_column: u32 = 0;
+    // The same, counting only the rows and cells of branches read: where each sits in the grid.
+    let mut grid: (u32, u32) = (0, 0);
 
     // **Markup Compatibility and Extensibility**, and the two things it can do wrong.
     //
@@ -394,30 +452,84 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                         in_shape = true;
                         shape = None;
                     }
+                    // Counted in every branch, as a `<p:sp>` is, so a frame's position is the
+                    // file's.
+                    b"graphicFrame" => {
+                        frame_ordinal += 1;
+                        if skip_from.is_none() {
+                            in_frame = true;
+                            shape = None;
+                        }
+                    }
                     // Parsed only for a branch being read: a malformed id in a branch nobody
                     // reads should not refuse the deck.
-                    b"cNvPr" if in_shape && shape.is_none() && skip_from.is_none() => {
+                    b"cNvPr"
+                        if (in_shape || in_frame) && shape.is_none() && skip_from.is_none() =>
+                    {
                         shape = Some(shape_identity(&start, part_name)?);
                     }
-                    b"txBody" if in_shape => {
+                    // A frame that states no `<p:cNvPr id>` has no label for its runs: its table is
+                    // passed over and the frame counted, as every frame was before decision #135.
+                    b"tbl"
+                        if in_frame
+                            && shape.is_some()
+                            && skip_from.is_none()
+                            && table.is_none() =>
+                    {
+                        table = Some(SlideTable {
+                            frame: frame_ordinal,
+                            rows: 0,
+                            columns: 0,
+                            cells: Vec::new(),
+                        });
+                        table_row = 0;
+                        grid = (0, 0);
+                    }
+                    b"tr" if table.is_some() => {
+                        table_row += 1;
+                        table_column = 0;
+                        open_row(&mut table, &mut grid, skip_from.is_none());
+                    }
+                    // A cell outside any row has no row to name: passed over, and counted.
+                    b"tc" if table.is_some() && table_row == 0 => {
+                        shapes_not_read = crate::declare(shapes_not_read, 1);
+                    }
+                    b"tc" if table.is_some() => {
+                        table_column += 1;
+                        cell = Some((table_row, table_column));
+                        if skip_from.is_none() {
+                            let at = (table_row, table_column);
+                            place_cell(&mut table, &mut grid, table_cell(&start, at, part_name)?);
+                        }
+                    }
+                    b"txBody" if in_shape || cell.is_some() => {
                         in_body = true;
                         paragraph = 0;
                     }
                     b"p" if in_body => {
                         paragraph += 1;
                         run_in_paragraph = 0;
+                        line_break = false;
                     }
+                    b"br" if in_body && cell.is_some() && skip_from.is_none() => line_break = true,
                     b"r" if in_body => {
                         run_in_paragraph += 1;
                         if skip_from.is_none() {
                             let (id, name) =
                                 shape.clone().ok_or_else(|| missing_shape_id(part_name))?;
                             open_run = Some(SlideRun {
-                                shape: shape_ordinal,
+                                shape: if cell.is_some() {
+                                    frame_ordinal
+                                } else {
+                                    shape_ordinal
+                                },
                                 shape_id: id,
                                 shape_name: name,
                                 paragraph,
                                 run: run_in_paragraph,
+                                row: cell.map(|(r, _)| r),
+                                column: cell.map(|(_, c)| c),
+                                line_break_before: line_break,
                                 text: String::new(),
                             });
                         }
@@ -429,9 +541,9 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                             in_text = true;
                         }
                     }
-                    // Text this slice does not read, counted rather than dropped: a table or a
-                    // chart in a `<p:graphicFrame>`, and a field's cached rendering.
-                    b"graphicFrame" | b"fld" if skip_from.is_none() => {
+                    // Text this slice does not read, counted rather than dropped: a field's cached
+                    // rendering. A frame holding no table is counted where it closes.
+                    b"fld" if skip_from.is_none() => {
                         shapes_not_read = crate::declare(shapes_not_read, 1);
                     }
                     _ => {}
@@ -452,13 +564,35 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                         paragraph += 1;
                         run_in_paragraph = 0;
                     }
+                    b"br" if in_body && cell.is_some() && skip_from.is_none() => line_break = true,
                     b"r" if in_body => run_in_paragraph += 1,
-                    b"cNvPr" if in_shape && shape.is_none() && skip_from.is_none() => {
+                    b"cNvPr"
+                        if (in_shape || in_frame) && shape.is_none() && skip_from.is_none() =>
+                    {
                         shape = Some(shape_identity(&start, part_name)?);
                     }
                     b"t" if skip_from.is_some() => skipped_text = true,
-                    b"graphicFrame" | b"fld" if skip_from.is_none() => {
+                    b"graphicFrame" => {
+                        frame_ordinal += 1;
+                        if skip_from.is_none() {
+                            shapes_not_read = crate::declare(shapes_not_read, 1);
+                        }
+                    }
+                    b"fld" if skip_from.is_none() => {
                         shapes_not_read = crate::declare(shapes_not_read, 1);
+                    }
+                    // A self-closing `<a:tc/>` still holds its grid column.
+                    b"tc" if table.is_some() && table_row > 0 => {
+                        table_column += 1;
+                        if skip_from.is_none() {
+                            let at = (table_row, table_column);
+                            place_cell(&mut table, &mut grid, table_cell(&start, at, part_name)?);
+                        }
+                    }
+                    b"tr" if table.is_some() => {
+                        table_row += 1;
+                        table_column = 0;
+                        open_row(&mut table, &mut grid, skip_from.is_none());
                     }
                     _ => {}
                 }
@@ -487,12 +621,26 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                         in_body = false;
                         shape = None;
                     }
+                    b"graphicFrame" if in_frame => {
+                        in_frame = false;
+                        in_body = false;
+                        shape = None;
+                        cell = None;
+                        match table.take() {
+                            Some(t) => tables.push(t),
+                            // A chart, SmartArt or an embedded object: text this slice does not
+                            // read, counted.
+                            None => shapes_not_read = crate::declare(shapes_not_read, 1),
+                        }
+                    }
+                    b"tc" => cell = None,
                     b"txBody" => in_body = false,
                     b"t" => in_text = false,
                     b"r" => {
                         if let Some(run) = open_run.take() {
                             if !run.text.is_empty() {
-                                if !seen.insert((run.shape, run.paragraph, run.run)) {
+                                let (row, column) = (run.row.unwrap_or(0), run.column.unwrap_or(0));
+                                if !seen.insert((run.shape, row, column, run.paragraph, run.run)) {
                                     return Err(EngineError::Malformed {
                                         what: part_name.to_string(),
                                         detail: format!(
@@ -504,6 +652,7 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                                     });
                                 }
                                 runs.push(run);
+                                line_break = false;
                             }
                         }
                     }
@@ -535,9 +684,68 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
     check_closed(depth, part_name)?;
     Ok(SlideContent {
         runs,
+        tables,
         shapes_not_read,
         alternatives_not_read,
     })
+}
+
+/// An `<a:tr>` opening: a row of the table's grid where its branch is read (review).
+fn open_row(table: &mut Option<SlideTable>, grid: &mut (u32, u32), read: bool) {
+    if let (true, Some(t)) = (read, table.as_mut()) {
+        *grid = (grid.0 + 1, 0);
+        t.rows = grid.0;
+    }
+}
+
+/// A read `<a:tc>`, at the next column of the grid's row (review).
+fn place_cell(table: &mut Option<SlideTable>, grid: &mut (u32, u32), mut cell: SlideTableCell) {
+    if let Some(t) = table.as_mut() {
+        grid.1 += 1;
+        cell.grid = *grid;
+        t.columns = t.columns.max(grid.1);
+        t.cells.push(cell);
+    }
+}
+
+/// An `<a:tc>` with the span it states and whether it says a merge covers it (decision #135), at
+/// `(row, column)` as a locator counts them.
+fn table_cell(
+    start: &BytesStart<'_>,
+    (row, column): (u32, u32),
+    part_name: &str,
+) -> Result<SlideTableCell, EngineError> {
+    let mut out = SlideTableCell {
+        row,
+        column,
+        grid: (row, column),
+        rowspan: 1,
+        colspan: 1,
+        covered: false,
+    };
+    for attribute in start.attributes() {
+        let attribute = attribute.map_err(|e| EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!("attribute will not parse: {e}"),
+        })?;
+        let value = attribute_value(&attribute, part_name)?;
+        // A span that is not a positive number states no merge, so the cell is one slot.
+        let span = || {
+            value
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|n| *n >= 1)
+                .unwrap_or(1)
+        };
+        match local_name(attribute.key.as_ref()) {
+            b"hMerge" | b"vMerge" if matches!(value.trim(), "1" | "true") => out.covered = true,
+            b"gridSpan" => out.colspan = span(),
+            b"rowSpan" => out.rowspan = span(),
+            _ => {}
+        }
+    }
+    Ok(out)
 }
 
 fn missing_shape_id(part_name: &str) -> EngineError {
@@ -1018,5 +1226,150 @@ mod tests {
             u32::MAX,
             "the ceiling, not the small number a wrap would report"
         );
+    }
+
+    // Decision #135: a frame's `<a:tbl>`.
+
+    fn frame(id: u32, tbl: &str) -> String {
+        format!(
+            r#"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="{id}" name="Table"/></p:nvGraphicFramePr><a:graphic><a:graphicData><a:tbl>{tbl}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"#
+        )
+    }
+
+    /// **A line break in a cell's paragraph is recorded on the run after it** (review of decision
+    /// #135): `North<a:br/>America` read as two runs of one paragraph with nothing between, and
+    /// the cell as `NorthAmerica`. A break with run properties counts, and so does one opening a
+    /// paragraph; one in a shape, or in a branch passed over, is not recorded, and neither the run
+    /// after the next nor a new paragraph has one.
+    #[test]
+    fn a_line_break_in_a_cell_is_recorded_on_the_run_after_it() {
+        let run = |t: &str| format!("<a:r><a:t>{t}</a:t></a:r>");
+        let para = |br: &str| format!("<a:p>{}{br}{}</a:p>", run("North"), run("America"));
+        let cell = |body: String| format!("<a:tc><a:txBody>{body}</a:txBody></a:tc>");
+        let skipped = r#"<mc:AlternateContent xmlns:mc="mc"><mc:Choice Requires="x"/><mc:Fallback><a:br/></mc:Fallback></mc:AlternateContent>"#;
+        let tbl = format!(
+            "<a:tr>{}{}{}{}</a:tr>",
+            cell(format!(
+                "<a:p>{}<a:br/>{}{}</a:p>",
+                run("a"),
+                run("b"),
+                run("c")
+            )),
+            cell(para(r#"<a:br><a:rPr lang="en-US"/></a:br>"#)),
+            cell(para(skipped)),
+            cell(format!(
+                "<a:p>{}<a:br/></a:p><a:p>{}</a:p><a:p><a:br/>{}</a:p>",
+                run("end"),
+                run("next"),
+                run("lead")
+            )),
+        );
+        let shaped = para("<a:br/>") + &para(r#"<a:br><a:rPr lang="en-US"/></a:br>"#);
+        let body = shape(2, "T", &shaped) + &frame(4, &tbl);
+        let out = read(&body).expect("well-formed");
+        let breaks: Vec<_> = out
+            .runs
+            .iter()
+            .map(|r| (r.text.as_str(), r.line_break_before))
+            .collect();
+        assert_eq!(
+            breaks,
+            vec![
+                ("North", false),
+                ("America", false),
+                ("North", false),
+                ("America", false),
+                ("a", false),
+                ("b", true),
+                ("c", false),
+                ("North", false),
+                ("America", true),
+                ("North", false),
+                ("America", false),
+                ("end", false),
+                ("next", false),
+                ("lead", true),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_table_cell_run_is_addressed_by_frame_row_and_column() {
+        let tbl = "<a:tr><a:tc><a:txBody><a:p><a:r><a:t>a</a:t></a:r></a:p></a:txBody></a:tc>\
+                   <a:tc gridSpan=\"2\"><a:txBody><a:p><a:r><a:t>b</a:t></a:r></a:p></a:txBody></a:tc>\
+                   <a:tc hMerge=\"1\"/></a:tr>\
+                   <a:tr><a:tc/><a:tc><a:txBody><a:p/><a:p><a:r><a:t>c</a:t></a:r></a:p></a:txBody></a:tc></a:tr>";
+        let body = shape(2, "T", "<a:p><a:r><a:t>t</a:t></a:r></a:p>")
+            + r#"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="9" name="Chart"/></p:nvGraphicFramePr><a:graphic><a:graphicData><c:chart/></a:graphicData></a:graphic></p:graphicFrame>"#
+            + &frame(4, tbl)
+            + &shape(3, "U", "<a:p><a:r><a:t>u</a:t></a:r></a:p>");
+        let out = read(&body).expect("well-formed");
+        let addr: Vec<_> = out
+            .runs
+            .iter()
+            .map(|r| {
+                (
+                    r.text.as_str(),
+                    r.shape,
+                    r.row,
+                    r.column,
+                    r.paragraph,
+                    r.run,
+                )
+            })
+            .collect();
+        assert_eq!(
+            addr,
+            vec![
+                ("t", 1, None, None, 1, 1),
+                ("a", 2, Some(1), Some(1), 1, 1),
+                ("b", 2, Some(1), Some(2), 1, 1),
+                ("c", 2, Some(2), Some(2), 2, 1),
+                // A shape after the frames keeps the position it had: frames are counted apart.
+                ("u", 2, None, None, 1, 1),
+            ]
+        );
+        assert_eq!(
+            out.runs[2].shape_id, 4,
+            "a cell's run carries its frame's id"
+        );
+        assert_eq!(
+            out.tables,
+            vec![SlideTable {
+                frame: 2,
+                rows: 2,
+                columns: 3,
+                cells: [
+                    (1, 1, 1, 1, false),
+                    (1, 2, 1, 2, false),
+                    (1, 3, 1, 1, true),
+                    (2, 1, 1, 1, false),
+                    (2, 2, 1, 1, false),
+                ]
+                .map(|(row, column, rowspan, colspan, covered)| SlideTableCell {
+                    row,
+                    column,
+                    grid: (row, column),
+                    rowspan,
+                    colspan,
+                    covered
+                })
+                .to_vec(),
+            }]
+        );
+        // The first frame holds no table, so it is the one shape counted as unread.
+        assert_eq!(out.shapes_not_read, 1);
+    }
+
+    /// A cell before any row names no row: passed over and counted, never row 0 or a wrapped one.
+    #[test]
+    fn a_cell_outside_any_row_is_counted_not_placed() {
+        let tbl = "<a:tc><a:txBody><a:p><a:r><a:t>orphan</a:t></a:r></a:p></a:txBody></a:tc>\
+                   <a:tr><a:tc><a:txBody><a:p><a:r><a:t>x</a:t></a:r></a:p></a:txBody></a:tc></a:tr>";
+        let out = read(&frame(4, tbl)).expect("well-formed");
+        let texts: Vec<_> = out.runs.iter().map(|r| (r.text.as_str(), r.row)).collect();
+        assert_eq!(texts, vec![("x", Some(1))]);
+        assert_eq!(out.tables[0].cells.len(), 1);
+        assert_eq!(out.shapes_not_read, 1);
     }
 }

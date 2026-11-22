@@ -34,3 +34,7 @@ fixtures/** -text
 # CRLF checkout would move the dictionary's pinned sha256 in the recognizer's identity.
 ocr/models/** -text
 ocr/tests/data/** -text
+
+# The README's sample page is a PDF with no compression, so git would take it for text, and a CRLF
+# checkout would move the byte offsets its cross-reference table counts.
+docs/sample.pdf -text

@@ -117,6 +117,11 @@ fn the_fixtures_read_the_same_bytes_on_every_cpu() {
     // A raster stored turned reads as the upright one does, its quads in the stored grid.
     let turned = by_id("png-file-turned");
     assert_eq!(texts(&turned), texts(&upright));
+    // Decision #153: and one stored turned, sent with no turn declared, stands upright on its own
+    // orientation, its quads in the stored grid as the declared one's are.
+    let undeclared = by_id("png-file-turned-undeclared");
+    assert_eq!(texts(&undeclared), texts(&upright));
+    assert_eq!(undeclared["lines"], turned["lines"]);
     assert_eq!(
         (turned["width"].clone(), turned["height"].clone()),
         (upright["height"].clone(), upright["width"].clone())

@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V13`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V14`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V13`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V14`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -172,6 +172,32 @@ pub const READING_ORDER_RULE_V3: &str = "gutter-columns-v3";
 /// full-width line bridges is still one band, and where both columns break at one height the
 /// sweep reads across the gutter a slab at a time — the cost decision #32 measured and accepted.
 pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
+
+/// [`READING_ORDER_RULE_V4`] **with a side band joined to the band whose rows it sits on**
+/// (decision #133). Where the vertical cut divides a block into bands, one of two neighbours is
+/// at most half as wide as the other, the other is a single column (the cut, run on it alone,
+/// opens no vertical cut), three of every four of the narrow band's cells — its lines run
+/// together, no more than a leading and a quarter apart — start within a quarter of the column's
+/// modal leading of the first line of one of the column's blocks and end within that block, and
+/// one such cell, with another below it, ends before its block's last line, the two are one band: a
+/// résumé's dates in a narrow column, or flush right on each job's first line, are read with the
+/// job rather than after the last one. A page whose only cut that was is not divided and is read
+/// down its slabs, in the order the document drew them, never sorted by baseline; inside a column
+/// the joined band is read by its blocks. Two bands of one measured width are never joined, and a
+/// sidebar whose boxes run past the paragraphs beside them stays a column. `columns`, which the
+/// table detector reads, does not join. The half, the quarter and the three in four are chosen,
+/// not measured.
+///
+/// **And text drawn over the page after its own** (decision #157, folded in: no release carries
+/// this id): the longest last stretch of the content stream in fonts no earlier run uses, short
+/// runs mostly among the page's own baselines — a form filler's values — is read beside the run it
+/// sits by: after the caption on its row (one ending before it, or whose own leader runs under
+/// it), else after the line above it, and a one-glyph mark beside the option it ticks. A run drawn
+/// over the page's own words, set more than three times its anchor's measured height, or marked
+/// `/Artifact` stays where it was, a run is read after a caption only — never after a line of
+/// prose — and a stretch as much drawn over words as read beside them, or more, moves
+/// nothing (`crate`-private `drawn_last` in `ethos-parser-pdf`).
+pub const READING_ORDER_RULE_V5: &str = "gutter-columns-v5";
 
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
 ///
@@ -251,6 +277,37 @@ pub const OBSERVATION_RULE_V3: &str = "page-observations-v3";
 /// 0.5679, six up and one down — `sig-alternate-sample` p3, whose `CMBX9` captions now read as
 /// bold labels — a trade the owner took; opendataloader-bench and the heading bounds unchanged.
 pub const OBSERVATION_RULE_V4: &str = "page-observations-v4";
+
+/// [`OBSERVATION_RULE_V4`] **with three more findings about text a reader does not see**
+/// (decision #139): a run whose rendered em is under a point (`tiny-text`), a run inside optional
+/// content the document's default configuration switches off (`hidden-layer`), and a run filled in
+/// the colour of the rectangle painted beneath it, or white on a page that painted nothing there
+/// (`fill-matches-background`; a fill painted under a `gs`, which is not resolved, is no colour it
+/// compares). Each is a [`crate::TextFinding`] counted under its own code, none is raised on
+/// whitespace, and like the two before them none removes anything. A membership dictionary is not
+/// evaluated, and its runs are counted under `optional-content-membership-not-evaluated`. The colour test
+/// compares operands and never contrast — `codes::LOW_CONTRAST_NOT_DETECTED` still holds for
+/// everything else. A reader of `-v4` refuses an artifact carrying the new findings, which is why
+/// the id moves. And `invisible-render-mode` narrows: a run set in mode 7 carries it only where
+/// nothing is painted through the clip it sets before the state holding that clip is restored.
+///
+/// **And strikeout and underline from the page's own lines** (decision #154, folded in before any
+/// release carried this id): a run is `strikeout` or `underline` where a thin level line drawn
+/// solid — stroked undashed in a colour not known to be white, or painted no taller than a fifth
+/// of an em — runs 0.15 to 0.5 em above its baseline or from it to 0.3 em below, over three
+/// quarters of the run, with no stretch of it longer than an em marking no run and no vertical
+/// line ending at its ends (`crate::markdown` writes `~~` and `<u>`). ParseBench-2's engine lane
+/// 51.97 → 53.46 (strikeout 14.1 → 76.8, underline 20.0 → 89.2); opendataloader-bench's NID
+/// 0.8922 → 0.8911 and MHS 0.6378 → 0.6372, its scorer reading the `<u>` tags of real underlines
+/// as text — a trade the owner took.
+///
+/// **And a page read turned** (decision #155, folded in before any release carried this id): where
+/// nine tenths of a page's characters or more, 40 or more on four lines or more, travel one way
+/// other than the one its declared rotation stands upright, the page is read in that way's upright
+/// frame, every box with it, and its record states `turn`; a run that does not move, runs off the
+/// axes or is mirrored counts against every way. ParseBench-2's engine lane 53.46 → 53.91 (tables
+/// 47.27 → 49.98); ParseBench's `--ocr` lane and opendataloader-bench unchanged.
+pub const OBSERVATION_RULE_V5: &str = "page-observations-v5";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
 ///
@@ -1130,6 +1187,23 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// Alone, ParseBench tables 0.6224 → 0.6258, eight pages up and none down, overall 51.49 → 51.56;
 /// opendataloader-bench's Markdown unchanged; the gate documents, trees stripped, gain `irs-fw9`
 /// p5's table.
+///
+/// **And columns of prose are no table, and a header set flush left heads figures set flush right**
+/// (decision #127, folded in). A grid whose every column is running text, its first no column of
+/// labels each under thirty characters, is refused in any order and its lines passed over down to
+/// the last that opens a line lower-case, so a table set right under them, which grew into them, is
+/// still read: a two-column article written line by line across its columns read as a table of
+/// interleaved lines.
+/// One side of two tables drawn side by side, which stood as one, is unchanged. And a header line whose cells sit on no track, where the nearest centres put
+/// two on one track, gives each the first track ending at or past its own end, where they come out
+/// left to right and each stays clear of its track's neighbours. Measured: no ParseBench or
+/// opendataloader-bench page moves.
+///
+/// **And a recognized form's fields are a table** (decision #152, folded in): on a page of
+/// recognized text, two columns whose every label holds one colon and ends in it, no two alike,
+/// beside values that are no running text and hold no word ending in a colon, stand in any order.
+/// A scanned invoice's fields read as its drawn copy's table where they read every label, then
+/// every value. Measured: no ParseBench (`--ocr` too) or opendataloader-bench page moves.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,
@@ -1270,6 +1344,54 @@ pub const TABLE_DETECTION_LINES_V1: &str = "point-labels-v1";
 ///
 /// Decision #105, folded in likewise: a slice, a mark or a run the page clips away is not read.
 pub const TABLE_DETECTION_PIES_V1: &str = "slice-labels-v1";
+
+/// The rule that reads each worksheet of an XLSX workbook as one table (decision #135).
+///
+/// **Not a detector.** A worksheet states its grid: every `<c r="B12">` names its row and column,
+/// and `<mergeCells>` names each merged range. The table spans the rows and columns the sheet's
+/// text-bearing cells (and the merges they open) reach, from the first to the last of each; a
+/// cell's slot is its own address less that origin, and its node keeps the address itself. So the
+/// table is `Extracted`, carries no geometry, and its locator cross-check is `NotApplicable`, as a
+/// tagged table's is. A text cell inside another's merged range opens no slot; its node stays, and
+/// it is counted (`office-covered-cells-not-placed`). A sheet whose span would take the workbook's
+/// tables past [`OFFICE_TABLE_MAX_SLOTS`] slots between them gets no table and is counted; its
+/// cells are still nodes.
+pub const TABLE_DETECTION_XLSX_SHEETS_V1: &str = "xlsx-sheet-table-v1";
+
+/// The rule that reads each `<a:tbl>` of a PPTX slide as one table (decision #135).
+///
+/// A slide's table states its grid: `<a:tr>` rows of `<a:tc>` cells, one cell per grid column,
+/// `gridSpan` and `rowSpan` on the cell a merge opens and `hMerge`/`vMerge` on the cells it covers.
+/// The grid is as many rows as `<a:tr>` and as many columns as the widest row's `<a:tc>`, and a
+/// span reaches no further. A cell marked covered, or lying under an earlier cell's span, opens no
+/// slot; its runs stay nodes, counted when they hold text. A cell's runs are its text joined by
+/// one space where neither holds whitespace at the seam, as both projections write them; a cell
+/// before any `<a:tr>` is passed over and counted. `Extracted`, no geometry, cross-check
+/// `NotApplicable`, for [`TABLE_DETECTION_XLSX_SHEETS_V1`]'s reasons. A table that would take the
+/// deck's tables past [`OFFICE_TABLE_MAX_SLOTS`] slots between them is not one, and is counted.
+pub const TABLE_DETECTION_PPTX_TBL_V1: &str = "pptx-tbl-v1";
+
+/// The most slots, rows times columns, one office document's tables may span **between them**
+/// (decision #135).
+///
+/// The projections lay a table out slot by slot, so a sheet holding one cell at `A1` and one at
+/// `XFD1048576` would ask for seventeen billion of them, and twenty sheets of a million each a
+/// file of a few kilobytes would turn into gigabytes. One budget per document, spent in order: a
+/// table that would pass what is left is not built and is counted. A million is the cell ceiling
+/// a workbook is held to.
+pub const OFFICE_TABLE_MAX_SLOTS: u64 = 1_000_000;
+
+/// The rule that reads each `<w:tbl>` of a DOCX as one table (decision #136): a `<w:tbl>` as the
+/// file states it — a row per `<w:tr>`, a cell per `<w:tc>`,
+/// its columns counted on the table's grid from `<w:gridBefore>` and each cell's `<w:gridSpan>`,
+/// and a `<w:vMerge>` that continues the cell above extending that cell down a row (its runs, if
+/// any, joining that cell's). A cell's runs are the runs of its paragraphs, a nested table's
+/// runs its own; its text is theirs, its paragraphs joined by one space where neither holds
+/// whitespace at the seam. No box anywhere: the table and every cell carry typed-absent geometry,
+/// and its `page` is the part. A table that would take the document's tables past
+/// [`OFFICE_TABLE_MAX_SLOTS`] slots between them is not written, and its runs read as paragraphs.
+/// `Extracted`: nothing is inferred. The DOCX profile's `table_detection.office`.
+pub const TABLE_DETECTION_DOCX_V1: &str = "docx-tbl-v1";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
@@ -1534,6 +1656,46 @@ pub const HEADING_INFERENCE_RULE_V6: &str = "type-size-v6";
 /// opendataloader-bench unchanged.
 pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 
+/// [`HEADING_INFERENCE_RULE_V7`] **with the labels that head a document's recurring sections for
+/// its headings, where none of its lines ranks** (decision #140).
+///
+/// **What `-v7` missed.** The label tier (decision #47) reads a bold line set tight over the text
+/// it names as a label, level 7, below every ranked level, and both projections write it as a bold
+/// line. On a document no line of which is set large or stands apart, nothing ranks, so the labels
+/// are the top of its outline and nothing was written as a heading at all: a paper's `Methods`,
+/// `Results`, `References` set bold over their text came out as bold lines in a document with no
+/// heading. On opendataloader-bench, 18 of the 107 documents whose ground truth holds a heading
+/// had no heading in the Markdown; 15 of them had their heading as a label.
+///
+/// **The change.** Where the document declares no author structure and no line of it ranks, a
+/// label is level 1 where it heads a section: the last inked run before it in reading order is not
+/// bold, so it opens no line of a bold passage; the next inked run is set in no bold, not run in
+/// along the label's line a little off its baseline, and the next line below that is in no bold
+/// either, so it heads two lines of text or more, not a stacked label or one line of value; and
+/// another label of the document does the same in the same font at the same size, since sections
+/// recur. A form's captions, a resume's contact labels, a bold line inside a paragraph, a caption,
+/// one label alone stay at level 7. One ranked line anywhere keeps every label at level 7, as before,
+/// and so does a tag tree. The limitation still counts these lines as labels.
+///
+/// **Measured** (`docs/measurements/headings/README.md` §15): opendataloader-bench MHS
+/// 0.6285 -> 0.6378 over decision #141's joins alone, none down; the heading bounds' eleven
+/// documents each rank headings, so they read as under `-v7`. Without the recurrence clause MHS
+/// read 0.7024, but forms, invoices and resumes got `#` lines.
+///
+/// **And one label heads a document where no label's style recurs** (decision #159, folded in
+/// before any release carried this id): the first label that heads a section as above heads the
+/// document alone, level 1, where it heads a paragraph — the text after it opens in no lower-case
+/// letter, which a bold phrase inside a paragraph runs on in, and the next line after that text in
+/// reading order sits below it no farther than it is from the label, so a value over the text
+/// after it is no paragraph, nor is the foot of a column or a raised mark a line below (second
+/// review) — and it names no figure or table (`Figure 3.3.`, `TABLE I.`, `Figure S1`, `Table A.2`,
+/// `Algorithm 1`, `Figure:`). A book's or a paper's page with one
+/// section title over its prose was a document with no heading. **The trade:** nothing in the type
+/// tells a form's `Total`, an invoice's `Bill To` or a resume's `EXPERIENCE`, each alone over text,
+/// from that title; the review's made-up probes that #140 kept clean gain `#` lines. Measured in
+/// `docs/measurements/headings/README.md` §17.
+pub const HEADING_INFERENCE_RULE_V8: &str = "type-size-v8";
+
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.
 ///
 /// On a document that declares no author structure, each page's lines — the runs sharing one
@@ -1643,6 +1805,21 @@ pub const LAYOUT_UNIT_RULE_V5: &str = "line-units-v5";
 /// formatting unchanged on every page; opendataloader-bench's tables and headings unchanged on every
 /// document.
 pub const LAYOUT_UNIT_RULE_V6: &str = "line-units-v6";
+
+/// [`LAYOUT_UNIT_RULE_V6`] **with small pieces kept with their text** (decision #129). A script
+/// starting no more than a quarter of its line's height past the line's end and ending no more than
+/// that height past it — a footnote mark set against the last letter — is that line's, where it
+/// had to lie inside the line. A list marker alone, or a label closed by a colon, ends short of
+/// nothing where the piece after it on its line is no such piece itself, so a `1.` set apart keeps
+/// its item's text and `Invoice No:` its value, and a label with no value takes no other label's.
+/// And a line set within a quarter of its height of where a list item's text starts after a marker
+/// alone in its run, opening with a word, continues the item within the page's body leading and a
+/// twentieth more, or within its own height on a page that sets no leading of its own, where it
+/// started too far right of the marker. A marker set in one run with its text sets no hanging
+/// indent. The quarter and the height are chosen, not measured. Geometry and punctuation alone: a
+/// unit is no list item, and units stay where, never what. Measured: ParseBench grounding
+/// up, every other ParseBench and opendataloader-bench score unchanged.
+pub const LAYOUT_UNIT_RULE_V7: &str = "line-units-v7";
 
 /// The page-furniture rule decision #41 ships: **what a page sets apart at its top and bottom
 /// edges**.
@@ -1949,6 +2126,19 @@ pub struct TableDetection {
     /// See [`TABLE_DETECTION_PIES_V1`]. An eighth field for the reason there were seven: its
     /// evidence — filled slices, their colours, and the labels set at them — is its own.
     pub pies: String,
+    /// Version id of the rule that reads a table an office file states itself — each worksheet of a
+    /// workbook ([`TABLE_DETECTION_XLSX_SHEETS_V1`]), each `<a:tbl>` of a slide
+    /// ([`TABLE_DETECTION_PPTX_TBL_V1`]) (decision #135), each `<w:tbl>` of a Word document
+    /// ([`TABLE_DETECTION_DOCX_V1`], decision #136) — or absent where none runs. Each office profile
+    /// names its own.
+    ///
+    /// **The one optional key here, and why absent is honest for it.** Every other key is refused
+    /// when missing, because a default would claim a rule ran. Absent here claims the opposite —
+    /// that no office table rule ran — which is true of every profile written before this key and
+    /// of every PDF profile now, so their bytes and hashes do not move. An unknown key is still
+    /// refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub office: Option<String>,
 }
 
 impl Default for TableDetection {
@@ -1963,6 +2153,7 @@ impl Default for TableDetection {
             charts: TABLE_DETECTION_CHARTS_V3.to_string(),
             lines: TABLE_DETECTION_LINES_V1.to_string(),
             pies: TABLE_DETECTION_PIES_V1.to_string(),
+            office: None,
         }
     }
 }
@@ -2053,7 +2244,8 @@ pub struct Capabilities {
     /// text by page geometry rather than by stream position*. It does not claim every layout is
     /// resolved. Where the page shows no column gutter, [`READING_ORDER_RULE_V4`] (2026-09-26)
     /// reads it top to bottom by leading-gap slabs and keeps content-stream order inside each;
-    /// through `-v3` such a page kept content-stream order whole.
+    /// through `-v3` such a page kept content-stream order whole. Since [`READING_ORDER_RULE_V5`]
+    /// a narrow band set on its neighbour's rows is no column of its own.
     ///
     /// v0 through v1-S4 left this false and said so on every artifact, because the known
     /// heuristic flips on `min_lines < 15` and a one-line edit reordered a whole page. What
@@ -2198,7 +2390,23 @@ pub const NOT_RUN: &str = "not-run-for-this-format";
 /// v2 (0.62.0): a self-closing `<w:p/>` or `<w:r/>` is counted as its long form is, so a
 /// paragraph's or a run's ordinal no longer depends on how the file was serialized (review
 /// 2026-09-25 F19). The order is v1's; the addresses it hands out move.
-pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
+///
+/// v3 (decision #130): a run after a text box is counted in the paragraph that anchors the box.
+/// The box's `<w:p>` sits inside a run of that paragraph, and one counter gave every run after it
+/// the box's paragraph and the box's run count, a locator naming the wrong `<w:p>`. The order is
+/// v2's; the addresses of those runs move. And a run holding text either side of a box it anchors
+/// keeps both and stands where it opens, before the box's runs: the box's run took its place, so
+/// only the box's text was read.
+///
+/// Decision #136, folded in as no release carries `-v3`: the parts read, in this order — each
+/// header part a `<w:headerReference>` names, once, in the order first named; `word/document.xml`;
+/// each footer part a `<w:footerReference>` names, likewise; the footnotes part — each bound by
+/// relationship from `word/_rels/document.xml.rels`, never by its conventional name, and each
+/// parented by a part id of its own. The order within a part is the part's own. A `first` header
+/// or footer is read only where its section states `<w:titlePg/>`, an `even` one only where
+/// `word/settings.xml` states `<w:evenAndOddHeaders/>`; a separator or continuation notice is
+/// passed over by its `w:type`; and a part that will not read is counted and passed over.
+pub const DOCX_READING_ORDER_RULE_V3: &str = "docx-document-order-v3";
 
 /// v2-S2's DOCX text rule: the characters `<w:t>` carries, verbatim.
 ///
@@ -2216,12 +2424,24 @@ pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
 /// taken as a long one is (N36); line ends are normalised as XML 1.0 §2.11 requires (N37); a CDATA
 /// section in `<w:t>` is read (tracker I17); and the text of a `<w:moveFrom>` region is passed over
 /// and counted, read once where its `<w:moveTo>` puts it (N18).
-pub const DOCX_TEXT_CODE_RULE_V3: &str = "docx-wt-verbatim-v3";
+/// v4 (decision #130): a run whose only characters are ones it states as elements — a tab, a line
+/// break, a no-break hyphen; `<w:r><w:tab/></w:r>`, as Word writes a label's tab — is a node
+/// holding them, where v3 left it out, so `Company Name` and `: Acme Ltd` had nothing between them.
+/// A run inside `<w:del>` still is not. `<w:ptab/>`, the positional tab, is a tab; and only an
+/// element directly in the `<w:r>` states a character, so a text box's tab stop
+/// (`<w:tabs><w:tab/></w:tabs>`, inside a run of the anchoring paragraph) is none.
+///
+/// Decision #136, folded in as no release carries `-v4`: a run carries what its paragraph and its
+/// part declare — `heading_level`, from the paragraph's `<w:outlineLvl>` or its style's in
+/// `word/styles.xml` (through `<w:basedOn>`, or a built-in name `heading N`); `list_level`, from
+/// its `<w:numPr>` or its style's; and `furniture`, where its part is a referenced header or
+/// footer — never off a styleId alone, and never out of a tracked change's `…Change` element.
+pub const DOCX_TEXT_CODE_RULE_V4: &str = "docx-wt-verbatim-v4";
 
 /// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
 /// order their worksheet part lists them.
 ///
-/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V2`] is
+/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V3`] is
 /// not. The workbook states its own sheet order and each sheet states its own cell order; this
 /// engine follows both and sorts nothing. In particular it does **not** re-order cells into
 /// row-major address order — a sheet whose part lists `B1` before `A1` is read that way, because
@@ -2245,6 +2465,39 @@ pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1"
 /// requires (N37).
 pub const XLSX_TEXT_CODE_RULE_V3: &str = "xlsx-stored-value-verbatim-v3";
 
+/// Decision #135's XLSX text rule: v3, and a number cell shows the value its number format
+/// displays, with the stored value kept beside it.
+///
+/// A cell whose type is a number (`t="n"` or none), with a stored or cached `<v>`, takes the format
+/// its style names (`<c s>` → `cellXfs` → `numFmtId` → `<numFmts>` or the built-in table). What is
+/// rendered, from the code alone:
+///
+/// - **Numbers**: `0`, `#`, `.`, a `,` between digit placeholders, `%`, literal text in quotes,
+///   after `\`, as `[$₹-4009]`, or one of `$-+/():!^&'~{}<>= `; `_x` as one space; up to four `;`
+///   sections, and `[>=100000]`-style conditions on positive values. A comma between digit
+///   placeholders groups by threes, except the Indian pattern (`#,##,##0` and longer: three, then
+///   twos), which groups as the code writes it — as Excel shows it on an Indian locale; elsewhere
+///   Excel groups by its locale. The value is first rounded to fifteen significant digits, as
+///   Excel displays a double (`0.22499999999999998` under `0.00` is `0.23`), then half away from
+///   zero on its decimal digits — never through a float.
+/// - **Dates and times**: `y`, `yy`, `yyyy`, `m` to `mmmmm`, `d` to `dddd`, `h`, `hh`, `m`/`mm` as
+///   minutes beside `h` or `s`, `s`, `ss`, `AM/PM`, with English month and day names, on Excel's
+///   1900 date system (serial 60 is 29 February 1900, the day Excel counts and the calendar does
+///   not) or 1904 where `workbookPr date1904` says so. Seconds round half up only where the code
+///   shows a time, so a date alone never becomes the next day. `AM/PM` is written in capitals in
+///   any case it is coded. **Built-in 14 and 22 are written `yyyy-mm-dd` and `yyyy-mm-dd h:mm`, an
+///   order this build chose**: Excel shows them in the reader's own short-date order and the file
+///   states none, so each such cell is counted under `office-locale-dates-written-iso`.
+/// - Built-ins 1–4, 9, 10, 14–22, 37–40, 45 are the codes ECMA-376 §18.8.30 states; `General` and
+///   `@` show the stored value as it is.
+///
+/// **Anything else is the stored value, counted** under
+/// [`crate::assurance::codes::OFFICE_NUMBER_FORMATS_NOT_RENDERED`]: a scientific, fraction or
+/// elapsed-time code, a fill, a locale (`[$-F800]`, or a non-English LCID with month or day names),
+/// a built-in id the standard leaves to the locale, a condition on a negative value, a code longer
+/// than Excel's 255 characters. A string, boolean, error or `t="d"` cell shows what it stores.
+pub const XLSX_TEXT_CODE_RULE_V4: &str = "xlsx-number-format-v1";
+
 /// v2-S4's PPTX reading order: slides in the order `ppt/presentation.xml` lists them, shapes and
 /// runs in the order each slide part lists them.
 ///
@@ -2257,7 +2510,7 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 
 /// v2-S4's PPTX text rule: the characters `<a:t>` carries, verbatim.
 ///
-/// The DrawingML counterpart to `docx-wt-verbatim-v3`, and the same small claim: the text is
+/// The DrawingML counterpart to `docx-wt-verbatim-v4`, and the same small claim: the text is
 /// already Unicode, so there is no glyph-code step to get wrong. **No placeholder inheritance is
 /// resolved**: text that a slide layout or master would supply is not substituted in, because
 /// this reader did not read those parts and a substituted string is not one the slide stated.
@@ -2668,7 +2921,7 @@ pub struct Profile {
     pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V7`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V8`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -2679,7 +2932,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the layout-unit rule in force (decision #38).
     ///
-    /// See [`LAYOUT_UNIT_RULE_V6`]. Its own field for `heading_inference_rule`'s reason: it runs
+    /// See [`LAYOUT_UNIT_RULE_V7`]. Its own field for `heading_inference_rule`'s reason: it runs
     /// only where the document declares no structure, so folding it into a rule that runs on every
     /// document would make tagged artifacts non-comparable across a change to a rule that never
     /// ran on them. Refused, not defaulted, when absent.
@@ -2702,7 +2955,7 @@ pub struct Profile {
     pub right_to_left_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V13`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V14`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -2713,7 +2966,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V13`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V14`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -2775,6 +3028,42 @@ pub struct Profile {
     /// Which recognizer this run's `Recognized` runs come from (v3, `docs/35-OCR-SCOPE.md`).
     /// [`RecognizerPin::NotPinned`] by default; [`Profile::ocr_v0`] pins one.
     pub recognizer: RecognizerPin,
+    /// The drafting model whose replies an assisted record holds as `Proposed` blocks, or absent
+    /// where no replies file was attached (decision #145). [`Profile::with_assist`] pins one.
+    ///
+    /// **Optional, as `table_detection.office` is, and for its reason.** Absent claims that no
+    /// model's reply is in the record, which is true of every profile written before this key and
+    /// of every engine-only run now, so their bytes and hashes do not move. An unknown key inside
+    /// it is still refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assist: Option<AssistPin>,
+}
+
+/// The drafting model an assisted record's `Proposed` blocks come from, and how its replies were
+/// asked for and read (decision #145).
+///
+/// Pinned by what decides the blocks: the rule that reads a reply, the guard that checks it against
+/// the engine's runs (decision #146), the renderer that drew the page the model saw, the request
+/// that asked, and the model with its version as the replies file names them. Two assisted records
+/// are comparable only where all six agree, and never with an engine-only record (contract §6,
+/// rule 4). The replies file's own digest is per document, so it is in the record
+/// (`assist.answers_sha256`), not here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssistPin {
+    /// The rule that reads a reply into blocks: [`crate::assist::ASSIST_RULE_V1`].
+    pub rule: String,
+    /// The guard that checks each block against the engine's runs inside its box, and cuts a capped
+    /// reply's last block: [`crate::assist::ASSIST_GUARD_V1`] (decision #146).
+    pub guard: String,
+    /// The renderer that drew each page: [`crate::assist::ASSIST_RENDERER`].
+    pub renderer: String,
+    /// The request each page was asked with: [`crate::assist::ASSIST_REQUEST_V1`].
+    pub request: String,
+    /// The model's id, as the server reported it.
+    pub model: String,
+    /// The model's version as the caller named it, or `not-reported`.
+    pub model_version: String,
 }
 
 /// Which recognizer a profile's `Recognized` runs come from, if any (v3, `docs/35-OCR-SCOPE.md`
@@ -2822,6 +3111,8 @@ pub struct RecognizerIdentity {
     pub rec_sha256: String,
     /// SHA-256 of the recognition model's alphabet.
     pub dict_sha256: String,
+    /// SHA-256 of the page-orientation model it holds (decision #153).
+    pub ori_sha256: String,
     /// The runtime that runs the models.
     pub runtime: String,
 }
@@ -2837,6 +3128,7 @@ impl RecognizerIdentity {
             det_sha256: "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae".into(),
             rec_sha256: "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8".into(),
             dict_sha256: "e025a66d31f327ba0c232e03f407ae8d105e1e709e7ccb3f408aa778c24e70d6".into(),
+            ori_sha256: "af9a0a4f317ff0709ce752067807f819cb15d883f8ecad89f28df1c6ee2d9c92".into(),
             runtime: "rten 0.26.0; rten-vecmath 0.26.0 with fixed-order sums".into(),
         }
     }
@@ -2852,29 +3144,30 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V4.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V5.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V3.to_string(),
             outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V2.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V7.to_string(),
-            layout_unit_rule: LAYOUT_UNIT_RULE_V6.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V8.to_string(),
+            layout_unit_rule: LAYOUT_UNIT_RULE_V7.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
             right_to_left_rule: RIGHT_TO_LEFT_RULE_V1.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V13.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V14.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V13.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V14.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V2.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
             text_code_rule: TEXT_CODE_RULE_V4.to_string(),
-            observation_rule: OBSERVATION_RULE_V4.to_string(),
+            observation_rule: OBSERVATION_RULE_V5.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
             recognizer: RecognizerPin::NotPinned,
+            assist: None,
         }
     }
 }
@@ -2891,6 +3184,17 @@ impl Profile {
         }
     }
 
+    /// This profile with a drafting model's replies pinned (decision #145): the profile an
+    /// assisted record is read under, stacked on the base or the OCR profile. It differs from
+    /// `self` in [`Self::assist`] alone, so an assisted record never shares a `profile_sha256` with
+    /// an engine-only one (contract §6, rule 4).
+    pub fn with_assist(self, pin: AssistPin) -> Self {
+        Self {
+            assist: Some(pin),
+            ..self
+        }
+    }
+
     /// The profile a page-less OOXML word-processing document is read under (v2-S2).
     ///
     /// **A separate profile so the two artifacts are provably non-comparable.** `14-V2-SCOPE.md`
@@ -2898,12 +3202,18 @@ impl Profile {
     /// `profile_sha256`. A DOCX read under the PDF profile would claim measured ink boxes,
     /// multi-column reading order and a table detector that never ran on it.
     ///
-    /// Every capability below is `false` because **v2-S2 reads one thing**: the runs of
-    /// `word/document.xml`. `spans` stays true because a run is a span, and that is the one claim
-    /// this reader can make. Tables, images, annotations and form fields are real OOXML features
-    /// this slice does not read, and the profile says so rather than letting a consumer infer
-    /// capability from the PDF default. `markdown` and `html` are false because `14-V2-SCOPE.md`
-    /// §4 does not teach those projections a second format in this slice.
+    /// Every capability below but `tables` is `false` because **v2-S2 read one thing**: the runs
+    /// of `word/document.xml`. `spans` stays true because a run is a span, and that is the one claim
+    /// this reader can make. Images, annotations and form fields are real OOXML features this
+    /// reader does not read, and the profile says so rather than letting a consumer infer
+    /// capability from the PDF default; tables it reads since decision #136, below. `markdown`
+    /// and `html` are false because `14-V2-SCOPE.md` §4 does not teach those projections a second
+    /// format in this slice.
+    ///
+    /// **`tables: true` since decision #136** (owner, 2026-11-14): a `<w:tbl>` is read into a
+    /// [`crate::tables::TableRecord`] under `table_detection.office`, [`TABLE_DETECTION_DOCX_V1`],
+    /// every other table rule not run. Its grid is the file's own rows and cells, its geometry
+    /// typed absent.
     ///
     /// **`measured_ink_boxes: false` is the load-bearing one.** A DOCX has no geometry and this
     /// engine invents none, so every node's geometry is typed absence — and `check_structure`
@@ -2936,7 +3246,7 @@ impl Profile {
             capabilities: Capabilities {
                 spans: true,
                 char_offsets: false,
-                tables: false,
+                tables: true,
                 outlines: false,
                 figures: false,
                 measured_ink_boxes: false,
@@ -2949,8 +3259,9 @@ impl Profile {
                 markdown: false,
                 html: false,
             },
-            // A DOCX is not classified by sampling pages it does not have, and no table detector,
-            // struct-tree reader, CMap or xref repair runs on it. These are PDF rules, and the
+            // A DOCX is not classified by sampling pages it does not have, and no PDF table
+            // detector, struct-tree reader, CMap or xref repair runs on it: its `<w:tbl>` is read
+            // as the file states it (decision #136). These are PDF rules, and the
             // honest value for a rule a format never reaches is the declared "did not run".
             classify_sample_pages: 0,
             table_detection: TableDetection {
@@ -2962,8 +3273,9 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: Some(TABLE_DETECTION_DOCX_V1.to_string()),
             },
-            reading_order_rule: DOCX_READING_ORDER_RULE_V2.to_string(),
+            reading_order_rule: DOCX_READING_ORDER_RULE_V3.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
@@ -2979,7 +3291,7 @@ impl Profile {
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: DOCX_TEXT_CODE_RULE_V3.to_string(),
+            text_code_rule: DOCX_TEXT_CODE_RULE_V4.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -2993,15 +3305,14 @@ impl Profile {
     /// would claim a comparability it does not have — the same argument that separated
     /// `docx_v0` from [`Self::default`] at S2, applied one format further along.
     ///
-    /// # `tables: false`, on a format made of grids
+    /// # `tables: true`, since decision #135
     ///
-    /// The load-bearing declaration on this profile, and it is not modesty. `capabilities.tables`
-    /// means *this run emitted this engine's table IR* — [`crate::tables::TableRecord`], with
-    /// cell slots, spans and a locator cross-check. v2-S3 emits **cells**: one node per `<c>`,
-    /// addressed by sheet, row and column. A workbook is obviously tabular and that is exactly
-    /// why the claim has to stay false — a consumer reading `tables: true` would go looking for
-    /// `TableRecord`s and find none, and the PDF table detectors that produce them never ran here
-    /// and must not be pointed at a workbook.
+    /// `capabilities.tables` means *this run emitted this engine's table IR* —
+    /// [`crate::tables::TableRecord`], with cell slots, spans and a locator cross-check. v2-S3
+    /// emitted cells alone and declared `false`, and said why: no rule produced a `TableRecord`.
+    /// [`TABLE_DETECTION_XLSX_SHEETS_V1`] now does, one per worksheet, from the addresses and merges
+    /// the sheet states — no PDF detector is pointed at a workbook — so the claim is true and
+    /// `table_detection.office` names the rule. The cells are still one node each.
     ///
     /// `measured_ink_boxes: false` is the other one, for the reason it is false on `docx_v0`: a
     /// cell has no ink box until something lays the sheet out, and `check_structure` refuses a
@@ -3019,7 +3330,7 @@ impl Profile {
             capabilities: Capabilities {
                 spans: true,
                 char_offsets: false,
-                tables: false,
+                tables: true,
                 outlines: false,
                 figures: false,
                 measured_ink_boxes: false,
@@ -3042,6 +3353,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: Some(TABLE_DETECTION_XLSX_SHEETS_V1.into()),
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3059,7 +3371,7 @@ impl Profile {
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: XLSX_TEXT_CODE_RULE_V3.to_string(),
+            text_code_rule: XLSX_TEXT_CODE_RULE_V4.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -3083,6 +3395,9 @@ impl Profile {
     /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other two
     /// page-less profiles do; `Profile::docx_v0`'s doc comment is the decision and the evidence,
     /// and v2-S4 did not reopen it.
+    ///
+    /// `tables: true` since decision #135: a slide's `<a:tbl>` is a grid the deck states, read by
+    /// [`TABLE_DETECTION_PPTX_TBL_V1`] into a `TableRecord`, as [`Self::xlsx_v0`]'s sheets are.
     pub fn pptx_v0() -> Self {
         Self {
             backend: BackendIdentity {
@@ -3093,7 +3408,7 @@ impl Profile {
             capabilities: Capabilities {
                 spans: true,
                 char_offsets: false,
-                tables: false,
+                tables: true,
                 outlines: false,
                 figures: false,
                 measured_ink_boxes: false,
@@ -3116,6 +3431,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: Some(TABLE_DETECTION_PPTX_TBL_V1.into()),
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3194,6 +3510,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3259,6 +3576,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3330,6 +3648,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3400,6 +3719,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3473,6 +3793,7 @@ impl Profile {
                 charts: NOT_RUN.into(),
                 lines: NOT_RUN.into(),
                 pies: NOT_RUN.into(),
+                office: None,
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -3544,6 +3865,18 @@ mod tests {
         p.profile_sha256().unwrap().to_string()
     }
 
+    /// A made-up drafting model's pin (decision #145).
+    fn a_pin() -> AssistPin {
+        AssistPin {
+            rule: crate::assist::ASSIST_RULE_V1.into(),
+            guard: crate::assist::ASSIST_GUARD_V1.into(),
+            renderer: crate::assist::ASSIST_RENDERER.into(),
+            request: crate::assist::ASSIST_REQUEST_V1.into(),
+            model: "example/made-up-model".into(),
+            model_version: "not-reported".into(),
+        }
+    }
+
     /// **Every field of the profile, and of each struct and struct variant inside it, is a key
     /// in the bytes the profile is hashed from.**
     ///
@@ -3577,14 +3910,16 @@ mod tests {
             object.keys().map(String::as_str).collect()
         }
 
-        // Pinned, so the verifier's and the recognizer's struct variants are on the wire too.
+        // Pinned, so the verifier's and the recognizer's struct variants are on the wire too, and
+        // assisted, so the optional `assist` pin is (decision #145).
         let profile = Profile {
             verifier: VerifierPin::pinned(
                 "ethos 0.6.0",
                 Sha256Hex::from_hex(&"0".repeat(64)).expect("hex"),
             ),
             ..Profile::ocr_v0()
-        };
+        }
+        .with_assist(a_pin());
         let bytes = profile.canonical_bytes().expect("canonical");
         let wire: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
 
@@ -3621,6 +3956,21 @@ mod tests {
                 xref_repair,
                 verifier,
                 recognizer,
+                assist,
+            })
+        );
+        let Some(pin) = &profile.assist else {
+            panic!("the assisted profile pins its model");
+        };
+        assert_eq!(
+            keys(&wire["assist"]),
+            declared!(pin => AssistPin {
+                rule,
+                guard,
+                renderer,
+                request,
+                model,
+                model_version,
             })
         );
         assert_eq!(
@@ -3654,19 +4004,26 @@ mod tests {
                 html,
             })
         );
-        assert_eq!(
-            keys(&wire["table_detection"]),
-            declared!(&profile.table_detection => TableDetection {
-                ruled,
-                unruled,
-                stroke_ruled,
-                tagged,
-                tracks,
-                charts,
-                lines,
-                pies,
-            })
-        );
+        // Decision #135: `office` is written only where an office table rule runs. This PDF
+        // profile runs none, so its wire has every other key; a workbook's has `office` as well.
+        let mut table_keys = declared!(&profile.table_detection => TableDetection {
+            ruled,
+            unruled,
+            stroke_ruled,
+            tagged,
+            tracks,
+            charts,
+            lines,
+            pies,
+            office,
+        });
+        assert!(profile.table_detection.office.is_none());
+        table_keys.remove("office");
+        assert_eq!(keys(&wire["table_detection"]), table_keys);
+        let xlsx: serde_json::Value =
+            serde_json::from_slice(&Profile::xlsx_v0().canonical_bytes().expect("canonical"))
+                .expect("JSON");
+        assert!(keys(&xlsx["table_detection"]).contains("office"));
         assert_eq!(
             keys(&wire["verifier"]["identity"]),
             declared!(&profile.verifier => VerifierPin::Pinned { version, sha256 })
@@ -3683,6 +4040,7 @@ mod tests {
                 det_sha256,
                 rec_sha256,
                 dict_sha256,
+                ori_sha256,
                 runtime,
             })
         );
@@ -3710,6 +4068,7 @@ mod tests {
         assert_eq!(id.det_sha256, constant("DET_SHA256"));
         assert_eq!(id.rec_sha256, constant("REC_SHA256"));
         assert_eq!(id.dict_sha256, constant("DICT_SHA256"));
+        assert_eq!(id.ori_sha256, constant("ORI_SHA256"));
         assert_eq!(id.runtime, constant("RUNTIME"));
         assert!(main.contains(&format!("recognizer: \"{}\",", id.recognizer)));
         assert!(manifest
@@ -3812,6 +4171,7 @@ mod tests {
                     charts: _,
                     lines: _,
                     pies: _,
+                    office: _,
                 },
             struct_tree_rule: _,
             outline_rule: _,
@@ -3831,6 +4191,7 @@ mod tests {
             xref_repair: _,
             verifier: _,
             recognizer: _,
+            assist: _,
         } = &base;
 
         /// One named single-field mutation.
@@ -3887,6 +4248,13 @@ mod tests {
             (
                 "table_detection.pies",
                 Box::new(|p: &mut Profile| p.table_detection.pies = "other-pies-v9".into()),
+            ),
+            (
+                // Decision #135. Whether a workbook's sheets or a slide's tables become tables.
+                "table_detection.office",
+                Box::new(|p: &mut Profile| {
+                    p.table_detection.office = Some("other-office-v9".into())
+                }),
             ),
             (
                 // v1-S4. Which form and annotation nodes exist at all.
@@ -3961,6 +4329,12 @@ mod tests {
                 Box::new(|p: &mut Profile| {
                     p.recognizer = RecognizerPin::Pinned(RecognizerIdentity::ethos_parser_ocr())
                 }),
+            ),
+            (
+                // Decision #145. Which drafting model's replies a record holds is part of its
+                // identity: an assisted record must never be comparable with an engine-only one.
+                "assist",
+                Box::new(|p: &mut Profile| p.assist = Some(a_pin())),
             ),
             (
                 "backend.name",
@@ -4116,12 +4490,14 @@ mod tests {
         // #54, which added `right_to_left_rule` the same way. Forty-six since decision #66, which
         // added `table_detection.lines` the same way, and forty-seven since decision #90, which
         // added `table_detection.pies` the same way. Forty-eight since decision #120, which added
-        // `recognizer` the same way.
+        // `recognizer` the same way, and forty-nine since decision #135, which added
+        // `table_detection.office` the same way. Fifty since decision #145, which added `assist`
+        // the same way.
         assert_eq!(
             mutations.len(),
-            48,
-            "{} single-field mutation(s); forty-eight is the number at decision #120, which added \
-             `recognizer` with its mutation",
+            50,
+            "{} single-field mutation(s); fifty is the number at decision #145, which added \
+             `assist` with its mutation",
             mutations.len()
         );
 
@@ -4176,7 +4552,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v7","html_rule":"html-blocks-v13","layout_unit_rule":"line-units-v6","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v13","observation_rule":"page-observations-v4","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -5378,11 +5754,31 @@ mod tests {
              Moved for decision #120, `sha256:0903edb3…` -> `sha256:8c2f8672…`: the new \
              `recognizer` pin, `not_pinned` here and pinned only by the OCR profile \
              (`docs/35-OCR-SCOPE.md`), so an artifact holding recognized text is never \
-             comparable with one that does not by accident. Nothing else."
+             comparable with one that does not by accident. Nothing else.\n\n\
+             Moved for decision #126, `sha256:8c2f8672…` -> `sha256:57d4edd8…`: `markdown_rule` \
+             `markdown-blocks-v13` -> `-v14` and `html_rule` `html-blocks-v13` -> `-v14`, for a \
+             tagged element's next line kept on a line of its own, and decision #128's two list \
+             bodies the file numbers as two items, folded in. Nothing else.\n\n\
+             Moved for decision #129, `sha256:57d4edd8…` -> `sha256:ef336dec…`: \
+             `layout_unit_rule` `line-units-v6` -> `-v7`, which keeps a footnote mark set against \
+             its line's last letter, a list marker set apart from its item's text, the item's next \
+             line at its hanging indent within the page's leading, and a label closed by a colon \
+             with its value. Nothing else.\n\n\
+             Moved for decision #133, `sha256:ef336dec…` -> `sha256:a516f5d8…`: \
+             `reading_order_rule` `gutter-columns-v4` -> `-v5`, which joins a band at most half as \
+             wide as its neighbour, set on its rows, to that neighbour. Nothing else.\n\n\
+             Moved for decision #139, `sha256:a516f5d8…` -> `sha256:0ed7c7d4…`: \
+             `observation_rule` `page-observations-v4` -> `-v5`, which flags tiny text, text in \
+             a layer switched off, and text filled in the colour beneath it, and flags text set \
+             in mode 7 only where nothing paints through its clip. Nothing else.\n\n\
+             Moved for decision #140, `sha256:0ed7c7d4…` -> `sha256:78f195ef…`: \
+             `heading_inference_rule` `type-size-v7` -> `-v8`, which reads the labels heading an \
+             untagged document's recurring sections as its headings where no line of it ranks. \
+             Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8c2f86723df4d63209022e6545f24a029bc305d59d3f0bd3c049b672f4184d19"
+            "sha256:78f195efa7ae5cdae0fc35295b0fd58ae04ef91d3d1e3de23c9f50ea7c29c241"
         );
     }
 
@@ -5615,6 +6011,17 @@ mod tests {
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()
         );
+
+        // Decision #136: `office` is the one key that may be absent, and absent is the PDF
+        // default's not-run, above; a profile naming it reads it back.
+        let office = good.replace('}', r#","office":"docx-tbl-v1"}"#);
+        assert_eq!(
+            serde_json::from_str::<TableDetection>(&office)
+                .unwrap()
+                .office
+                .as_deref(),
+            Some(TABLE_DETECTION_DOCX_V1)
+        );
     }
 
     #[test]
@@ -5825,10 +6232,18 @@ mod tests {
 
     #[test]
     fn the_profile_round_trips() {
-        let p = Profile::default();
-        let bytes = p.canonical_bytes().unwrap();
-        let back: Profile = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(back, p);
-        assert_eq!(back.profile_sha256().unwrap(), p.profile_sha256().unwrap());
+        // And an assisted one, whose `assist` pin is the one optional key that reads back
+        // (decision #145); the default has none, and none is written.
+        for p in [Profile::default(), Profile::ocr_v0().with_assist(a_pin())] {
+            let bytes = p.canonical_bytes().unwrap();
+            let back: Profile = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(back, p);
+            assert_eq!(back.profile_sha256().unwrap(), p.profile_sha256().unwrap());
+        }
+        assert!(
+            !String::from_utf8(Profile::ocr_v0().canonical_bytes().unwrap())
+                .unwrap()
+                .contains("\"assist\"")
+        );
     }
 }

@@ -14,12 +14,12 @@
 
 //! `ethos-parser` — the ethos-parser command line.
 //!
-//! **Four subcommands at v0. Eleven now**, and this paragraph said four until v2-S13.5, nine until
-//! auto-tagging S2 and ten until `locate`. The v0 four are `classify`, `extract`, `ground` and
-//! `grounding-check`; `verify` arrived at v0.1, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at
-//! v1.2-S1, `overlay` with the image work, `tag` — the writer of
-//! `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging S2, and `locate` — the query of
-//! `docs/26-LOCATE-SCOPE.md` — at v2.3. The `Command` enum below is the list that cannot go stale, and
+//! **Four subcommands at v0. Twelve now**, and this paragraph said four until v2-S13.5, nine until
+//! auto-tagging S2, ten until `locate` and eleven until `elements`. The v0 four are `classify`,
+//! `extract`, `ground` and `grounding-check`; `verify` arrived at v0.1, `markdown` at v1.1-S1,
+//! `html` at v1.1-S4, `mcp` at v1.2-S1, `overlay` with the image work, `tag` — the writer of
+//! `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging S2, `locate` — the query of
+//! `docs/26-LOCATE-SCOPE.md` — at v2.3, and `elements` with decision #137. The `Command` enum below is the list that cannot go stale, and
 //! `crates/ethos-parser-core/src/verifier.rs` said *"the other eight subcommands"* from v0.1 until
 //! auto-tagging S2 moved it with this paragraph — two files in one workspace disagreeing about a
 //! number a reader can count is exactly what `docs/04-ARCHITECTURE.md` §2 repaired at v2-S13.3 and
@@ -33,11 +33,13 @@
 //! # stdout is the artifact
 //!
 //! Every subcommand writes canonical bytes to stdout and nothing else. Failures, the grounding
-//! omission note, and `--diagnostics` all go to stderr, so a caller redirecting stdout to a file
-//! gets an artifact whose bytes are identical across runs (`docs/04-ARCHITECTURE.md` §2).
+//! omission note, the `--ocr` hint, and `--diagnostics` all go to stderr, so a caller redirecting
+//! stdout to a file gets an artifact whose bytes are identical across runs
+//! (`docs/04-ARCHITECTURE.md` §2).
 
 #![forbid(unsafe_code)]
 
+mod assist;
 mod mcp;
 mod recognizer;
 
@@ -121,6 +123,23 @@ enum Command {
     /// stdout is canonical JSON. A consumer that wants a `.md` file writes
     /// `.markdown` out itself, and owns the fact that doing so discards the map.
     ///
+    /// **A record holding a drafting model's replies** (`extract --assist-answers`, decision
+    /// #147): a page where the engine read under 30% of the words the model's blocks would write
+    /// is written as the model read it, in place of the engine's runs; on every other page the
+    /// model's tables and charts are added where they stand on the page, and one equal to an
+    /// engine table it overlaps is left out. Each insertion is one block quote, opening `>
+    /// **Proposed:** WHAT by ID@VERSION; model text, not read from the document.` and closing `>
+    /// **End of proposed text.**`, the model's blocks between them one quote deeper, every line
+    /// opening with `> >`; the model's text there is escaped — `&` and `<` as references, every
+    /// `[` and `]` after a `\`, a run of backticks or tildes that could open a fence after a `\` —
+    /// and its code fenced by more backticks than it holds, so none of it leaves its quote nor
+    /// stands where the label and end line stand, and no link or image forms. A table is
+    /// written from its cells, never as the model's HTML. Lines the guard found contradicted or
+    /// unsupported are left out, a table cell emptied; a chart's estimated values are kept and its
+    /// label says so. The model's bytes are `proposed` segments of the map, never citable, and the
+    /// artifact's `proposed` census says page by page what was written and left out. Without that
+    /// key, nothing here changes.
+    ///
     /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
     /// its declared digest.
     Markdown(MarkdownArgs),
@@ -128,7 +147,7 @@ enum Command {
     /// Project a `DocumentRepresentation v0` into `ethos.html.v1` (v1.1-S4).
     ///
     /// **HTML and its Anchor Map, always together**, on exactly the discipline `markdown` runs
-    /// under: one artifact, two segment kinds, a map that tiles every byte, and a census that
+    /// under: one artifact, the same segment kinds, a map that tiles every byte, and a census that
     /// accounts for every source character. There is no `--html-only`.
     ///
     /// **Not a rendering of the Markdown.** It is projected from the representation, because a
@@ -139,6 +158,15 @@ enum Command {
     ///
     /// stdout is canonical JSON. A consumer that wants an `.html` file writes `.html` out itself,
     /// and owns the fact that doing so discards the map.
+    ///
+    /// **A record holding a drafting model's replies** is projected as `markdown` projects it
+    /// (decision #147), each page or table the model proposed inside one `<blockquote
+    /// class="ethos-proposed" data-derivation="proposed" data-model="ID"
+    /// data-model-version="VERSION">` opening with a `<p>` that says so and closing with `<p>`
+    /// **End of proposed text.**, the model's blocks between in a `<blockquote>` of their own, its
+    /// text escaped; a model table keeps its spans, a cell holding
+    /// an estimate is marked `data-estimate="true"` and an emptied one `data-dropped="contradicted"`
+    /// or `"unsupported"`.
     ///
     /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
     /// its declared digest.
@@ -166,6 +194,30 @@ enum Command {
     /// overloading 1 would make a caller's `&&` chain mean two different things depending on
     /// which subcommand ran.
     Locate(LocateArgs),
+
+    /// Project a `DocumentRepresentation v0` into `ethos.parser.elements.v0` (decision #137).
+    ///
+    /// **One flat list of the document's items**, each with its page, its box, its text, the node
+    /// ids it covers and a label the record states: `text`, `section-header`, `page-header`,
+    /// `page-footer`, `table` (with its grid) or `picture`. No label is inferred here: a heading is
+    /// a tagged one or one the reader inferred from its type, as Markdown writes it with `#`; a
+    /// header or footer is the reader's page furniture; there is no list or caption label. A DOCX
+    /// paragraph is one element. Boxes are integer centipoints from the top-left of the page; a
+    /// source with no pages has neither pages nor boxes. A table the next page goes on with is
+    /// one `table` element on its first page (decision #142): the next page's rows follow its
+    /// own, each of their cells carries its own `page` and box, and `continued` names the table
+    /// records joined in.
+    ///
+    /// **Nothing is dropped silently**: a node no element carries — a run with no measured box, a
+    /// form field's value, an annotation — is listed under `omitted` with its reason, and one line
+    /// on stderr counts them.
+    ///
+    /// Takes a representation, or `--source FILE` to read a document and project it in one process,
+    /// as `markdown --source` does. stdout is canonical JSON.
+    ///
+    /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
+    /// its declared digest.
+    Elements(ElementsArgs),
 
     /// Serve the engine over MCP on stdin/stdout (v1.2-S1).
     ///
@@ -324,6 +376,78 @@ struct ExtractArgs {
     /// one page, its own pixel grid.
     #[arg(long)]
     ocr: bool,
+
+    /// Attach a drafting model's replies to the record, read from FILE: its blocks, under the
+    /// `assist` key, each of derivation `proposed` — a model's text, never evidence, and never a
+    /// node — under a profile pinning the model, so the record's `profile_sha256` differs from one
+    /// made without it (decision #145). The output is a function of the PDF and FILE alone. FILE
+    /// is refused by name where it does not answer this PDF: another source digest, renderer,
+    /// request, model or page; a model id that is a file path or names this engine; over 64 MiB,
+    /// or a reply over 2,048 block markers. A reply to a page `--max-pages` cut is left out, and
+    /// its number kept under `assist.pages_left_out`. A PDF only.
+    #[arg(long, value_name = "FILE")]
+    assist_answers: Option<PathBuf>,
+
+    /// The model the replies must come from, as `ID` or `ID@VERSION`: FILE naming another is
+    /// refused. A version left out is not compared. With `--assist`, the model asked, and its
+    /// `@VERSION` the one FILE records; without it, the one model SERVER lists.
+    #[arg(long, value_name = "ID[@VERSION]", requires = "assist_answers")]
+    assist_model: Option<String>,
+
+    /// Ask the model server at SERVER (an `http://` or `https://` address of an OpenAI-compatible
+    /// server) to read this PDF's pages, then attach its replies as `--assist-answers FILE` does
+    /// (decision #149). The asking is done by `ethos-parser-assist` (beside this binary, or named
+    /// by `ETHOS_PARSER_ASSIST`), which renders each page, sends it, and writes FILE after each
+    /// one, so a stopped run resumes where it stopped; this binary opens no connection. FILE is
+    /// then read back, so the output is a function of the PDF and FILE alone: a later
+    /// `--assist-answers FILE` gives the same bytes. A FILE reused from an earlier run keeps its
+    /// pages, which are attached with the new ones; only a page with no reply is asked. No timeout
+    /// is set: the assist binary bounds each request, and an assist binary that hangs otherwise
+    /// hangs this command. An API key is read from
+    /// `ETHOS_PARSER_ASSIST_KEY` only, by the assist binary, and never written. Refused by name:
+    /// `assist-server-unreachable`, and the assist binary's refusals as `assist-` and its name
+    /// (`assist-curl-not-found`, `assist-key-needs-https`, `assist-model-not-chosen`, ...) or as
+    /// the `assist-answers-*` name the merge would give. Where no page is asked or none could be
+    /// drawn, and FILE does not exist, the record is the engine's alone and stderr says so. Setup:
+    /// `assist/README.md`.
+    #[arg(long, value_name = "SERVER", requires = "assist_answers")]
+    assist: Option<String>,
+
+    /// The pages `--assist` asks for. `trigger`, the default, asks for each page where the record
+    /// shows a scan, under 20 distinct words, a figure, a table, a picture covering a quarter of
+    /// the visible page or more, or U+FFFD in a run (decision #150); `all` asks for every page
+    /// the record lists; a LIST of page numbers in digits, as `1,3,7`, for those pages. A page the
+    /// record does not list, as one `--max-pages` cut, is never asked, and stderr counts it.
+    #[arg(long, value_name = "trigger|all|LIST", requires = "assist", value_parser = assist_pages)]
+    assist_pages: Option<AssistPages>,
+}
+
+/// Which pages `extract --assist` asks for.
+#[derive(Clone)]
+enum AssistPages {
+    Trigger,
+    All,
+    List(Vec<u32>),
+}
+
+/// `--assist-pages`: `trigger`, `all`, or page numbers from 1 in digits, comma-separated, sorted
+/// and made unique.
+fn assist_pages(s: &str) -> Result<AssistPages, String> {
+    match s {
+        "trigger" => Ok(AssistPages::Trigger),
+        "all" => Ok(AssistPages::All),
+        _ => s
+            .split(',')
+            .map(|p| {
+                // Digits only: `parse` would take a sign.
+                let p = p.trim();
+                let digits = p.bytes().all(|b| b.is_ascii_digit());
+                p.parse::<u32>().ok().filter(|&n| digits && n >= 1)
+            })
+            .collect::<Option<std::collections::BTreeSet<u32>>>()
+            .map(|pages| AssistPages::List(pages.into_iter().collect()))
+            .ok_or_else(|| "`trigger`, `all`, or page numbers from 1, as `1,3,7`".into()),
+    }
 }
 
 #[derive(clap::Args)]
@@ -348,6 +472,18 @@ struct LocateArgs {
     /// `ethos.grounding.v1` admits. A larger file is refused by name.
     #[arg(long, value_name = "FILE")]
     quote_file: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct ElementsArgs {
+    /// A `DocumentRepresentation v0` JSON file, as `ethos-parser extract` emits.
+    #[arg(required_unless_present = "source", conflicts_with = "source")]
+    path: Option<PathBuf>,
+
+    /// A source document — PDF or office — to extract and project in one process. The artifact is
+    /// byte-identical to `extract` piped into this subcommand.
+    #[arg(long, value_name = "FILE")]
+    source: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -401,6 +537,29 @@ struct HtmlArgs {
     /// own documentation for why this projects from the record rather than from the other
     /// projection.
     path: PathBuf,
+
+    /// Leave out repeated page furniture, counted, as `markdown --drop-furniture` does.
+    #[arg(long)]
+    drop_furniture: bool,
+
+    /// Keep a table's header row that the next page repeats as a row of the joined table, as
+    /// `markdown --keep-repeated-header` does (decision #151).
+    #[arg(long)]
+    keep_repeated_header: bool,
+
+    /// On a document that declares no author structure (an untagged PDF), write a list item for
+    /// each layout unit opening with a list marker, two or more in a row, counted, as
+    /// `markdown --infer-lists` does.
+    #[arg(long)]
+    infer_lists: bool,
+    /// Leave out text the reader flagged as hidden, counted, as `markdown --drop-hidden` does.
+    #[arg(long)]
+    drop_hidden: bool,
+
+    /// Write the text without the elements for its style, counted, as `markdown --unstyled` does
+    /// (decision #158).
+    #[arg(long)]
+    unstyled: bool,
 }
 
 #[derive(clap::Args)]
@@ -435,8 +594,55 @@ struct MarkdownArgs {
     /// With `--source`, read the source through the recognizer, as `extract` does with the same
     /// flag: its scanned pages, or the image file. The output is byte-identical to that extract
     /// piped into this subcommand.
-    #[arg(long, requires = "source")]
+    // `requires = "source"` alone does not refuse `markdown RECORD --ocr`; `conflicts_with` does.
+    #[arg(long, requires = "source", conflicts_with = "path")]
     ocr: bool,
+
+    /// Leave out repeated page furniture: a line the reader flagged as a page's header or footer,
+    /// or a tagged page's `/Artifact` — which may be a watermark — whose text another page
+    /// repeats on the same side and across the same place, numbers read alike. A running head
+    /// and a folio go, a whole line at a time; a numbered chapter title at the top of each
+    /// chapter's page goes too. A Word document's header and footer parts go whole, their tables
+    /// with them (decision #136) — so a resume whose name sits only in its page header loses it. Counted under the census bucket `page-furniture-not-projected-v1`; the
+    /// representation keeps every run (decision #134).
+    #[arg(long)]
+    drop_furniture: bool,
+
+    /// Keep a table's header row that the next page repeats, where the table goes on there as
+    /// one (decision #142), as a row of the joined table. By default it is left out, as a reader
+    /// skips it, counted under `repeated-table-header-not-projected-v1`; the representation keeps
+    /// it (decision #151). Wins over `--drop-furniture`.
+    #[arg(long)]
+    keep_repeated_header: bool,
+
+    /// On a document that declares no author structure (an untagged PDF), write a list item for
+    /// each layout unit opening with a list marker — a bullet, or a number or a letter closed by
+    /// `.` or `)` — two or more in a row, with the marker kept as the page drew it after `- `,
+    /// nested by where the marker stands. An inferred heading stays a heading. Inferred, not declared: counted under
+    /// the census code `list-items-inferred-from-markers-v1`, and the representation is unchanged
+    /// (decision #138).
+    #[arg(long)]
+    infer_lists: bool,
+    /// Leave out every run the reader flagged with a finding: drawn invisible (`Tr 3`, or `Tr 7`
+    /// with nothing painted through its clip), off the visible page, under a point, in a layer the
+    /// document switches off, or filled in the colour painted beneath it. A scan's text layer
+    /// stays — invisible text inside placed images covering half its page or more together — and
+    /// an off-page line goes only where its box is known and misses the visible page (a line
+    /// crossing the media box's edge has none, and stays). Counted under the
+    /// census bucket `flagged-text-not-projected-v1`; the representation keeps every run and its
+    /// findings (decision #139).
+    #[arg(long)]
+    drop_hidden: bool,
+
+    /// Write every run's text without the marks for its style: no `**`, `*`, `~~`, `<u>`,
+    /// `<sup>` or `<sub>`. The text, headings, lists and tables are as without it, and every
+    /// source segment is the one the styled text has, so each byte keeps its anchor. For a reader
+    /// that compares text and has no use for its look. Counted under the census code
+    /// `inline-styles-not-written-v1`, once per run a mark would have marked (decision #158).
+    /// A styled run opening a line with `#`, `>`, `-` or `1.` reads as block syntax without its
+    /// marks, as a plain run does
+    #[arg(long)]
+    unstyled: bool,
 }
 
 #[derive(clap::Args)]
@@ -571,6 +777,14 @@ fn main() -> ExitCode {
         Command::Locate(args) => {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_locate(args))
+        }
+        Command::Elements(args) => {
+            let path = args
+                .path
+                .clone()
+                .or_else(|| args.source.clone())
+                .unwrap_or_default();
+            timed(Stage::Ground, diag, &path, || run_elements(args))
         }
         // Not `timed`: a server has no one input path and no one stage, and inventing a
         // diagnostics row for the whole session would put a duration on a pipe.
@@ -751,19 +965,130 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         }
         profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
     }
-    if args.ocr {
-        emit_representation(recognized_representation(&head, profile))
+    // A model reads rendered pages of a PDF; office and image bytes have none it was asked about.
+    if args.assist_answers.is_some()
+        && (routes_to_office(&head) || ethos_parser_pdf::image_media_type(&head).is_some())
+    {
+        return fail(&EngineError::Unsupported {
+            what: "assist-not-pdf".into(),
+            detail: "--assist-answers attaches a model's replies to a PDF's pages; these bytes \
+                     are not a PDF"
+                .into(),
+        });
+    }
+    let repr = if args.ocr {
+        profile = ocr_profile(&profile);
+        recognized_representation(&head, &profile)
     } else {
-        emit_representation(representation_for_bytes(&head, &profile))
+        representation_for_bytes(&head, &profile)
+    };
+    let repr = match &args.assist_answers {
+        Some(path) => repr.and_then(|r| {
+            if let Some(server) = &args.assist {
+                let mut pages = match &args.assist_pages {
+                    None | Some(AssistPages::Trigger) => ethos_parser_core::assist_trigger(&r),
+                    Some(AssistPages::All) => r.payload().pages.iter().map(|p| p.index).collect(),
+                    Some(AssistPages::List(pages)) => pages.clone(),
+                };
+                // A page the document has and the record does not list — cut by `--max-pages`, or
+                // not read — is not asked: a reply to it would be left out. One past the end is
+                // the assist binary's to refuse by name.
+                let p = r.payload();
+                let unlisted = |n: &u32| {
+                    *n <= p.assurance.coverage.pages_authorized
+                        && !p.pages.iter().any(|page| page.index == *n)
+                };
+                let left_out = pages.iter().filter(|n| unlisted(n)).count();
+                if left_out > 0 {
+                    pages.retain(|n| !unlisted(n));
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "engine: {left_out} page(s) the record does not list are not asked; a \
+                         reply to one would be left out [assist-pages-left-out]"
+                    );
+                }
+                if !pages.is_empty() {
+                    assist::ask(server, path, &pages, args.assist_model.as_deref(), &head)?;
+                }
+                if !path.exists() {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "engine: {} page(s) asked and no reply written, so the record is the \
+                         engine's alone [assist-nothing-attached]",
+                        pages.len()
+                    );
+                    return Ok(r);
+                }
+            }
+            // Read no further than the budget the library refuses past, and by the same name.
+            let budget = ethos_parser_core::ASSIST_ANSWERS_MAX_BYTES;
+            let answers = read_source_within(path, budget as u64).map_err(|e| match e {
+                EngineError::ResourceLimit { .. } => EngineError::Malformed {
+                    what: ethos_parser_core::ASSIST_ANSWERS_OVER_BUDGET.into(),
+                    detail: format!("{} holds over {budget} bytes", path.display()),
+                },
+                e => e,
+            })?;
+            ethos_parser_core::attach(r, &profile, &answers, args.assist_model.as_deref())
+        }),
+        None => repr,
+    };
+    emit_representation(repr.inspect(|r| hint_ocr(r, OCR_ON_SOURCE)))
+}
+
+/// How [`hint_ocr`] asks for the recognizer on the command that read the source.
+const OCR_ON_SOURCE: &str = "--ocr";
+/// How it asks on a record, which `--ocr` cannot read: the source read again.
+const OCR_ON_RECORD: &str = "`extract --ocr` or `markdown --source FILE --ocr`";
+
+/// Name on stderr the scanned pages a read left unread (decision #132): one line, the count, each
+/// reason, and `ask` for the pages the recognizer was not asked to read. The record counts each
+/// under `scanned-page-not-recognized`, and the Markdown and HTML artifacts carry no limitation,
+/// so without this a scan projects to empty Markdown and says nothing; stdout stays the artifact.
+///
+/// A limitation has no field for the reason: it is the first code in backticks of the `detail`
+/// that `scanned_page_not_recognized` writes. A recognizer's reason is its own text, so a control
+/// character in it is written as a space, keeping the line one line.
+fn hint_ocr(repr: &ethos_parser_core::DocumentRepresentation, ask: &str) {
+    let mut reasons = std::collections::BTreeMap::<String, usize>::new();
+    for l in &repr.payload().assurance.limitations {
+        if l.code == ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED {
+            let reason = l.detail.split('`').nth(1).unwrap_or_default();
+            *reasons
+                .entry(reason.replace(char::is_control, " "))
+                .or_default() += 1;
+        }
+    }
+    if reasons.is_empty() {
+        return;
+    }
+    let pages: usize = reasons.values().sum();
+    let why: Vec<String> = reasons.iter().map(|(r, n)| format!("{r} ({n})")).collect();
+    let not_asked = match reasons.get("ocr-not-requested") {
+        Some(n) => format!("; {ask} reads the {n} not requested"),
+        None => String::new(),
+    };
+    let _ = writeln!(
+        std::io::stderr(),
+        "engine: {pages} page(s) show no text and were not read: {}{not_asked} [{}]",
+        why.join(", "),
+        ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED
+    );
+}
+
+/// The OCR profile, with any page budget `base` sets.
+fn ocr_profile(base: &Profile) -> Profile {
+    Profile {
+        page_budget: base.page_budget,
+        ..Profile::ocr_v0()
     }
 }
 
-/// `--ocr`: the OCR profile (with any page budget the caller set), the recognizer found and
-/// pinned, and a PDF read through it. Office bytes are refused by name: they have no scanned
-/// pages to read.
+/// `--ocr`: the recognizer found and pinned, and a PDF read through it under `profile`, the OCR
+/// profile. Office bytes are refused by name: they have no scanned pages to read.
 fn recognized_representation(
     head: &[u8],
-    base: Profile,
+    profile: &Profile,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
     if routes_to_office(head) {
         return Err(EngineError::Unsupported {
@@ -773,12 +1098,8 @@ fn recognized_representation(
                 .into(),
         });
     }
-    let profile = Profile {
-        page_budget: base.page_budget,
-        ..Profile::ocr_v0()
-    };
     let mut process = recognizer::Process::find()?;
-    representation_for(head, &profile, Some(&mut process))
+    representation_for(head, profile, Some(&mut process))
 }
 
 /// Route bytes to the reader their own signatures name, and return the canonical
@@ -1055,7 +1376,7 @@ fn representation_to_project(
     if let Some(source) = source {
         let bytes = read_source(source)?;
         if ocr {
-            return recognized_representation(&bytes, Profile::default());
+            return recognized_representation(&bytes, &ocr_profile(&Profile::default()));
         }
         return representation_for_bytes(&bytes, &Profile::default());
     }
@@ -1077,6 +1398,14 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
             Ok(r) => r,
             Err(e) => return fail(&e),
         };
+    hint_ocr(
+        &repr,
+        if args.source.is_some() {
+            OCR_ON_SOURCE
+        } else {
+            OCR_ON_RECORD
+        },
+    );
 
     let profile = Profile::default();
     let profile_sha256 = match profile.profile_sha256() {
@@ -1089,11 +1418,18 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         }
     };
 
-    let artifact = match ethos_parser_core::to_markdown(
+    let artifact = match ethos_parser_core::to_markdown_with(
         &repr,
         &profile.parser_version,
         &profile_sha256,
         &profile.markdown_rule,
+        projection_options(
+            args.drop_furniture,
+            args.infer_lists,
+            args.drop_hidden,
+            args.keep_repeated_header,
+            args.unstyled,
+        ),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
@@ -1106,6 +1442,65 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         },
         Err(e) => fail(&e),
     }
+}
+
+/// Read a representation, or a source, and project its elements (decision #137). Thin, as
+/// `run_markdown` is: the projection is `ethos_parser_core::to_elements`.
+fn run_elements(args: ElementsArgs) -> ExitCode {
+    let repr = match representation_to_project(args.path.as_deref(), args.source.as_deref(), false)
+    {
+        Ok(r) => r,
+        Err(e) => return fail(&e),
+    };
+    hint_ocr(&repr, OCR_ON_RECORD);
+    let artifact = match ethos_parser_core::to_elements(&repr, &Profile::default().parser_version) {
+        Ok(a) => a,
+        Err(e) => return fail(&e),
+    };
+    if let Err(e) = artifact
+        .to_canonical_bytes()
+        .and_then(|out| write_stdout(&out, true))
+    {
+        return fail(&e);
+    }
+    // On stderr, as `ground`'s omission note is: stdout is the artifact, whose `omitted` names them.
+    if !artifact.omitted.is_empty() {
+        let nodes: usize = artifact.omitted.iter().map(|o| o.node_ids.len()).sum();
+        let reasons: Vec<String> = artifact
+            .omitted
+            .iter()
+            .map(|o| {
+                let reason = serde_json::to_value(o.reason).unwrap_or_default();
+                format!("{} {}", reason.as_str().unwrap_or_default(), o.count)
+            })
+            .collect();
+        let _ = writeln!(
+            std::io::stderr(),
+            "engine: {nodes} of {} node(s) omitted from the elements ({}). They remain in the \
+             representation; the artifact's `omitted` names each one.",
+            repr.payload().nodes.len(),
+            reasons.join(", "),
+        );
+    }
+    ExitCode::from(PROJECTED as u8)
+}
+
+/// The projection options a `markdown` or `html` command line asks for (decisions #134, #138,
+/// #139, #151, #158).
+fn projection_options(
+    drop_furniture: bool,
+    infer_lists: bool,
+    drop_hidden: bool,
+    keep_repeated_header: bool,
+    unstyled: bool,
+) -> ethos_parser_core::ProjectionOptions {
+    let mut options = ethos_parser_core::ProjectionOptions::default();
+    options.drop_furniture = drop_furniture;
+    options.infer_lists = infer_lists;
+    options.drop_flagged = drop_hidden;
+    options.keep_repeated_header = keep_repeated_header;
+    options.unstyled = unstyled;
+    options
 }
 
 /// Serve MCP over stdin/stdout until the stream closes.
@@ -1160,6 +1555,7 @@ fn run_html(args: HtmlArgs) -> ExitCode {
     if let Err(e) = repr.verify_fingerprint() {
         return fail(&e);
     }
+    hint_ocr(&repr, OCR_ON_RECORD);
 
     let profile = Profile::default();
     let profile_sha256 = match profile.profile_sha256() {
@@ -1172,11 +1568,18 @@ fn run_html(args: HtmlArgs) -> ExitCode {
         }
     };
 
-    let artifact = match ethos_parser_core::to_html(
+    let artifact = match ethos_parser_core::to_html_with(
         &repr,
         &profile.parser_version,
         &profile_sha256,
         &profile.html_rule,
+        projection_options(
+            args.drop_furniture,
+            args.infer_lists,
+            args.drop_hidden,
+            args.keep_repeated_header,
+            args.unstyled,
+        ),
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),
