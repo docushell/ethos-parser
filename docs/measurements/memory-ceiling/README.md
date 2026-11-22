@@ -171,9 +171,9 @@ twice:
 
 ## 7. The corpus after the cut, and what a caller can be told
 
-Re-measured at `58a1342`, median of 5 — the coefficients after role-path sharing, superseded by
-§11 for the engine that ships after the adopt change; §2's table is the baseline that motivated the
-change:
+Re-measured at `58a1342`, median of 5 ([`bench-58a1342.tsv`](bench-58a1342.tsv)) — the
+coefficients after role-path sharing, superseded by §11 for the engine that ships after the adopt
+change; §2's table is the baseline that motivated the change:
 
 | fixture | pages | artifact | peak RSS | /input | /artifact | MiB/page |
 | --- | --- | --- | --- | --- | --- | --- |

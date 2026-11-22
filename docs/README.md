@@ -37,7 +37,7 @@ These describe the engine as it is now. Read them to work on it.
 | --- | --- |
 | [`00-NORTH-STAR.md`](00-NORTH-STAR.md) | The product, the forced decisions, who owns which layer of trust, and the anti-goals |
 | [`01-CONTRACT.md`](01-CONTRACT.md) | Artifact identity, coordinates, canonical JSON, locators, typed absence, capabilities, fail-closed |
-| [`02-ROADMAP.md`](02-ROADMAP.md) | v0 through v3, one line each, plus what is deliberately not scheduled |
+| [`02-ROADMAP.md`](02-ROADMAP.md) | v0 through v4, one line each, plus what is deliberately not scheduled |
 | [`04-ARCHITECTURE.md`](04-ARCHITECTURE.md) | Crate layout and boundaries, the single-load rule, profile-as-identity, dependency posture |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | Take / improve / refuse / defer, per idea, for every parser looked at |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Where the engine stops and the verifier starts, and the anti-patterns that blur it |
@@ -47,9 +47,41 @@ These describe the engine as it is now. Read them to work on it.
 | [`INSTALL.md`](INSTALL.md) | What each release archive holds, platform requirements, Windows, macOS quarantine, building from source |
 | [`OPEN-WORK.md`](OPEN-WORK.md) | What is pending and what each item waits on: v2.2's clause two as built, v2.3's items, owner decisions, known defects, stale docs |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen export list per crate. Checked by a test |
+| [`RELEASING.md`](RELEASING.md) | How a version is numbered, tagged and released — written before the act, because a publish cannot be undone |
 | [`draft-schemas/`](draft-schemas/) | Draft JSON Schemas for every artifact shape. Documentation, not a shipped contract |
 | [`reference/`](reference/) | A stub explaining where the research archive went |
-| [`attic/`](attic/) | Work built, measured, and deliberately not shipped — with the numbers and the reason |
+| [`attic/`](attic/) | Patches kept for the record, not for reuse. Its one entry, `stroke-ruled-v1`, was parked at v1-S7b and then revived and shipped at 0.10.0 |
+
+## Scope documents
+
+One per piece of work whose argument was written down before, or instead of, the code: what was
+asked, what was measured, and what was built or refused. The decision itself lives in its
+[`00-NORTH-STAR.md`](00-NORTH-STAR.md) row.
+
+| Doc | What it settles |
+| --- | --- |
+| [`16-D4-SCOPE.md`](16-D4-SCOPE.md) | D4, the first half of v2.2: geometric block structure (decision #19) |
+| [`17-D1-SCOPE.md`](17-D1-SCOPE.md) | D1, declared document splits: measured and refused |
+| [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) | Role-path interning: measured and refused |
+| [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) | Block subdivision: a measurement, never scoped; the cut shipped anyway at 0.55.0 |
+| [`20-STANDARD-14-METRICS-SCOPE.md`](20-STANDARD-14-METRICS-SCOPE.md) | Standard-14 metrics from vendored Adobe AFMs: the measurement behind decision #22, shipped at 0.51.0 |
+| [`21-STANDARD-14-ASCII-COVERAGE-SCOPE.md`](21-STANDARD-14-ASCII-COVERAGE-SCOPE.md) | Standard-14 coverage past ASCII: refused as a hand-transcribed table, built as a derived one at 0.52.0 |
+| [`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md) | Word boxes: refused on measurement, and `char_offsets` turned on from the same evidence |
+| [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md) | Auto-tagging, v2.2's second half: a tag this engine writes, and reads back as its own |
+| [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) | Auto-tagging's slices |
+| [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md) | Five knobs — password, page sets, `continue_on_page_error`, batch, colour — measured (decision #31) |
+| [`26-LOCATE-SCOPE.md`](26-LOCATE-SCOPE.md) | `locate(representation, quote)`: the shape decision #30 left to a scope |
+| [`27-LOCATE-MILESTONES.md`](27-LOCATE-MILESTONES.md) | `locate`'s slices |
+| [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md) | A heading inferred from type where the document declares no structure (decision #29) |
+| [`29-OUTLINES-SCOPE.md`](29-OUTLINES-SCOPE.md) | A PDF's `/Outlines`, emitted as the author wrote it; built as `outlines-v1` |
+| [`30-FORM-XOBJECTS-SCOPE.md`](30-FORM-XOBJECTS-SCOPE.md) | Text a page draws through a Form XObject is text the page draws (decision #37) |
+| [`31-TABLE-TRACKS-SCOPE.md`](31-TABLE-TRACKS-SCOPE.md) | Tables from whitespace tracks (decision #38, slice D) |
+| [`32-CHART-LABELS-SCOPE.md`](32-CHART-LABELS-SCOPE.md) | A chart's printed labels read back as its table: bars, lines and pies (decision #42 and after) |
+| [`33-UNMAPPED-CODES-SCOPE.md`](33-UNMAPPED-CODES-SCOPE.md) | Codes a font's declared map leaves unmapped, read through what the font itself states (decision #43) |
+| [`34-FIGURE-REGIONS-SCOPE.md`](34-FIGURE-REGIONS-SCOPE.md) | Figure regions, so a picture drawn with paths has an element (decision #46) |
+| [`35-OCR-SCOPE.md`](35-OCR-SCOPE.md) | v3, the OCR lane: a scanned page is read, and says so (decision #120) |
+| [`36-CHART-LENGTHS-SCOPE.md`](36-CHART-LENGTHS-SCOPE.md) | A bar chart's values read off its axis (decision #122): measured at no gain and parked; nothing of it is in the tree |
+| [`37-ASSIST-TRANSPORT.md`](37-ASSIST-TRANSPORT.md) | The assist lane's transport, the system `curl` (decision #144): the ADR `deny.toml` requires |
 
 ## [`history/`](history/) — shipped work
 
@@ -83,7 +115,7 @@ A few boundaries worth knowing before you write anything:
   test scans core's sources and fails on a PDF import, a stray float, or the word `confidence`.
 - **Do not widen the public API** without editing [`PUBLIC-API.md`](PUBLIC-API.md) in the same
   commit — a test compares the two.
-- **v0 is frozen**, and v0.1 through v2 shipped on top of it. Do not re-author the contract types,
+- **v0 is frozen**, and every version since shipped on top of it. Do not re-author the contract types,
   the classifier, the extractor, the representation or the checker.
 - **The Ethos and DocuShell repos are read-only** from here. Never edit them from this project.
 
@@ -109,4 +141,5 @@ A few boundaries worth knowing before you write anything:
   (decision #78) are vendored. See [`vendor/README.md`](../vendor/README.md).
 - **`skrifa` is pinned to 0.39**, because 0.44 needs Rust 1.89 and this workspace pins 1.88.
 
-Grep for `TODO(` to find the rest.
+The one `TODO(` left in the tree, in `crates/ethos-parser-core/src/derivation.rs` and mirrored in
+`draft-schemas/geometry.draft.json`, is the first gap above.

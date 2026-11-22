@@ -57,7 +57,7 @@ use ethos_parser_pdf::Document;
 #[derive(Parser)]
 #[command(
     name = "ethos-parser",
-    about = "Deterministic PDF classification and evidence extraction",
+    about = "Deterministic PDF classification, and evidence extraction from documents and scans",
     long_about = None,
     version
 )]
@@ -328,7 +328,8 @@ struct ClassifyArgs {
 
 #[derive(clap::Args)]
 struct ExtractArgs {
-    /// The PDF to extract.
+    /// The document to extract: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF or EPUB; with `--ocr`,
+    /// also a PNG or JPEG.
     path: PathBuf,
 
     /// Process at most N pages; the rest are quarantined and declared. Unbounded by default.

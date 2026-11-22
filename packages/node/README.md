@@ -1,6 +1,6 @@
 # ethos-parser — Node SDK
 
-Three functions over the `ethos-parser` CLI. `node:` builtins only, no runtime dependencies, and not
+Four functions over the `ethos-parser` CLI. `node:` builtins only, no runtime dependencies, and not
 published (`private: true`).
 
 ```js
@@ -15,9 +15,13 @@ const node = nodeGet(representation, nodeId);
 
 | Function | Runs | Returns |
 | --- | --- | --- |
-| `extract(path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `extract(pdfPath)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
 | `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
+| `locate(representation, quote)` | `ethos-parser locate --quote-file <file> <path>` | `ethos.parser.locations.v0` |
 | `nodeGet(representation, nodeId)` | nothing — the checks are ported | that artifact's node record |
+
+`pdfPath` takes any of the nine formats `extract` reads, despite its name: PDF, DOCX, XLSX, PPTX,
+ODT, ODS, ODP, RTF or EPUB. `locate` passes the quote in a temporary file, never on argv.
 
 ## It is the Python SDK in another language
 

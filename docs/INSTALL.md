@@ -6,8 +6,9 @@ from source.
 
 ## What a release carries
 
-Every release from 0.61.0 on has a prebuilt binary for Linux, Windows and macOS (Apple silicon and
-Intel), plus a `SHA256SUMS.txt`; the [CHANGELOG](../CHANGELOG.md) says what earlier releases carry.
+Every GitHub Release from 0.61.0 on — 0.61.0, 0.64.0 and 0.65.0 so far; 0.62.0 and 0.63.0 are tags
+with no Release — has a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel), plus
+a `SHA256SUMS.txt`; the [CHANGELOG](../CHANGELOG.md) says what earlier releases carry.
 A release is assembled only when all four binaries print byte-identical artifacts over the gate
 documents.
 
@@ -46,7 +47,7 @@ Three environment variables change what it does:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `ETHOS_PARSER_VERSION` | the latest release | Install a given release from 0.61.0 on, such as `0.65.0` |
+| `ETHOS_PARSER_VERSION` | the latest release | Install a given release from 0.61.0 on, such as `0.65.0`; 0.62.0 and 0.63.0 have no Release to install |
 | `ETHOS_PARSER_INSTALL_DIR` | `~/.local/bin` | Where the binaries go |
 | `ETHOS_PARSER_RELEASE_URL` | the release on GitHub | A directory holding a release's files, such as a mirror |
 

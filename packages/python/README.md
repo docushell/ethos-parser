@@ -1,6 +1,6 @@
 # ethos-parser — Python SDK
 
-Three functions over the `ethos-parser` CLI. Standard library only, no runtime dependencies, and
+Four functions over the `ethos-parser` CLI. Standard library only, no runtime dependencies, and
 not on PyPI yet.
 
 ```python
@@ -15,9 +15,13 @@ node = ethos_parser.node_get(representation, node_id)
 
 | Function | Runs | Returns |
 | --- | --- | --- |
-| `extract(path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `extract(pdf_path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
 | `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
+| `locate(representation, quote)` | `ethos-parser locate --quote-file <file> <path>` | `ethos.parser.locations.v0` |
 | `node_get(representation, node_id)` | nothing — the checks are ported | that artifact's node record |
+
+`pdf_path` takes any of the nine formats `extract` reads, despite its name: PDF, DOCX, XLSX, PPTX,
+ODT, ODS, ODP, RTF or EPUB. `locate` passes the quote in a temporary file, never on argv.
 
 ## Why it wraps the CLI
 

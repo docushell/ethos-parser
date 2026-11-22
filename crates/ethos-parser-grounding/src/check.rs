@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 
 use ethos_parser_core::{sha256_hex_bytes, EngineError, Sha256Hex};
 
-use crate::{Element, GroundingSource, Page, Span, Table};
+use crate::{Element, GroundingSource, Page, Table};
 
 /// Artifact type of a validation report.
 pub const VALIDATION_ARTIFACT_TYPE: &str = "ethos.grounding_validation.v1";
@@ -1123,13 +1123,10 @@ fn valid_bbox(b: [i64; 4], page: Option<&Page>) -> bool {
     })
 }
 
-/// Unused-import guard: `Span` is named in the signatures above via `spans`.
-#[allow(dead_code)]
-fn _span_type_is_used(_: &Span) {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Span;
 
     /// **`locate`'s two ceilings are these two ceilings** (D1 S1).
     ///

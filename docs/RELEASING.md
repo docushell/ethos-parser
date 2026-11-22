@@ -66,7 +66,7 @@ what nothing else checks and delegates the rest to `ci/gate.sh`, which is where 
 
 ## 4. Choosing the number
 
-`docs/01-CONTRACT.md` §2 and the `[workspace.package]` narrative in `Cargo.toml` carry the rule this
+`docs/01-CONTRACT.md` §2 and the `[workspace.package]` comment in `Cargo.toml` carry the rule this
 repository actually uses, which is stricter than semver's:
 
 - **MINOR when a reader or an emitter changes** — when this build produces different bytes than the
@@ -85,10 +85,9 @@ mechanism working: two builds are correctly non-comparable even when nothing els
 
 ## 5. The sequence
 
-**5.1 — Land the version bump.** Four version strings, the `CHANGELOG.md` entry, the
-`[workspace.package]` narrative clause, and the re-pinned `profile_sha256`. On `main` the version is
-the release's own pre-release (§5.7), so this bump drops its `-dev.1`. This is a normal PR and goes
-through the gate like any other.
+**5.1 — Land the version bump.** Four version strings, the `CHANGELOG.md` entry, and the
+re-pinned `profile_sha256`. On `main` the version is the release's own pre-release (§5.7), so this
+bump drops its `-dev.1`. This is a normal PR and goes through the gate like any other.
 
 **5.2 — Preflight and tag.** On a clean `main` at the merge commit:
 
@@ -133,7 +132,7 @@ consumers, so a published package must pull nothing on a default install.
 
 **5.7 — Open the next version on `main`.** Right after the tag, move the workspace to the next
 MINOR's pre-release, `X.(Y+1).0-dev.1`, in the same places 5.1 names, with the `profile_sha256`
-re-pinned and a move-log entry. A build of `main` then never claims the version just released
+re-pinned. A build of `main` then never claims the version just released
 (decision #33, review 2026-09-26 N02).
 
 ## 6. There is no publish automation, deliberately
