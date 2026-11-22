@@ -1157,3 +1157,44 @@ max 166). `extract` interleaved: p95 72.6 → 67.5 ms at twelve threads, 59.1 �
 **Not done.** The projection is now `markdown --source`'s largest serial stage on `53r5` (about
 1.8 s of its 3.5): table planning, overprint checks and string-keyed id lookups spread over
 `markdown_of`. Shrinking the 618 MiB artifact is a schema change and was not attempted.
+
+## 19. The record's node list is sized up front
+
+**Run 2026-11-23.** A = `67dae19`; B = `692600f`, §18 plus decisions #162–#167; C = B with the
+change below. Release builds on an Apple M4 Pro, a quiet machine. C hashes the same as B on §18's
+638 PDFs, every command, at one thread and at twelve.
+
+### Why
+
+§18's 1,568 MiB on `53r5` read 1,822 MiB at B. Built commit by commit, decision #164 alone moved it
+250 MiB (median of 5: 1,584 → 1,836), though no run of `53r5` carries its binding. Its only cost
+there is 24 bytes a node: `Node` 376 → 400 bytes and the extract's `TextRun` 400 → 424, about 28 MB
+over 1.15 million nodes. Sampling RSS over the run put the growth in the step that builds the
+record, where `into_representation` grew `nodes` and `geometry` by doubling, each step copying the
+whole list. Why 24 bytes cost 250 MiB there and not about 50 is not explained further: sizing the
+two lists removes the step.
+
+### What changed
+
+`into_representation` reserves both lists at the extract's count of runs, objects and images,
+before the page loop. The count is exact; on an error path the unused reserve is never touched.
+
+### Readings
+
+Median of 3:
+
+| document | command | A | B | C |
+| --- | --- | ---: | ---: | ---: |
+| nist-sp-800-53r5 | extract | 4,014 ms, 2,383 MiB | 1,806 ms, 1,822 MiB | 1,786 ms, 1,414 MiB |
+| nist-sp-800-53r5 | extract, one thread | 5,596 ms, 2,281 MiB | 5,458 ms, 2,279 MiB | 5,358 ms, 1,883 MiB |
+| nist-sp-800-53r5 | markdown --source | 5,662 ms, 2,379 MiB | 3,624 ms, 1,824 MiB | 3,465 ms, 1,701 MiB |
+| nist-sp-800-53Ar5 | extract | 6.69 s, 3,506 MiB (footprint 3,356) | 3.07 s, 2,542 MiB (2,377) | 2.96 s, 2,148 MiB (1,982) |
+| nist-sp-800-37r2 | extract | 1.49 s, 830 MiB | 0.68 s, 656 MiB | 0.67 s, 552 MiB |
+
+**Correction to §18.** Its opendataloader-bench line compared against a baseline measured under
+load. Interleaved on a quiet machine, A and C read the 200 alike: `markdown --unstyled --source`
+p50 31.5 ms, p95 39 ms, 30 documents a second; `extract` p50 30–31 ms, p95 37 ms. The gains are on
+large documents only.
+
+**Not done.** On a pool of one thread `seal` keeps its bytes in a buffer grown by doubling
+(`Minted::Kept`); `53r5` at one thread peaks at 1,883 MiB.

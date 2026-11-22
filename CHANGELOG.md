@@ -150,7 +150,7 @@ said nothing about the box at all. Each widget now carries two more facts it sta
   merged widget's label, an undecodable label, and a profile without form fields. Sixteen
   mutations, each caught. Reviewed twice.
 
-### Large documents read in about half the time and a third less memory, byte for byte
+### Large documents read in about half the time and 40% less memory, byte for byte
 
 Measured on `nist-sp-800-53r5` (492 pages, 1.15 million nodes) with a profile: of `extract`'s 4.2 s,
 about 2.5 s ran on one core after the pages were read — `seal`'s canonical walk of the payload
@@ -171,12 +171,17 @@ tenth ParseBench-2 document), at one thread and at twelve.
   inside the grid; layout units and page furniture are assigned page by page in parallel.
 - Reading a record back (`markdown <artifact.json>`, `ground`, MCP) still checks its fingerprint on
   one thread: waking the pool there cost about 2.6 MiB a thread and saved no peak.
-- Measured, median of 3, Apple M4 Pro, 12 threads (before → after): `nist-sp-800-53r5` `extract`
-  4,165 → 1,876 ms and 2,382 → 1,568 MiB peak RSS; on one thread 5,739 → 5,380 ms and 2,285 →
-  2,034 MiB; `markdown --source` 5,755 → 3,530 ms and 2,376 → 1,801 MiB. `nist-sp-800-53Ar5`
-  `extract` 6.75 → 3.22 s, peak footprint 3,356 → 2,057 MiB. opendataloader-bench's 200,
-  `markdown --unstyled --source` one at a time: p50 53.8 → 50.2 ms, p95 78.7 → 57.7 ms, 17.4 → 19.2
-  documents a second; `extract` p95 72.6 → 67.5 ms. `docs/measurements/memory-ceiling/` §18.
+- `into_representation` sizes the record's node and geometry lists up front, from the extract's
+  count of runs, objects and images. Grown by doubling, the copies set the peak: decision #164's 24
+  more bytes a node raised it 250 MiB on `nist-sp-800-53r5`.
+- Measured on this release's tree, median of 3, Apple M4 Pro, a quiet machine, 12 threads
+  (`67dae19` → after): `nist-sp-800-53r5` `extract` 4,014 → 1,786 ms and 2,383 → 1,414 MiB peak
+  RSS; on one thread 5,596 → 5,358 ms and 2,281 → 1,883 MiB; `markdown --source` 5,662 → 3,465 ms
+  and 2,379 → 1,701 MiB. `nist-sp-800-53Ar5` `extract` 6.69 → 2.96 s, peak footprint 3,356 → 1,982
+  MiB; `nist-sp-800-37r2` 1.49 → 0.67 s, 830 → 552 MiB. Small documents do not change:
+  opendataloader-bench's 200 one at a time, interleaved, read in the same time before and after
+  (`markdown --unstyled --source` p50 31.5 ms, p95 39 ms; `extract` p50 30–31 ms, p95 37 ms).
+  `docs/measurements/memory-ceiling/` §18 and §19.
 - `ethos-parser-core` depends on `rayon`, already in the lockfile through the PDF reader.
 
 ### A line's last hyphen drawn as a run of its own closes its word up (decision #160)

@@ -90,8 +90,16 @@ pub fn into_representation(
     let mut alloc = IdAllocator::new(extract.identity.profile_sha256.clone());
 
     let mut pages = Vec::with_capacity(extract.pages.len());
-    let mut nodes = Vec::new();
-    let mut geometry: Vec<NodeGeometry> = Vec::new();
+    // One node and one geometry row per run, object and image. Sized up front: grown by doubling,
+    // the two lists were copied whole at each step, and on a 1.15-million-node document that copy
+    // set the peak (24 more bytes a node, decision #164, raised it 250 MiB there).
+    let count: usize = extract
+        .pages
+        .iter()
+        .map(|p| p.runs.len() + p.objects.len() + p.images.len())
+        .sum();
+    let mut nodes = Vec::with_capacity(count);
+    let mut geometry: Vec<NodeGeometry> = Vec::with_capacity(count);
     let mut tables: Vec<ethos_parser_core::TableRecord> = Vec::new();
     let mut figures: Vec<ethos_parser_core::FigureRecord> = Vec::new();
 
