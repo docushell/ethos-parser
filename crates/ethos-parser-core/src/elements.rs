@@ -230,6 +230,13 @@ pub struct ElementTable {
     /// table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The rule that produced the record, as it states it (decision #165): a table drawn as a
+    /// grid, one read from aligned whitespace, one the document tagged, one read from a chart's
+    /// printed values (`bar-labels-*`, `point-labels-*`, `slice-labels-*`), or an office file's
+    /// own. A table that goes on into later pages (decision #142) carries its first page's; the
+    /// records named in [`Self::continued`] keep their own rule, which may be another page rule (a
+    /// drawn grid going on as aligned whitespace), never a tagged, chart or office one.
+    pub detection_rule: String,
     /// Rows in the grid.
     pub rows: u32,
     /// Columns in the grid.
@@ -649,6 +656,7 @@ pub fn to_elements(
                     .map(str::to_string),
                 rows: t.rows,
                 columns: t.columns,
+                detection_rule: t.detection_rule.clone(),
                 cells: t.cells.iter().map(cell_of).collect(),
                 continued: Vec::new(),
             }),
@@ -1092,6 +1100,13 @@ mod tests {
         assert_eq!(grid.cells[3].node_ids, [nodes[4].id.clone()]);
         assert!(table.bbox.is_some());
         assert_eq!(got[2].text, "After");
+        // Decision #165: the rule the record names, so a chart's table is told from a data table.
+        assert_eq!(grid.detection_rule, repr.payload().tables[0].detection_rule);
+        let mut payload = repr.payload().clone();
+        payload.tables[0].detection_rule = crate::TABLE_DETECTION_CHARTS_V3.into();
+        let chart = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&chart)[1].table.clone().unwrap();
+        assert_eq!(grid.detection_rule, crate::TABLE_DETECTION_CHARTS_V3);
     }
 
     /// **A table the next page goes on with is one element** (decision #142): that page's rows

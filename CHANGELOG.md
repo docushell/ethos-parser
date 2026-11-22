@@ -32,6 +32,17 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A table element names the rule that read it (decision #165)
+
+The element view's `table` grid did not say how its table was found, so a program could not tell a
+grid the page drew from one read off aligned whitespace, one the document tagged, or one read from
+a chart's printed values. Each grid now carries `detection_rule`, copied from its record: a chart's
+table says `bar-labels-*`, `point-labels-*` or `slice-labels-*`, a data table its own rule. A table
+going on into later pages carries its first page's; the records it names under `continued` keep
+their own, which may be another page rule (a drawn grid going on as aligned whitespace), never a
+tagged, chart or office one. Folded into `elements-units-v1` and schema
+`0.1.0`, which no release carries; no other output changes.
+
 ### A filler's value names the caption it was read beside (decision #164)
 
 Decision #157 reads a form filler's values — text drawn over the page after its own, in fonts of

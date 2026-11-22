@@ -245,6 +245,7 @@
         "id",
         "rows",
         "columns",
+        "detection_rule",
         "cells"
       ],
       "properties": {
@@ -252,6 +253,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The table record's id in the representation."
+        },
+        "detection_rule": {
+          "$ref": "urn:ethos-parser:draft-schema:document-representation:0#/$defs/table_record/properties/detection_rule",
+          "description": "Decision #165: the rule that produced the record, as it states it — a drawn grid, aligned whitespace, the document's own tags, a chart's printed values (`bar-labels-*`, `point-labels-*`, `slice-labels-*`: a table read from a chart, not a data table the page drew), or an office file's own. A table going on into later pages (decision #142) carries its first page's; the records named in `continued` keep their own rule, which may be another page rule (a drawn grid going on as aligned whitespace), never a tagged, chart or office one."
         },
         "name": {
           "type": "string",
