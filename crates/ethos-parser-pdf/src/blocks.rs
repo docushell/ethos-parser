@@ -204,20 +204,19 @@ pub fn slabs(runs: &[RunGeometry], regions: &[Option<u32>]) -> Vec<u32> {
         lines_of_band.insert(band, lines(ys));
     }
 
-    // Per band: which line indices start a new subdivision.
-    let mut cuts_of_band: std::collections::BTreeMap<u32, Vec<bool>> =
+    // Per band and line index: how many lines at or above it start a new subdivision (a prefix
+    // count, so each run's slab is one lookup rather than a count over every line above it).
+    let mut cuts_of_band: std::collections::BTreeMap<u32, Vec<u32>> =
         std::collections::BTreeMap::new();
     for (band, lines) in &lines_of_band {
-        let mut starts = vec![false; lines.len()];
+        let mut cuts = vec![0u32; lines.len()];
         if let Some(leading) = modal_leading(lines) {
             for i in 1..lines.len() {
                 let gap = lines[i] - lines[i - 1];
-                if CUT_DEN * gap >= CUT_NUM * leading {
-                    starts[i] = true;
-                }
+                cuts[i] = cuts[i - 1] + u32::from(CUT_DEN * gap >= CUT_NUM * leading);
             }
         }
-        cuts_of_band.insert(*band, starts);
+        cuts_of_band.insert(*band, cuts);
     }
 
     // Subdivision index per run: how many cuts precede its line within its band.
@@ -225,14 +224,14 @@ pub fn slabs(runs: &[RunGeometry], regions: &[Option<u32>]) -> Vec<u32> {
     for (i, r) in runs.iter().enumerate() {
         let band = band_of(regions, i);
         let lines = &lines_of_band[&band];
-        let starts = &cuts_of_band[&band];
+        let cuts = &cuts_of_band[&band];
         // The line this run sits on: the last line at or below its baseline.
         let li = match lines.binary_search(&r.y) {
             Ok(k) => k,
             Err(0) => 0,
             Err(k) => k - 1,
         };
-        subdivision[i] = starts[..=li].iter().filter(|s| **s).count() as u32;
+        subdivision[i] = cuts[li];
     }
     subdivision
 }

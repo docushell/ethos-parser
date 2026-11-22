@@ -1106,3 +1106,54 @@ about 32 pages at the page ceiling: about 3.3 GiB for a crafted file, which A re
 `lopdf` decodes object and cross-reference streams while it loads, before any check here, and now
 under the same 64 MiB. It drops an object stream past it rather than refusing it, and the open's
 reconciliation refuses every object the stream held, naming the stream and both causes.
+
+## 18. The seal walks the payload in parallel and keeps none of it
+
+**Run 2026-11-22.** A = `main` at `67dae19`, B = the same tree with the changes below, both release
+builds on an Apple M4 Pro (12 cores), a quiet machine. Every artifact `extract`, `markdown`, `html`,
+`elements`, `ground` and `markdown --source` write hashes the same under A and B on 638 PDFs: the
+gate's 8, opendataloader-bench's 200 and every tenth ParseBench-2 document, under B at one thread
+and at twelve on three of the gate documents besides.
+
+### Why
+
+`sample` on `nist-sp-800-53r5` (492 pages, 1.15 million nodes): the pages took about 2 s of CPU,
+0.3 s on twelve threads. After them, about 2.5 s ran on one core inside `seal`: canonicalizing the
+payload into one buffer (1.65 s), `check_structure` (0.47 s) and hashing the buffer (0.3 s). The
+buffer was then kept for the print, the run's largest allocation after the record itself.
+
+### What changed
+
+- A payload's nodes are canonicalized in chunks of 1,024 on the thread pool, in windows of four
+  chunks a thread whose buffers are reused, and handed to the hash in order; `check_structure`
+  runs beside it on `rayon::join`. No byte is kept: the print walks the payload again the same way.
+  A payload of 1,024 nodes or fewer, or any on a pool of one thread, is walked once and kept, as A
+  did — walked twice on one thread, `53r5` took 7.1 s, 24% longer than A.
+- `into_representation` moves the extract's runs into the record instead of copying them. This is
+  not §9's refused *free sooner*: nothing is freed earlier, the copies are never made.
+- A record read back checks its fingerprint on one thread. Waking the pool there cost about 2.6 MiB
+  a thread (`37r2` `markdown <artifact.json>`: 632 MiB at one thread, 662 at twelve) and saved no
+  peak; that path is now the larger of a big document's two peaks.
+
+### Readings
+
+Median of 3 (one-off runs median of 5, interleaved A/B):
+
+| document | command | A wall | B wall | A peak RSS | B peak RSS |
+| --- | --- | ---: | ---: | ---: | ---: |
+| nist-sp-800-53r5 | extract | 4,165 ms | 1,876 ms | 2,382 MiB | 1,568 MiB |
+| nist-sp-800-53r5 | extract, one thread | 5,739 ms | 5,380 ms | 2,285 MiB | 2,034 MiB |
+| nist-sp-800-53r5 | markdown --source | 5,755 ms | 3,530 ms | 2,376 MiB | 1,801 MiB |
+| nist-sp-800-63b | extract | 478 ms | 251 ms | 274 MiB | 189 MiB |
+| nist-sp-800-53Ar5 | extract | 6.75 s | 3.22 s | 3,508 MiB (footprint 3,356) | 2,210 MiB (footprint 2,057) |
+| nist-sp-800-53Ar5 | markdown artifact.json | 12.65 s | 12.61 s | 3,354 MiB | 3,364 MiB |
+| nist-sp-800-37r2 | extract | 1.52 s | 0.70 s | 829 MiB | 574 MiB |
+| nist-sp-800-37r2 | markdown artifact.json | 2.42 s | 2.43 s | 632 MiB | 634 MiB |
+
+opendataloader-bench's 200, one at a time: `markdown --unstyled --source` p50 53.8 → 50.2 ms, p95
+78.7 → 57.7 ms, max 250 → 239 ms, 17.4 → 19.2 documents a second, peak RSS unchanged (p50 11 MiB,
+max 166). `extract` interleaved: p95 72.6 → 67.5 ms at twelve threads, 59.1 → 58.2 at one.
+
+**Not done.** The projection is now `markdown --source`'s largest serial stage on `53r5` (about
+1.8 s of its 3.5): table planning, overprint checks and string-keyed id lookups spread over
+`markdown_of`. Shrinking the 618 MiB artifact is a schema change and was not attempted.

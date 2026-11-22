@@ -32,6 +32,35 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Large documents read in about half the time and a third less memory, byte for byte
+
+Measured on `nist-sp-800-53r5` (492 pages, 1.15 million nodes) with a profile: of `extract`'s 4.2 s,
+about 2.5 s ran on one core after the pages were read — `seal`'s canonical walk of the payload
+(1.65 s), its structure check (0.47 s) and the hash (0.3 s) — while the pages themselves took about
+0.3 s on twelve. Every output is unchanged: `extract`, `markdown`, `html`, `elements`, `ground` and
+`markdown --source` hash the same on 638 PDFs (the gate's 8, opendataloader-bench's 200 and every
+tenth ParseBench-2 document), at one thread and at twelve.
+
+- `seal` canonicalizes a large payload's nodes in parallel chunks and hashes them in order, beside
+  its structure check, and keeps none of the bytes: `extract` streams the artifact, walking the
+  payload again the same way. A payload of 1,024 nodes or fewer, or any payload on a pool of one
+  thread, is walked once and its bytes kept for the print, as before.
+- `into_representation` takes the extract, so its runs move into the record's nodes rather than
+  being copied; `to_representation` borrows as before. The CLI uses the first.
+- The page fold advances the id counter instead of minting and dropping an id per run; a page's
+  leading-gap slabs are counted with a prefix sum; an image drawn twice on a page is hashed once;
+  a page with no bar or line chart reads no chart labels; a ruled grid's cells read only the runs
+  inside the grid; layout units and page furniture are assigned page by page in parallel.
+- Reading a record back (`markdown <artifact.json>`, `ground`, MCP) still checks its fingerprint on
+  one thread: waking the pool there cost about 2.6 MiB a thread and saved no peak.
+- Measured, median of 3, Apple M4 Pro, 12 threads (before → after): `nist-sp-800-53r5` `extract`
+  4,165 → 1,876 ms and 2,382 → 1,568 MiB peak RSS; on one thread 5,739 → 5,380 ms and 2,285 →
+  2,034 MiB; `markdown --source` 5,755 → 3,530 ms and 2,376 → 1,801 MiB. `nist-sp-800-53Ar5`
+  `extract` 6.75 → 3.22 s, peak footprint 3,356 → 2,057 MiB. opendataloader-bench's 200,
+  `markdown --unstyled --source` one at a time: p50 53.8 → 50.2 ms, p95 78.7 → 57.7 ms, 17.4 → 19.2
+  documents a second; `extract` p95 72.6 → 67.5 ms. `docs/measurements/memory-ceiling/` §18.
+- `ethos-parser-core` depends on `rayon`, already in the lockfile through the PDF reader.
+
 ### A line's last hyphen drawn as a run of its own closes its word up (decision #160)
 
 Where a producer draws a line's last hyphen as a run of its own — in a marked-content sequence of its

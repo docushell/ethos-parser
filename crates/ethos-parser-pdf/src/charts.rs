@@ -227,12 +227,16 @@ pub(crate) fn detect(
     page_area: i128,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
-    let labels = labels(runs);
     let ink = ink(bars, page_area);
     let charts: Vec<Chart> = [Axis::Vertical, Axis::Horizontal]
         .into_iter()
         .flat_map(|axis| charts(&ink, axis))
         .collect();
+    // No chart, no table: the page's labels are read only where a chart could take them.
+    if charts.is_empty() {
+        return Ok(Vec::new());
+    }
+    let labels = labels(runs);
     let boxes: Vec<(QuantRect, Fill)> = charts
         .iter()
         .flat_map(|c| {

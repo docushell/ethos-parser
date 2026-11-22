@@ -1949,8 +1949,17 @@ fn extract_page(
         // readable `/Subtype`: emitting a node for an unlabelled stream would put a picture on the
         // wire the document never called one.
         let mut images = Vec::new();
+        // One stream's facts per object, however often the page draws it: hashing the stored
+        // bytes again at every `Do` is the same answer at the stream's cost each time.
+        let mut image_facts: std::collections::HashMap<
+            lopdf::ObjectId,
+            Option<ethos_parser_core::ImageAttributes>,
+        > = std::collections::HashMap::new();
         for placement in &interp.images {
-            let Some(attributes) = crate::images::image_attributes(doc.inner(), placement.object)
+            let Some(attributes) = image_facts
+                .entry(placement.object)
+                .or_insert_with(|| crate::images::image_attributes(doc.inner(), placement.object))
+                .clone()
             else {
                 // v2.2-S2. **Counted, not merely skipped.** `image_attributes` returns `None` for
                 // a `/Form` and for a stream with no readable `/Subtype`, and until now this
@@ -2927,9 +2936,7 @@ fn extract_counted(
             IdKind::FormField,
             IdKind::Annotation,
         ] {
-            for _ in 0..y.local_ids.count(kind) {
-                let _ = alloc.next(kind)?;
-            }
+            alloc.advance(kind, y.local_ids.count(kind))?;
         }
 
         ruled_refusals.extend(y.ruled_refusals);
@@ -3197,9 +3204,8 @@ fn extract_counted(
     if profile.layout_unit_rule == ethos_parser_core::LAYOUT_UNIT_RULE_V7
         && no_author_structure(structure.as_ref())
     {
-        for page in pages.iter_mut() {
-            crate::units::assign(page);
-        }
+        // Each page's own runs only, so pages are read side by side.
+        pages.par_iter_mut().for_each(crate::units::assign);
     }
     if let Some(body_em) = body_em {
         let mut fired: u32 = 0;
@@ -3236,9 +3242,8 @@ fn extract_counted(
     if profile.furniture_rule == ethos_parser_core::FURNITURE_RULE_V1
         && no_author_structure(structure.as_ref())
     {
-        for page in pages.iter_mut() {
-            crate::furniture::assign(page);
-        }
+        // Each page's own runs only, so pages are read side by side.
+        pages.par_iter_mut().for_each(crate::furniture::assign);
     }
 
     // Right-to-left text, declared where it occurs (`OPEN-WORK.md` §4, decided 2026-09-23).

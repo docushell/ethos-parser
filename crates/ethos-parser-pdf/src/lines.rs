@@ -95,11 +95,11 @@ pub(crate) fn detect(
     bars: &[QuantRect],
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
-    let labels = labels(runs);
     let (series, swatches) = series(strokes, marks);
-    if series.iter().map(|s| s.points.len()).sum::<usize>() > MAX_POINTS {
+    if series.is_empty() || series.iter().map(|s| s.points.len()).sum::<usize>() > MAX_POINTS {
         return Ok(Vec::new());
     }
+    let labels = labels(runs);
     let free: Vec<usize> = (0..labels.len())
         .filter(|&k| !bars.iter().any(|b| covers(*b, &labels[k])))
         .collect();

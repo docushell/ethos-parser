@@ -1429,12 +1429,31 @@ fn ruled_grid(
     cells.sort_by_key(|(p, _)| (p.row, p.column));
 
     // Step 5: assign runs by ORIGIN. Never by ink box — an absent box would have to be invented.
+    // Only runs inside the cells' joint box can be in a cell: found once, in page order, so each
+    // cell reads those rather than the whole page.
+    let joint = cells.iter().fold(None, |b: Option<QuantRect>, (_, r)| {
+        Some(b.map_or(*r, |b| QuantRect {
+            x0: b.x0.min(r.x0),
+            y0: b.y0.min(r.y0),
+            x1: b.x1.max(r.x1),
+            y1: b.y1.max(r.y1),
+        }))
+    });
+    let near: Vec<usize> = joint.map_or_else(Vec::new, |b| {
+        (0..runs.len())
+            .filter(|&i| {
+                let run = &runs[i];
+                run.x >= b.x0 && run.x < b.x1 && run.y >= b.y0 && run.y < b.y1
+            })
+            .collect()
+    });
     let detected: Vec<DetectedCell> = cells
         .into_iter()
         .map(|(position, rect)| {
             let mut run_indices = Vec::new();
             let mut text = String::new();
-            for (i, run) in runs.iter().enumerate() {
+            for &i in &near {
+                let run = &runs[i];
                 if run.x >= rect.x0 && run.x < rect.x1 && run.y >= rect.y0 && run.y < rect.y1 {
                     run_indices.push(i);
                     text.push_str(run.text);

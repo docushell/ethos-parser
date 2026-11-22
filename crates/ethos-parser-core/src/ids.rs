@@ -170,7 +170,38 @@ impl IdAllocator {
     /// [`EngineError::ResourceLimit`] if the counter would exceed [`crate::MAX_SAFE_INT`].
     /// Wrapping would silently reuse an id, which is worse than refusing to continue.
     pub fn next(&mut self, kind: IdKind) -> Result<NodeId, EngineError> {
-        let counter = match kind {
+        let counter = self.counter_mut(kind);
+        if *counter > crate::MAX_SAFE_INT as u64 {
+            return Err(ordinal_limit());
+        }
+        let id = NodeId(format!("{}{}", kind.prefix(), counter));
+        *counter += 1;
+        Ok(id)
+    }
+
+    /// Skip `n` ids of `kind`: the counter ends where `n` calls to [`Self::next`] leave it, and
+    /// this fails where the last of them would, without minting the ids.
+    ///
+    /// # Errors
+    ///
+    /// [`EngineError::ResourceLimit`] if the last of the `n` ordinals passes
+    /// [`crate::MAX_SAFE_INT`].
+    pub fn advance(&mut self, kind: IdKind, n: u64) -> Result<(), EngineError> {
+        if n == 0 {
+            return Ok(());
+        }
+        let counter = self.counter_mut(kind);
+        match counter.checked_add(n - 1) {
+            Some(last) if last <= crate::MAX_SAFE_INT as u64 => {
+                *counter = last + 1;
+                Ok(())
+            }
+            _ => Err(ordinal_limit()),
+        }
+    }
+
+    fn counter_mut(&mut self, kind: IdKind) -> &mut u64 {
+        match kind {
             IdKind::Page => &mut self.next_page,
             IdKind::Element => &mut self.next_element,
             IdKind::Span => &mut self.next_span,
@@ -180,16 +211,7 @@ impl IdAllocator {
             IdKind::Image => &mut self.next_image,
             IdKind::Part => &mut self.next_part,
             IdKind::Proposal => &mut self.next_proposal,
-        };
-        if *counter > crate::MAX_SAFE_INT as u64 {
-            return Err(EngineError::ResourceLimit {
-                limit: "node id ordinal".into(),
-                configured: crate::MAX_SAFE_INT.to_string(),
-            });
         }
-        let id = NodeId(format!("{}{}", kind.prefix(), counter));
-        *counter += 1;
-        Ok(id)
     }
 
     /// How many ids of `kind` have been allocated.
@@ -205,6 +227,13 @@ impl IdAllocator {
             IdKind::Part => self.next_part,
             IdKind::Proposal => self.next_proposal,
         }) - 1
+    }
+}
+
+fn ordinal_limit() -> EngineError {
+    EngineError::ResourceLimit {
+        limit: "node id ordinal".into(),
+        configured: crate::MAX_SAFE_INT.to_string(),
     }
 }
 
@@ -258,6 +287,41 @@ mod tests {
         assert_eq!(a.next(IdKind::Span).unwrap().as_str(), "s1");
         assert_eq!(a.next(IdKind::Table).unwrap().as_str(), "t1");
         assert_eq!(a.next(IdKind::Proposal).unwrap().as_str(), "m1");
+    }
+
+    #[test]
+    fn advance_leaves_the_counter_where_n_calls_to_next_would() {
+        let (mut stepped, mut skipped) = (alloc(), alloc());
+        for n in [0u64, 1, 2, 7] {
+            for _ in 0..n {
+                stepped.next(IdKind::Span).unwrap();
+            }
+            skipped.advance(IdKind::Span, n).unwrap();
+            assert_eq!(skipped.count(IdKind::Span), stepped.count(IdKind::Span));
+        }
+        assert_eq!(skipped.next(IdKind::Span).unwrap().as_str(), "s11");
+        assert_eq!(skipped.count(IdKind::Table), 0);
+    }
+
+    #[test]
+    fn advance_fails_where_the_last_next_would() {
+        let max = crate::MAX_SAFE_INT as u64;
+        let at = |next: u64| {
+            let mut a = alloc();
+            a.next_span = next;
+            a
+        };
+        // The last ordinal is exactly the limit: allowed, as `next` allows it.
+        let mut a = at(max - 1);
+        a.advance(IdKind::Span, 2).unwrap();
+        assert!(a.next(IdKind::Span).is_err());
+        // One past: refused, as the second `next` would be.
+        assert!(at(max - 1).advance(IdKind::Span, 3).is_err());
+        assert!(at(max).next(IdKind::Span).is_ok());
+        assert!(at(max).advance(IdKind::Span, 1).is_ok());
+        assert!(at(max + 1).advance(IdKind::Span, 1).is_err());
+        assert!(at(max + 1).advance(IdKind::Span, 0).is_ok());
+        assert!(at(1).advance(IdKind::Span, u64::MAX).is_err());
     }
 
     #[test]
