@@ -140,9 +140,9 @@ fn the_source_path_the_two_step_path_and_a_repeat_print_the_same_bytes() {
 }
 
 /// **Nothing is dropped silently.** Every node of the record is in exactly one place — a text
-/// unit's or a table's `node_ids`, a picture's own image node, or `omitted` — each label is
-/// reached, the record's own profile is stamped, pages run in order, and stderr says what was
-/// omitted exactly when something was.
+/// unit's or a table's `node_ids`, a picture's own image node, a form field's node, or `omitted` —
+/// each label is reached, the record's own profile is stamped, pages run in order, and stderr says
+/// what was omitted exactly when something was.
 #[test]
 fn every_node_is_in_exactly_one_place_and_every_label_is_reached() {
     let mut labels = BTreeSet::new();
@@ -221,6 +221,7 @@ fn every_node_is_in_exactly_one_place_and_every_label_is_reached() {
         );
     }
     let all = [
+        "form-field",
         "page-footer",
         "page-header",
         "picture",
@@ -229,8 +230,40 @@ fn every_node_is_in_exactly_one_place_and_every_label_is_reached() {
         "text",
     ];
     assert_eq!(labels, all.map(String::from).into(), "labels reached");
-    let all = ["annotation", "form-field", "no-measured-box"];
+    let all = ["annotation", "no-measured-box"];
     assert_eq!(reasons, all.map(String::from).into(), "reasons reached");
+}
+
+/// **A form field is an element of its own** (decision #163), its name, type and value copied
+/// from its node, after its page's text, with no box: the rectangle a field declares is not a
+/// measured one.
+#[test]
+fn a_form_field_is_an_element_with_its_facts_and_no_box() {
+    let artifact = elements_of("fixtures/engine/form-field-value/document.pdf");
+    let field = artifact["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["label"] == "form-field")
+        .expect("the field is an element");
+    assert_eq!(field["text"], "Wendell Ashcroft-Byrne");
+    assert_eq!(
+        field["bbox"],
+        Value::Null,
+        "a declared rectangle is no bbox"
+    );
+    assert_eq!(field["node_ids"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        field["form_field"],
+        serde_json::json!({
+            "name": "applicant_name",
+            "field_type": "Tx",
+            "value": {"kind": "text", "value": "Wendell Ashcroft-Byrne"},
+        })
+    );
+    let last = artifact["elements"].as_array().unwrap().last().unwrap();
+    assert_eq!(last["label"], "form-field", "after the page's text");
+    assert!(artifact["omitted"].as_array().unwrap().is_empty());
 }
 
 /// A lone label over its text, in a document nothing else heads, is its heading (decision #159) and

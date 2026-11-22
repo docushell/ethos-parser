@@ -32,6 +32,19 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A form field is an element, with its name, label, value and state (decision #163)
+
+The element view listed a form field's node under `omitted` (`form-field`): a consumer reading
+elements to fill or check a form saw none of its fields. Each form field node is now an element
+labelled `form-field`, its `form_field` carrying the field's `name`, `label`, `field_type`, `value`
+as the document wrote it and a check box's or radio button's `state` (decision #162), each copied
+from the node. **No `bbox`**: a field's declared rectangle is where a viewer draws it, not ink this
+engine measured, and an element's box is always a measured one. The element's `text` is the node's
+— its value as text, which every widget of a radio group shares, so `state` is what says which is
+on. A field sits after its page's text, at its node. The `form-field` omission reason is gone.
+Folded into `elements-units-v1` and the elements schema `0.1.0`, which no release carries. No
+other output changes.
+
 ### A check box's state and a field's label, as each widget states them (decision #162)
 
 A form field node said what the field's `/V` was, and a radio button's widget inherited its group's
@@ -53,8 +66,8 @@ said nothing about the box at all. Each widget now carries two more facts it sta
 - The nearest `/Ff` decides a field's flags, an explicit 0 included; v2 read past a 0 to an
   ancestor's flags, so a check box under a push-button parent read as a push button.
 - `form-annotations-v2` → `form-annotations-v3`; `profile_sha256` moves. `extract` changes only on
-  documents with form fields; no projection reads the two facts yet, and the Markdown and HTML text
-  of every ParseBench, ParseBench-2 and opendataloader-bench document is unchanged.
+  documents with form fields; the element view carries both since decision #163, and the Markdown
+  and HTML text of every ParseBench, ParseBench-2 and opendataloader-bench document is unchanged.
 - Tested on made-up forms: each state, indirect `/AS`, `/AP` and `/N`, `/N` a single stream, a
   down appearance only, a null entry, a non-UTF-8 name, a radio group, an inherited push button and
   an explicit 0 below it, a text field, an untyped widget, a group's label, a nameless field's and a
@@ -1033,15 +1046,17 @@ what it was, `profile_sha256` included: the rule id travels on the artifact, not
 
 - **`elements <representation>` or `elements --source <file>`** writes a document's items as one
   flat list: each with `label` (`text`, `section-header` with its `level`, `page-header`,
-  `page-footer`, `table` with its cells, `picture`), `page`, `bbox` in centipoints from the page's
+  `page-footer`, `table` with its cells, `picture`, `form-field` since decision #163), `page`, `bbox`
+  in centipoints from the page's
   top-left, `text`, and the `node_ids` it covers, in page order and reading order. A page-less
   source (DOCX, XLSX, …) has no pages and no boxes; a DOCX paragraph is one element and a
   workbook's sheet a named `table`. A Word header's or footer's paragraph is a `page-header` or
   `page-footer`, and a heading a DOCX, ODF or EPUB file declares a `section-header` at its level,
   as both projections read them.
 - **Nothing is dropped silently.** Every node is in one element or under `omitted` with its reason
-  (`no-measured-box`, `whitespace-only`, `form-field`, `annotation`, `image-not-painted`,
-  `figure-not-measured`), and one line on stderr counts them.
+  (`no-measured-box`, `whitespace-only`, `annotation`, `image-not-painted`,
+  `figure-not-measured`; `form-field` until decision #163 made each field an element), and one
+  line on stderr counts them.
 - **No rule of its own.** It began as ParseBench's adapter view: `ground`'s blocks joined by
   `layout_unit`, labels from page furniture, then a tagged role path, then an inferred heading;
   tables and figures as the record states them. It departs where the adapter was wrong for a

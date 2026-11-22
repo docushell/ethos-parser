@@ -1261,10 +1261,18 @@ fn the_elements_schema_pins_the_version_and_rule_the_code_emits() {
     // Every label the code can write, and no other, spelled as it writes them. The match fails to
     // compile when a label is added, so the list cannot fall behind the enum.
     use ethos_parser_core::ElementLabel::*;
-    let labels = [Text, SectionHeader, PageHeader, PageFooter, Table, Picture];
+    let labels = [
+        Text,
+        SectionHeader,
+        PageHeader,
+        PageFooter,
+        Table,
+        Picture,
+        FormField,
+    ];
     for label in labels {
         match label {
-            Text | SectionHeader | PageHeader | PageFooter | Table | Picture => {}
+            Text | SectionHeader | PageHeader | PageFooter | Table | Picture | FormField => {}
         }
     }
     let written: Vec<serde_json::Value> = labels
@@ -1283,15 +1291,13 @@ fn the_elements_schema_pins_the_version_and_rule_the_code_emits() {
     let reasons = [
         NoMeasuredBox,
         WhitespaceOnly,
-        FormField,
         Annotation,
         ImageNotPainted,
         FigureNotMeasured,
     ];
     for reason in reasons {
         match reason {
-            NoMeasuredBox | WhitespaceOnly | FormField | Annotation | ImageNotPainted
-            | FigureNotMeasured => {}
+            NoMeasuredBox | WhitespaceOnly | Annotation | ImageNotPainted | FigureNotMeasured => {}
         }
     }
     let written: Vec<serde_json::Value> = reasons

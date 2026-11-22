@@ -550,6 +550,8 @@ const CORE: &[&str] = &[
     "ElementPage",
     "ElementTable",
     "ElementCell",
+    // Decision #163: a form field's facts in the element view.
+    "ElementFormField",
     "Omitted",
     "OmissionReason",
     "ELEMENTS_ARTIFACT_TYPE",

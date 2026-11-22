@@ -199,7 +199,9 @@ enum Command {
     ///
     /// **One flat list of the document's items**, each with its page, its box, its text, the node
     /// ids it covers and a label the record states: `text`, `section-header`, `page-header`,
-    /// `page-footer`, `table` (with its grid) or `picture`. No label is inferred here: a heading is
+    /// `page-footer`, `table` (with its grid), `picture` or `form-field` (with its name, label, type,
+    /// value and a check box's state, and no box: a field's declared rectangle is not a measured
+    /// one; decision #163). No label is inferred here: a heading is
     /// a tagged one or one the reader inferred from its type, as Markdown writes it with `#`; a
     /// header or footer is the reader's page furniture; there is no list or caption label. A DOCX
     /// paragraph is one element. Boxes are integer centipoints from the top-left of the page; a
@@ -208,9 +210,8 @@ enum Command {
     /// own, each of their cells carries its own `page` and box, and `continued` names the table
     /// records joined in.
     ///
-    /// **Nothing is dropped silently**: a node no element carries — a run with no measured box, a
-    /// form field's value, an annotation — is listed under `omitted` with its reason, and one line
-    /// on stderr counts them.
+    /// **Nothing is dropped silently**: a node no element carries — a run with no measured box, an
+    /// annotation — is listed under `omitted` with its reason, and one line on stderr counts them.
     ///
     /// Takes a representation, or `--source FILE` to read a document and project it in one process,
     /// as `markdown --source` does. stdout is canonical JSON.

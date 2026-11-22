@@ -3,7 +3,7 @@
   "$id": "urn:ethos-parser:draft-schema:elements:0",
   "$comment": "DRAFT — not a shipped contract. Authority: North Star decision #137. Written from crates/ethos-parser-core/src/elements.rs; if the two disagree, the Rust is the implementation. Guarded by contract_invariants.rs::the_elements_schema_pins_the_version_and_rule_the_code_emits and walked against every fixture's artifact by draft_schemas.rs.",
   "title": "ethos.parser.elements.v0",
-  "description": "A document's items, one flat list, each with its page, its box, its text, the representation nodes it covers and a label the record states. A PROJECTION of the representation, not the record: it reads no rule of its own about what a piece of text is. A text unit is a block of the reading-order cut (the element ethos.grounding.v1 cites), consecutive blocks sharing a page and a layout_unit joined into one, and a DOCX paragraph's runs one unit (decision #130); a label is a run's page furniture, a Word header's or footer's included, else a heading level a DOCX, ODF or EPUB file declares, else its tagged role path after the document's RoleMap read innermost first, else its inferred heading at levels 1-6, else `text`; a table is every table record, with its box where the record measured one; a picture is a painted image placement or a measured figure region, with the text of each unit holding a run the record names inside it. Nothing is dropped silently: every node is in exactly one place, a text unit's or a table's `node_ids`, a picture's own image node, or `omitted`. It began as the view ParseBench's adapter (`ethos_bench.py` `_layout`) built and departs from it in four places, each a consumer's need: a DOCX paragraph is one element where the adapter had one per run; the label tier (level 7) is `text`, as both projections write it, where the adapter said heading; a role path is read after the RoleMap, as Markdown reads it, where the adapter read the raw path; and a table with no box is one `table` element without `bbox`, where the adapter dropped it and kept its runs as one element each. No verdict, no score: every label is one a record field states, every box one the record measured or the union of such boxes, every node id a copy.",
+  "description": "A document's items, one flat list, each with its page, its box, its text, the representation nodes it covers and a label the record states. A PROJECTION of the representation, not the record: it reads no rule of its own about what a piece of text is. A text unit is a block of the reading-order cut (the element ethos.grounding.v1 cites), consecutive blocks sharing a page and a layout_unit joined into one, and a DOCX paragraph's runs one unit (decision #130); a label is a run's page furniture, a Word header's or footer's included, else a heading level a DOCX, ODF or EPUB file declares, else its tagged role path after the document's RoleMap read innermost first, else its inferred heading at levels 1-6, else `text`; a table is every table record, with its box where the record measured one; a picture is a painted image placement or a measured figure region, with the text of each unit holding a run the record names inside it. Nothing is dropped silently: every node is in exactly one place, a text unit's or a table's `node_ids`, a picture's own image node, a form field's own node, or `omitted`. It began as the view ParseBench's adapter (`ethos_bench.py` `_layout`) built and departs from it in four places, each a consumer's need: a DOCX paragraph is one element where the adapter had one per run; the label tier (level 7) is `text`, as both projections write it, where the adapter said heading; a role path is read after the RoleMap, as Markdown reads it, where the adapter read the raw path; and a table with no box is one `table` element without `bbox`, where the adapter dropped it and kept its runs as one element each. A form field is a `form-field` element of its own, with no `bbox` (decision #163). No verdict, no score: every label is one a record field states, every box one the record measured or the union of such boxes, every node id a copy.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -121,12 +121,11 @@
             "enum": [
               "no-measured-box",
               "whitespace-only",
-              "form-field",
               "annotation",
               "image-not-painted",
               "figure-not-measured"
             ],
-            "description": "`no-measured-box`: text runs on a page none of whose block has a measured box, as `ground` omits them. `whitespace-only`: a DOCX paragraph holding nothing but whitespace. `form-field`: a form field's value, which no content stream draws. `annotation`: an annotation's text, markup over the page. `image-not-painted`: an image whose placement is not an axis-aligned rectangle the record states. `figure-not-measured`: a figure region with no measured box; a region is no node, so `count` counts regions and `node_ids` is empty."
+            "description": "`no-measured-box`: text runs on a page none of whose block has a measured box, as `ground` omits them. `whitespace-only`: a DOCX paragraph holding nothing but whitespace. `annotation`: an annotation's text, markup over the page. `image-not-painted`: an image whose placement is not an axis-aligned rectangle the record states. `figure-not-measured`: a figure region with no measured box; a region is no node, so `count` counts regions and `node_ids` is empty."
           },
           "count": {
             "type": "integer",
@@ -168,9 +167,10 @@
             "page-header",
             "page-footer",
             "table",
-            "picture"
+            "picture",
+            "form-field"
           ],
-          "description": "The first label the record states. `page-header` and `page-footer`: a run's page `furniture` (decision #41), a Word header's or footer's (decision #136) included, read before anything else, so a running head the heading rule also read stays the page's header. `section-header`: a heading level 1-6 a DOCX paragraph, an ODF heading or an EPUB `h1`–`h6` declares, as both projections read it; a tagged `H` or `H1`–`H6` innermost on a run's role path after the document's `/RoleMap` (`standard_role_path`, as Markdown reads it); or a run the reader inferred a heading from its type at levels 1-6 (decision #29). The label tier, level 7 — a bold line at the head of its text (decision #47) — is `text`, as both projections write it. A role path whose innermost known role is `Title`, `LI`, `LBody`, `Lbl` or `Caption` settles the element as `text`: this view has no title, list or caption label, and reads none from a font size or a bullet (docs/06-STEAL-REFUSE.md P14). A tagged `Table` role labels nothing. `table`: a table record. `picture`: a painted image placement or a figure region (decision #46). `text`: anything else."
+          "description": "The first label the record states. `page-header` and `page-footer`: a run's page `furniture` (decision #41), a Word header's or footer's (decision #136) included, read before anything else, so a running head the heading rule also read stays the page's header. `section-header`: a heading level 1-6 a DOCX paragraph, an ODF heading or an EPUB `h1`–`h6` declares, as both projections read it; a tagged `H` or `H1`–`H6` innermost on a run's role path after the document's `/RoleMap` (`standard_role_path`, as Markdown reads it); or a run the reader inferred a heading from its type at levels 1-6 (decision #29). The label tier, level 7 — a bold line at the head of its text (decision #47) — is `text`, as both projections write it. A role path whose innermost known role is `Title`, `LI`, `LBody`, `Lbl` or `Caption` settles the element as `text`: this view has no title, list or caption label, and reads none from a font size or a bullet (docs/06-STEAL-REFUSE.md P14). A tagged `Table` role labels nothing. `table`: a table record. `picture`: a painted image placement or a figure region (decision #46). `form-field`: an interactive form field node (decision #163). `text`: anything else."
         },
         "page": {
           "type": "integer",
@@ -179,11 +179,11 @@
         },
         "bbox": {
           "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect",
-          "description": "`[x0, y0, x1, y1]` in `coordinate_system`. A text unit's is the union of its runs' measured boxes; a table's and a cell's the record's measured box; a painted image's the rectangle its placement painted; a figure's its measured region. On a page every element has one except a table whose record has none (a tagged table's grid); a source with no pages has none at all."
+          "description": "`[x0, y0, x1, y1]` in `coordinate_system`. A text unit's is the union of its runs' measured boxes; a table's and a cell's the record's measured box; a painted image's the rectangle its placement painted; a figure's its measured region. On a page every element has one except a table whose record has none (a tagged table's grid) and a form field, whose declared rectangle is not a measured box (decision #163); a source with no pages has none at all."
         },
         "text": {
           "type": "string",
-          "description": "A text unit's blocks joined by one space, and a DOCX paragraph's runs as both projections write them, its tabs and line breaks kept; a table's cell texts joined by one space; a picture's text is that of each unit holding a run the record names inside it, joined by one space (decision #97), and may be empty."
+          "description": "A text unit's blocks joined by one space, and a DOCX paragraph's runs as both projections write them, its tabs and line breaks kept; a table's cell texts joined by one space; a picture's text is that of each unit holding a run the record names inside it, joined by one space (decision #97), and may be empty; a form field's is its node's text, its value as text, which every widget of a radio group shares (`form_field.state` says which one is on)."
         },
         "node_ids": {
           "type": "array",
@@ -191,7 +191,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "The representation nodes it covers, copied from the record: a text unit's runs in reading order, a run with no box of its own included; a table's cells' nodes, cell by cell; a painted image's own node, then the runs the record names inside it; a figure region's runs inside. How a consumer binds an element back to the record: each id is a node of the representation named by `representation_sha256`."
+          "description": "The representation nodes it covers, copied from the record: a text unit's runs in reading order, a run with no box of its own included; a table's cells' nodes, cell by cell; a painted image's own node, then the runs the record names inside it; a figure region's runs inside; a form field's own node. How a consumer binds an element back to the record: each id is a node of the representation named by `representation_sha256`."
         },
         "level": {
           "type": "integer",
@@ -202,6 +202,39 @@
         "table": {
           "$ref": "#/$defs/table",
           "description": "The table record's grid. Present on every `table` element, and only there."
+        },
+        "form_field": {
+          "$ref": "#/$defs/form_field",
+          "description": "A form field's facts, copied from its node (decisions #162, #163). Present on every `form-field` element, and only there."
+        }
+      }
+    },
+    "form_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The fully qualified field name. Absent where the document names none."
+        },
+        "label": {
+          "type": "string",
+          "description": "The name the form gives the field for a person to read (decision #162). Absent where the field states none."
+        },
+        "field_type": {
+          "type": "string",
+          "description": "The field's type as the document spells it. Absent where no ancestor declares one."
+        },
+        "value": {
+          "$ref": "urn:ethos-parser:draft-schema:document-representation:0#/$defs/form_field_attributes/properties/value",
+          "description": "The field's value, in the shape the document wrote it."
+        },
+        "state": {
+          "$ref": "urn:ethos-parser:draft-schema:document-representation:0#/$defs/form_field_attributes/properties/state",
+          "description": "A check box's or radio button's state as its widget states it, or why it cannot be told (decision #162). Present on those two kinds of field only."
         }
       }
     },

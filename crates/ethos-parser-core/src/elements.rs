@@ -15,8 +15,8 @@
 //! **A document's items, each with its box and a label the record states** (decision #137).
 //!
 //! One flat list for a consumer that wants the page's pieces — text, section headers, running heads
-//! and folios, tables and pictures — without reading the representation's nodes, tables and figures
-//! itself. It began as the view the ParseBench adapter built in Python (`_layout` in
+//! and folios, tables, pictures and form fields — without reading the representation's nodes,
+//! tables and figures itself. It began as the view the ParseBench adapter built in Python (`_layout` in
 //! `docs/measurements/parsebench/ethos_bench.py`, decisions #38, #41, #46, #62, #97), and departs
 //! from it where the adapter is wrong for a consumer; each departure is named below.
 //! **It reads no rule of its own about what a piece of text is**:
@@ -52,9 +52,14 @@
 //!   page's.
 //! - A **picture** is a painted image placement or a figure region with a measured box, its text
 //!   that of each unit holding a run the record names inside it (decision #97).
+//! - A **form field** is each form field node (decision #163): its fully qualified name, its label,
+//!   its type, its value as the document wrote it, and a check box's or radio button's state, all
+//!   copied from the record (decision #162). **No box**: the rectangle a field declares is where a
+//!   viewer draws it, not ink this engine measured, and a `bbox` here is always a measured one.
 //!
 //! **Nothing is dropped silently.** Every node is in exactly one place: a text unit's or a table's
-//! `node_ids`, a picture's own image node, or [`Elements::omitted`] under its reason.
+//! `node_ids`, a picture's own image node, a form field's own node, or [`Elements::omitted`] under
+//! its reason.
 //!
 //! Elements are in page order, and on a page in the record's reading order: each sits at the first
 //! node it covers, and one covering none comes last on its page. A picture's `node_ids` and text
@@ -73,8 +78,8 @@ use crate::markdown::{
 };
 use crate::representation::DocumentRepresentation;
 use crate::{
-    ArtifactIdentity, CoordinateSystem, EngineError, Furniture, NativeLocator, NodeAttributes,
-    NodeId, NodeKind, QRect, Sha256Hex, StructuralLocator,
+    ArtifactIdentity, CheckState, CoordinateSystem, EngineError, FieldValue, Furniture,
+    NativeLocator, NodeAttributes, NodeId, NodeKind, QRect, Sha256Hex, StructuralLocator,
 };
 
 /// The artifact type this emits.
@@ -158,6 +163,8 @@ pub enum ElementLabel {
     Table,
     /// A painted image or a figure region.
     Picture,
+    /// An interactive form field (decision #163).
+    FormField,
 }
 
 /// One item.
@@ -175,10 +182,11 @@ pub struct Element {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bbox: Option<QRect>,
     /// Its text: a unit's blocks joined by one space (a DOCX paragraph's as the projections write
-    /// it), a table's cells' texts, a picture's units'.
+    /// it), a table's cells' texts, a picture's units', a form field's node's text (its value as
+    /// text: a radio group's widgets share it, and only `form_field.state` says which is on).
     pub text: String,
     /// The representation nodes it covers, copied: a unit's runs; a table's cells' nodes; a
-    /// painted image's node, then the runs the record names inside it.
+    /// painted image's node, then the runs the record names inside it; a form field's node.
     pub node_ids: Vec<NodeId>,
     /// A `section-header`'s level, 1–6, as tagged or inferred. Absent on every other label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -186,6 +194,30 @@ pub struct Element {
     /// A table record's grid. Present on every `table` element, and only there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub table: Option<ElementTable>,
+    /// A form field's facts. Present on every `form-field` element, and only there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form_field: Option<ElementFormField>,
+}
+
+/// A form field's facts, copied from its node (decisions #162, #163).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElementFormField {
+    /// The fully qualified field name. Absent where the document names none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The name the form gives the field for a person to read. Absent where the field states none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// The field's type as the document spells it. Absent where no ancestor declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field_type: Option<String>,
+    /// The field's value, in the shape the document wrote it.
+    pub value: FieldValue,
+    /// A check box's or radio button's state as its widget states it, or why it cannot be told.
+    /// Present on those two kinds of field only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<CheckState>,
 }
 
 /// A table record's grid.
@@ -244,8 +276,6 @@ pub enum OmissionReason {
     NoMeasuredBox,
     /// A DOCX paragraph holding nothing but whitespace.
     WhitespaceOnly,
-    /// A form field's value: no content stream draws it.
-    FormField,
     /// An annotation's text: markup over the page, not the page's own.
     Annotation,
     /// An image whose placement is not an axis-aligned rectangle the record states.
@@ -453,10 +483,8 @@ pub fn to_elements(
         let first = &nodes[block.members[0]];
         match first.kind {
             NodeKind::TextRun => {}
-            NodeKind::FormField => {
-                omit(OmissionReason::FormField, &block.members);
-                continue;
-            }
+            // Decision #163: an element each, below.
+            NodeKind::FormField => continue,
             NodeKind::Annotation => {
                 omit(OmissionReason::Annotation, &block.members);
                 continue;
@@ -653,6 +681,30 @@ pub fn to_elements(
             None,
         ));
     }
+    // Decision #163: each form field, at its node, with no box: a declared rectangle is not one
+    // this engine measured.
+    for node in nodes {
+        let NodeAttributes::FormField(f) = &node.attributes else {
+            continue;
+        };
+        let mut e = element(
+            ElementLabel::FormField,
+            page_of(&node.parent)?,
+            None,
+            node.text.clone(),
+            vec![node.id.clone()],
+            None,
+            None,
+        );
+        e.form_field = Some(ElementFormField {
+            name: f.field_name.clone(),
+            label: f.label.clone(),
+            field_type: f.field_type.clone(),
+            value: f.value.clone(),
+            state: f.state.clone(),
+        });
+        out.push(e);
+    }
     let mut figures_unmeasured = 0usize;
     for f in &payload.figures {
         let Some(rect) = f.geometry.measured() else {
@@ -761,6 +813,7 @@ fn element(
         node_ids,
         level,
         table,
+        form_field: None,
     }
 }
 
@@ -786,6 +839,70 @@ mod tests {
             .into_iter()
             .map(|e| (e.label, e.text, e.level))
             .collect()
+    }
+
+    /// **A form field's facts reach its element as the record holds them** (decision #163): name,
+    /// label, type, value and state, the node its own, and no box.
+    #[test]
+    fn a_form_field_element_copies_its_nodes_facts() {
+        let repr = repr_of_lines(&["Agree to terms"]);
+        let mut payload = repr.payload().clone();
+        let mut geometry = repr.geometry().to_vec();
+        let page = payload.pages[0].id.clone();
+        let facts = crate::FormFieldAttributes {
+            field_name: Some("terms.agree".into()),
+            field_type: Some("Btn".into()),
+            label: Some("I agree".into()),
+            value: crate::FieldValue::Name("Yes".into()),
+            state: Some(CheckState::Checked("Yes".into())),
+            flags: Vec::new(),
+            unrecognized_flag_bits: Vec::new(),
+        };
+        let id = NodeId::from_parts(IdKind::FormField, 1);
+        payload.nodes.push(crate::Node {
+            id: id.clone(),
+            kind: NodeKind::FormField,
+            parent: page,
+            ordinal: payload.nodes.len() as u32 + 1,
+            text: String::new(),
+            native_locator: NativeLocator::PdfObject(crate::PdfObjectLocator {
+                page: 1,
+                object: 9,
+                generation: 0,
+                rect: crate::AnnotationRect::NotDeclared,
+            }),
+            structural_locator: None,
+            derivation: crate::DerivationClass::Extracted,
+            attributes: NodeAttributes::FormField(facts.clone()),
+        });
+        geometry.push(NodeGeometry {
+            node: id.clone(),
+            presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        });
+        payload
+            .assurance
+            .limitations
+            .push(crate::assurance::Limitation::document(
+                crate::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+                "test: a field has no ink box",
+            ));
+        let repr = DocumentRepresentation::seal(payload, geometry).unwrap();
+        let out = artifact(&repr);
+        let field = out.elements.last().unwrap();
+        assert_eq!(field.label, ElementLabel::FormField);
+        assert_eq!(field.node_ids, [id]);
+        assert_eq!(field.bbox, None);
+        assert_eq!(
+            field.form_field,
+            Some(ElementFormField {
+                name: facts.field_name,
+                label: facts.label,
+                field_type: facts.field_type,
+                value: facts.value,
+                state: facts.state,
+            })
+        );
+        assert!(out.omitted.is_empty());
     }
 
     /// `repr` with each run's furniture and inferred level set, one entry per node in order.
