@@ -737,9 +737,13 @@ pub fn to_html_with(
         // v2.2-S5. Computed here so it keeps first refusal over the undeclared join, exactly as
         // in `crate::markdown`.
         let next = payload.nodes.get(i + 1);
+        // An item a marker opens (decision #138) is a block of its own, not a word's tail.
         let next = next.filter(|n| {
             let id = n.id.as_str();
-            !overprinted.contains(id) && !furniture.contains(id) && !flagged.contains(id)
+            !overprinted.contains(id)
+                && !furniture.contains(id)
+                && !flagged.contains(id)
+                && !items.contains_key(id)
         });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = crate::markdown::group_key(node);
@@ -2457,6 +2461,27 @@ mod tests {
         let heading =
             with_inferred_headings(lone_hyphen_lines(LONE_HYPHEN, LONE_HYPHEN_MCIDS), &[0]);
         let a = artifact_of(heading);
+        assert!(
+            a.coverage
+                .dropped
+                .iter()
+                .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+            "{:?}",
+            a.html
+        );
+        // Nor into a list item it would open.
+        use crate::markdown::tests::{unit_lines, INFER_LISTS, LONE_HYPHEN_ITEMS};
+        let profile = Profile::default();
+        let sha = profile.profile_sha256().unwrap();
+        let a = to_html_with(
+            &unit_lines(LONE_HYPHEN_ITEMS),
+            &profile.parser_version,
+            &sha,
+            &profile.html_rule,
+            INFER_LISTS,
+        )
+        .expect("projects");
+        assert!(a.html.contains("<li>a) first</li>"), "{:?}", a.html);
         assert!(
             a.coverage
                 .dropped

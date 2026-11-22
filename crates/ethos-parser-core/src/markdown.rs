@@ -1916,7 +1916,8 @@ impl ListRole {
 ///   here because nothing else has looked at it.
 /// - **Both halves are page furniture, or neither is.** See [`is_page_artifact`]: a running head
 ///   is the one block boundary no other clause here can see, and welding one onto body text
-///   fabricates a word and destroys the addressability rule 1 promises.
+///   fabricates a word and destroys the addressability rule 1 promises. A header or footer the
+///   reader found on an untagged page is furniture too ([`is_furniture`]).
 ///
 /// **Pairwise, once.** Three runs breaking one word twice join the first pair and leave the second
 /// hyphen where it is. A bound rather than an oversight: the census still balances, the segment
@@ -1956,7 +1957,7 @@ fn line_tail<'a>(
         || owner.contains_key(next.id.as_str())
         || heading_level(next).is_some()
         || list_role(next).is_some()
-        || is_page_artifact(head) != is_page_artifact(next)
+        || is_furniture(head) != is_furniture(next)
         || region_of(head) != region_of(next)
         || !on_different_lines(head, next)
     {
@@ -2003,9 +2004,16 @@ fn line_tail<'a>(
 ///
 /// `prev` is the open block's last run, `None` where no block is open or the open block is a
 /// heading, a list item or a cell, and `block` the open block's text. The run before the hyphen
-/// must end in a letter **in its own text**, so `foo ` + `-` is a dash standing as its own word, as
-/// [`hyphen_tail`] has it; a hyphen inside a line is the author's, as there, since the run after
-/// must be on another line.
+/// must end in a letter **in its own text**, and the hyphen's run may not open with a space, so
+/// `foo ` + `-` and `foo` + ` -` are a dash standing as its own word, as [`hyphen_tail`] has it; a
+/// hyphen inside a line is the author's, as there, since the run after must be on another line.
+/// **Drawn after the word**: where no stretch read right to left holds both, the hyphen abuts the
+/// word by [`ink_contiguous`] and its advance ends past the word's, which refuses a hyphen drawn
+/// back over the word, since no producer's own sequence declares the order of two runs it set
+/// apart. Not [`ink_sequenced`]: its reach needs a glyph measured twice in the word's face and
+/// bounds overlap at one glyph, and ParseBench-2 breaks both — `manu` in a face drawn once
+/// (`deloitte-2025-global-automotive-consumer-study-january-2025_p17`), and a hyphen set 475
+/// centipoints inside a justified letter's advance (`text_multicolumns__simple2col2`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lone_hyphen_tail<'a>(
     prev: Option<&crate::Node>,
@@ -2018,14 +2026,24 @@ pub(crate) fn lone_hyphen_tail<'a>(
     stretches: &Stretches<'_>,
     pitch: &PitchReference,
 ) -> Option<(&'a crate::Node, String)> {
-    let prev = prev.filter(|_| text == "-" && !pending_space)?;
+    let prev = prev.filter(|_| {
+        text == "-" && !pending_space && !node.reading_text().starts_with(char::is_whitespace)
+    })?;
+    let end = |n: &crate::Node| {
+        let l = n.native_locator.run_locator()?;
+        Some(l.origin_x + l.advance?)
+    };
     if prev.parent != node.parent
-        || is_page_artifact(prev) != is_page_artifact(node)
+        || is_furniture(prev) != is_furniture(node)
         || region_of(prev) != region_of(node)
         || on_different_lines(prev, node)
         || !prev.reading_text().ends_with(char::is_alphabetic)
-        || !read_together(stretches, prev, node)
-            .unwrap_or_else(|| ink_contiguous(prev, node, pitch))
+        || !read_together(stretches, prev, node).unwrap_or_else(|| {
+            ink_contiguous(prev, node, pitch)
+                && end(prev)
+                    .zip(end(node))
+                    .is_some_and(|(word, hyphen)| hyphen > word)
+        })
     {
         return None;
     }
@@ -2647,6 +2665,14 @@ pub(crate) fn is_page_artifact(node: &crate::Node) -> bool {
         node.structural_locator,
         Some(crate::StructuralLocator::PdfArtifact(_))
     )
+}
+
+/// [`is_page_artifact`], or a run the reader found to be a page's header or footer
+/// ([`crate::TextRunAttributes::furniture`]): the boundary a hyphen join may not cross, from body
+/// text into either or back. Kept to the join, where [`is_page_artifact`]'s other readers each say
+/// for themselves what a found header means to them.
+fn is_furniture(node: &crate::Node) -> bool {
+    is_page_artifact(node) || text_run_attributes(node).is_some_and(|a| a.furniture.is_some())
 }
 
 /// The reading-order region a run landed in, or `None` for a node that has none (D4-S3).
@@ -5075,9 +5101,13 @@ pub(crate) fn markdown_of(
         // block, so `hyphen_tail` can close the word up. Joining it into the block above instead
         // would strand the tail and re-open `nonescr` from the other side.
         let next = payload.nodes.get(i + 1);
+        // An item a marker opens (decision #138) is a block of its own, not a word's tail.
         let next = next.filter(|n| {
             let id = n.id.as_str();
-            !overprinted.contains(id) && !furniture.contains(id) && !flagged.contains(id)
+            !overprinted.contains(id)
+                && !furniture.contains(id)
+                && !flagged.contains(id)
+                && !items.contains_key(id)
         });
         let ht = hyphen_tail(node, &text, next, &owner);
         let key = group_key(node);
@@ -6933,6 +6963,17 @@ pub(crate) mod tests {
         ("s fit the data.", 80, 150, 65, 1),
     ];
 
+    /// A line's last hyphen as a run of its own, then items whose lower-case markers are runs of
+    /// their own: the next line opens an item where lists are inferred, and is no word's tail.
+    pub(crate) const LONE_HYPHEN_ITEMS: &[(&str, i64, i64, i64, u32)] = &[
+        ("the observer mod", 72, 140, 50, 1),
+        ("-", 140, 143, 50, 1),
+        ("a)", 72, 80, 65, 2),
+        ("first", 85, 110, 65, 2),
+        ("b)", 72, 80, 80, 3),
+        ("second", 85, 115, 80, 3),
+    ];
+
     /// [`LONE_HYPHEN`]'s sequences as a producer sets them: a line, its hyphen, the next line.
     pub(crate) const LONE_HYPHEN_MCIDS: &[i64] = &[1, 2, 3, 3];
 
@@ -6972,16 +7013,39 @@ pub(crate) mod tests {
             artifact_of(struck).markdown,
             "~~the observer models fit the data.~~\n"
         );
+        // The word in a face the page draws no other run in, so none of its glyphs is measured.
+        let mut once = lone_hyphen_lines(LONE_HYPHEN, &[]).payload().clone();
+        if let NodeAttributes::TextRun(a) = &mut once.nodes[0].attributes {
+            a.font_id = "F2".into();
+        }
+        let geometry = lone_hyphen_lines(LONE_HYPHEN, &[]).geometry().to_vec();
+        let once = DocumentRepresentation::seal(once, geometry).unwrap();
+        // The hyphen set back inside the word's advance, deeper than a glyph, as a justified line
+        // pads a letter's advance past where its ink ends, and reaching past it.
+        let padded = unit_lines(&[
+            ("the observer mod", 72, 140, 50, 1),
+            ("-", 133, 141, 50, 1),
+            ("el", 72, 80, 65, 1),
+            ("s fit the data.", 80, 150, 65, 1),
+        ]);
+        for (what, repr) in [("measured once", once), ("padded", padded)] {
+            assert_eq!(
+                artifact_of(repr).markdown,
+                "the observer models fit the data.\n",
+                "{what}"
+            );
+        }
     }
 
     /// A hyphen run that ends no line's word stays where the page drew it: after a space drawn
     /// in the run or as one, past a gap, inside a line, opening a line, before a number, before a
     /// capital, inside a URL, an email or a `www.` address, after a word holding a hyphen or in
-    /// capitals, and before a tail struck or underlined where the hyphen is not; a letter run is
-    /// no hyphen.
+    /// capitals, before a tail struck or underlined where the hyphen is not, drawn with its space
+    /// in its own run, and drawn back along its line over the word or over its last glyph; a letter
+    /// run is no hyphen.
     #[test]
     fn a_hyphen_run_that_breaks_no_word_stays() {
-        let cases: [&[UnitLine]; 13] = [
+        let cases: [&[UnitLine]; 16] = [
             &[
                 ("observer mod ", 72, 134, 50, 1),
                 ("-", 134, 137, 50, 1),
@@ -7048,6 +7112,21 @@ pub(crate) mod tests {
                 ("-", 132, 135, 50, 1),
                 ("deposited films", 72, 150, 65, 1),
             ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                (" -", 132, 137, 50, 1),
+                ("el applied", 72, 120, 65, 1),
+            ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                ("-", 72, 75, 50, 1),
+                ("el applied", 72, 120, 65, 1),
+            ],
+            &[
+                ("observer mod", 72, 132, 50, 1),
+                ("-", 129, 132, 50, 1),
+                ("el applied", 72, 120, 65, 1),
+            ],
         ];
         // Each case in sequences and in none, then the tail struck through and underlined.
         let mut reprs: Vec<_> = cases
@@ -7078,15 +7157,35 @@ pub(crate) mod tests {
         }
     }
 
+    /// `repr` with the runs at `footer` flagged as a footer the reader found
+    /// ([`crate::TextRunAttributes::furniture`]).
+    fn as_footer(repr: &DocumentRepresentation, footer: &[usize]) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for (i, node) in payload.nodes.iter_mut().enumerate() {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.furniture = footer.contains(&i).then_some(crate::Furniture::Footer);
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
     /// Nor across a block boundary: out of a heading, across a column, or between page furniture
-    /// and body text.
+    /// — marked by the page or found by the reader — and body text, where a hyphen in its word's
+    /// run does not join either.
     #[test]
     fn a_hyphen_run_does_not_join_across_a_block_boundary() {
         let repr = lone_hyphen_lines(LONE_HYPHEN, LONE_HYPHEN_MCIDS);
+        let in_run = unit_lines(&[
+            ("Rates may be recalcu-", 72, 160, 50, 1),
+            ("lated each year.", 72, 140, 65, 1),
+        ]);
         for (what, repr) in [
             ("heading", with_inferred_headings(repr.clone(), &[0])),
             ("column", in_regions(&repr, &[1, 2, 2, 2])),
             ("furniture", mark_artifact(&repr, 0)),
+            ("found footer", as_footer(&repr, &[2, 3])),
+            ("found footer before", as_footer(&repr, &[0])),
+            ("found footer, in its run", as_footer(&in_run, &[1])),
         ] {
             let a = artifact_of(repr);
             assert!(
@@ -7119,6 +7218,17 @@ pub(crate) mod tests {
                 .iter()
                 .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
             "item: {:?}",
+            a.markdown
+        );
+        // Nor into a list item it would open: `a)` in lower case is an item's marker.
+        let a = artifact_with(&unit_lines(LONE_HYPHEN_ITEMS), INFER_LISTS);
+        assert!(a.markdown.contains("- a) first"), "{:?}", a.markdown);
+        assert!(
+            a.coverage
+                .dropped
+                .iter()
+                .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+            "lettered: {:?}",
             a.markdown
         );
     }

@@ -40,9 +40,15 @@ opendataloader-bench `01030000000001` read `mod` / `-` / `el`, each half a block
 close such a word up, as they already close one whose hyphen ends the run with its letters, and the
 hyphen is counted in `hyphenation-rejoin-dropped-v1` as that one is.
 
-- The hyphen meets the letter before it on its line with no space drawn between, and the run after
-  it opens the next line in lower case and passes every clause the same-run rule has: same page,
-  same column, and no heading, list item, cell or page furniture on either side.
+- The hyphen meets the letter before it on its line with no space drawn between, in its own run or
+  before it, and its ink ends past the word's, so a hyphen drawn back over the word stays. The run
+  after it opens the next line in lower case and passes every clause the same-run rule has: same
+  page, same column, and no heading, list item, cell or page furniture on either side.
+- Review fixes (CodeRabbit, PR #55): both rules now take a header or footer the reader found on an
+  untagged page for page furniture, as they took one the page marks. The same-run rule had joined a
+  line's last word onto the running foot below it: opendataloader-bench `01030000000017` read
+  `nipart iv:`, ParseBench-2 `text_multicolumns__delays` `insurJul y 2000`. And where lists are
+  inferred, an item a marker opens is no word's tail.
 - It stays where the word before it holds a `/`, an `@`, `www.` or a hyphen already — an address or
   a slug broken at its own characters, or a compound — or has no lower-case letter (`HWCVD-` /
   `deposited`, `X-` / `ray`), and where the run after it is struck through, underlined, bold or
