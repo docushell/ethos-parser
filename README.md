@@ -75,7 +75,8 @@ LangChain tools behind an optional install: see [`packages/python/`](packages/py
 - **Nothing invented.** The engine never makes up a table cell, a coordinate, an id or a page
   number. A `.docx` has no pages, so it gets no page number rather than a guessed one.
 - **Deterministic.** There are no floating-point numbers in the JSON it writes. A release ships
-  only when the Linux, macOS and Windows binaries write identical bytes for the gate documents.
+  only when the Linux, macOS and Windows binaries write identical bytes for the gate documents:
+  eight public PDFs kept in [`fixtures/gate/`](fixtures/gate/).
 - **Offline.** The engine and `--ocr` make no network calls and send no telemetry. The engine uses
   no AI model; `--ocr`'s neural networks are built into `ethos-parser-ocr`, so nothing is
   downloaded. The one exception is opt-in: the assist lane talks to a model server you name.
@@ -128,7 +129,7 @@ The ranked tables, each benchmark's pinned commit and how to reproduce every num
 | `overlay` | An annotated copy of the PDF: what was found, and a count of what has no box |
 | `ground` | A record turned into `ethos.grounding.v1`, the citation format |
 | `grounding-check` | Checks a grounding file's structure and its link to the source bytes |
-| `verify` | Hands a citation check to the pinned Ethos verifier and relays its answer |
+| `verify` | Hands a citation check to the pinned [Ethos](https://github.com/docushell/ethos) verifier, a separate program, and relays its answer |
 | `tag` | A copy of an untagged PDF with a structure tree written in, marked as computed |
 | `mcp` | `extract`, `ground`, `node_get`, `locate` and `markdown` served to an agent over stdio |
 
@@ -174,8 +175,10 @@ not a citation.**
 
 **`--ocr`** runs the recognizer in `ethos-parser-ocr` on your machine: PP-OCRv5's detection and
 recognition networks and an orientation classifier, built into the binary. It reads scanned pages,
-PNG and JPEG, and stands a sideways or upside-down scan upright first. On x86-64 it
-needs AVX2 and FMA. Scope: [`docs/35-OCR-SCOPE.md`](docs/35-OCR-SCOPE.md).
+PNG and JPEG, and stands a sideways or upside-down scan upright first. It reads English only: its
+recognition model and alphabet are PP-OCRv5's English ones, so text in another script, such as
+Chinese, Arabic or Cyrillic, is not read correctly. On x86-64 it needs AVX2 and FMA. Scope:
+[`docs/35-OCR-SCOPE.md`](docs/35-OCR-SCOPE.md).
 
 **The assist lane** is opt-in. A model server you run reads the pages you choose. Its text reaches
 Markdown and HTML inside a block labelled *Proposed*, never as evidence and never citable. No assist
@@ -199,6 +202,14 @@ The full inventory of what this build can and cannot do is [`docs/CAPABILITY.md`
 cargo test --workspace --locked   # nothing skipped; the oracle test needs the Ethos repo
 bash ci/gate.sh                   # the whole gate, exactly as CI runs it
 ```
+
+The oracle test treats Ethos as the reference answer: it runs Ethos's own `ethos grounding check`
+beside this engine's `grounding-check` on Ethos's 15 conformance fixtures, and requires the two to
+agree. It needs a release build of the
+Ethos repo checked out beside this one, at `../ethos`, or `ETHOS_BIN` and `ETHOS_FIXTURES` naming
+its binary and its `fixtures/` directory. The gate, `ci/gate.sh`, runs the checks of CI's main job
+on your machine: banned-word scans, version strings, formatting, lint, build, tests, licences, the
+SDK suites, the recognizer and the assist binary.
 
 Every commit needs a `Signed-off-by` trailer. Run `git config core.hooksPath .githooks` once and
 the tracked hooks add and check it. Start with [`docs/README.md`](docs/README.md).

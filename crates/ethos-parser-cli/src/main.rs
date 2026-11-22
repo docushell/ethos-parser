@@ -57,7 +57,8 @@ use ethos_parser_pdf::Document;
 #[derive(Parser)]
 #[command(
     name = "ethos-parser",
-    about = "Deterministic PDF classification, and evidence extraction from documents and scans",
+    about = "Deterministic document parsing: PDFs, office files and scans into JSON, Markdown and \
+             HTML, each extracted character traced to its source",
     long_about = None,
     version
 )]
@@ -108,23 +109,21 @@ enum Command {
     /// is refused with exit 2 and no artifact.
     Ground(GroundArgs),
 
-    /// Project a `DocumentRepresentation v0` into `ethos.markdown.v1` (v1.1-S1).
+    /// Project a `DocumentRepresentation v0` into `ethos.markdown.v1`.
     ///
     /// **Markdown and its Anchor Map, always together.** They are fields of one artifact, not two
     /// files, so there is no `--md-only` and no way for a caller to end up with a Markdown string
-    /// whose bytes cannot be inverted back to evidence. MCP's `markdown` tool is the one exception,
-    /// by decision #36: it hands a model the string alone, to read, and a quote taken from it binds
-    /// through `locate` instead. `docs/01-CONTRACT.md` §12 refused a
-    /// Markdown projection for the whole of v1 on Workbench rule 8 — a projection between what a
-    /// retriever ranks and what a citation binds is where a locator dies silently — and checklist
-    /// O8 records that the rule prefers no projection at all to one without the map. This
-    /// subcommand exists because the map makes the objection payable, not because it lapsed.
+    /// whose bytes cannot be traced back to evidence. MCP's `markdown` tool is the one exception:
+    /// it hands a model the string alone, to read, and a quote taken from it binds through
+    /// `locate` instead. The map is required because a projection between what a retriever ranks
+    /// and what a citation binds is where a locator is lost without anyone noticing, so this engine
+    /// writes no Markdown without one (`docs/01-CONTRACT.md` §12).
     ///
     /// stdout is canonical JSON. A consumer that wants a `.md` file writes
     /// `.markdown` out itself, and owns the fact that doing so discards the map.
     ///
-    /// **A record holding a drafting model's replies** (`extract --assist-answers`, decision
-    /// #147): a page where the engine read under 30% of the words the model's blocks would write
+    /// **A record holding a drafting model's replies** (`extract --assist-answers`): a page where
+    /// the engine read under 30% of the words the model's blocks would write
     /// is written as the model read it, in place of the engine's runs; on every other page the
     /// model's tables and charts are added where they stand on the page, and one equal to an
     /// engine table it overlaps is left out. Each insertion is one block quote, opening `>
@@ -144,7 +143,7 @@ enum Command {
     /// its declared digest.
     Markdown(MarkdownArgs),
 
-    /// Project a `DocumentRepresentation v0` into `ethos.html.v1` (v1.1-S4).
+    /// Project a `DocumentRepresentation v0` into `ethos.html.v1`.
     ///
     /// **HTML and its Anchor Map, always together**, on exactly the discipline `markdown` runs
     /// under: one artifact, the same segment kinds, a map that tiles every byte, and a census that
@@ -159,8 +158,8 @@ enum Command {
     /// stdout is canonical JSON. A consumer that wants an `.html` file writes `.html` out itself,
     /// and owns the fact that doing so discards the map.
     ///
-    /// **A record holding a drafting model's replies** is projected as `markdown` projects it
-    /// (decision #147), each page or table the model proposed inside one `<blockquote
+    /// **A record holding a drafting model's replies** is projected as `markdown` projects it,
+    /// each page or table the model proposed inside one `<blockquote
     /// class="ethos-proposed" data-derivation="proposed" data-model="ID"
     /// data-model-version="VERSION">` opening with a `<p>` that says so and closing with `<p>`
     /// **End of proposed text.**, the model's blocks between in a `<blockquote>` of their own, its
@@ -172,7 +171,7 @@ enum Command {
     /// its declared digest.
     Html(HtmlArgs),
 
-    /// Report where a string lies in a `DocumentRepresentation v0` (v2.3, decision #30).
+    /// Report where a string lies in a `DocumentRepresentation v0`.
     ///
     /// **It answers where, and nothing else.** No verdict, no boolean, no score and no evidence
     /// tier: a string that occurs nowhere is exit 0 with an empty `occurrences` array, the same
@@ -189,28 +188,25 @@ enum Command {
     /// exactly that reason.
     ///
     /// **Exit codes: 0 answered · 2 could not read or refused. There is no exit 1, ever.** An
-    /// exit 1 meaning *not found* is one composition away from a verdict, which is decision #30's
-    /// own re-refusal condition, and `extract`'s doc comment gives the other half of the reason:
-    /// overloading 1 would make a caller's `&&` chain mean two different things depending on
-    /// which subcommand ran.
+    /// exit 1 meaning *not found* would be one step from a verdict, which this subcommand never
+    /// gives. And, as `extract --help` says, overloading 1 would make a caller's `&&` chain mean
+    /// two different things depending on which subcommand ran.
     Locate(LocateArgs),
 
-    /// Project a `DocumentRepresentation v0` into `ethos.parser.elements.v0` (decision #137).
+    /// Project a `DocumentRepresentation v0` into `ethos.parser.elements.v0`.
     ///
     /// **One flat list of the document's items**, each with its page, its box, its text, the node
     /// ids it covers and a label the record states: `text`, `section-header`, `page-header`,
     /// `page-footer`, `caption`, `list-item`, `table` (with its grid), `picture` or `form-field`
-    /// (with its name, label, type,
-    /// value and a check box's state, and no box: a field's declared rectangle is not a measured
-    /// one; decision #163). No label is inferred here: a heading is
-    /// a tagged one or one the reader inferred from its type, as Markdown writes it with `#`; a
-    /// header or footer is the reader's page furniture; a `caption` and a `list-item` are roles the
-    /// document tagged, or a DOCX paragraph's declared numbering (decision #166). A DOCX
-    /// paragraph is one element. Boxes are integer centipoints from the top-left of the page; a
-    /// source with no pages has neither pages nor boxes. A table the next page goes on with is
-    /// one `table` element on its first page (decision #142): the next page's rows follow its
-    /// own, each of their cells carries its own `page` and box, and `continued` names the table
-    /// records joined in.
+    /// (with its name, label, type, value and a check box's state, and no box: a field's declared
+    /// rectangle is not a measured one). No label is inferred here: a heading is a tagged one or
+    /// one the reader inferred from its type, as Markdown writes it with `#`; a header or footer
+    /// is the reader's page furniture; a `caption` and a `list-item` are roles the document
+    /// tagged, or a DOCX paragraph's declared numbering. A DOCX paragraph is one element. Boxes
+    /// are integer centipoints from the top-left of the page; a source with no pages has neither
+    /// pages nor boxes. A table the next page goes on with is one `table` element on its first
+    /// page: the next page's rows follow its own, each of their cells carries its own `page` and
+    /// box, and `continued` names the table records joined in.
     ///
     /// **Nothing is dropped silently**: a node no element carries — a run with no measured box, an
     /// annotation — is listed under `omitted` with its reason, and one line on stderr counts them.
@@ -222,7 +218,7 @@ enum Command {
     /// its declared digest.
     Elements(ElementsArgs),
 
-    /// Serve the engine over MCP on stdin/stdout (v1.2-S1).
+    /// Serve the engine over MCP on stdin/stdout.
     ///
     /// **stdio, newline-delimited JSON-RPC** — MCP's own stdio transport, so it is a pipe rather
     /// than a socket: no HTTP, no SSE, no TLS, no async runtime, and `deny.toml`'s network bans
@@ -231,14 +227,13 @@ enum Command {
     /// Five tools — `extract`, `ground`, `node_get`, `locate` and `markdown` — each calling the
     /// same library entry point the matching subcommand calls, so an artifact returned here is the
     /// artifact this CLI prints, byte for byte. `markdown` returns no artifact: only the text of
-    /// the one `markdown` prints, for a model to read (decision #36).
+    /// the one `markdown` prints, for a model to read.
     ///
-    /// **No tool accepts a locator.** The memo's §16.7 hazard is that MCP tools are
-    /// model-controlled, so a tool taking a `page` or a `bbox` the engine then trusts makes the
-    /// model the citation authority in one step. Every locator is minted by the engine inside an
-    /// artifact, travels back as an opaque handle, and is re-validated against that artifact on
-    /// the way in — a handle this engine did not mint is an error, never a best guess. See
-    /// `docs/history/12-V12-SCOPE.md` §3.
+    /// **No tool accepts a locator.** MCP tools are model-controlled, so a tool taking a `page` or
+    /// a `bbox` the engine then trusts would make the model the citation authority in one step.
+    /// Every locator is minted by the engine inside an artifact, travels back as an opaque handle,
+    /// and is re-validated against that artifact on the way in — a handle this engine did not
+    /// mint is an error, never a best guess. See `docs/history/12-V12-SCOPE.md` §3.
     ///
     /// **Each request is answered by a process of its own**, running this binary, so a call's
     /// memory goes back to the system when its answer is out, and a call that aborts fails alone.
@@ -246,7 +241,7 @@ enum Command {
     /// Exit codes: **0** the stream closed cleanly · **2** stdin or stdout failed.
     Mcp(McpArgs),
 
-    /// Draw what was detected onto a copy of the document (v1-S6).
+    /// Draw what was detected onto a copy of the document.
     ///
     /// Emits a PDF — **the one subcommand whose stdout is not canonical JSON** — carrying an
     /// annotation over every table box, image placement and flagged run the extract found, plus a
@@ -260,7 +255,7 @@ enum Command {
     /// Exit codes: **0** the overlay was written · **2** the document could not be read.
     Overlay(OverlayArgs),
 
-    /// Write this engine's own structure tree into a copy of an untagged PDF (auto-tagging S2).
+    /// Write this engine's own structure tree into a copy of an untagged PDF.
     ///
     /// Emits a PDF — the second subcommand, after `overlay`, whose stdout is not canonical JSON,
     /// and the only one whose output is a document rather than an artifact — carrying one
@@ -291,13 +286,14 @@ enum Command {
     /// The engine validates; it never verifies (`docs/07-VERIFY-BOUNDARY.md`).
     ///
     /// Exit codes: **0** valid (and matched, or not checked) · **1** invalid structure, or a
-    /// source that does not bind · **2** the input could not be read at all. Ethos returns 2 for
-    /// both of the last two; the engine keeps them apart, because a caller that cannot tell a
-    /// failing check from an unreadable file is the defect this project refuses. Both agree on
-    /// zero versus non-zero, which is what a shell predicate reads.
+    /// source that does not bind · **2** the input could not be read at all. The Ethos verifier's
+    /// own `ethos grounding check` returns 2 for both of the last two; the engine keeps them
+    /// apart, because a caller that cannot tell a failing check from an unreadable file is the
+    /// defect this project refuses. Both agree on zero versus non-zero, which is what a shell
+    /// predicate reads.
     GroundingCheck(GroundingCheckArgs),
 
-    /// Relay a citation-verification run to the pinned Ethos CLI.
+    /// Relay a citation-verification run to the Ethos verifier, a separate program.
     ///
     /// **The engine does not verify — it invokes a verifier** (`docs/07-VERIFY-BOUNDARY.md`
     /// Stage 1). This spawns `ethos verify`, forwards its report bytes to stdout **verbatim**,
@@ -310,9 +306,11 @@ enum Command {
     /// and it is kept apart from 1 for the reason the other subcommands keep it apart: a caller
     /// must be able to tell "the check failed" from "the check did not run".
     ///
-    /// The verifier is located the way the oracle harness locates it: `ETHOS_BIN` first and
-    /// authoritatively, then the sibling repo build, then `PATH`. Absence is a named error,
-    /// never a skip and never a default-pass.
+    /// The verifier is the binary `ETHOS_BIN` names, or else `ethos` on `PATH`; never one found
+    /// relative to the working directory. `ETHOS_BIN` is authoritative: set to something that is
+    /// not a file, it is an error, not a fallback. The binary is pinned by its version and SHA-256
+    /// before it runs, and one that will not report its version is not used. Absence is a named
+    /// error, never a skip and never a default-pass.
     Verify(VerifyArgs),
 }
 
@@ -337,14 +335,12 @@ struct ExtractArgs {
 
     /// Process at most N pages; the rest are quarantined and declared. Unbounded by default.
     ///
-    /// **This is the only bound a caller has on how much memory one extract costs**, and until
-    /// v2-S15 there was none. Peak resident memory tracks PAGE COUNT rather than file size —
-    /// 3.0 to 6.8 MiB per page across the gate corpus at 0.58.0. `nist-sp-800-171r3` is 120 pages
-    /// and 1.5 MB and peaks at 411 MiB; `nist-sp-800-37r2` is 1.4x the file at 2.2 MB but 1.5x
-    /// the pages, and peaks at 915 MiB — 2.2x. Every page's extract is retained because it IS the
-    /// artifact, so the only thing that bounds the cost is admitting fewer pages. A host handing
-    /// this untrusted input could not previously do that: `page_budget` defaults to `Unlimited`
-    /// and nothing on this command could lower it.
+    /// **This is the only bound a caller has on how much memory one extract costs.** Peak resident
+    /// memory tracks PAGE COUNT rather than file size — 3.0 to 6.8 MiB per page across the gate
+    /// corpus (the eight public PDFs in `fixtures/gate/`) at 0.58.0. `nist-sp-800-171r3` is 120
+    /// pages and 1.5 MB and peaks at 411 MiB; `nist-sp-800-37r2` is 1.4x the file at 2.2 MB but
+    /// 1.5x the pages, and peaks at 915 MiB — 2.2x. Every page's extract is retained because it IS
+    /// the artifact, so the only thing that bounds the cost is admitting fewer pages.
     ///
     /// **It does not bound everything.** `--max-pages 0` on a 733-page document still costs
     /// 221 MiB. Measured at 0.58.0, 193 MiB of that is the source bytes and the parsed object
@@ -356,11 +352,11 @@ struct ExtractArgs {
     /// by 12.9% on its full extract; and by 15% to 129% on every other document's. Readings and
     /// instruments: `docs/measurements/memory-ceiling/` §15. A document built to cost more than
     /// its pages is refused by name first: a page may hold 1,048,576 content operations and 64 MiB
-    /// of decoded content, and dense pages are read one at a time (§17, decision #34).
+    /// of decoded content, and dense pages are read one at a time (§17).
     ///
     /// The pages left out are not silently dropped. Each is quarantined with
-    /// `resource_limit_pages` and the artifact declares the limitation, which is the same
-    /// machinery `PageBudget::AtMost` has always driven — this flag only lets a caller reach it.
+    /// `resource_limit_pages` and the artifact declares the limitation, through the same
+    /// machinery `PageBudget::AtMost` drives in the library.
     ///
     /// Changing this changes `profile_sha256`, exactly as `classify --sample-pages` does, so a
     /// bounded artifact and an unbounded one are correctly non-comparable rather than quietly
@@ -377,14 +373,14 @@ struct ExtractArgs {
     /// of derivation `recognized`, under the OCR profile, so the artifact's `profile_sha256`
     /// differs from one made without it (`docs/35-OCR-SCOPE.md`). Pages that show text are read as
     /// they always are; nothing recognized is ever merged with them. A PNG or JPEG file is read as
-    /// one page, its own pixel grid.
+    /// one page, its own pixel grid. The recognizer reads English only.
     #[arg(long)]
     ocr: bool,
 
     /// Attach a drafting model's replies to the record, read from FILE: its blocks, under the
     /// `assist` key, each of derivation `proposed` — a model's text, never evidence, and never a
     /// node — under a profile pinning the model, so the record's `profile_sha256` differs from one
-    /// made without it (decision #145). The output is a function of the PDF and FILE alone. FILE
+    /// made without it. The output is a function of the PDF and FILE alone. FILE
     /// is refused by name where it does not answer this PDF: another source digest, renderer,
     /// request, model or page; a model id that is a file path or names this engine; over 64 MiB,
     /// or a reply over 2,048 block markers. A reply to a page `--max-pages` cut is left out, and
@@ -399,8 +395,8 @@ struct ExtractArgs {
     assist_model: Option<String>,
 
     /// Ask the model server at SERVER (an `http://` or `https://` address of an OpenAI-compatible
-    /// server) to read this PDF's pages, then attach its replies as `--assist-answers FILE` does
-    /// (decision #149). The asking is done by `ethos-parser-assist` (beside this binary, or named
+    /// server) to read this PDF's pages, then attach its replies as `--assist-answers FILE` does.
+    /// The asking is done by `ethos-parser-assist` (beside this binary, or named
     /// by `ETHOS_PARSER_ASSIST`), which renders each page, sends it, and writes FILE after each
     /// one, so a stopped run resumes where it stopped; this binary opens no connection. FILE is
     /// then read back, so the output is a function of the PDF and FILE alone: a later
@@ -419,7 +415,7 @@ struct ExtractArgs {
 
     /// The pages `--assist` asks for. `trigger`, the default, asks for each page where the record
     /// shows a scan, under 20 distinct words, a figure, a table, a picture covering a quarter of
-    /// the visible page or more, or U+FFFD in a run (decision #150); `all` asks for every page
+    /// the visible page or more, or U+FFFD in a run; `all` asks for every page
     /// the record lists; a LIST of page numbers in digits, as `1,3,7`, for those pages. A page the
     /// record does not list, as one `--max-pages` cut, is never asked, and stderr counts it.
     #[arg(long, value_name = "trigger|all|LIST", requires = "assist", value_parser = assist_pages)]
@@ -499,7 +495,8 @@ struct GroundingCheckArgs {
     ///
     /// Supplying it turns `source_binding` from `not_checked` into `matched` or `mismatched`.
     /// Omitting it is not a pass — it is a question that was not asked. Named to match the Ethos
-    /// CLI so the oracle harness reads the same either way.
+    /// verifier's `ethos grounding check`, so one command line serves both: this project's oracle
+    /// test runs the two checkers on the same files and requires the same answer.
     #[arg(long, value_name = "PDF")]
     source_artifact: Option<PathBuf>,
 }
@@ -547,7 +544,7 @@ struct HtmlArgs {
     drop_furniture: bool,
 
     /// Keep a table's header row that the next page repeats as a row of the joined table, as
-    /// `markdown --keep-repeated-header` does (decision #151).
+    /// `markdown --keep-repeated-header` does.
     #[arg(long)]
     keep_repeated_header: bool,
 
@@ -560,8 +557,7 @@ struct HtmlArgs {
     #[arg(long)]
     drop_hidden: bool,
 
-    /// Write the text without the elements for its style, counted, as `markdown --unstyled` does
-    /// (decision #158).
+    /// Write the text without the elements for its style, counted, as `markdown --unstyled` does.
     #[arg(long)]
     unstyled: bool,
 }
@@ -607,24 +603,24 @@ struct MarkdownArgs {
     /// repeats on the same side and across the same place, numbers read alike. A running head
     /// and a folio go, a whole line at a time; a numbered chapter title at the top of each
     /// chapter's page goes too. A Word document's header and footer parts go whole, their tables
-    /// with them (decision #136) — so a resume whose name sits only in its page header loses it. Counted under the census bucket `page-furniture-not-projected-v1`; the
-    /// representation keeps every run (decision #134).
+    /// with them — so a resume whose name sits only in its page header loses it. Counted under
+    /// the census bucket `page-furniture-not-projected-v1`; the representation keeps every run.
     #[arg(long)]
     drop_furniture: bool,
 
     /// Keep a table's header row that the next page repeats, where the table goes on there as
-    /// one (decision #142), as a row of the joined table. By default it is left out, as a reader
-    /// skips it, counted under `repeated-table-header-not-projected-v1`; the representation keeps
-    /// it (decision #151). Wins over `--drop-furniture`.
+    /// one, as a row of the joined table. By default it is left out, as a reader skips it,
+    /// counted under `repeated-table-header-not-projected-v1`; the representation keeps it. Wins
+    /// over `--drop-furniture`.
     #[arg(long)]
     keep_repeated_header: bool,
 
     /// On a document that declares no author structure (an untagged PDF), write a list item for
     /// each layout unit opening with a list marker — a bullet, or a number or a letter closed by
     /// `.` or `)` — two or more in a row, with the marker kept as the page drew it after `- `,
-    /// nested by where the marker stands. An inferred heading stays a heading. Inferred, not declared: counted under
-    /// the census code `list-items-inferred-from-markers-v1`, and the representation is unchanged
-    /// (decision #138).
+    /// nested by where the marker stands. An inferred heading stays a heading. Inferred, not
+    /// declared: counted under the census code `list-items-inferred-from-markers-v1`, and the
+    /// representation is unchanged.
     #[arg(long)]
     infer_lists: bool,
     /// Leave out every run the reader flagged with a finding: drawn invisible (`Tr 3`, or `Tr 7`
@@ -634,7 +630,7 @@ struct MarkdownArgs {
     /// an off-page line goes only where its box is known and misses the visible page (a line
     /// crossing the media box's edge has none, and stays). Counted under the
     /// census bucket `flagged-text-not-projected-v1`; the representation keeps every run and its
-    /// findings (decision #139).
+    /// findings.
     #[arg(long)]
     drop_hidden: bool,
 
@@ -642,9 +638,9 @@ struct MarkdownArgs {
     /// `<sup>` or `<sub>`. The text, headings, lists and tables are as without it, and every
     /// source segment is the one the styled text has, so each byte keeps its anchor. For a reader
     /// that compares text and has no use for its look. Counted under the census code
-    /// `inline-styles-not-written-v1`, once per run a mark would have marked (decision #158).
-    /// A styled run opening a line with `#`, `>`, `-` or `1.` reads as block syntax without its
-    /// marks, as a plain run does
+    /// `inline-styles-not-written-v1`, once per run a mark would have marked. A styled run
+    /// opening a line with `#`, `>`, `-` or `1.` reads as block syntax without its marks, as a
+    /// plain run does.
     #[arg(long)]
     unstyled: bool,
 }

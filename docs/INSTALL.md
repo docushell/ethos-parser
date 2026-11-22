@@ -10,7 +10,7 @@ Every GitHub Release from 0.61.0 on — 0.61.0, 0.64.0 and 0.65.0 so far; 0.62.0
 with no Release — has a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel), plus
 a `SHA256SUMS.txt`; the [CHANGELOG](../CHANGELOG.md) says what earlier releases carry.
 A release is assembled only when all four binaries print byte-identical artifacts over the gate
-documents.
+documents: eight public PDFs kept in [`fixtures/gate/`](../fixtures/gate/).
 
 From 0.66.0, each archive also carries two more binaries beside `ethos-parser`:
 
@@ -18,7 +18,8 @@ From 0.66.0, each archive also carries two more binaries beside `ethos-parser`:
 - `ethos-parser-assist`, the assist lane's own process.
 
 `ethos-parser-ocr` has its recognition networks built in (PP-OCRv5 and an orientation
-classifier; see `NOTICE`). No assist model ships: the assist lane asks a model server you run.
+classifier; see `NOTICE`). Its recognition model is PP-OCRv5's English one, so it reads English
+only. No assist model ships: the assist lane asks a model server you run.
 
 ## Platform requirements
 

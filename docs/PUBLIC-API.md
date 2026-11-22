@@ -40,35 +40,36 @@ the items re-exported at the crate root.
 
 | Module | Supported items |
 | --- | --- |
-| `assist` | `attach`, `AssistRecord`, `AssistModel`, `AssistPage`, `AssistOutcome`, `AssistBlock`, `ASSIST_ANSWERS_VERSION`, `ASSIST_RULE_V1`, `ASSIST_RENDERER`, `ASSIST_REQUEST_V1`, the budget `ASSIST_ANSWERS_MAX_BYTES` and `ASSIST_MAX_BLOCKS_PER_PAGE`, and the ten refusal names `ASSIST_ANSWERS_UNREADABLE`, `ASSIST_ANSWERS_OTHER_SOURCE`, `ASSIST_ANSWERS_OTHER_RENDERER`, `ASSIST_ANSWERS_OTHER_REQUEST`, `ASSIST_ANSWERS_OTHER_PAGE`, `ASSIST_ANSWERS_OTHER_MODEL`, `ASSIST_ANSWERS_MODEL_IS_PATH`, `ASSIST_ANSWERS_MODEL_IS_PROCESSOR`, `ASSIST_ANSWERS_OVER_BUDGET`, `ASSIST_BASE` — **new with decision #145**. A drafting model's replies file, checked against the record and read into `Proposed` blocks carried on `RepresentationPayload::assist` rather than as `Node`s: model text has no native locator, so it is uncitable by construction. `attach` reseals the record under `Profile::with_assist`. `AssistGuard`, `AssistFlag`, `AssistMark` (`Contradicted`, `Unsupported`, `Estimate`, `Disputed`) and `ASSIST_GUARD_V1`, and `AssistOutcome`'s `Truncated` and `Loop` — **new with decision #146**: what the engine's runs inside each block's box say of its lines, carried on `AssistBlock::guard`, and a capped reply's last block dropped; `AssistPin` gains `guard`. `assist_trigger` — **new with decision #150**: the pages of a sealed record a model is asked to read by default, where a scan, under 20 words, a figure, a table, a picture over a quarter of the visible page or U+FFFD is on the page |
+| `assist` | `attach`, `AssistRecord`, `AssistModel`, `AssistPage`, `AssistOutcome`, `AssistBlock`, `ASSIST_ANSWERS_VERSION`, `ASSIST_RULE_V1`, `ASSIST_RENDERER`, `ASSIST_REQUEST_V1`, the budget `ASSIST_ANSWERS_MAX_BYTES` and `ASSIST_MAX_BLOCKS_PER_PAGE`, and the ten refusal names `ASSIST_ANSWERS_UNREADABLE`, `ASSIST_ANSWERS_OTHER_SOURCE`, `ASSIST_ANSWERS_OTHER_RENDERER`, `ASSIST_ANSWERS_OTHER_REQUEST`, `ASSIST_ANSWERS_OTHER_PAGE`, `ASSIST_ANSWERS_OTHER_MODEL`, `ASSIST_ANSWERS_MODEL_IS_PATH`, `ASSIST_ANSWERS_MODEL_IS_PROCESSOR`, `ASSIST_ANSWERS_OVER_BUDGET`, `ASSIST_BASE`. A drafting model's replies file, checked against the record and read into `Proposed` blocks carried on `RepresentationPayload::assist` rather than as `Node`s: model text has no native locator, so it is uncitable by construction. `attach` reseals the record under `Profile::with_assist`. `AssistGuard`, `AssistFlag`, `AssistMark` (`Contradicted`, `Unsupported`, `Estimate`, `Disputed`) and `ASSIST_GUARD_V1`: what the engine's runs inside each block's box say of its lines, carried on `AssistBlock::guard`; `AssistPin`'s `guard` names that rule. `AssistOutcome`'s `Truncated` and `Loop`: a reply the server cut at its token cap, whose cut last block is dropped, and one whose cut last block ends in a loop, dropped too. `assist_trigger`: the pages of a sealed record a model is asked to read by default, where a scan, under 20 words, a figure, a table, a picture over a quarter of the visible page or U+FFFD is on the page. The whole module is added in 0.66.0 |
 | `c14n` | `c14n_bytes`, `canonical_bytes_of`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit`. `ArtifactIdentity::deserialize_pinned` is how an artifact's own `Deserialize` refuses a type or version it does not read (§8) |
-| `html` | `to_html`, `to_html_with` (**new with decision #134**), `HtmlArtifact`, `HTML_ARTIFACT_TYPE`, `HTML_SCHEMA_VERSION`, `HTML_RULE_BLOCKS_V14` |
-| `markdown` | `to_markdown`, `to_markdown_with` and `ProjectionOptions` (**new with decision #134**: `to_markdown` and `to_html` with what the caller asks to leave out, counted; off by default, and off is the call without it byte for byte; its `infer_lists` field is **new with decision #138**: list items read from markers on a document that declares no structure, counted; `drop_flagged` **new with decision #139**; `keep_repeated_header` **new with decision #151**: a table's header row the next page repeats, left out of the joined table and counted by default, kept a row), `AnchorMap`, `Segment`, `SegmentKind`, `Coverage`, `DroppedBucket`, `StructuralErasure`, `MarkdownArtifact`, `MARKDOWN_ARTIFACT_TYPE`, `MARKDOWN_SCHEMA_VERSION`, `MARKDOWN_RULE_BLOCKS_V14`, `GFM_SPAN_SLOTS_UNREPRESENTABLE`, `GFM_ROW_ZERO_SEPARATOR`, `GFM_CELL_RUN_CLAIMED_TWICE`, `GFM_CELL_NOT_PLACED`, `GFM_TABLE_NOT_PROJECTED`, `GFM_LIST_ITEM_RUN_JOINS`, `MCID_RUN_JOINS`, `BASELINE_RUN_JOINS_ABUTTED`, `BASELINE_RUN_JOINS_SPACED`, `LAYOUT_UNIT_LINE_JOINS`, `HEADING_NUMBER_JOINS` (**new with decision #65**), `LAYOUT_UNIT_GAP_JOINS` (**new with decision #68**), `BLOCK_ELEMENT_RUN_JOINS` (**new with decision #84**), `HEADING_LEVEL_UNRESOLVED`, `HEADING_LEVEL_UNREPRESENTABLE` |
-| `locate` | `locate`, `Locations`, `Occurrence`, `OccurrencePart`, `OccurrencesWithheld`, `Searched`, `LOCATIONS_ARTIFACT_TYPE`, `LOCATIONS_SCHEMA_VERSION`, `LOCATE_RULE_V1`, `LOCATE_MAX_QUOTE_BYTES`, `LOCATE_MAX_OCCURRENCES` — **new at v2.3**. Where a string lies in a representation, and nothing else: no verdict, no score, and a string occurring nowhere is an empty answer rather than an error. The two ceilings are `ethos.grounding.v1`'s own, re-declared because this crate may not depend on the grounding crate and asserted equal by a test that can see both |
-| `elements` | `to_elements`, `Elements`, `Element`, `ElementLabel`, `ElementPage`, `ElementTable` (**`detection_rule` new with decision #165**), `ElementCell`, `ElementFormField` (**new with decision #163**: a form field's name, label, type, value and state, on the new `ElementLabel::FormField`; `OmissionReason::FormField` is gone), `Omitted`, `OmissionReason`, `ELEMENTS_ARTIFACT_TYPE`, `ELEMENTS_SCHEMA_VERSION`, `ELEMENTS_RULE_V1` — **new with decision #137**. A document's items as one flat list, each with its page, box, text, the node ids it covers and a label the record states (`text`, `section-header`, `page-header`, `page-footer`, `table`, `picture`, `form-field`, `caption`, `list-item`): the view ParseBench's adapter built in Python, with no rule of its own. The rule id is on the artifact, not the profile, so adding it moved no other artifact's `profile_sha256` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `RecognizerPin`, `RecognizerIdentity` (**new with decision #120**: which recognizer an OCR profile's runs come from, `Profile::ocr_v0` pinning it), `AssistPin` (**new with decision #145**: which drafting model an assisted record's blocks come from, `Profile::with_assist` pinning it; absent from every other profile), `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `READING_ORDER_RULE_V2`, `READING_ORDER_RULE_V3`, `READING_ORDER_RULE_V4` (**new with decision #32**), `READING_ORDER_RULE_V5` (**new with decision #133**), `OBSERVATION_RULE_V3`, `OBSERVATION_RULE_V4` (**new with page-observations-v4**), `OBSERVATION_RULE_V5` (**new with decision #139**: three new findings, and `invisible-render-mode` narrowed to mode-7 text with nothing painted through its clip), `TEXT_CODE_RULE_V2`, `TEXT_CODE_RULE_V3` (**new with decision #43**), `TEXT_CODE_RULE_V4` (**new with decision #44**), `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V3`, `DOCX_TEXT_CODE_RULE_V4` (both **new with decision #130**), `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V3`, `XLSX_TEXT_CODE_RULE_V4`, `TABLE_DETECTION_XLSX_SHEETS_V1`, `TABLE_DETECTION_PPTX_TBL_V1`, `OFFICE_TABLE_MAX_SLOTS` (the four **new with decision #135**: a worksheet's and a slide's tables, a number cell's format, the slot ceiling; `TableDetection` gains the optional `office`), `PPTX_READING_ORDER_RULE_V1`, `PPTX_TEXT_CODE_RULE_V3`, `ODT_READING_ORDER_RULE_V1`, `ODT_TEXT_CODE_RULE_V2`, `ODS_READING_ORDER_RULE_V1`, `ODS_TEXT_CODE_RULE_V2`, `ODP_READING_ORDER_RULE_V1`, `ODP_TEXT_CODE_RULE_V2`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V2`, `EPUB_READING_ORDER_RULE_V1`, `EPUB_TEXT_CODE_RULE_V2`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_V3`, `TABLE_DETECTION_V4`, `TABLE_DETECTION_V5`, `TABLE_DETECTION_V6`, `TABLE_DETECTION_V7` (**new with ruled-rects-v7**), `TABLE_DETECTION_V8` (**new with ruled-rects-v8**), `TABLE_DETECTION_V9` (**new with ruled-rects-v9**), `TABLE_DETECTION_V10` (**new with ruled-rects-v10**), `TABLE_DETECTION_V11` (**new with ruled-rects-v11**), `TABLE_DETECTION_V12` (**new with ruled-rects-v12**), `TABLE_DETECTION_V13` (**new with decision #70**), `TABLE_DETECTION_V14` (**new with decision #113**), `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `TABLE_DETECTION_STROKE_V2` (**new with decision #72**), `TABLE_DETECTION_TAGGED_V1`, `TABLE_DETECTION_TRACKS_V3`, `TABLE_DETECTION_TRACKS_V4` (**new with whitespace-tracks-v4**), `TABLE_DETECTION_TRACKS_V5` (**new with whitespace-tracks-v5**), `TABLE_DETECTION_TRACKS_V6` (**new with whitespace-tracks-v6**), `TABLE_DETECTION_TRACKS_V7` (**new with decision #49**), `TABLE_DETECTION_TRACKS_V8` (**new with decision #51**), `TABLE_DETECTION_TRACKS_V9` (**new with decision #52**), `TABLE_DETECTION_TRACKS_V10` (**new with decision #53**), `TABLE_DETECTION_TRACKS_V11` (**new with decision #55**), `TABLE_DETECTION_TRACKS_V12` (**new with decision #56**), `TABLE_DETECTION_TRACKS_V13` (**new with decision #58**), `TABLE_DETECTION_TRACKS_V14` (**new with decision #60**), `TABLE_DETECTION_TRACKS_V15` (**new with decision #69**), `TABLE_DETECTION_TRACKS_V16` (**new with decision #112**), `TABLE_DETECTION_CHARTS_V1` (**new with decision #42**), `TABLE_DETECTION_CHARTS_V2` (**new with decision #57**), `TABLE_DETECTION_CHARTS_V3` (**new with decision #66**), `TABLE_DETECTION_LINES_V1`, `TABLE_DETECTION_PIES_V1` (**new with decision #66**), `TABLE_DETECTION_DOCX_V1` (**new with decision #136**, the DOCX profile's `TableDetection::office`), `STRUCT_TREE_RULE_V1`, `STRUCT_TREE_RULE_V2`, `STRUCT_TREE_RULE_V3` (**new with decision #84**), `HEADING_INFERENCE_RULE_V4` (**new with decision #29**), `HEADING_INFERENCE_RULE_V5` (**new with decision #47**), `HEADING_INFERENCE_RULE_V6` (**new with decision #50**), `HEADING_INFERENCE_RULE_V7` (**new with decision #64**), `HEADING_INFERENCE_RULE_V8` (**new with decision #140**), `LAYOUT_UNIT_RULE_V1` (**new with decision #38**), `LAYOUT_UNIT_RULE_V2` (**new with line-units-v2**), `LAYOUT_UNIT_RULE_V3` (**new with line-units-v3**), `LAYOUT_UNIT_RULE_V4` (**new with decision #63**), `LAYOUT_UNIT_RULE_V5`, `LAYOUT_UNIT_RULE_V6` (**new with decision #67**), `LAYOUT_UNIT_RULE_V7` (**new with decision #129**), `FURNITURE_RULE_V1` (**new with decision #41**), `FIGURE_RULE_V1` (**new with decision #46**), `RIGHT_TO_LEFT_RULE_V1` (**new with decision #54**), `FORM_ANNOTATION_RULE_V2`, `FORM_ANNOTATION_RULE_V3` (**new with decision #162**: a check box's or radio button's state and a field's label, as the widget states them) |
-| `proposed` | `ProposedCensus`, `ProposedPage` and the codes `REPLACED_BY_PROPOSED_PAGE`, `PROPOSED_TABLE_DUPLICATE`, `PROPOSED_VALUE_CONTRADICTED`, `PROPOSED_LINE_UNSUPPORTED`, `PROPOSED_BLOCK_TRUNCATED`, `PROPOSED_TABLE_UNPARSED`, `PROPOSED_BLOCK_NOT_PROJECTED` — **new with decision #147**: where a record holds an `assist` key, `to_markdown_with` and `to_html_with` write the model's page in place of a page the engine read under 30% of its words, add its tables and charts at their reading position elsewhere, each labelled `Proposed` with the model's name and closed by an end line, the model's blocks one quote deeper and escaped so none of it leaves that quote nor stands for those two lines, and say what they wrote and left out in `MarkdownArtifact::proposed` and `HtmlArtifact::proposed`; the model's bytes are `SegmentKind::Proposed` segments, which `is_invertible` never accepts. Breaking for a caller matching `SegmentKind` exhaustively, or building either artifact by its fields |
+| `html` | `to_html`, `to_html_with` (added in 0.66.0: `to_html` with `ProjectionOptions`), `HtmlArtifact`, `HTML_ARTIFACT_TYPE`, `HTML_SCHEMA_VERSION`, `HTML_RULE_BLOCKS_V14` |
+| `markdown` | `to_markdown`, `to_markdown_with` and `ProjectionOptions` (added in 0.66.0: `to_markdown` and `to_html` with what the caller asks to leave out or write differently, each counted; every option is off by default, and with all off the output is the plain call's, byte for byte. `drop_furniture` leaves out repeated running heads and folios, `drop_flagged` text the reader flagged as not seen, `infer_lists` writes list items read from markers on a document that declares no structure, `keep_repeated_header` keeps as a row a table's header row the next page repeats, which the joined table leaves out by default, and `unstyled` writes no style marks), `AnchorMap`, `Segment`, `SegmentKind`, `Coverage`, `DroppedBucket`, `StructuralErasure`, `MarkdownArtifact`, `MARKDOWN_ARTIFACT_TYPE`, `MARKDOWN_SCHEMA_VERSION`, `MARKDOWN_RULE_BLOCKS_V14`, and the census codes for text the projection joined or could not represent: `GFM_SPAN_SLOTS_UNREPRESENTABLE`, `GFM_ROW_ZERO_SEPARATOR`, `GFM_CELL_RUN_CLAIMED_TWICE`, `GFM_CELL_NOT_PLACED`, `GFM_TABLE_NOT_PROJECTED`, `GFM_LIST_ITEM_RUN_JOINS`, `MCID_RUN_JOINS`, `BASELINE_RUN_JOINS_ABUTTED`, `BASELINE_RUN_JOINS_SPACED`, `LAYOUT_UNIT_LINE_JOINS`, `HEADING_NUMBER_JOINS`, `LAYOUT_UNIT_GAP_JOINS`, `BLOCK_ELEMENT_RUN_JOINS`, `HEADING_LEVEL_UNRESOLVED`, `HEADING_LEVEL_UNREPRESENTABLE` |
+| `locate` | `locate`, `Locations`, `Occurrence`, `OccurrencePart`, `OccurrencesWithheld`, `Searched`, `LOCATIONS_ARTIFACT_TYPE`, `LOCATIONS_SCHEMA_VERSION`, `LOCATE_RULE_V1`, `LOCATE_MAX_QUOTE_BYTES`, `LOCATE_MAX_OCCURRENCES`. Where a string lies in a representation, and nothing else: no verdict, no score, and a string occurring nowhere is an empty answer rather than an error. The two ceilings are `ethos.grounding.v1`'s own, re-declared because this crate may not depend on the grounding crate and asserted equal by a test that can see both |
+| `elements` | `to_elements`, `Elements`, `Element`, `ElementLabel`, `ElementPage`, `ElementTable` (its `detection_rule` names the rule that read the table), `ElementCell`, `ElementFormField` (a form field's name, label, type, value and state, under `ElementLabel::FormField`), `Omitted`, `OmissionReason`, `ELEMENTS_ARTIFACT_TYPE`, `ELEMENTS_SCHEMA_VERSION`, `ELEMENTS_RULE_V1`, all added in 0.66.0. A document's items as one flat list, each with its page, box, text, the node ids it covers and a label the record states (`text`, `section-header`, `page-header`, `page-footer`, `table`, `picture`, `form-field`, `caption`, `list-item`), read from the record with no layout rule of its own. The rule id is on the artifact, not the profile, so this view moves no other artifact's `profile_sha256` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `RecognizerPin`, `RecognizerIdentity` (added in 0.66.0: which recognizer an OCR profile's runs come from, `Profile::ocr_v0` pinning it), `AssistPin` (added in 0.66.0: which drafting model an assisted record's blocks come from, `Profile::with_assist` pinning it; absent from every other profile), `TableDetection` (its optional `office`, added in 0.66.0, names the table rule an office format ran), `RasterDpi`, `CMAP_DATA_VERSION` (the character-decoding data the profile carries), `NOT_RUN` (what a rule field holds where that rule does not run for the profile's format). **Rule ids**, each naming one version of one rule: a changed rule takes a new id and an old id keeps its meaning, so a record always says which rule read it. PDF reading order: `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `READING_ORDER_RULE_V2`, `READING_ORDER_RULE_V3`, `READING_ORDER_RULE_V4`, `READING_ORDER_RULE_V5` (the last added in 0.66.0). What a page's content is observed to hold, images and text findings: `OBSERVATION_RULE_V3`, `OBSERVATION_RULE_V4`, `OBSERVATION_RULE_V5` (added in 0.66.0: three new findings, and `invisible-render-mode` narrowed to mode-7 text with nothing painted through its clip). A font's codes read as text: `TEXT_CODE_RULE_V2`, `TEXT_CODE_RULE_V3`, `TEXT_CODE_RULE_V4`. Tables from painted rectangles: `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_V3`, `TABLE_DETECTION_V4`, `TABLE_DETECTION_V5`, `TABLE_DETECTION_V6`, `TABLE_DETECTION_V7`, `TABLE_DETECTION_V8`, `TABLE_DETECTION_V9`, `TABLE_DETECTION_V10`, `TABLE_DETECTION_V11`, `TABLE_DETECTION_V12`, `TABLE_DETECTION_V13`, `TABLE_DETECTION_V14` (the last added in 0.66.0); from text alignment: `TABLE_DETECTION_UNRULED_V1`; from stroked ruling lines: `TABLE_DETECTION_STROKE_V1`, `TABLE_DETECTION_STROKE_V2`; from the tables a structure tree declares: `TABLE_DETECTION_TAGGED_V1`; from the whitespace a table leaves across its rows: `TABLE_DETECTION_TRACKS_V3`, `TABLE_DETECTION_TRACKS_V4`, `TABLE_DETECTION_TRACKS_V5`, `TABLE_DETECTION_TRACKS_V6`, `TABLE_DETECTION_TRACKS_V7`, `TABLE_DETECTION_TRACKS_V8`, `TABLE_DETECTION_TRACKS_V9`, `TABLE_DETECTION_TRACKS_V10`, `TABLE_DETECTION_TRACKS_V11`, `TABLE_DETECTION_TRACKS_V12`, `TABLE_DETECTION_TRACKS_V13`, `TABLE_DETECTION_TRACKS_V14`, `TABLE_DETECTION_TRACKS_V15`, `TABLE_DETECTION_TRACKS_V16` (the last added in 0.66.0); a bar chart's printed labels read back as its table: `TABLE_DETECTION_CHARTS_V1`, `TABLE_DETECTION_CHARTS_V2`, `TABLE_DETECTION_CHARTS_V3`; a line chart's: `TABLE_DETECTION_LINES_V1`; a pie's: `TABLE_DETECTION_PIES_V1`. The structure tree read and bound to runs: `STRUCT_TREE_RULE_V1`, `STRUCT_TREE_RULE_V2`, `STRUCT_TREE_RULE_V3`. Headings inferred from type: `HEADING_INFERENCE_RULE_V4`, `HEADING_INFERENCE_RULE_V5`, `HEADING_INFERENCE_RULE_V6`, `HEADING_INFERENCE_RULE_V7`, `HEADING_INFERENCE_RULE_V8` (the last added in 0.66.0). Lines joined into layout units by their own spacing: `LAYOUT_UNIT_RULE_V1`, `LAYOUT_UNIT_RULE_V2`, `LAYOUT_UNIT_RULE_V3`, `LAYOUT_UNIT_RULE_V4`, `LAYOUT_UNIT_RULE_V5`, `LAYOUT_UNIT_RULE_V6`, `LAYOUT_UNIT_RULE_V7` (the last added in 0.66.0). Running heads and folios: `FURNITURE_RULE_V1`. Figure regions from the paths a page paints: `FIGURE_RULE_V1`. Right-to-left lines read in logical order: `RIGHT_TO_LEFT_RULE_V1`. Form fields and annotations: `FORM_ANNOTATION_RULE_V2`, `FORM_ANNOTATION_RULE_V3` (added in 0.66.0: a check box's or radio button's state and a field's label, as the widget states them). The other formats' reading order and text rules: `DOCX_READING_ORDER_RULE_V3` and `DOCX_TEXT_CODE_RULE_V4` (both added in 0.66.0), `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V3`, `XLSX_TEXT_CODE_RULE_V4` (added in 0.66.0: a number cell shows the value its number format displays), `PPTX_READING_ORDER_RULE_V1`, `PPTX_TEXT_CODE_RULE_V3`, `ODT_READING_ORDER_RULE_V1`, `ODT_TEXT_CODE_RULE_V2`, `ODS_READING_ORDER_RULE_V1`, `ODS_TEXT_CODE_RULE_V2`, `ODP_READING_ORDER_RULE_V1`, `ODP_TEXT_CODE_RULE_V2`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V2`, `EPUB_READING_ORDER_RULE_V1`, `EPUB_TEXT_CODE_RULE_V2`. Office tables, all added in 0.66.0: `TABLE_DETECTION_XLSX_SHEETS_V1` (a worksheet's tables), `TABLE_DETECTION_PPTX_TBL_V1` (a slide's tables), `TABLE_DETECTION_DOCX_V1` (a DOCX's `<w:tbl>` tables, the DOCX profile's `TableDetection::office`), and `OFFICE_TABLE_MAX_SLOTS` (the most cell slots one office document's tables may span between them) |
+| `proposed` | `ProposedCensus`, `ProposedPage` and the codes `REPLACED_BY_PROPOSED_PAGE`, `PROPOSED_TABLE_DUPLICATE`, `PROPOSED_VALUE_CONTRADICTED`, `PROPOSED_LINE_UNSUPPORTED`, `PROPOSED_BLOCK_TRUNCATED`, `PROPOSED_TABLE_UNPARSED`, `PROPOSED_BLOCK_NOT_PROJECTED`, added in 0.66.0: where a record holds an `assist` key, `to_markdown_with` and `to_html_with` write the model's page in place of a page the engine read under 30% of its words, add its tables and charts at their reading position elsewhere, each labelled `Proposed` with the model's name and closed by an end line, the model's blocks one quote deeper and escaped so none of it leaves that quote nor stands for those two lines, and say what they wrote and left out in `MarkdownArtifact::proposed` and `HtmlArtifact::proposed`; the model's bytes are `SegmentKind::Proposed` segments, which `is_invertible` never accepts. Breaking for a caller matching `SegmentKind` exhaustively, or building either artifact by its fields |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
-| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord` (**`turn` and `to_declared` new with decision #155**: the turn a page is read in beyond its rotation, and a box on it mapped back to the declared frame), `NativeLocator`, `PdfLocator`, `RecognizedLocator` (**new with decision #120**: a recognized run's place on its page and its pixels in the image read; `NativeLocator::run_locator` reads a run's place whether drawn or recognized), `DocxLocator`, `XlsxLocator`, `PptxLocator`, `OdtLocator`, `OdsLocator`, `OdpLocator`, `RtfLocator`, `EpubLocator`, `PdfObjectLocator`, `PdfObjectNumber` (**new with decision #84**), `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes` (**`heading_level`, `list_level` and `furniture` new with decision #136**, and `Default`), `OfficeCellAttributes`, `OfficeSlideRunAttributes` (**`line_break_before` new with decision #135's review**: a slide cell's run after an `<a:br>`), `OfficeParagraphAttributes`, `OdfBlockKind`, `OfficeOdfCellAttributes`, `OfficeOdfShapeAttributes`, `RtfParagraphAttributes`, `RtfParagraphBreak`, `EpubBlockAttributes`, `OdfValueType`, `OdfCellTextSource`, `CellValueType`, `CellTextSource`, `FormFieldAttributes` (**`label` and `state` new with decision #162**; code that builds one with a struct literal must name them), `CheckState` and `CheckStateAbsence` (**new with decision #162**: a check box's or radio button's state as its widget states it, or why it cannot be told), `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes` (**`read_beside` new with decision #164**, the run a form filler's value was read beside; a struct literal must name it), `Script` (**new with decision #40**), `Furniture` (**new with decision #41**), `Reading` (**new with decision #54**: a run's text as read, beside the order the page drew; `Node::reading_text` returns it where a run carries one and the text elsewhere), `TextFinding` (`TinyText`, `HiddenLayer` and `FillMatchesBackground` **new with decision #139**), `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
+| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord` (`turn` and `to_declared`, added in 0.66.0: the turn a page is read in beyond its rotation, and a box on it mapped back to the declared frame), `NativeLocator`, `PdfLocator`, `RecognizedLocator` (added in 0.66.0: a recognized run's place on its page and its pixels in the image read; `NativeLocator::run_locator` reads a run's place whether drawn or recognized), `DocxLocator`, `XlsxLocator`, `PptxLocator`, `OdtLocator`, `OdsLocator`, `OdpLocator`, `RtfLocator`, `EpubLocator`, `PdfObjectLocator`, `PdfObjectNumber`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes` (`heading_level`, `list_level` and `furniture` added in 0.66.0; it implements `Default`), `OfficeCellAttributes`, `OfficeSlideRunAttributes` (`line_break_before`, added in 0.66.0: a slide cell's run after an `<a:br>`), `OfficeParagraphAttributes`, `OdfBlockKind`, `OfficeOdfCellAttributes`, `OfficeOdfShapeAttributes`, `RtfParagraphAttributes`, `RtfParagraphBreak`, `EpubBlockAttributes`, `OdfValueType`, `OdfCellTextSource`, `CellValueType`, `CellTextSource`, `FormFieldAttributes` (`label` and `state` added in 0.66.0; code that builds one with a struct literal must name them), `CheckState` and `CheckStateAbsence` (added in 0.66.0: a check box's or radio button's state as its widget states it, or why it cannot be told), `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes` (`read_beside`, added in 0.66.0, is the run a form filler's value was read beside; a struct literal must name it), `Script` (a run set above or below its line: superscript or subscript), `Furniture` (the edge of its page a run's line stands apart at: header or footer), `Reading` (a run's text as read, beside the order the page drew; `Node::reading_text` returns it where a run carries one and the text elsewhere), `TextFinding` (`TinyText`, `HiddenLayer` and `FillMatchesBackground` added in 0.66.0), `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
-| `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
-| `verifier` | `VerifierBinary`, `relay`, `RelayRequest`, `Relayed`, `GROUNDING_ADAPTER`, `RELAY_OK`, `RELAY_REFUSED`, `RELAY_UNAVAILABLE` — **new at v0.1** |
-| `figures` | `FigureRecord` — **new with decision #46** (`34-FIGURE-REGIONS-SCOPE.md`). One region the figure rule infers from the paths a page paints, carried on `RepresentationPayload::figures` rather than as a `Node`: a region claims no text, and the runs inside it are nodes already. A box and the rule that drew it, `Computed` |
-| `outlines` | `OutlineRecord` — **new at the outlines slice** (`29-OUTLINES-SCOPE.md`). One entry of the hierarchy a PDF catalog declares, carried on `RepresentationPayload::outlines` rather than as a `Node`: a bookmark title is text no content stream painted, so it has no native locator and North Star #4 requires one on every node. The consequence is deliberate — **an outline title is not quotable**, because `locate` and grounding both read `nodes` |
-| `tables` | `CellSlot`, `TableCellPosition`, `SlotCover`, `SlotFault`, `TableRecord`, `TableCellRecord`, `LocatorCheck`, `CheckStatus`, `GeometricFault`, `LOCATOR_CHECK_V1` — **new at v1-S1** · `TaggedGridCheck`, `TaggedGridStatus`, `TaggedGridFault`, `TAGGED_GRID_CHECK_V1` — **new at v1-S3** |
+| `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` |
+| `verifier` | `VerifierBinary`, `relay`, `RelayRequest`, `Relayed`, `GROUNDING_ADAPTER`, `RELAY_OK`, `RELAY_REFUSED`, `RELAY_UNAVAILABLE` |
+| `figures` | `FigureRecord` (`34-FIGURE-REGIONS-SCOPE.md`). One region the figure rule infers from the paths a page paints, carried on `RepresentationPayload::figures` rather than as a `Node`: a region claims no text, and the runs inside it are nodes already. A box and the rule that drew it, `Computed` |
+| `outlines` | `OutlineRecord` (`29-OUTLINES-SCOPE.md`). One entry of the hierarchy a PDF catalog declares, carried on `RepresentationPayload::outlines` rather than as a `Node`: a bookmark title is text no content stream painted, so it has no native locator and North Star #4 requires one on every node. The consequence is deliberate — **an outline title is not quotable**, because `locate` and grounding both read `nodes` |
+| `tables` | `CellSlot`, `TableCellPosition`, `SlotCover`, `SlotFault`, `TableRecord`, `TableCellRecord`, `LocatorCheck`, `CheckStatus`, `GeometricFault`, `LOCATOR_CHECK_V1`: a table's cells and the slots they cover, and the check of its indices against its boxes · `TaggedGridCheck`, `TaggedGridStatus`, `TaggedGridFault`, `TAGGED_GRID_CHECK_V1`: the check of a detected grid against the grid the structure tree declares |
 
-Plus `CRATE_NAME`, which exists so the M0 link harness can assert the workspace builds.
+Plus `CRATE_NAME`, which exists so a link test can assert the workspace builds.
 
 **Internal, do not use:** nothing. Every module in this crate is contract.
 
-**The `tables` module is v1-S1.** `TableCellPosition` carries `(row, column, rowspan, colspan,
+**The `tables` module.** `TableCellPosition` carries `(row, column, rowspan, colspan,
 table_id)` with zero-based indices and span 1 meaning *not merged*, and `CellSlot` enumerates
 every slot a merged cell occupies — addressing cells by array index with an implied span of 1 is
-the shipped Ethos ODL-adapter defect, and its real cost is that no cross-check can run afterwards.
+the defect the Ethos verifier's opendataloader adapter shipped with, and its real cost is that no
+cross-check can run afterwards.
 
 `SlotCover` is the **structural** half of the locator cross-check and is derived from indices and
 spans alone; `GeometricFault` is the geometric half and is derived from boxes alone. A test asserts
@@ -77,54 +78,51 @@ itself. `LocatorCheck` rides on the artifact rather than in `--diagnostics`: a m
 whether a cell is trustworthy, which is a statement the artifact makes, not an observation about
 the run.
 
-**Two node kinds arrived at v1-S4, and the rule they broke was deliberate.** v1-S1 refused
-`TableCell` because a cell's text is already a run; v1-S3 refused `Paragraph` because the role path
-already says `P`. The standing rule from both — *do not add a kind for a fact an existing node
-already carries* — is exactly why `FormField` and `Annotation` qualify: a field's `/V` and an
-annotation's `/Contents` are in **dictionaries**, drawn by nothing, and without a node of their own
-they are simply absent from the record.
+**`FormField` and `Annotation` are node kinds; `TableCell` and `Paragraph` are not.** The rule is
+*do not add a kind for a fact an existing node already carries*: a cell's text is already a run,
+and a paragraph's role path already says `P`. A field's `/V` and an annotation's `/Contents` are in
+**dictionaries**, drawn by nothing, and without a node of their own they would be absent from the
+record.
 
-`NodeAttributes` became a union at the same time, because a text run's character codes and a form
-field's value do not belong on one struct. Its tag duplicates `Node::kind`, which is a *checked*
+`NodeAttributes` is a union, because a text run's character codes and a form field's value do not
+belong on one struct. Its tag duplicates `Node::kind`, which is a *checked*
 redundancy: `NodeAttributes::kind()` returns the kind, and a contract test asserts every node
 agrees with its own attributes.
 
-`NativeLocator` gained `PdfObject`. An annotation has no baseline, no advance and no character
+`NativeLocator` has a `PdfObject` variant for these. An annotation has no baseline, no advance and no character
 origin, so `PdfLocator` is the wrong shape — and filling it with a plausible origin would put a
 coordinate on the wire the document does not contain. Its `AnnotationRect` is deliberately not
 `GeometryPresence`: that type means *a box this engine measured* — for a text run, the pen's
 advance over the font's envelope, not glyph ink (contract §5.3) — and a `/Rect` is a number the
 author wrote.
 
-**The tagged-versus-geometric check is v1-S3, and it is a *second* check rather than a wider
-first one.** `LOCATOR_CHECK_V1` compares a table's own indices against its own boxes;
+**The tagged-versus-geometric check is a *second* check rather than a wider first one.** `LOCATOR_CHECK_V1` compares a table's own indices against its own boxes;
 `TAGGED_GRID_CHECK_V1` compares the grid the document's **structure tree** declares against the
 grid a detector found. Overloading one id with both would leave a reader unable to tell which pair
 of derivations disagreed. `TaggedGridCheck` rides on `TableRecord` as an **absent key** where the
 tree describes no table on that page — absent is not the same as agreement.
 
-`StructuralLocator` gained two variants at v1-S3. `PdfTagged` carries the role path the document's
-own tree gives a node, with `standard_role_path` present only when `/RoleMap` actually remapped
-something; `PdfArtifact` marks content the page called furniture rather than body text. Those runs
-are **kept in `nodes`** — a reader that deletes running heads has silently edited the document
-(parity checklist O21/O22). The pre-existing `PdfMcid` now means something narrower and more
-useful: an id the content stream supplied that **no structure element claims**.
+`StructuralLocator` has two variants for a tagged PDF. `PdfTagged` carries the role path the
+document's own tree gives a node, with `standard_role_path` present only when `/RoleMap` actually
+remapped something; `PdfArtifact` marks content the page called furniture rather than body text.
+Those runs are **kept in `nodes`** — a reader that deletes running heads has silently edited the
+document. `PdfMcid` means an id the content stream supplied that **no structure element claims**.
 
-`PdfTaggedLocator` gained `derivation` at auto-tagging S1, written on every tagged locator with
-no default (decision #20): `extracted` where the innermost citing element is the author's,
-`computed` where it carries this engine's own owner attribute (`/O /EthosParser`, read under
-`/A` and through `/ClassMap`), so a tag this engine wrote and read back is never reported as the
-author's. `STRUCT_TREE_RULE_V2` names the reading; a representation from either side of the
-change is refused by the other (`docs/23-AUTO-TAGGING-SCOPE.md` §8).
+`PdfTaggedLocator` carries `derivation` on every tagged locator, with no default: `extracted`
+where the innermost citing element is the author's, `computed` where it carries this engine's own
+owner attribute (`/O /EthosParser`, read under `/A` and through `/ClassMap`), so a tag this engine
+wrote and read back is never reported as the author's. `STRUCT_TREE_RULE_V2` names the reading; a
+representation read under an earlier structure-tree rule and one read under this one each refuse
+the other (`docs/23-AUTO-TAGGING-SCOPE.md` §8).
 
-**The `verifier` module is v0.1, and what it does *not* export is the point.** There is no report
+**What the `verifier` module does *not* export is the point.** There is no report
 type, no claim, no check, no result — the engine spawns a verifier and forwards its bytes without
 reading them, so there is nothing to model. `VerifierBinary::resolve` locates and pins one,
 `relay` runs it, and `Relayed` carries the child's stdout, stderr and a mapped exit code. The
 three `RELAY_*` constants keep "the verifier refused" (1) apart from "the run did not happen" (2),
 for the same reason the classify exit codes never collapse.
 
-**Two further additions at v0.1**, both on `Profile` and both hash-bearing:
+**Two more items on `Profile`**, both part of its hash:
 
 - `XrefRepair` — whether the one bounded cross-reference repair runs. It decides *which documents
   produce an artifact at all*, which makes it the strongest output-affecting knob in the set.
@@ -147,9 +145,9 @@ Do not persist it as a record or feed it to a fingerprint — `docs/01-CONTRACT.
 | Kind | Supported items |
 | --- | --- |
 | Handle | `Document` — `open`, `open_bytes`, `source_sha256`, `byte_len`, `page_count` |
-| Stages | `classify`, `extract`, `extract_recognized` and `extract_image` (**new with decision #120**: `--ocr`, a scanned page read by a recognizer, and a PNG or JPEG file read as one page, which `image_media_type` recognizes by its signature, `docs/35-OCR-SCOPE.md`), `to_representation` (and `into_representation`, which takes the extract so its runs move into the record rather than being copied), `build_overlay`, `write_tags` — the last writes a copy of an untagged PDF carrying this engine's own `/Document`/`/Div` structure tree, marked computed on every element, fills absence only, and reads its output back before returning it (auto-tagging S2, `docs/23-AUTO-TAGGING-SCOPE.md` §3) |
-| Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator`, `ImageRecord`, `RecognizedSource` (**new with decision #120**) |
-| Recognizer protocol | `Recognize` — the trait a recognizer implements (the CLI's over `ethos-parser-ocr serve`, a test's as a function) · `RecognitionRequest`, `ImageSpec`, `PdfImageSpec`, `Colour`, `Base`, `FlateParms`, `Recognition`, `RecognizedLine`, `RecognizedWord` — the protocol's request and answer (**new with decision #120**) |
+| Stages | `classify`, `extract`, `extract_recognized` and `extract_image` (added in 0.66.0: what `--ocr` runs, a scanned page read by a recognizer and a PNG or JPEG file read as one page, which `image_media_type` recognizes by its signature; `docs/35-OCR-SCOPE.md`), `to_representation` (and `into_representation`, which takes the extract so its runs move into the record rather than being copied), `build_overlay`, `write_tags` — the last writes a copy of an untagged PDF carrying this engine's own `/Document`/`/Div` structure tree, marked computed on every element, fills absence only, and reads its output back before returning it (`docs/23-AUTO-TAGGING-SCOPE.md` §3) |
+| Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator`, `ImageRecord`, `RecognizedSource` (added in 0.66.0) |
+| Recognizer protocol | `Recognize` — the trait a recognizer implements (the CLI's over `ethos-parser-ocr serve`, a test's as a function) · `RecognitionRequest`, `ImageSpec`, `PdfImageSpec`, `Colour`, `Base`, `FlateParms`, `Recognition`, `RecognizedLine`, `RecognizedWord` — the protocol's request and answer (added in 0.66.0) |
 | Reason vocabulary | `OcrNeedReason`, `LayoutComplexityReason` |
 | Format detection | `check_pdf_magic` · `aims_at_the_pdf_reader` |
 | Modules | `exit` (`SIMPLE`, `NEEDS_ATTENTION`, `COULD_NOT_READ`, `exit_code`) · `limitations` (limitation-code constants and builders) |
@@ -181,50 +179,47 @@ load-bearing rather than tidy — `project()` lives outside it and therefore can
 
 ## `ethos-parser-office` — the OOXML readers, the three OpenDocument readers, RTF and EPUB
 
-**New to this document at v2-S3, and the omission is worth recording.** The crate shipped at
-v2-S2 outside the freeze table, which by this document's own rule at the top made
-`ethos_parser_office::read` — the entry point for every non-PDF format `ethos-parser extract` accepts —
-"internal", renameable without a note. A second format is what surfaced it: the same gap would
-have let `is_xlsx` arrive unguarded.
+`ethos_parser_office::read` is the entry point for every non-PDF format `ethos-parser extract`
+accepts. Like every item in this document, it is supported because it is listed here: by the rule
+at the top, an item left out is internal, renameable without a note.
 
 | Kind | Supported items |
 | --- | --- |
 | Entry point | `read` — dispatches on the package's own evidence, and refuses one claiming to be more than one format |
-| Detection | `is_docx`, `is_xlsx`, `is_pptx`, `is_odt`, `is_ods`, `is_odp`, `is_rtf`, `is_epub` — **content, never extension** (Anydoc's **A4**) · `is_opendocument` — the ODF **family**, implemented or not |
+| Detection | `is_docx`, `is_xlsx`, `is_pptx`, `is_odt`, `is_ods`, `is_odp`, `is_rtf`, `is_epub` — **content, never extension** · `is_opendocument` — the ODF **family**, implemented or not |
 | Media types | `DOCX_MEDIA_TYPE`, `XLSX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE`, `ODT_MEDIA_TYPE`, `ODS_MEDIA_TYPE`, `ODP_MEDIA_TYPE`, `RTF_MEDIA_TYPE`, `EPUB_MEDIA_TYPE` |
-| Readers | `docx` (runs of `word/document.xml`; since decision #136 also `read_part` for a header, footer or footnotes part, `read_styles` and `Styles` for `word/styles.xml`, `ParagraphProperties` on each `Run`, `Table` and `Cell` with `MainPart`'s `tables`, and `Reference` with `MainPart`'s `references` and `even_and_odd_headers` for `word/settings.xml`), `xlsx` (sheets, shared strings, cells), `pptx` (slides, shapes, runs), `odt` (the manifest, and `content.xml`'s paragraphs), `ods` (`content.xml`'s tables, rows and cells), `odp` (`content.xml`'s draw pages, shapes and blocks), `rtf` (a brace-group control-word stream's paragraphs), `epub` (the OCF container chain, a package document's spine, and its XHTML blocks) |
+| Readers | `docx` (runs of `word/document.xml`; also, added in 0.66.0, `read_part` for a header, footer or footnotes part, `read_styles` and `Styles` for `word/styles.xml`, `ParagraphProperties` on each `Run`, `Table` and `Cell` with `MainPart`'s `tables`, and `Reference` with `MainPart`'s `references` and `even_and_odd_headers` for `word/settings.xml`), `xlsx` (sheets, shared strings, cells), `pptx` (slides, shapes, runs), `odt` (the manifest, and `content.xml`'s paragraphs), `ods` (`content.xml`'s tables, rows and cells), `odp` (`content.xml`'s draw pages, shapes and blocks), `rtf` (a brace-group control-word stream's paragraphs), `epub` (the OCF container chain, a package document's spine, and its XHTML blocks) |
 | Container | `zip` — `looks_like_zip`, `entry_names`, `read_entry`, `first_entry` over the existing `flate2` |
 | Marker | `CRATE_NAME` |
 
 **`is_odt` asks a different question from the other three, and that is the format's doing.** An
 OOXML package is identified by which main part its central directory lists; an ODF package
 **declares its own type**, in a `mimetype` entry the package specification requires to be first and
-stored. `zip::first_entry` is public at v2-S5 for exactly that: "first, and uncompressed" is part
-of what an ODF package *is*, so a reader needs to be able to ask.
+stored. `zip::first_entry` is public for exactly that: "first, and uncompressed" is part of what
+an ODF package *is*, so a reader needs to be able to ask.
 
-**`is_opendocument` is a third kind of question, added at v2-S6.** `is_odt` and `is_ods` each ask
-*"is this a kind we read"*; this one asks *"is the office reader the one to ask"*, which only an ODF
-package can answer about itself. The CLI dispatches on it, and the reason is a measured defect: with
-only the narrow predicates, an `.odp` answered `false` to every one of them and fell through to the
-PDF reader, which refused it for having no `%PDF-` header. Fail-closed, and naming the wrong cause.
-`read` then refuses a declared ODF type it does not implement, by name.
+**`is_opendocument` is a third kind of question.** `is_odt` and `is_ods` each ask *"is this a kind
+we read"*; this one asks *"is the office reader the one to ask"*, which only an ODF package can
+answer about itself. The CLI dispatches on it, so an ODF package of a type this crate does not read
+reaches the office reader rather than falling through to the PDF reader, which would refuse it for
+having no `%PDF-` header: fail-closed, but naming the wrong cause. `read` then refuses a declared
+ODF type it does not implement, by name.
 
-**`is_epub` asks the OCF question against a different declared type** (v2-S9), and that is the
-whole reason `is_opendocument` was written the way it was: an `.epub` writes `application/epub+zip`
-into the same first, stored `mimetype` entry an ODF package uses, so answering the family question
-on that entry's *presence* would tell an EPUB it is OpenDocument. It does not, and the test that
-says so has been in this suite since v2-S6.
+**`is_epub` asks the OCF question against a different declared type**, and that is the whole
+reason `is_opendocument` was written the way it was: an `.epub` writes `application/epub+zip` into
+the same first, stored `mimetype` entry an ODF package uses, so answering the family question on
+that entry's *presence* would tell an EPUB it is OpenDocument. It does not, and a test says so.
 
-**`is_rtf` asks no container question at all** (v2-S8). Every predicate above it opens a package;
+**`is_rtf` asks no container question at all.** Every predicate above it opens a package;
 an `.rtf` is a byte stream that begins `{\rtf`, and that is the whole of detection. A bare `{` is
 not enough, and an OLE compound file — a legacy `.doc`, beginning `D0 CF 11 E0` — is a different
 format with a different reader.
 
-**`is_odp` is exact rather than prefixed, and that matters more than it did for `is_ods`** (v2-S7).
-An `.ots` template would have been a nuisance; an `.odg` drawing is a hazard, because its
-`content.xml` really *is* the `<draw:page>` vocabulary this reader knows. A prefix match would have
-produced a **plausible artifact for a format nobody decided to support** — which is worse than the
-`%PDF-` message v2-S6 fixed, since it does not look like a failure at all.
+**`is_odp` is exact rather than prefixed, and that matters more than it does for `is_ods`.** An
+`.ots` template would be a nuisance; an `.odg` drawing is a hazard, because its `content.xml`
+really *is* the `<draw:page>` vocabulary this reader knows. A prefix match would produce a
+**plausible artifact for a format nobody decided to support** — which is worse than a refusal that
+names the wrong cause, since it does not look like a failure at all.
 
 **Internal, do not use:** `xml`, which holds the entity rule, the local-name helper, the
 namespace-resolved attribute matcher and the XML-reader plumbing the **seven** XML-backed readers
@@ -240,14 +235,11 @@ contract before anyone decided it should be one.
 
 **Exports nothing.** `ethos-parser` is a `[[bin]]`; there is no library target and no supported
 `ethos_parser_cli::` path. The CLI's **twelve** subcommands, their flags and their exit codes are
-a *product* contract, not a Rust one: `classify`, `extract`, `ground` and `grounding-check` from
-v0, then `verify` (v0.1), `overlay` (v1-S6), `markdown` (v1.1-S1), `html` (v1.1-S4), `mcp`
-(v1.2-S1), `tag` (auto-tagging S2), `locate` (v2.3) and `elements` (decision #137). `docs/04-ARCHITECTURE.md` §2 describes the v0 four and says so, and
-carries `tag`'s row as the exception to its output rule; `enum Command` in
+a *product* contract, not a Rust one: `classify`, `extract`, `ground`, `grounding-check`,
+`verify`, `overlay`, `markdown`, `html`, `mcp`, `tag`, `locate` and `elements`, each described by
+`ethos-parser <command> --help`. `docs/04-ARCHITECTURE.md` §2 describes the first four and says
+so, and carries `tag`'s row as the exception to its output rule; `enum Command` in
 `crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
-
-This said *"four subcommands"* and pointed at §2, which also said four — two documents agreeing
-with each other and neither agreeing with the binary. Repaired at v2-S13.3.
 
 ---
 
