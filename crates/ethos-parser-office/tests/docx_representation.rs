@@ -1217,3 +1217,47 @@ fn a_declared_list_item_is_a_list_item_element() {
     assert_eq!(label("Offer Letter"), ElementLabel::Text);
     assert_eq!(label("Salary"), ElementLabel::SectionHeader);
 }
+
+/// **A DOCX table's leading `<w:tblHeader/>` rows are its header** (decision #167): their cells
+/// say so on the record, and in the element view each other cell names the header over it. A
+/// marked row below an unmarked one is no header, as Word repeats none.
+#[test]
+fn a_tables_marked_leading_rows_are_its_header() {
+    let body = concat!(
+        r#"<w:tbl><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:p><w:r><w:t>Item</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Cost</w:t></w:r></w:p></w:tc></w:tr>"#,
+        r#"<w:tr><w:tc><w:p><w:r><w:t>Pen</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc></w:tr>"#,
+        r#"<w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:p><w:r><w:t>Ink</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>5</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"#,
+    );
+    let repr = ethos_parser_office::read(&letter(body)).expect("reads");
+    let table = &repr.payload().tables[0];
+    let headers: Vec<(&str, bool)> = table
+        .cells
+        .iter()
+        .map(|c| (c.text.as_str(), c.header))
+        .collect();
+    assert_eq!(
+        headers,
+        [
+            ("Item", true),
+            ("Cost", true),
+            ("Pen", false),
+            ("2", false),
+            ("Ink", false),
+            ("5", false)
+        ]
+    );
+    let elements = ethos_parser_core::to_elements(&repr, "test").expect("projects");
+    let grid = elements
+        .elements
+        .iter()
+        .find_map(|e| e.table.as_ref())
+        .expect("a table element");
+    let cost = &table.cells[1].id;
+    let two = grid.cells.iter().find(|c| c.text == "2").expect("a cell");
+    assert_eq!(two.column_headers, [cost.clone()]);
+    assert!(two.row_headers.is_empty());
+    assert!(
+        grid.cells[1].column_headers.is_empty(),
+        "a header names none"
+    );
+}

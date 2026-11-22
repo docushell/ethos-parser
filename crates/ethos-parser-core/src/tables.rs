@@ -312,6 +312,18 @@ pub struct TableCellRecord {
     ///
     /// Empty exactly when [`Self::text`] is empty: a cell enclosing no run names no node.
     pub node_ids: Vec<NodeId>,
+    /// Whether the record states this cell is a header cell (decision #167): a tagged `/TH` (on a
+    /// table read from the tags, or on a geometric grid whose `tagged_check` is `Ok` and whose cell
+    /// holds that `/TH`'s runs), a cell of a DOCX row the file repeats as its table's header
+    /// (`<w:tblHeader/>`), or a cell of the row a geometric rule read as its table's header (the
+    /// ruled rule's names above the top rule, decision #74; the whitespace rule's header band and
+    /// group row, decisions #96, #112, #118). Which of these it is follows from the table's
+    /// `detection_rule` and `derivation`, and on a geometric table from its `tagged_check` too: a
+    /// `/TH` is carried only where that check is `Ok`, so a ruled table whose check is `Ok` may hold
+    /// either. False everywhere else, which is no claim that the cell holds data: a table whose
+    /// rule reads no header states none.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub header: bool,
 }
 
 /// One table, as it appears on the artifact.
@@ -352,15 +364,15 @@ pub struct TableRecord {
     /// hand or a later writer from doing so, and a test holds the shape.
     ///
     /// So `derivation` alone does not separate a tagged table from a geometric one:
-    /// [`Self::detection_rule`] does — `tagged-tables-v1` against the three geometric ids — and
+    /// [`Self::detection_rule`] does — `tagged-tables-v2` against the three geometric ids — and
     /// `derivation` says whose statement the grid is under that rule.
     pub derivation: crate::derivation::DerivationClass,
     /// **Which rule found this table** — `ruled-rects-v3`, `unruled-align-v1`, `stroke-ruled-v1`
-    /// or `tagged-tables-v1` (v1-S2, S7b, S8, v2-S24).
+    /// or `tagged-tables-v2` (v1-S2, S7b, S8, v2-S24; `-v1` until decision #167).
     ///
     /// This named **two** from v1-S7b until v2-S13.5, then three, and a fourth arrived at v2-S24.
     /// `stroke-ruled-v1` shipped at v1-S8 and is written into this field by `ethos-parser-pdf`'s third
-    /// build site; `tagged-tables-v1` is written by a fourth. A consumer matching on the listed
+    /// build site; `tagged-tables-v2` is written by a fourth. A consumer matching on the listed
     /// values must carry all four.
     ///
     /// Per table, not per document, because one document can carry all four kinds and the
@@ -371,7 +383,7 @@ pub struct TableRecord {
     /// | `ruled-rects-v3` | painted the grid | read it | `Computed` |
     /// | `unruled-align-v1` | placed text in columns | inferred it | `Computed` |
     /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells | `Computed` |
-    /// | `tagged-tables-v1` | tagged the grid in its tree | read the tags | the element's own |
+    /// | `tagged-tables-v2` | tagged the grid in its tree | read the tags | the element's own |
     /// | `xlsx-sheet-table-v1` | wrote a worksheet's cells | read their addresses and merges | `Extracted` |
     /// | `pptx-tbl-v1` | wrote a slide's `<a:tbl>` | read its rows, cells and spans | `Extracted` |
     /// | `docx-tbl-v1` | wrote a `<w:tbl>` | read its rows, cells and merges | `Extracted` |

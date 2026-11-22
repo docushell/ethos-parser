@@ -895,6 +895,12 @@ pub const TABLE_DETECTION_STROKE_V2: &str = "stroke-ruled-v2";
 /// grids they draw.
 pub const TABLE_DETECTION_TAGGED_V1: &str = "tagged-tables-v1";
 
+/// v2 (decision #167): the same tables from the same tags, and each cell the tree tags `/TH` a
+/// header cell — on a table read from the tags, and on a table a detector found where the tree
+/// describes the same grid (the tagged-versus-geometric check passes). Where the two grids differ
+/// no tag is carried onto the detected one.
+pub const TABLE_DETECTION_TAGGED_V2: &str = "tagged-tables-v2";
+
 /// The rule that infers a grid from the **whitespace a table leaves across its rows** (decision
 /// #38, `docs/31-TABLE-TRACKS-SCOPE.md`).
 ///
@@ -2103,7 +2109,7 @@ pub struct TableDetection {
     /// Version id of the rule that emits a table for each `/Table` the structure tree declares that
     /// no geometric detector matched (v2-S24).
     ///
-    /// See [`TABLE_DETECTION_TAGGED_V1`]. A fourth field rather than a widening of any other, for
+    /// See [`TABLE_DETECTION_TAGGED_V2`]. A fourth field rather than a widening of any other, for
     /// the reason there were three: the evidence differs. The first three read ink and infer a grid
     /// (`Computed`); this one reads the document's own tags and reports what they state
     /// (`Extracted`), carrying no geometry. Its arrival is what the `table_detection` doc comment
@@ -2158,7 +2164,7 @@ impl Default for TableDetection {
             ruled: TABLE_DETECTION_V14.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V2.to_string(),
-            tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
+            tagged: TABLE_DETECTION_TAGGED_V2.to_string(),
             tracks: TABLE_DETECTION_TRACKS_V16.to_string(),
             charts: TABLE_DETECTION_CHARTS_V3.to_string(),
             lines: TABLE_DETECTION_LINES_V1.to_string(),
@@ -4562,7 +4568,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field or rule id. Update this vector and the hash below from this test's own output \
@@ -4572,7 +4578,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:abb7da9c90e7a260f66d4c9f8497b8892a5446e539eb8a35be90f0990ba15de4"
+            "sha256:ea458bac875149bc07f36283f21b7dbd42505c6221d5a50587c44cac77e3ced5"
         );
     }
 
@@ -4621,33 +4627,33 @@ mod tests {
         assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V14);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V2);
-        assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
+        assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V2);
         for (a, b) in [
             (TABLE_DETECTION_V14, TABLE_DETECTION_UNRULED_V1),
             (TABLE_DETECTION_V14, TABLE_DETECTION_STROKE_V2),
-            (TABLE_DETECTION_V14, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V14, TABLE_DETECTION_TAGGED_V2),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V2),
-            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V2),
+            (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_TAGGED_V2),
             (TABLE_DETECTION_V14, TABLE_DETECTION_TRACKS_V16),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V16),
             (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_TRACKS_V16),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V16),
+            (TABLE_DETECTION_TAGGED_V2, TABLE_DETECTION_TRACKS_V16),
             (TABLE_DETECTION_V14, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_CHARTS_V2),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_CHARTS_V2),
+            (TABLE_DETECTION_TAGGED_V2, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_TRACKS_V16, TABLE_DETECTION_CHARTS_V2),
             (TABLE_DETECTION_V14, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_LINES_V1),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_LINES_V1),
+            (TABLE_DETECTION_TAGGED_V2, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_TRACKS_V16, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_CHARTS_V3, TABLE_DETECTION_LINES_V1),
             (TABLE_DETECTION_V14, TABLE_DETECTION_PIES_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_PIES_V1),
             (TABLE_DETECTION_STROKE_V2, TABLE_DETECTION_PIES_V1),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_PIES_V1),
+            (TABLE_DETECTION_TAGGED_V2, TABLE_DETECTION_PIES_V1),
             (TABLE_DETECTION_TRACKS_V16, TABLE_DETECTION_PIES_V1),
             (TABLE_DETECTION_CHARTS_V3, TABLE_DETECTION_PIES_V1),
             (TABLE_DETECTION_LINES_V1, TABLE_DETECTION_PIES_V1),
@@ -4662,7 +4668,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -4710,7 +4716,8 @@ mod tests {
         // The fourth, added at v2-S24. A run that reads the structure tree's `/Table` tags emits
         // tables a run that only reads ink cannot, so its id is identity too.
         let mut tagged_moved = base.clone();
-        tagged_moved.table_detection.tagged = "tagged-tables-v2".into();
+        // A sentinel, for the same reason: `"tagged-tables-v2"` is the default since decision #167.
+        tagged_moved.table_detection.tagged = "tagged-tables-SENTINEL-NEVER-A-RELEASE".into();
         assert_ne!(
             hash(&base),
             hash(&tagged_moved),
@@ -4800,7 +4807,7 @@ mod tests {
             "a pre-#90 profile must not silently acquire the pie rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v14","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v16","charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v14","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

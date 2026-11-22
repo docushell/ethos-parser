@@ -234,7 +234,7 @@
         },
         "tagged": {
           "type": "string",
-          "description": "Version id of the rule that emits a table for each `/Table` the structure tree declares that no geometric detector matched (v2-S24). `tagged-tables-v1`. This one reads the document's own tags rather than ink, so its table is `Extracted` — the document's own statement — rather than `Computed`, and it carries no geometry: the tree names no coordinate, so the box is absent (`not_reported_by_structure_tree`) and none is invented. Its locator cross-check is not-applicable, and it is omitted from any `ethos.grounding.v1` projection."
+          "description": "Version id of the rule that emits a table for each `/Table` the structure tree declares that no geometric detector matched (v2-S24). `tagged-tables-v2` since decision #167, which marks a `/TH` cell as a header; `tagged-tables-v1` before it. This one reads the document's own tags rather than ink, so its table is `Extracted` — the document's own statement — rather than `Computed`, and it carries no geometry: the tree names no coordinate, so the box is absent (`not_reported_by_structure_tree`) and none is invented. Its locator cross-check is not-applicable, and it is omitted from any `ethos.grounding.v1` projection."
         },
         "tracks": {
           "type": "string",
@@ -655,7 +655,7 @@
         "pies": "slice-labels-v1",
         "ruled": "ruled-rects-v14",
         "stroke_ruled": "stroke-ruled-v2",
-        "tagged": "tagged-tables-v1",
+        "tagged": "tagged-tables-v2",
         "tracks": "whitespace-tracks-v16",
         "unruled": "unruled-align-v1"
       },

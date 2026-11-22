@@ -256,6 +256,14 @@ pub struct ElementTable {
     /// none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub continued: Vec<NodeId>,
+    /// Whether this table's header cells are named on none of its cells because binding them
+    /// would cost more than the view's budget (decision #167): sixteen steps a cell and a thousand
+    /// more, where a step is a row a cell covers, a header list it searches or an id it names (an id
+    /// longer than 24 bytes costing a step for each 24). Only a
+    /// crafted grid reaches it — thousands of header rows over thousands of data rows, whose lists
+    /// would outgrow the document. The cells' own `header` flags stand. Absent on every other table.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub headers_unbound: bool,
 }
 
 /// One cell.
@@ -281,6 +289,21 @@ pub struct ElementCell {
     pub text: String,
     /// The nodes the record places in it.
     pub node_ids: Vec<NodeId>,
+    /// The cell record's id (decision #167): what a header list below names.
+    pub id: NodeId,
+    /// Whether the record states it is a header cell (decision #167).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub header: bool,
+    /// On a cell that is no header, the column headers over it, top first, by id (decision #167):
+    /// the non-empty cells of the nearest run of all-header rows above it whose columns meet its
+    /// own. Empty where there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_headers: Vec<NodeId>,
+    /// On a cell that is no header, the row headers before it, left first, by id (decision #167):
+    /// non-empty header cells outside an all-header row whose rows meet its own. Empty where there
+    /// are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub row_headers: Vec<NodeId>,
 }
 
 /// Why no element carries something the record holds.
@@ -683,8 +706,15 @@ pub fn to_elements(
                 detection_rule: t.detection_rule.clone(),
                 cells: t.cells.iter().map(cell_of).collect(),
                 continued: Vec::new(),
+                headers_unbound: false,
             }),
         )));
+    }
+    // Decision #167: header bindings over the whole grid, a table going on included.
+    for t in tables.iter_mut().flatten() {
+        if let Some(grid) = t.table.as_mut() {
+            grid.headers_unbound = !bind_headers(&mut grid.cells, grid.rows);
+        }
     }
     out.extend(tables.into_iter().flatten());
     for (i, node) in nodes.iter().enumerate() {
@@ -823,8 +853,143 @@ fn cell_of(c: &crate::TableCellRecord) -> ElementCell {
         bbox: c.geometry.measured(),
         text: c.text.clone(),
         node_ids: c.node_ids.clone(),
+        id: c.id.clone(),
+        header: c.header,
+        column_headers: Vec::new(),
+        row_headers: Vec::new(),
     }
 }
+
+/// Decision #167: each cell that is no header names the header cells over it, as a table reads
+/// in HTML's table model, from the record's `header` flags and the grid alone.
+///
+/// A row every occupant of which is a header is a header row, and its cells are column headers;
+/// a header cell in any other row is a row header. A cell's column headers are those of the
+/// nearest run of header rows above it whose columns meet its own — so a header the table repeats
+/// part way down governs the rows under it, not the ones above — and its row headers are the row
+/// headers before it whose rows meet its own. An empty header cell heads nothing, as in HTML's
+/// model, though it still makes its row a header row. Rows past the grid's declared `rows` are not
+/// read, as the projections read none.
+///
+/// False, with no cell bound, where the work would pass [`HEADER_BINDING_STEPS_PER_CELL`] steps a
+/// cell and [`HEADER_BINDING_STEPS_BASE`] more ([`ElementTable::headers_unbound`]).
+fn bind_headers(cells: &mut [ElementCell], rows: u32) -> bool {
+    let rows = rows as usize;
+    let rows_of = |c: &ElementCell| {
+        let end = (c.row as usize).saturating_add(c.rowspan.max(1) as usize);
+        c.row as usize..end.min(rows)
+    };
+    if !cells.iter().any(|c| c.header && (c.row as usize) < rows) {
+        return true;
+    }
+    let mut left = HEADER_BINDING_STEPS_PER_CELL
+        .saturating_mul(cells.len())
+        .saturating_add(HEADER_BINDING_STEPS_BASE);
+    let mut charge = |n: usize| match left.checked_sub(n) {
+        Some(rest) => {
+            left = rest;
+            true
+        }
+        None => false,
+    };
+    let spans = cells.iter().fold(0usize, |n, c| {
+        let r = rows_of(c);
+        n.saturating_add(r.end.saturating_sub(r.start))
+    });
+    if !charge(rows) || !charge(spans) {
+        return false;
+    }
+    let (mut occupied, mut all_header) = (vec![false; rows], vec![true; rows]);
+    for c in cells.iter() {
+        for r in rows_of(c) {
+            occupied[r] = true;
+            all_header[r] &= c.header;
+        }
+    }
+    let header_row: Vec<bool> = (0..rows).map(|r| occupied[r] && all_header[r]).collect();
+    // Column headers by the row they start in; row headers under every row they occupy; each
+    // list in column order, so a cell finds its own by search.
+    let (mut column_heads, mut row_heads) = (vec![Vec::new(); rows], vec![Vec::new(); rows]);
+    for (i, c) in cells.iter().enumerate() {
+        if !c.header || c.text.trim().is_empty() || c.row as usize >= rows {
+            continue;
+        }
+        if header_row[c.row as usize] {
+            column_heads[c.row as usize].push(i);
+        } else {
+            for r in rows_of(c) {
+                row_heads[r].push(i);
+            }
+        }
+    }
+    for list in column_heads.iter_mut().chain(row_heads.iter_mut()) {
+        list.sort_by_key(|&h| (cells[h].column, h));
+    }
+    // An id named costs a step for each 24 bytes of the longest header id, so a crafted id of a
+    // megabyte cannot be copied ten thousand times within the budget.
+    let weight = cells
+        .iter()
+        .filter(|c| c.header && !c.text.trim().is_empty())
+        .map(|c| c.id.as_str().len().div_ceil(24))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    // For each row, the nearest run of header rows above it.
+    let mut block: Vec<Option<(usize, usize)>> = vec![None; rows];
+    let mut last: Option<(usize, usize)> = None;
+    for r in 0..rows {
+        block[r] = last;
+        if header_row[r] {
+            last = match last {
+                Some((s, e)) if e == r => Some((s, r + 1)),
+                _ => Some((r, r + 1)),
+            };
+        }
+    }
+    let end = |c: &ElementCell| c.column.saturating_add(c.colspan.max(1));
+    let mut bound: Vec<(usize, Vec<usize>, Vec<usize>)> = Vec::new();
+    for (i, c) in cells.iter().enumerate() {
+        if c.header || c.row as usize >= rows {
+            continue;
+        }
+        let mut above: Vec<usize> = Vec::new();
+        if let Some((s, e)) = block[c.row as usize] {
+            for list in &column_heads[s..e] {
+                let from = list.partition_point(|&h| end(&cells[h]) <= c.column);
+                let to = from + list[from..].partition_point(|&h| cells[h].column < end(c));
+                if !charge(weight.saturating_mul(to - from).saturating_add(1)) {
+                    return false;
+                }
+                above.extend_from_slice(&list[from..to]);
+            }
+        }
+        let mut before: Vec<usize> = Vec::new();
+        for r in rows_of(c) {
+            let list = &row_heads[r];
+            let to = list.partition_point(|&h| cells[h].column < c.column);
+            if !charge(weight.saturating_mul(to).saturating_add(1)) {
+                return false;
+            }
+            before.extend_from_slice(&list[..to]);
+        }
+        before.sort_by_key(|&h| (cells[h].column, cells[h].row, h));
+        before.dedup();
+        bound.push((i, above, before));
+    }
+    for (i, above, before) in bound {
+        let ids =
+            |v: Vec<usize>| -> Vec<NodeId> { v.into_iter().map(|h| cells[h].id.clone()).collect() };
+        let (column_headers, row_headers) = (ids(above), ids(before));
+        cells[i].column_headers = column_headers;
+        cells[i].row_headers = row_headers;
+    }
+    true
+}
+
+/// Decision #167: the steps [`bind_headers`] may take for each cell of a table.
+const HEADER_BINDING_STEPS_PER_CELL: usize = 16;
+/// Decision #167: the steps [`bind_headers`] may take for any table, besides its cells' own.
+const HEADER_BINDING_STEPS_BASE: usize = 1024;
 
 /// An element before its id is given.
 fn element(
@@ -1169,6 +1334,234 @@ mod tests {
         let chart = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
         let grid = elements(&chart)[1].table.clone().unwrap();
         assert_eq!(grid.detection_rule, crate::TABLE_DETECTION_CHARTS_V3);
+    }
+
+    /// **Each cell that is no header names the header cells over it, by id** (decision #167): those
+    /// above it in its column, and those before it in its row.
+    #[test]
+    fn a_cell_names_the_header_cells_over_it() {
+        let repr = repr_with_table(
+            &["Year", "North", "South", "2024", "1", "2", "2025", "3", "4"],
+            3,
+            3,
+            &[
+                cell(0, 0, &[0]),
+                cell(0, 1, &[1]),
+                cell(0, 2, &[2]),
+                cell(1, 0, &[3]),
+                cell(1, 1, &[4]),
+                cell(1, 2, &[5]),
+                cell(2, 0, &[6]),
+                cell(2, 1, &[7]),
+                cell(2, 2, &[8]),
+            ],
+        );
+        let mut payload = repr.payload().clone();
+        for c in &mut payload.tables[0].cells {
+            c.header = c.position.row == 0 || c.position.column == 0;
+        }
+        let ids: Vec<NodeId> = payload.tables[0]
+            .cells
+            .iter()
+            .map(|c| c.id.clone())
+            .collect();
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&repr)
+            .into_iter()
+            .find_map(|e| e.table)
+            .expect("a table element");
+        let at = |r: u32, c: u32| {
+            grid.cells
+                .iter()
+                .find(|x| x.row == r && x.column == c)
+                .unwrap()
+        };
+        assert_eq!(at(2, 2).column_headers, [ids[2].clone()]);
+        assert_eq!(at(2, 2).row_headers, [ids[6].clone()]);
+        assert_eq!(at(1, 1).column_headers, [ids[1].clone()]);
+        assert_eq!(at(1, 1).row_headers, [ids[3].clone()]);
+        assert!(at(1, 0).header && at(1, 0).column_headers.is_empty());
+        assert!(!grid.headers_unbound);
+        assert_eq!(at(2, 1).id, ids[7]);
+    }
+
+    /// An empty header cell heads nothing, as in HTML's table model, and a header cell placed past
+    /// the grid's declared rows is not read — a crafted record cannot make the view allocate by a
+    /// row number it names (decision #167).
+    #[test]
+    fn an_empty_or_misplaced_header_heads_nothing() {
+        let repr = repr_with_table(
+            &["", "Units", "North", "7"],
+            2,
+            2,
+            &[
+                cell(0, 0, &[]),
+                cell(0, 1, &[1]),
+                cell(1, 0, &[2]),
+                cell(1, 1, &[3]),
+            ],
+        );
+        let mut payload = repr.payload().clone();
+        for c in &mut payload.tables[0].cells {
+            c.header = c.position.row == 0;
+        }
+        let units = payload.tables[0].cells[1].id.clone();
+        let mut far = payload.clone();
+        far.tables[0].cells[0].position.row = u32::MAX - 1;
+        far.tables[0].cells[0].position.rowspan = u32::MAX;
+        let grid = |payload: crate::RepresentationPayload| {
+            let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+            elements(&repr)
+                .into_iter()
+                .find_map(|e| e.table)
+                .expect("a table element")
+        };
+        for grid in [grid(payload), grid(far)] {
+            let at = |r: u32, c: u32| {
+                grid.cells
+                    .iter()
+                    .find(|x| x.row == r && x.column == c)
+                    .unwrap()
+            };
+            assert!(
+                at(1, 0).column_headers.is_empty(),
+                "an empty corner heads nothing"
+            );
+            assert_eq!(at(1, 1).column_headers, [units.clone()]);
+        }
+    }
+
+    /// A real table's headers fit the budget with room to spare: five header rows and a header
+    /// column over three hundred rows of six columns are all bound (decision #167).
+    #[test]
+    fn a_large_real_table_is_bound() {
+        let (header_rows, rows, columns) = (5u32, 305u32, 6u32);
+        let texts: Vec<String> = (0..rows * columns).map(|i| format!("c{i}")).collect();
+        let texts: Vec<&str> = texts.iter().map(String::as_str).collect();
+        let cells: Vec<_> = (0..rows * columns)
+            .map(|i| cell(i / columns, i % columns, &[i as usize]))
+            .collect();
+        let repr = repr_with_table(&texts, rows, columns, &cells);
+        let mut payload = repr.payload().clone();
+        for c in &mut payload.tables[0].cells {
+            c.header = c.position.row < header_rows || c.position.column == 0;
+        }
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&repr)
+            .into_iter()
+            .find_map(|e| e.table)
+            .expect("a table element");
+        assert!(!grid.headers_unbound);
+        let last = grid
+            .cells
+            .iter()
+            .find(|c| c.row == rows - 1 && c.column == columns - 1)
+            .expect("a cell");
+        assert_eq!(last.column_headers.len(), header_rows as usize);
+        assert_eq!(last.row_headers.len(), 1);
+    }
+
+    /// A crafted grid of many header rows over many data rows binds no header and says so: the
+    /// lists would outgrow the document (decision #167). Every cell keeps its own flag.
+    #[test]
+    fn a_grid_whose_header_lists_outgrow_it_is_unbound() {
+        let (header_rows, data_rows) = (200u32, 200u32);
+        let rows = header_rows + data_rows;
+        let texts: Vec<String> = (0..2 * rows).map(|i| format!("c{i}")).collect();
+        let texts: Vec<&str> = texts.iter().map(String::as_str).collect();
+        let cells: Vec<_> = (0..2 * rows)
+            .map(|i| cell(i / 2, i % 2, &[i as usize]))
+            .collect();
+        let repr = repr_with_table(&texts, rows, 2, &cells);
+        let mut payload = repr.payload().clone();
+        for c in &mut payload.tables[0].cells {
+            c.header = c.position.row < header_rows;
+        }
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&repr)
+            .into_iter()
+            .find_map(|e| e.table)
+            .expect("a table element");
+        assert!(grid.headers_unbound);
+        assert!(grid
+            .cells
+            .iter()
+            .all(|c| c.column_headers.is_empty() && c.row_headers.is_empty()));
+        assert_eq!(
+            grid.cells.iter().filter(|c| c.header).count(),
+            2 * header_rows as usize
+        );
+        // So does a grid that declares far more rows than its cells fill: the view would size its
+        // work by a number the record names.
+        let repr = repr_with_table(&["H", "1"], 1, 1, &[cell(0, 0, &[0]), cell(1, 0, &[1])]);
+        let mut payload = repr.payload().clone();
+        payload.tables[0].rows = 100_000;
+        payload.tables[0].cells[0].header = true;
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&repr)
+            .into_iter()
+            .find_map(|e| e.table)
+            .expect("a table element");
+        assert!(grid.headers_unbound);
+        // And one whose header's id is long enough that naming it under each row would copy far
+        // more than the record holds.
+        let texts: Vec<String> = (0..101).map(|i| format!("c{i}")).collect();
+        let texts: Vec<&str> = texts.iter().map(String::as_str).collect();
+        let cells: Vec<_> = (0..101u32).map(|i| cell(i, 0, &[i as usize])).collect();
+        let repr = repr_with_table(&texts, 101, 1, &cells);
+        let mut payload = repr.payload().clone();
+        payload.tables[0].cells[0].header = true;
+        payload.tables[0].cells[0].id =
+            serde_json::from_value(serde_json::json!(format!("c{}", "x".repeat(2400)))).unwrap();
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&repr)
+            .into_iter()
+            .find_map(|e| e.table)
+            .expect("a table element");
+        assert!(grid.headers_unbound, "a long id costs its length");
+    }
+
+    /// A two-row header governs the rows under it, a header the table repeats part way down
+    /// governs the rows under that repeat, not those above it, and a row header set after a cell
+    /// heads nothing before it (decision #167).
+    #[test]
+    fn a_repeated_header_governs_only_the_rows_under_it() {
+        let texts = ["Ha", "Hb", "Sa", "Sb", "1", "2", "Ra", "Rb", "3", "4"];
+        let cells: Vec<_> = (0..10u32)
+            .map(|i| cell(i / 2, i % 2, &[i as usize]))
+            .collect();
+        let repr = repr_with_table(&texts, 5, 2, &cells);
+        let mut payload = repr.payload().clone();
+        for c in &mut payload.tables[0].cells {
+            let at = (c.position.row, c.position.column);
+            c.header = matches!(at.0, 0 | 1 | 3) || at == (4, 1);
+        }
+        let ids: Vec<NodeId> = payload.tables[0]
+            .cells
+            .iter()
+            .map(|c| c.id.clone())
+            .collect();
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let grid = elements(&repr)
+            .into_iter()
+            .find_map(|e| e.table)
+            .expect("a table element");
+        let at = |r: u32, c: u32| {
+            grid.cells
+                .iter()
+                .find(|x| x.row == r && x.column == c)
+                .unwrap()
+        };
+        assert_eq!(at(2, 1).column_headers, [ids[1].clone(), ids[3].clone()]);
+        assert_eq!(at(4, 0).column_headers, [ids[6].clone()]);
+        assert!(
+            at(4, 0).row_headers.is_empty(),
+            "a header after a cell heads none before it"
+        );
+        assert!(
+            at(4, 1).column_headers.is_empty(),
+            "a header names no headers"
+        );
     }
 
     /// **A table the next page goes on with is one element** (decision #142): that page's rows

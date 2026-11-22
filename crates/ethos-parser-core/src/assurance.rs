@@ -705,8 +705,9 @@ impl Capabilities {
                  What it cannot carry is a MERGE: GFM has no rowspan and no colspan, so a cell \
                  covering several slots is expanded — its text stays in the origin slot and the \
                  slots it covered come out empty. GFM also has no headerless table, so the \
-                 delimiter row after row 0 asserts a header this engine never read: no \
-                 detector reads `/TH`. Both are structural erasures rather than lost characters — \
+                 delimiter row after row 0 asserts a header on every table, whether or not the \
+                 record states one: this projection does not read a cell's `header`. Both are \
+                 structural erasures rather than lost characters — \
                  every character still reaches the Markdown and the `coverage` census accounts \
                  for it — so each is counted per document in `coverage.structural_erasures` \
                  rather than as a dropped-character bucket that would read `0` and disclose \

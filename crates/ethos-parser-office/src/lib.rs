@@ -285,6 +285,8 @@ struct StatedCell {
     rowspan: u64,
     colspan: u64,
     covered: bool,
+    /// The file states the cell is a header cell (decision #167).
+    header: bool,
     nodes: Vec<ethos_parser_core::NodeId>,
     text: String,
 }
@@ -356,6 +358,7 @@ fn stated_table(
     let mut records = Vec::with_capacity(placed.len());
     for cell in placed {
         records.push(ethos_parser_core::TableCellRecord {
+            header: cell.header,
             id: alloc.next(IdKind::Element)?,
             position: ethos_parser_core::TableCellPosition {
                 row: narrow(cell.row),
@@ -965,6 +968,7 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     rowspan: cell.rowspan.into(),
                     colspan: cell.colspan.into(),
                     covered: false,
+                    header: cell.header,
                     nodes: cell.runs.iter().map(|&i| run_ids[i].clone()).collect(),
                     text: cell_text(cell.runs.iter().map(|&i| {
                         let run = &read.runs[i];
@@ -1282,6 +1286,7 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 rows = rows.max(row.saturating_add(rowspan));
                 columns = columns.max(column.saturating_add(colspan));
                 stated.push(StatedCell {
+                    header: false,
                     row,
                     column,
                     rowspan,
@@ -2439,6 +2444,7 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                     .get(&(table.frame, cell.row, cell.column))
                     .map_or(&[][..], Vec::as_slice);
                 stated.push(StatedCell {
+                    header: false,
                     // Both 1-based, from a `<a:tr>` and a `<a:tc>` the reader read (review).
                     row: u64::from(cell.grid.0.saturating_sub(1)),
                     column: u64::from(cell.grid.1.saturating_sub(1)),

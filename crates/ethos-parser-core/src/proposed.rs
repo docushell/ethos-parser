@@ -1365,6 +1365,7 @@ mod tests {
             let cells: Vec<crate::TableCellRecord> = cells
                 .iter()
                 .map(|&(row, column, i)| crate::TableCellRecord {
+                    header: false,
                     id: alloc.next(IdKind::Element).unwrap(),
                     position: crate::TableCellPosition {
                         row,

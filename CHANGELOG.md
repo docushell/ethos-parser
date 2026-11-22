@@ -32,6 +32,33 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A table's header cells, as the document or its rule states them (decision #167)
+
+A table record said nothing about which of its cells were headers, though a tagged document says
+`/TH`, a DOCX table marks the rows it repeats as its header, and the whitespace rule had already
+read a header band or group row: a program had to guess a header from the first row. Each cell now
+carries `header` where the record states one:
+
+- a tagged `/TH` — on a table read from the tags, and on a table a detector found where the tags
+  describe the same grid and the detected cell holds the marked content the `/TH` cites.
+  `tagged-tables-v1` → `tagged-tables-v2`; `profile_sha256` moves. On the
+  gate, `irs-fw9` carries 6 such cells, `nist-sp-800-207` 35 and `nist-sp-800-218` 142;
+- a cell of a DOCX table's leading rows marked `<w:tblHeader/>` (a marked row below an unmarked one
+  is no header, as Word repeats none), folded into `docx-tbl-v1`;
+- a cell of the row a geometric rule read as its table's header: the header row set above a ruled
+  grid (decision #74, folded into `ruled-rects-v14`) and the whitespace rule's header row and group
+  row, a header set on several lines among them (decisions #96, #112, #118, folded into
+  `whitespace-tracks-v16`).
+
+False everywhere else, which is no claim that the cell holds data. In the element view each cell
+carries its record's `id` and `header`, and each cell that is no header names the header cells over
+it by id, as HTML's table model reads a table: `column_headers`, the cells of the nearest run of
+all-header rows above it whose columns meet its own (so a header a table repeats part way down heads
+only the rows under it), and `row_headers`, the other header cells before it whose rows meet its own
+(folded into `elements-units-v1`). An empty header cell heads nothing, as in HTML's model. A crafted grid whose header lists would pass sixteen steps a cell (and a thousand more) binds none and says so with `headers_unbound`; its cells keep their flags. `extract`'s detected and tagged cells carry the flag too. Markdown and HTML
+do not read it: `<th>` and GFM's header row are unchanged, and so is the Markdown and HTML text of
+every benchmark document. Twenty-seven mutations, each caught.
+
 ### A declared caption and list item are labels of their own (decision #166)
 
 The element view settled a tagged `Caption`, `LI`, `Lbl` and `LBody` as `text`, and a DOCX

@@ -647,6 +647,7 @@ fn emit(
             run_indices.sort_unstable();
             let text: String = run_indices.iter().map(|i| runs[*i].text).collect();
             cells.push(DetectedCell {
+                header: false,
                 position: ethos_parser_core::TableCellPosition {
                     row: r as u32,
                     column: c as u32,

@@ -204,7 +204,7 @@ pub struct Score {
     /// already carry the whole gate number and the per-rule breakdown is in the v2-S22 report,
     /// while this one number is the standing finding a guard has to keep honest.
     pub unruled_detected: u32,
-    /// **Tables emitted from the structure tree's tags** (v2-S24, `tagged-tables-v1`).
+    /// **Tables emitted from the structure tree's tags** (v2-S24, `tagged-tables-v2`).
     ///
     /// Counted separately from [`Self::detected`] and never folded into it: `detected` is the
     /// GEOMETRIC detectors' output, the thing the gate scores against the independent tree, and a
@@ -1422,7 +1422,7 @@ mod tests {
     /// (v2-S24).
     ///
     /// `irs-f1040sd-2025` tags two tables and draws neither as a grid a detector can read — its
-    /// stroke rule refuses at `ColumnLineNotStroked` — so both are emitted under `tagged-tables-v1`
+    /// stroke rule refuses at `ColumnLineNotStroked` — so both are emitted under `tagged-tables-v2`
     /// off the same real `extract` run the gate scores. This pins the wire shape the slice's
     /// acceptance names: geometry typed-absent with no box invented, and a cross-check that reports
     /// not-applicable rather than a false `ok`.
@@ -1453,7 +1453,7 @@ mod tests {
         );
 
         for t in &tagged {
-            assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_TAGGED_V1);
+            assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_TAGGED_V2);
             // Geometry typed-absent, no box invented, and the reason is the source not the reader.
             assert!(
                 matches!(

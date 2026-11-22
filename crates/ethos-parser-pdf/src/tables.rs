@@ -216,6 +216,9 @@ pub struct DetectedCell {
     pub run_indices: Vec<usize>,
     /// The concatenation of those runs' text. **Never a novel string.**
     pub text: String,
+    /// Whether the rule that built the table read this cell as a header cell (decision #167).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub header: bool,
 }
 
 /// A detected table.
@@ -285,7 +288,7 @@ pub struct TaggedTableRecord {
     pub columns: u32,
     /// Cells, in tree order.
     pub cells: Vec<TaggedCellRecord>,
-    /// Which rule produced this table: always [`ethos_parser_core::TABLE_DETECTION_TAGGED_V1`]. Set from
+    /// Which rule produced this table: always [`ethos_parser_core::TABLE_DETECTION_TAGGED_V2`]. Set from
     /// the constant at the one build site, never spelled here, for the reason the detected ids are
     /// not: a rule id written twice is one that can drift.
     pub rule: String,
@@ -326,6 +329,9 @@ pub struct TaggedCellRecord {
     pub text: String,
     /// Typed-absent geometry, as for the table.
     pub geometry: ethos_parser_core::GeometryPresence,
+    /// Whether the tree tags this cell `/TH` (decision #167).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub header: bool,
 }
 
 /// The typed-absent geometry every tagged table and tagged cell carries (v2-S24).
@@ -1282,6 +1288,7 @@ pub(crate) fn header_above(t: &mut DetectedTable, runs: &[crate::tracks::TrackRu
                 .flat_map(|line| line.iter().filter(|&&(_, c)| c == k).map(|&(i, _)| i))
                 .collect();
             DetectedCell {
+                header: true, // decision #167: decision #74's header row
                 position: TableCellPosition {
                     row: 0,
                     column: k as u32,
@@ -1460,6 +1467,7 @@ fn ruled_grid(
                 }
             }
             DetectedCell {
+                header: false,
                 position,
                 rect,
                 run_indices,
@@ -3043,6 +3051,12 @@ mod tests {
         assert_eq!(t.cells[0].rect, r(100, 87, 200, 100));
         assert_eq!(t.cells[0].run_indices, [6]);
         assert_eq!(t.rect.y0, pt(87));
+        // Decision #167: the row the rule read above the grid is its header, and only that row.
+        let headers: Vec<bool> = t.cells.iter().map(|c| c.header).collect();
+        assert_eq!(
+            headers,
+            [true, true, true, false, false, false, false, false, false]
+        );
         assert!(matches!(t.check.outcome, CheckStatus::Ok), "{:?}", t.check);
     }
 
@@ -4244,6 +4258,7 @@ mod tests {
         let table = r(0, 0, 200, 200);
         let id = alloc().next(IdKind::Table).expect("allocates");
         let cell = |row, column, rect| DetectedCell {
+            header: false,
             position: TableCellPosition {
                 row,
                 column,

@@ -494,7 +494,7 @@ fn detect_within(
             // has no header: a line above it is no row or header of it, and its first field no
             // header line.
             if stand && is_form(&rows, runs, recognized) {
-                if let Some(table) = build(page, &rows, &[], runs, alloc)? {
+                if let Some(table) = build(page, &rows, &[], 0, runs, alloc)? {
                     tables.push(table);
                     i = end;
                     floor = end;
@@ -560,17 +560,22 @@ fn detect_within(
                 // `-v16` (decision #112): a header cell set over several columns heads them all,
                 // over a header the band made or a first row that reads as one.
                 let saved = rows[0].clone();
-                let groups = if headed || heads(&rows[0], &rows[1..], runs) {
+                // Decision #167: the first row is the table's header where the band made one, it
+                // reads as one, or it is a header set on several lines (#96); the group row over
+                // it is header too.
+                let first_heads = headed || heads(&rows[0], &rows[1..], runs);
+                let groups = if first_heads {
                     let band = if headed { top..first } else { first..first };
                     group_row(&lines, floor, band, &mut rows[0], &tracks, runs)
                 } else {
                     Vec::new()
                 };
-                let mut table = build(page, &rows, &groups, runs, alloc)?;
+                let header = usize::from(first_heads || block > 1);
+                let mut table = build(page, &rows, &groups, header, runs, alloc)?;
                 // A group row the table cannot be built with is none: the header stands as it was.
                 if table.is_none() && !groups.is_empty() {
                     rows[0] = saved;
-                    table = build(page, &rows, &[], runs, alloc)?;
+                    table = build(page, &rows, &[], header, runs, alloc)?;
                 }
                 // A header the table cannot be built with is none (`-v7`): the rows stand alone.
                 if table.is_none() && headed {
@@ -578,7 +583,7 @@ fn detect_within(
                     if let Some(row) = joined.take() {
                         rows.insert(0, row);
                     }
-                    table = build(page, &rows, &[], runs, alloc)?;
+                    table = build(page, &rows, &[], 0, runs, alloc)?;
                 }
                 if let Some(table) = table {
                     tables.push(table);
@@ -2315,6 +2320,7 @@ fn build(
     page: u32,
     rows: &[Row],
     groups: &[Group],
+    header: usize,
     runs: &[TrackRun<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<Option<DetectedTable>, EngineError> {
@@ -2404,6 +2410,8 @@ fn build(
             },
             run_indices,
             text,
+            // Decision #167: the group row, and the first row where it is the header.
+            header: r < lead + header,
         });
     };
     // `-v16`: a group head spans the tracks it heads; every other track is an empty cell.
@@ -2630,10 +2638,26 @@ mod tests {
     /// table of words, which has no column of numbers to tell a header by.
     #[test]
     fn a_first_row_is_the_header_s_only_where_it_reads_as_one() {
+        // Decision #167: which rows the rule read as the header, by the cells' own flag.
+        let headed = |t: &DetectedTable| -> Vec<bool> {
+            (0..t.rows)
+                .map(|r| {
+                    t.cells
+                        .iter()
+                        .filter(|c| c.position.row == r)
+                        .all(|c| c.header)
+                })
+                .collect()
+        };
         let found = ledger(true, ["Region", "Units", "Price", "Delta"]);
         assert_eq!(
             texts(&found[0])[0],
             ["Region", "Current Units", "Prior Price", "Change Delta"]
+        );
+        assert!(headed(&found[0])[0], "the stacked header is the header");
+        assert!(
+            !headed(&found[0])[1..].iter().any(|&h| h),
+            "the rows are not"
         );
         for (first, why) in [
             (["Region", "NA", "NA", "NA"], "placeholders"),
@@ -2659,9 +2683,16 @@ mod tests {
                 "{why}"
             );
             assert_eq!(texts(&found[0])[1], first, "{why}");
+            assert_eq!(
+                headed(&found[0])[..2],
+                [true, false],
+                "{why}: the band is the header, the first row a row"
+            );
         }
         let first = ["Region", "Units", "Price", "Delta"];
         assert_eq!(texts(&ledger(false, first)[0])[0], first, "a caption");
+        // Decision #167: with no header band, a first row that reads as one is the header.
+        assert_eq!(headed(&ledger(false, first)[0])[..2], [true, false]);
         let mut words = vec![
             run(235, 172, 35, "Current "),
             run(335, 172, 35, "Planned "),
@@ -2819,6 +2850,27 @@ mod tests {
             ["Year Ending", "Number of Units", "Average Price"]
         );
         assert_eq!(texts(&found[0])[1], ["North", "7.5", "112.0"]);
+        // Decision #167: the header set on several lines is the table's header row.
+        let row_heads = |t: &DetectedTable, r: u32| {
+            t.cells
+                .iter()
+                .filter(|c| c.position.row == r)
+                .all(|c| c.header)
+        };
+        assert!(row_heads(&found[0], 0), "the stacked lines are the header");
+        assert!(!(1..found[0].rows).any(|r| row_heads(&found[0], r)));
+        // A header whose lower line names years stacks into cells no single line reads as —
+        // `Fiscal 2024` holds a digit and is no year — and is still the header.
+        let found = headed_by(&[
+            (176, ["Area ", "Fiscal ", "Fiscal "]),
+            (186, ["Region", "2024", "2023"]),
+        ]);
+        assert_eq!(
+            texts(&found[0])[0],
+            ["Area Region", "Fiscal 2024", "Fiscal 2023"]
+        );
+        assert!(row_heads(&found[0], 0), "a stacked header naming years");
+        assert!(!(1..found[0].rows).any(|r| row_heads(&found[0], r)));
         let found = headed_by(&[
             (172, ["Year ", "Number ", "Average "]),
             (180, ["Ending ", "of ", "Unit "]),
@@ -3209,6 +3261,20 @@ mod tests {
             ["Region", "Units", "Price", "Units", "Price"]
         );
         assert_eq!(texts(&found[0])[2], ["North", "7.5", "11.0", "8.1", "9.4"]);
+        // Decision #167: the group row and the first row it heads are the header, no row below.
+        let row_heads = |r: u32| {
+            found[0]
+                .cells
+                .iter()
+                .filter(|c| c.position.row == r)
+                .all(|c| c.header)
+        };
+        assert!(row_heads(0) && row_heads(1));
+        assert!(found[0]
+            .cells
+            .iter()
+            .filter(|c| c.position.row >= 2)
+            .all(|c| !c.header));
         // The spans cover every slot once.
         if let ethos_parser_core::CheckStatus::Mismatch { structural, .. } = &found[0].check.outcome
         {

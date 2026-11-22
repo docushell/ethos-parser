@@ -323,11 +323,10 @@ pub const GFM_SPAN_SLOTS_UNREPRESENTABLE: &str = "gfm-span-slots-unrepresentable
 /// every renderer draws row 0 as a header because of it. So projecting *any* table asserts
 /// something about row 0.
 ///
-/// **The representation carries no header declaration at all** — no detector reads `/TH`,
-/// and [`crate::TaggedGridCheck`] compares grids rather than cell types — so this fires for every
-/// table that becomes GFM. It is written as a condition rather than a constant because the day a
-/// slice carries `/TH` through, the count drops on documents that declare one, and nothing here
-/// needs rewording for that to be true.
+/// **This projection reads no header declaration** — a record cell's `header` (decision #167),
+/// which a tagged `/TH` among others sets, is not consulted — so this fires for every table that
+/// becomes GFM, over-disclosing on a table whose record does declare row 0 its header. Reading
+/// the flag, so the count drops on those tables, is a decision of its own.
 ///
 /// **Counted once per table, not once per cell in row 0.** The erasure is one claim — *this
 /// table has a header* — made once about one table. Counting its cells would make a wide table
@@ -6669,6 +6668,7 @@ pub(crate) mod tests {
         let records: Vec<crate::TableCellRecord> = cells
             .iter()
             .map(|c| crate::TableCellRecord {
+                header: false,
                 id: alloc.next(IdKind::Element).unwrap(),
                 position: crate::TableCellPosition {
                     row: c.row,
@@ -12358,6 +12358,7 @@ pub(crate) mod tests {
                     let cell = QRect::new(g.spans[c].0, y, g.spans[c].1, y + g.height).unwrap();
                     geometry[i].presence = GeometryPresence::Measured(cell);
                     crate::TableCellRecord {
+                        header: false,
                         id: alloc.next(IdKind::Element).unwrap(),
                         position: crate::TableCellPosition {
                             row: r as u32,
@@ -12674,7 +12675,7 @@ pub(crate) mod tests {
         );
         // A grid no detector read off the page, on either side.
         for other in [
-            crate::TABLE_DETECTION_TAGGED_V1,
+            crate::TABLE_DETECTION_TAGGED_V2,
             crate::TABLE_DETECTION_CHARTS_V3,
         ] {
             two(paged_tables(&staff(&[]), &[FIRST, SECOND], other), other);

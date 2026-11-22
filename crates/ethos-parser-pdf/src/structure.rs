@@ -240,6 +240,9 @@ pub struct TaggedCell {
     /// cell's mcid against the wrong page's marked content is how a two-page table's text gets
     /// scrambled.
     pub page: Option<ObjectId>,
+    /// Whether the tree tags the cell `/TH`, after the document's `/RoleMap` (decision #167): the
+    /// document's own statement that it is a header cell.
+    pub header: bool,
 }
 
 impl StructureTree {
@@ -375,7 +378,7 @@ fn read_class_map<'a>(
 /// contributes nothing.
 ///
 /// [`attribute_dicts`] reads the inline shapes only and is left as it is: it feeds the cell spans
-/// `tagged-tables-v1` reads, and following a reference there would change which spans that rule
+/// `tagged-tables-v2` reads, and following a reference there would change which spans that rule
 /// finds on a real document without its id moving.
 fn attribute_objects<'a>(doc: &'a lopdf::Document, a: &'a Object) -> Vec<&'a Dictionary> {
     let Ok((_, a)) = doc.dereference(a) else {
@@ -657,7 +660,7 @@ impl Walker<'_> {
         // outside any table, records nothing, and pushing a slot for it would attach the next
         // marked content to whatever cell happened to be last.
         let opened_cell = if standard == "TD" || standard == "TH" {
-            self.note_cell(d)
+            self.note_cell(d, standard == "TH")
         } else {
             None
         };
@@ -752,7 +755,7 @@ impl Walker<'_> {
     /// Returns `(table index, cell index)` when a cell was recorded, so the caller can bind the
     /// marked content that arrives beneath it. `None` when nothing was recorded, which must not
     /// become a slot — see the call site.
-    fn note_cell(&mut self, d: &Dictionary) -> Option<(usize, usize)> {
+    fn note_cell(&mut self, d: &Dictionary, header: bool) -> Option<(usize, usize)> {
         let (rowspan, colspan) = spans_of(d);
         let ctx = self.tables.last_mut()?;
         if ctx.rows_seen == 0 {
@@ -778,6 +781,7 @@ impl Walker<'_> {
             colspan,
             mcids: Vec::new(),
             page: None,
+            header,
         };
         let t = self.tree.tables.get_mut(index)?;
         t.cells.push(cell);
@@ -1320,6 +1324,41 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **A `/TH` is a header cell and a `/TD` is not** (decision #167): the tree's own statement,
+    /// read where its cell is read.
+    #[test]
+    fn a_th_is_a_header_cell() {
+        let bytes = crate::test_support::engine_fixture("tagged-table-agrees/document.pdf");
+        let mut doc = lopdf::Document::load_mem(&bytes).expect("loads");
+        let before = super::read(&doc).expect("walks").expect("is tagged");
+        assert!(
+            before.tables[0].cells.iter().all(|c| !c.header),
+            "no /TH yet"
+        );
+        // The first `/TD` the file holds, retagged `/TH`.
+        let td = doc
+            .objects
+            .iter()
+            .filter(|(_, o)| {
+                o.as_dict()
+                    .ok()
+                    .and_then(|d| d.get(b"S").ok())
+                    .and_then(|s| s.as_name().ok())
+                    == Some(b"TD".as_slice())
+            })
+            .map(|(id, _)| *id)
+            .min()
+            .expect("the fixture tags its cells /TD");
+        doc.get_object_mut(td)
+            .and_then(lopdf::Object::as_dict_mut)
+            .expect("a dictionary")
+            .set("S", lopdf::Object::Name(b"TH".to_vec()));
+        let after = super::read(&doc).expect("walks").expect("is tagged");
+        let headers = after.tables[0].cells.iter().filter(|c| c.header).count();
+        assert_eq!(headers, 1, "exactly the retagged cell");
+        assert_eq!(after.tables[0].cells.len(), before.tables[0].cells.len());
     }
 
     /// **The owner is spelled the way the scope fixes it, and the way the fixtures write it.**

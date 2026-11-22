@@ -29,8 +29,9 @@
 //! on every renderer there is, whatever the document said; HTML has no such requirement, so **a
 //! cell is a `<td>`** — except where a table's own spans say a header is there (decision #99): a
 //! cell spanning columns, divided by the row under it into cells that span no rows, heads a column
-//! group, and those two rows are written `<th>` in a `<thead>`. No detector reads `/TH`, so a
-//! `<th>` anywhere else would be this exporter deciding what the document meant.
+//! group, and those two rows are written `<th>` in a `<thead>`. A record cell's `header` (decision
+//! #167) is not read here — writing `<th>` from it is a decision of its own, to be measured — so no
+//! `<th>` is written anywhere else.
 //!
 //! # Which erasures this artifact declares, and which two it does not
 //!
@@ -1182,9 +1183,9 @@ fn emit_table(
             };
 
             // **`<td>`, and `<th>` only where the table's own spans say so** (decision #99,
-            // [`header_rows`]). No detector reads `/TH` and the representation carries no header
-            // declaration, so a header anywhere else would be this exporter deciding what the
-            // document meant. GFM had no such choice — its delimiter row makes row 0 a header on
+            // [`header_rows`]). A record cell's `header` (decision #167) is not read here —
+            // writing `<th>` from it is a decision of its own — so no header is written anywhere
+            // else. GFM had no such choice — its delimiter row makes row 0 a header on
             // every renderer — which is why `gfm-row-zero-separator-v1` exists there and no
             // equivalent is needed here.
             e.syntax("<");
@@ -2212,9 +2213,10 @@ mod tests {
         assert_tiles(&a);
     }
 
-    /// **No `<th>` from what a cell says.** No detector reads `/TH`, so a header row would be
-    /// invented — which is exactly what GFM forces and `gfm-row-zero-separator-v1` had to disclose.
-    /// Only a column group's head over the row that divides it is one (decision #99).
+    /// **No `<th>` from what a cell says.** This projection reads no header declaration, so a
+    /// header row would be invented — which is exactly what GFM forces and
+    /// `gfm-row-zero-separator-v1` had to disclose. Only a column group's head over the row that
+    /// divides it is one (decision #99).
     #[test]
     fn no_header_row_is_synthesized() {
         let a = artifact_of(repr_with_table(

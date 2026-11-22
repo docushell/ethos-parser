@@ -125,6 +125,9 @@ pub struct Cell {
     /// The runs of its paragraphs, as indices into [`MainPart::runs`]; a nested table's are that
     /// table's.
     pub runs: Vec<usize>,
+    /// Whether its row is one of the table's leading rows the file marks `<w:tblHeader/>`, the
+    /// rows Word repeats as the table's header (decision #167).
+    pub header: bool,
 }
 
 /// How many `<w:basedOn>` links a style lookup follows: a chain longer than any Word writes, and
@@ -755,6 +758,8 @@ struct OpenTable {
 struct RawRow {
     before: u32,
     cells: Vec<RawCell>,
+    /// `<w:trPr><w:tblHeader/>` (decision #167).
+    header: bool,
 }
 
 #[derive(Default)]
@@ -846,6 +851,12 @@ impl Structure {
             return Ok(());
         }
         match name {
+            b"tblHeader" => {
+                let on = stated_on(attribute(start, b"val", part_name)?.as_deref());
+                if let Some(row) = self.open_tables.last_mut().and_then(|t| t.rows.last_mut()) {
+                    row.header = on;
+                }
+            }
             b"gridSpan" | b"vMerge" | b"gridBefore" => {
                 let value = attribute(start, b"val", part_name)?;
                 let Some(row) = self.open_tables.last_mut().and_then(|t| t.rows.last_mut()) else {
@@ -908,8 +919,12 @@ fn grid(rows: Vec<RawRow>) -> Option<Table> {
     // The cell reaching down to the row above at each column, so a continued merge finds its cell
     // in one lookup rather than a walk back over every cell (review: 8,000 rows took 11 s).
     let mut above: std::collections::BTreeMap<u32, usize> = Default::default();
+    // Decision #167: a header row is one of the leading rows marked `<w:tblHeader/>`; Word
+    // repeats no marked row below an unmarked one.
+    let mut leading = true;
     for (r, row) in rows.iter().enumerate() {
         let r = u32::try_from(r).ok()?;
+        leading &= row.header;
         let mut column = row.before;
         let mut reaching = std::collections::BTreeMap::new();
         for raw in &row.cells {
@@ -927,6 +942,7 @@ fn grid(rows: Vec<RawRow>) -> Option<Table> {
                         rowspan: 1,
                         colspan: span,
                         runs: raw.runs.clone(),
+                        header: leading,
                     });
                     cells.len() - 1
                 }
@@ -1524,6 +1540,7 @@ mod tests {
             rowspan,
             colspan,
             runs: runs.to_vec(),
+            header: false,
         };
         assert_eq!(
             main.tables,

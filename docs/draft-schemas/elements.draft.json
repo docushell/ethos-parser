@@ -282,6 +282,11 @@
           },
           "description": "The table records on the following pages this table goes on in (decision #142), in page order: their rows follow its own and their cells carry their page. Absent where it goes on in none."
         },
+        "headers_unbound": {
+          "type": "boolean",
+          "const": true,
+          "description": "Decision #167: present, and true, where this table's header cells are named on none of its cells because binding them would pass the view's budget — sixteen steps a cell and a thousand more, a step being a row a cell covers, a header list it searches or an id it names (an id longer than 24 bytes a step for each 24). Only a crafted grid reaches it. The cells' own `header` flags stand. Absent on every other table."
+        },
         "cells": {
           "type": "array",
           "description": "The record's cells, in its order, then those of each record in `continued`, its rows below this one's. A merged cell is one entry at its top-left slot.",
@@ -294,7 +299,8 @@
               "rowspan",
               "colspan",
               "text",
-              "node_ids"
+              "node_ids",
+              "id"
             ],
             "properties": {
               "row": {
@@ -337,6 +343,25 @@
                   "minLength": 1
                 },
                 "description": "The nodes the record places in this cell."
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Decision #167: the cell record's id, which the header lists name."
+              },
+              "header": {
+                "type": "boolean",
+                "description": "Decision #167: the record states this is a header cell. Omitted when false."
+              },
+              "column_headers": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Decision #167: on a cell that is no header, the column headers over it, top first, by id: the non-empty cells of the nearest run of all-header rows above it whose columns meet its own, so a header a table repeats part way down heads only the rows under it. Omitted when empty."
+              },
+              "row_headers": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Decision #167: on a cell that is no header, the row headers before it, left first, by id: the non-empty header cells outside an all-header row whose rows meet its own. Omitted when empty."
               }
             }
           }

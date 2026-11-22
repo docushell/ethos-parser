@@ -3682,7 +3682,7 @@ fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
 
     // **No double-emission** (v2-S24). The tree's `/Table` was MATCHED by the painted grid, so it
     // paired in the Some arm and is recorded as this geometric table's `tagged_check`. It must NOT
-    // also be emitted as a `tagged-tables-v1` table: a gold `/Table` reaches the artifact once,
+    // also be emitted as a `tagged-tables-v2` table: a gold `/Table` reaches the artifact once,
     // geometrically OR tagged, never both. The tagged emit fires only in the None arm, which this
     // page never reaches.
     let tagged: usize = a.pages.iter().map(|p| p.tagged_tables.len()).sum();

@@ -608,7 +608,7 @@ pub fn mcid_property_list_by_name(sequences: u32) -> Limitation {
 /// that a `/Table` the tree describes was found by no detector and *therefore emitted nothing* —
 /// the engine declining to place cells it could not distinguish on the wire from reconstructed
 /// ones. `DerivationClass` is now that distinction, so the engine emits the table under
-/// `tagged-tables-v1` as `Extracted` and this limitation instead **discloses** that it carries no
+/// its tagged rule as `Extracted` and this limitation instead **discloses** that it carries no
 /// geometry: a consumer reading only the assurance block learns some of this document's tables have
 /// no box and cannot enter a grounding projection.
 pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
@@ -618,7 +618,7 @@ pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
         format!(
             "This document's structure tree describes a `/Table` on page(s) {} that NO geometric \
              detector matched — the page paints no grid of rectangles there and its text implies \
-             no coherent alignment lattice. The table IS emitted, under `tagged-tables-v1`: its \
+             no coherent alignment lattice. The table IS emitted, under `{}`: its \
              shape is read from the document's own `/TR`/`/TD`/`/RowSpan`/`/ColSpan` tags and its \
              cell text from the runs the tree binds beneath each cell, so it is `Extracted` — the \
              document's own statement — rather than a grid this engine inferred. It carries NO \
@@ -628,7 +628,8 @@ pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
              box it is OMITTED from any `ethos.grounding.v1` projection of this document, which is \
              what this disclosure exists to make visible; the text is present and complete, so the \
              table's content is addressable even though its grid is not.",
-            list.join(", ")
+            list.join(", "),
+            ethos_parser_core::TABLE_DETECTION_TAGGED_V2
         ),
     )
 }

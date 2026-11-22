@@ -1849,6 +1849,7 @@ pub(crate) fn chart_table(
         }
         let text: String = run_indices.iter().map(|&i| runs[i].text).collect();
         cells.push(DetectedCell {
+            header: false,
             position: ethos_parser_core::TableCellPosition {
                 row: row as u32,
                 column: column as u32,

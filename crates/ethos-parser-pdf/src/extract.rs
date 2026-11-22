@@ -564,6 +564,38 @@ fn page_heading_lines(
     (lines, tally)
 }
 
+/// Decision #167: where the tree and a detector describe the same grid, a cell the tree tags `/TH`
+/// is a header cell of the table the detector found — when the detected cell at its position holds
+/// a run of the marked content the `/TH` cites on this page. Where the content does not meet, no
+/// tag is carried onto another cell. `mcid_of` gives a detected cell's run's marked-content id.
+fn carry_tagged_headers(
+    cells: &mut [crate::tables::DetectedCell],
+    tagged: &[crate::structure::TaggedCell],
+    page: lopdf::ObjectId,
+    mcid_of: impl Fn(usize) -> Option<i64>,
+) {
+    let heads: std::collections::BTreeMap<(u32, u32), Vec<i64>> = tagged
+        .iter()
+        .filter(|t| t.header && t.page == Some(page))
+        .map(|t| {
+            let mut mcids = t.mcids.clone();
+            mcids.sort_unstable();
+            ((t.row, t.column), mcids)
+        })
+        .collect();
+    if heads.is_empty() {
+        return;
+    }
+    for cell in cells {
+        if let Some(mcids) = heads.get(&(cell.position.row, cell.position.column)) {
+            cell.header |= cell
+                .run_indices
+                .iter()
+                .any(|&i| mcid_of(i).is_some_and(|m| mcids.binary_search(&m).is_ok()));
+        }
+    }
+}
+
 /// Resolve one run's structural address (v1-S3).
 ///
 /// The precedence is the point, so it is stated rather than left to fall out of the `if`s:
@@ -1592,15 +1624,20 @@ fn extract_page(
                     Some(found) => {
                         let positions: Vec<ethos_parser_core::TableCellPosition> =
                             found.cells.iter().map(|c| c.position.clone()).collect();
-                        found.tagged_check =
-                            Some(tagged.check_against(found.rows, found.columns, &positions));
+                        let check = tagged.check_against(found.rows, found.columns, &positions);
+                        if matches!(check.outcome, ethos_parser_core::TaggedGridStatus::Ok) {
+                            carry_tagged_headers(&mut found.cells, &tagged.cells, page_id, |i| {
+                                runs[i].mcid
+                            });
+                        }
+                        found.tagged_check = Some(check);
                     }
                     // The tree says there is a table here and no detector found one. **Until
                     // v2-S24 no table was emitted** — a grid built from `/TD` elements alone would
                     // have cells this engine placed, and with nothing on the wire to distinguish
                     // them a consumer could not tell them from cells a detector reconstructed off
                     // the page. `DerivationClass` is now that distinction: the table is emitted as
-                    // `Extracted` under `tagged-tables-v1` with geometry typed-absent, so it says
+                    // `Extracted` under `tagged-tables-v2` with geometry typed-absent, so it says
                     // out loud that the document declared it and the engine read the tags rather
                     // than inferring a grid. This is the `None` arm the double-emission guard
                     // relies on — a tagged table that paired above is never emitted here.
@@ -1870,6 +1907,7 @@ fn extract_page(
                     (Vec::new(), String::new())
                 };
                 cells.push(crate::tables::TaggedCellRecord {
+                    header: cell.header,
                     position: ethos_parser_core::TableCellPosition {
                         row: cell.row,
                         column: cell.column,
@@ -1888,7 +1926,7 @@ fn extract_page(
                 rows: tagged.rows,
                 columns: tagged.columns,
                 cells,
-                rule: ethos_parser_core::TABLE_DETECTION_TAGGED_V1.to_string(),
+                rule: ethos_parser_core::TABLE_DETECTION_TAGGED_V2.to_string(),
                 check: crate::tables::tagged_not_applicable_check(),
                 geometry: crate::tables::TAGGED_TABLE_GEOMETRY,
                 // Whose element the `/Table` is, as the walk read it off the element's own
@@ -4508,6 +4546,54 @@ pub(crate) fn page_resources(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A `/TH` reaches only the detected cell that holds its content** (decision #167): on a grid
+    /// the tree agrees with, the cell at the `/TH`'s position is a header where it holds a run of
+    /// the marked content the `/TH` cites on this page, and not where it holds other content, nor
+    /// where the `/TH` names another page.
+    #[test]
+    fn a_th_is_carried_only_onto_the_cell_holding_its_content() {
+        let mut alloc = IdAllocator::new(
+            ethos_parser_core::Profile::default()
+                .profile_sha256()
+                .expect("hashes"),
+        );
+        let table_id = alloc.next(ethos_parser_core::IdKind::Table).expect("an id");
+        let detected = |column: u32, run: usize| crate::tables::DetectedCell {
+            position: ethos_parser_core::TableCellPosition {
+                row: 0,
+                column,
+                rowspan: 1,
+                colspan: 1,
+                table_id: table_id.clone(),
+            },
+            rect: crate::tables::QuantRect {
+                x0: 0,
+                y0: 0,
+                x1: 1,
+                y1: 1,
+            },
+            run_indices: vec![run],
+            text: String::new(),
+            header: false,
+        };
+        let th = |column: u32, mcid: i64, page: lopdf::ObjectId| crate::structure::TaggedCell {
+            row: 0,
+            column,
+            rowspan: 1,
+            colspan: 1,
+            mcids: vec![mcid],
+            page: Some(page),
+            header: true,
+        };
+        let here = (4, 0);
+        // Run `i` carries marked-content id `10 + i`.
+        let mut cells = vec![detected(0, 0), detected(1, 1), detected(2, 2)];
+        let tags = [th(0, 10, here), th(1, 99, here), th(2, 12, (5, 0))];
+        carry_tagged_headers(&mut cells, &tags, here, |i| Some(10 + i as i64));
+        let got: Vec<bool> = cells.iter().map(|c| c.header).collect();
+        assert_eq!(got, [true, false, false]);
+    }
 
     /// **A caption names a figure or a table and heads no section** (decision #159): a caption
     /// word, then a number, spaced or not, as a page drawing a glyph to a run gives it.

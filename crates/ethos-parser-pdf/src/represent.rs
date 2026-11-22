@@ -105,6 +105,7 @@ pub fn into_representation(
             let mut cells = Vec::with_capacity(t.cells.len());
             for c in &t.cells {
                 cells.push(ethos_parser_core::TableCellRecord {
+                    header: c.header,
                     id: alloc.next(IdKind::Element)?,
                     position: c.position.clone(),
                     // A detected cell always has a box: the detector measured it from ink. Wrapped
@@ -160,7 +161,7 @@ pub fn into_representation(
         }
 
         // v2-S24. The tagged tables become `TableRecord`s in the SAME list, distinguished by
-        // `detection_rule` — `tagged-tables-v1`, where the geometric tables above carry one of the
+        // `detection_rule` — `tagged-tables-v2`, where the geometric tables above carry one of the
         // three geometric ids — and carrying as `derivation` the class the extractor read off the
         // `/Table` element: `Extracted` for an author's tags, `Computed` where the element carries
         // this engine's owner attribute (auto-tagging S1). A consumer reads one `tables` array and
@@ -174,6 +175,7 @@ pub fn into_representation(
                 .iter()
                 .map(|c| {
                     Ok(ethos_parser_core::TableCellRecord {
+                        header: c.header,
                         id: alloc.next(IdKind::Element)?,
                         position: c.position.clone(),
                         // Typed-absent, carried straight through: the tree named no box, and none
@@ -1084,7 +1086,7 @@ mod tests {
     /// author's `/Table`, `Computed` where the element carries this engine's owner attribute
     /// (auto-tagging S1; `tests/tagging_read.rs` holds that shape). `irs-f1040sd-2025` draws no
     /// readable grid and its author tagged it, so every table it contributes is tagged and
-    /// `Extracted`; the assertion is that they are present, carry `tagged-tables-v1`, report
+    /// `Extracted`; the assertion is that they are present, carry `tagged-tables-v2`, report
     /// geometry absent rather than a fabricated box, and their cross-check is not-applicable.
     #[test]
     fn a_tagged_table_reaches_the_representation_as_extracted_with_absent_geometry() {
@@ -1092,7 +1094,7 @@ mod tests {
         let tables = &repr.payload().tables;
         let tagged: Vec<&ethos_parser_core::TableRecord> = tables
             .iter()
-            .filter(|t| t.detection_rule == ethos_parser_core::TABLE_DETECTION_TAGGED_V1)
+            .filter(|t| t.detection_rule == ethos_parser_core::TABLE_DETECTION_TAGGED_V2)
             .collect();
         assert!(
             !tagged.is_empty(),

@@ -30,7 +30,7 @@ use std::path::PathBuf;
 
 use ethos_parser_core::{
     codes, DerivationClass, EngineError, GeometryAbsence, GeometryPresence, Limitation,
-    LimitationScope, PdfTaggedLocator, Profile, StructuralLocator, TABLE_DETECTION_TAGGED_V1,
+    LimitationScope, PdfTaggedLocator, Profile, StructuralLocator, TABLE_DETECTION_TAGGED_V2,
 };
 use ethos_parser_pdf::{Document, ExtractArtifact};
 use lopdf::{Dictionary, Object, ObjectId};
@@ -847,12 +847,12 @@ fn a_malformed_class_is_refused_beside_a_well_formed_a() {
     );
 }
 
-/// **An owned `/Table` reads back `Computed` under `tagged-tables-v1`** (scope §4.1 on §3.2).
+/// **An owned `/Table` reads back `Computed` under `tagged-tables-v2`** (scope §4.1 on §3.2).
 ///
 /// The writer never emits a `/Table`, and nothing forbids a hand or a later writer from putting
 /// the owner attribute on one, so the shape is held rather than left reachable by accident: the
 /// tagged-table record and the representation's `TableRecord` carry the class the element
-/// states, `detection_rule` still says `tagged-tables-v1`, and the geometry stays typed-absent.
+/// states, `detection_rule` still says `tagged-tables-v2`, and the geometry stays typed-absent.
 /// `detection_rule`, not `derivation`, is what separates a tagged table from a geometric one;
 /// `derivation` says whose statement the grid is. The cells are laid in one column with no
 /// ruling in both halves so the tree's `/Table` reaches the wire at all (see
@@ -866,7 +866,7 @@ fn an_owned_table_element_reads_back_as_computed_under_the_tagged_rule() {
             .iter()
             .flat_map(|p| p.tagged_tables.iter())
             .map(|t| {
-                assert_eq!(t.rule, TABLE_DETECTION_TAGGED_V1);
+                assert_eq!(t.rule, TABLE_DETECTION_TAGGED_V2);
                 t.derivation
             })
             .collect();
@@ -875,7 +875,7 @@ fn an_owned_table_element_reads_back_as_computed_under_the_tagged_rule() {
         assert!(
             tables
                 .iter()
-                .all(|t| t.detection_rule == TABLE_DETECTION_TAGGED_V1),
+                .all(|t| t.detection_rule == TABLE_DETECTION_TAGGED_V2),
             "no detector may find a table on the repainted page, or the tree's /Table pairs with \
              it and never reaches the wire as its own record: {tables:?}"
         );
@@ -919,7 +919,7 @@ fn an_owned_table_element_reads_back_as_computed_under_the_tagged_rule() {
         "never restored to the constant on the way to the wire: {:?}",
         on_wire[0]
     );
-    assert_eq!(on_wire[0].detection_rule, TABLE_DETECTION_TAGGED_V1);
+    assert_eq!(on_wire[0].detection_rule, TABLE_DETECTION_TAGGED_V2);
     assert!(
         matches!(
             on_wire[0].geometry,
