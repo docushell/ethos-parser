@@ -2058,6 +2058,13 @@ mod tests {
         let back: DocumentRepresentation = serde_json::from_slice(&text).unwrap();
         back.verify_fingerprint().unwrap();
         assert_eq!(back, assisted);
+        // The parsed record prints through the serialized route, the minted one through the
+        // hand-written walk: the two agree, `assist` and all, and so does the fingerprint.
+        assert_eq!(back.to_canonical_bytes().unwrap(), text);
+        assert_eq!(
+            assisted.fingerprint(),
+            &crate::Sha256Hex::of_bytes(&assisted.payload().canonical_bytes().unwrap())
+        );
     }
 
     #[test]

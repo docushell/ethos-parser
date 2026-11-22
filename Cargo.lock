@@ -350,6 +350,7 @@ name = "ethos-parser-core"
 version = "0.66.0-dev.1"
 dependencies = [
  "proptest",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

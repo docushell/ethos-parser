@@ -53,7 +53,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::assurance::Assurance;
-use crate::c14n::sha256_hex_bytes;
 use crate::derivation::{DerivationClass, GeometryPresence};
 use crate::error::EngineError;
 use crate::geom::QRect;
@@ -2580,14 +2579,17 @@ impl RepresentationPayload {
     /// node into a scratch buffer and copied it in: the same memory saved, at 4-7% of wall clock.
     /// Hashing in blocks alone changed nothing; removing the copy removed the cost.
     ///
-    /// `seal` still takes the materialized route, because it keeps those bytes for the emit path.
-    /// The two must agree byte for byte or every sealed artifact would fail its own verification,
-    /// which is what the fixtures prove on every run.
+    /// `seal` hashes through this walk too, and a minted record prints through it
+    /// ([`DocumentRepresentation::write_canonical_to`]). [`Self::canonical_bytes`] is the serialized
+    /// route, and tests pin the two byte-equal, an `assist` key included.
     ///
     /// **The destructuring is the guard.** A ninth field fails to compile here rather than being
     /// hashed by `canonical_bytes` and silently skipped by this. The member names need no escaping:
     /// they are ASCII identifiers, and `write_string` would emit them unchanged.
-    fn write_canonical(&self, sink: &mut crate::c14n::Sha256Sink) -> Result<(), EngineError> {
+    fn write_canonical<W: crate::c14n::CanonicalWriter>(
+        &self,
+        sink: &mut W,
+    ) -> Result<(), EngineError> {
         let Self {
             identity,
             source,
@@ -2623,12 +2625,7 @@ impl RepresentationPayload {
         sink.push(b",\"identity\":");
         sink.canonical(identity).map_err(malformed)?;
         sink.push(b",\"nodes\":[");
-        for (i, node) in nodes.iter().enumerate() {
-            if i > 0 {
-                sink.push(b",");
-            }
-            sink.canonical(node).map_err(malformed)?;
-        }
+        sink.elements(nodes).map_err(malformed)?;
         sink.push(b"],\"outlines\":");
         sink.canonical(outlines).map_err(malformed)?;
         sink.push(b",\"pages\":");
@@ -2658,17 +2655,29 @@ pub struct DocumentRepresentation {
     representation: RepresentationPayload,
     representation_c14n_sha256: Sha256Hex,
     geometry: Vec<NodeGeometry>,
-    /// The payload's canonical bytes, kept from the pass `seal` hashed — so the
-    /// emit path can splice them into the envelope instead of walking the whole
-    /// payload a second time. Derived, not identity: absent on a parsed artifact,
-    /// never on the wire, and excluded from equality below, because two artifacts
-    /// that differ only in whether this cache is warm are the same artifact.
+    /// How the emit path prints a record `seal` minted in this process. Derived, not identity:
+    /// [`Minted::No`] on a parsed artifact, never on the wire, and excluded from equality below.
     #[serde(skip)]
-    payload_c14n: Option<Vec<u8>>,
+    minted: Minted,
 }
 
-/// Equality is the five wire fields and nothing else — `payload_c14n` is a
-/// derived cache, and deriving `PartialEq` over it would make a minted artifact
+/// How a record `seal` minted is printed (see [`DocumentRepresentation::write_canonical_to`]).
+#[derive(Debug, Clone, Default)]
+enum Minted {
+    /// Parsed, not minted: printed by canonicalizing it whole.
+    #[default]
+    No,
+    /// A payload one thread canonicalizes, kept as the bytes `seal` hashed and spliced into the
+    /// print, so a small record is walked once.
+    Kept(Vec<u8>),
+    /// A payload canonicalized in parallel chunks: no byte is kept, and the print walks it again
+    /// the same way. The payload is most of a large artifact, and holding it from `seal` to the
+    /// print was a run's largest allocation.
+    Streams,
+}
+
+/// Equality is the five wire fields and nothing else — `minted` is a
+/// derived flag, and deriving `PartialEq` over it would make a minted artifact
 /// unequal to its own parsed round-trip.
 impl PartialEq for DocumentRepresentation {
     fn eq(&self, other: &Self) -> bool {
@@ -2730,7 +2739,7 @@ impl TryFrom<RepresentationWire> for DocumentRepresentation {
             representation: w.representation,
             representation_c14n_sha256: w.representation_c14n_sha256,
             geometry: w.geometry,
-            payload_c14n: None,
+            minted: Minted::No,
         };
         d.check_structure()?;
         Ok(d)
@@ -2749,20 +2758,49 @@ impl DocumentRepresentation {
         payload: RepresentationPayload,
         geometry: Vec<NodeGeometry>,
     ) -> Result<Self, EngineError> {
-        // One canonical pass serves both the fingerprint and, kept as a cache, the
-        // eventual print — the payload was being walked twice per artifact.
-        let payload_bytes = payload.canonical_bytes()?;
-        let fingerprint = Sha256Hex::from_hex(&sha256_hex_bytes(&payload_bytes))
-            .expect("sha256 hex is always 64 lowercase hex digits");
-        let d = Self {
+        let mut d = Self {
             artifact_type: REPRESENTATION_ARTIFACT_TYPE.to_string(),
             schema_version: REPRESENTATION_SCHEMA_VERSION.to_string(),
             representation: payload,
-            representation_c14n_sha256: fingerprint,
+            // Replaced below before the record leaves this function.
+            representation_c14n_sha256: Sha256Hex::of_bytes(&[]),
             geometry,
-            payload_c14n: Some(payload_bytes),
+            minted: Minted::No,
         };
-        d.check_structure()?;
+        // A payload one thread canonicalizes — a small one, or any on a pool of one thread — is
+        // canonicalized once: its bytes are hashed and kept for the print. Walked twice on one
+        // thread, `nist-sp-800-53r5` took 24% longer.
+        if rayon::current_num_threads() < 2
+            || !crate::c14n::walks_in_parallel(d.representation.nodes.len())
+        {
+            // Through the walk a streamed payload takes, so the first refusal named is the same
+            // whatever the pool.
+            let mut bytes = Vec::new();
+            let mut sink = crate::c14n::IoSink::new(&mut bytes);
+            d.representation.write_canonical(&mut sink)?;
+            sink.finish()?;
+            d.representation_c14n_sha256 = Sha256Hex::of_bytes(&bytes);
+            d.check_structure()?;
+            d.minted = Minted::Kept(bytes);
+            return Ok(d);
+        }
+        // A larger one is hashed as a stream, its nodes canonicalized in parallel chunks, and no
+        // byte of it is kept: the print walks it again the same way. The hash and the structure
+        // check read the same record and neither writes it, so they run side by side; a payload
+        // that will not canonicalize is still the error reported first.
+        let fingerprint = |p: &RepresentationPayload| {
+            let mut sink = crate::c14n::Sha256Sink::parallel();
+            p.write_canonical(&mut sink)?;
+            Ok::<_, EngineError>(
+                Sha256Hex::from_hex(&sink.finish())
+                    .expect("sha256 hex is always 64 lowercase hex digits"),
+            )
+        };
+        let (fingerprint, checked) =
+            rayon::join(|| fingerprint(&d.representation), || d.check_structure());
+        d.representation_c14n_sha256 = fingerprint?;
+        checked?;
+        d.minted = Minted::Streams;
         Ok(d)
     }
 
@@ -3491,38 +3529,23 @@ impl DocumentRepresentation {
             what: "representation".into(),
             detail: e.to_string(),
         };
-        // A minted artifact carries the payload bytes `seal` already canonicalized
-        // and hashed; splicing them into the envelope skips the second whole-payload
-        // walk. A parsed artifact has no cache and takes the full pass, and a test
-        // pins the two routes byte-equal.
-        if let Some(payload_bytes) = &self.payload_c14n {
-            // The four small members are canonicalized into owned buffers; the payload — 82% of
-            // the artifact on a gate document — is BORROWED from the cache rather than cloned
-            // into the argument. An emit path that exists to avoid walking the payload twice was
-            // copying it instead, which is a full-artifact allocation at peak for nothing.
-            let artifact_type =
-                crate::c14n::canonical_bytes_of(&self.artifact_type).map_err(malformed)?;
-            let schema_version =
-                crate::c14n::canonical_bytes_of(&self.schema_version).map_err(malformed)?;
-            let digest = crate::c14n::canonical_bytes_of(&self.representation_c14n_sha256)
-                .map_err(malformed)?;
-            let geometry = crate::c14n::canonical_bytes_of(&self.geometry).map_err(malformed)?;
-            return crate::c14n::canonical_object(vec![
-                ("artifact_type", artifact_type.as_slice()),
-                ("schema_version", schema_version.as_slice()),
-                ("representation", payload_bytes.as_slice()),
-                ("representation_c14n_sha256", digest.as_slice()),
-                ("geometry", geometry.as_slice()),
-            ])
-            .map_err(malformed);
+        // A minted artifact prints through the walk `seal` hashed; a parsed one takes the
+        // full pass, and a test pins the two routes byte-equal.
+        if !matches!(self.minted, Minted::No) {
+            let mut out = Vec::new();
+            self.write_canonical_to(&mut out)?;
+            return Ok(out);
         }
         crate::c14n::canonical_bytes_of(self).map_err(malformed)
     }
 
     /// [`Self::to_canonical_bytes`], written to `w` without assembling the artifact in one buffer.
     ///
-    /// Every fallible canonicalization happens before the first byte is written, so a refusal
-    /// writes nothing; only `w` can fail part-way, and its error is returned.
+    /// A refusal writes nothing on any reachable input: a parsed record is canonicalized whole
+    /// before its first byte is written, and a minted one streams a payload `seal` already walked
+    /// without a refusal, beside four members whose types cannot refuse (two strings, a digest, and
+    /// boxes `seal` checked against their pages). Only `w` can fail part-way, and its error is
+    /// returned.
     ///
     /// # Errors
     ///
@@ -3533,33 +3556,37 @@ impl DocumentRepresentation {
             what: "representation".into(),
             detail: e.to_string(),
         };
-        let Some(payload_bytes) = &self.payload_c14n else {
+        if matches!(self.minted, Minted::No) {
             return Ok(w.write_all(&self.to_canonical_bytes()?)?);
-        };
-        let artifact_type =
-            crate::c14n::canonical_bytes_of(&self.artifact_type).map_err(malformed)?;
-        let schema_version =
-            crate::c14n::canonical_bytes_of(&self.schema_version).map_err(malformed)?;
-        let digest =
-            crate::c14n::canonical_bytes_of(&self.representation_c14n_sha256).map_err(malformed)?;
-        let geometry = crate::c14n::canonical_bytes_of(&self.geometry).map_err(malformed)?;
-        // The five members in code-point order, as `canonical_object` sorts them.
-        for (i, (key, value)) in [
-            ("artifact_type", artifact_type.as_slice()),
-            ("geometry", geometry.as_slice()),
-            ("representation", payload_bytes.as_slice()),
-            ("representation_c14n_sha256", digest.as_slice()),
-            ("schema_version", schema_version.as_slice()),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            w.write_all(if i == 0 { b"{\"" } else { b",\"" })?;
-            w.write_all(key.as_bytes())?;
-            w.write_all(b"\":")?;
-            w.write_all(value)?;
         }
-        Ok(w.write_all(b"}")?)
+        // The five members in code-point order, as c14n sorts an object's keys. `seal` walked the
+        // payload without a refusal, and the other four cannot refuse by their types.
+        let mut sink = crate::c14n::IoSink::new(w);
+        let written = (|| {
+            use crate::c14n::CanonicalWriter as _;
+            sink.push(b"{\"artifact_type\":");
+            sink.canonical(&self.artifact_type)?;
+            sink.push(b",\"geometry\":[");
+            sink.elements(&self.geometry)?;
+            sink.push(b"],\"representation\":");
+            Ok(())
+        })();
+        written.map_err(malformed)?;
+        match &self.minted {
+            Minted::Kept(payload) => crate::c14n::CanonicalWriter::push(&mut sink, payload),
+            _ => self.representation.write_canonical(&mut sink)?,
+        }
+        let written = (|| {
+            use crate::c14n::CanonicalWriter as _;
+            sink.push(b",\"representation_c14n_sha256\":");
+            sink.canonical(&self.representation_c14n_sha256)?;
+            sink.push(b",\"schema_version\":");
+            sink.canonical(&self.schema_version)?;
+            sink.push(b"}");
+            Ok(())
+        })();
+        written.map_err(malformed)?;
+        Ok(sink.finish()?)
     }
 }
 
@@ -3603,7 +3630,7 @@ mod turn_tests {
 mod tests {
     use super::*;
     use crate::assurance::{PageState, PageStateEntry};
-    use crate::c14n::c14n_bytes;
+    use crate::c14n::{c14n_bytes, sha256_hex_bytes};
     use crate::derivation::GeometryAbsence;
     use crate::ids::{IdAllocator, IdKind};
     use crate::profile::{Capabilities, Profile};
@@ -3826,6 +3853,45 @@ mod tests {
             spliced,
             "a parsed artifact re-emits the same bytes through the full pass"
         );
+    }
+
+    /// **A payload canonicalized in parallel streams the same bytes**: past one chunk of nodes the
+    /// record keeps no bytes from `seal`, and its print, its fingerprint and the full serialization
+    /// still agree, as they do on a record small enough to keep them.
+    #[test]
+    fn a_streamed_payload_prints_the_full_serialization() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let p = page(&mut alloc, 1);
+        let count = 2 * 1024 + 3;
+        let nodes: Vec<Node> = (1..=count)
+            .map(|i| node(&mut alloc, &p.id, i as u32, 1))
+            .collect();
+        let geometry: Vec<NodeGeometry> = nodes
+            .iter()
+            .map(|n| {
+                geom(
+                    n,
+                    GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+                )
+            })
+            .collect();
+        // On a pool of two, whatever the host: one thread keeps the bytes instead.
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .unwrap();
+        let minted = pool.install(|| seal(nodes, vec![p], geometry)).unwrap();
+        assert!(matches!(minted.minted, Minted::Streams));
+        let printed = minted.to_canonical_bytes().unwrap();
+        assert_eq!(printed, crate::c14n::canonical_bytes_of(&minted).unwrap());
+        assert_eq!(
+            minted.fingerprint(),
+            &Sha256Hex::of_bytes(&minted.payload().canonical_bytes().unwrap())
+        );
+        let parsed: DocumentRepresentation = serde_json::from_slice(&printed).unwrap();
+        parsed.verify_fingerprint().unwrap();
+        assert_eq!(parsed, minted);
+        assert!(matches!(simple().minted, Minted::Kept(_)));
     }
 
     fn simple() -> DocumentRepresentation {

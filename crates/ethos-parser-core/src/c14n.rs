@@ -197,54 +197,6 @@ pub fn sha256_hex(value: &Value) -> Result<String, C14nError> {
     Ok(hex(&Sha256::digest(c14n_bytes(value)?)))
 }
 
-/// Join field values that are ALREADY canonical bytes into one canonical object.
-///
-/// The one caller that earns this exists because an artifact's payload is
-/// canonicalized twice on the emit path — once inside `seal` for the fingerprint,
-/// once inside `to_canonical_bytes` for the print — and on a 932 MB artifact the
-/// second pass is most of the wall clock. `seal` keeps the bytes it hashed;
-/// this splices them into the envelope without re-walking the payload. Keys are
-/// sorted here and duplicates are refused, exactly as [`canonical_bytes_of`]
-/// would have done, so the output is byte-identical to serializing the whole
-/// struct — a property the caller's tests pin.
-///
-/// # Values are BORROWED, and that is the whole point of the signature
-///
-/// The payload is the largest thing in the artifact — 82% of it on a gate
-/// document — and the caller holds it already, cached from `seal`. Taking
-/// `Vec<u8>` by value made the one caller `clone()` that payload to hand it
-/// over, so an emit path whose entire reason for existing is *not* walking the
-/// payload twice was copying it instead. Borrowing removes a full-artifact
-/// allocation from the peak with no change to a single emitted byte.
-///
-/// # Errors
-///
-/// [`C14nError`] on a duplicate key.
-pub fn canonical_object(mut fields: Vec<(&str, &[u8])>) -> Result<Vec<u8>, C14nError> {
-    fields.sort_by(|a, b| a.0.cmp(b.0));
-    if let Some(pair) = fields.windows(2).find(|pair| pair[0].0 == pair[1].0) {
-        return Err(C14nError::new(format!(
-            "duplicate key \"{}\" in canonical value",
-            pair[0].0
-        )));
-    }
-    // `"key":value` per member, a comma between members and two braces: Σ(k + v + 4) + 1 bytes
-    // when no key needs escaping. One short, and the closing brace doubles the buffer.
-    let members: usize = fields.iter().map(|(k, v)| k.len() + v.len() + 4).sum();
-    let mut out = Vec::with_capacity(members + 1);
-    out.push(b'{');
-    for (i, (key, value)) in fields.iter().enumerate() {
-        if i > 0 {
-            out.push(b',');
-        }
-        write_string(key, &mut out);
-        out.push(b':');
-        out.extend_from_slice(value);
-    }
-    out.push(b'}');
-    Ok(out)
-}
-
 /// Canonical bytes of any serializable value, streamed straight to sorted-key
 /// output with no intermediate `serde_json::Value` tree.
 ///
@@ -333,6 +285,10 @@ struct Member {
 /// Hashing as a stream is the same digest without the copy.
 pub(crate) struct Sha256Sink {
     hasher: Sha256,
+    /// Whether long arrays are canonicalized on the thread pool. Off for a record read back,
+    /// whose process has woken no pool: each thread it wakes holds allocator space of its own,
+    /// about 2.6 MiB a thread measured, on the path where a large document peaks highest.
+    parallel: bool,
     /// Bytes written but not yet hashed. Never the whole payload: it is drained whenever it fills.
     buf: Vec<u8>,
     work: Work,
@@ -345,29 +301,216 @@ pub(crate) struct Sha256Sink {
 /// scratch buffer and copied it in; that copy was 805 MB on the largest gate document.
 const SINK_BLOCK: usize = 64 * 1024;
 
+/// Where a payload's canonical bytes go, member by member: [`Sha256Sink`] hashes them,
+/// [`IoSink`] writes them. One member walk serves both, so the print cannot disagree with the
+/// fingerprint on order.
+pub(crate) trait CanonicalWriter {
+    /// Write literal bytes — a key, a brace, a comma.
+    fn push(&mut self, bytes: &[u8]);
+
+    /// Write a value's canonical bytes.
+    fn canonical<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), C14nError>;
+
+    /// Write an array's elements — what its own serialization writes between the brackets: each
+    /// element canonicalized alone, a comma between two. Long arrays are canonicalized in parallel
+    /// chunks and written in their order, so the bytes are the serial walk's on every thread count.
+    fn elements<T: serde::Serialize + Sync>(&mut self, items: &[T]) -> Result<(), C14nError>;
+}
+
+/// Elements per parallel chunk. Below one chunk the walk is serial, so a small document never
+/// waits on a thread.
+const ELEMENT_CHUNK: usize = 1024;
+
+/// Whether [`CanonicalWriter::elements`] canonicalizes `len` elements on the thread pool rather
+/// than on the caller's thread.
+pub(crate) fn walks_in_parallel(len: usize) -> bool {
+    len > ELEMENT_CHUNK
+}
+
+/// Chunks canonicalized per thread before they are handed on in order: a window holds this many
+/// per thread, the most a writer that keeps nothing ([`Sha256Sink`], [`IoSink`]) holds at once.
+/// The bytes do not depend on it.
+const ELEMENT_WINDOW: usize = 4;
+
+/// [`CanonicalWriter::elements`]' walk: `items` canonicalized in chunks, comma-separated, each
+/// chunk's bytes given to `emit` in order. The first error in element order is the one returned,
+/// whichever chunk finished first. A window's chunks are written into buffers this walk keeps and
+/// reuses: freed on the threads that filled them, they would not serve the caller's next
+/// allocation, and memory is spent by allocating (`docs/measurements/memory-ceiling/` §9).
+///
+/// `emit` returns whether to go on: a writer that has failed stops the walk at the next window.
+fn par_elements<T: serde::Serialize + Sync>(
+    items: &[T],
+    mut emit: impl FnMut(&[u8]) -> bool,
+) -> Result<(), C14nError> {
+    use rayon::prelude::*;
+    let fill = |first: usize, chunk: &[T], (out, work): &mut (Vec<u8>, Work)| {
+        out.clear();
+        for (i, item) in chunk.iter().enumerate() {
+            if first + i > 0 {
+                out.push(b',');
+            }
+            canonical_bytes_with(item, out, work)?;
+        }
+        Ok::<(), C14nError>(())
+    };
+    if !walks_in_parallel(items.len()) {
+        let mut one = (Vec::new(), Work::default());
+        fill(0, items, &mut one)?;
+        emit(&one.0);
+        return Ok(());
+    }
+    let chunks = ELEMENT_WINDOW * rayon::current_num_threads().max(1);
+    let span = ELEMENT_CHUNK * chunks;
+    let mut buffers: Vec<(Vec<u8>, Work)> = (0..chunks).map(|_| Default::default()).collect();
+    for (w, window) in items.chunks(span).enumerate() {
+        let base = w * span;
+        let filled: Vec<Result<(), C14nError>> = window
+            .par_chunks(ELEMENT_CHUNK)
+            .zip(buffers.par_iter_mut())
+            .enumerate()
+            .map(|(c, (chunk, buffer))| fill(base + c * ELEMENT_CHUNK, chunk, buffer))
+            .collect();
+        for (done, (out, _)) in filled.into_iter().zip(&buffers) {
+            done?;
+            if !emit(out) {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A writer that streams canonical bytes to `w` a block at a time and keeps none of them: the
+/// print of a record [`crate::DocumentRepresentation::seal`] minted. The first write error stops
+/// further writes and further walking, and is returned by [`Self::finish`].
+pub(crate) struct IoSink<'a, W: std::io::Write> {
+    w: &'a mut W,
+    buf: Vec<u8>,
+    work: Work,
+    failed: Option<std::io::Error>,
+}
+
+impl<'a, W: std::io::Write> IoSink<'a, W> {
+    pub(crate) fn new(w: &'a mut W) -> Self {
+        Self {
+            w,
+            buf: Vec::with_capacity(SINK_BLOCK * 2),
+            work: Work::default(),
+            failed: None,
+        }
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        if self.failed.is_none() {
+            if let Err(e) = self.w.write_all(bytes) {
+                self.failed = Some(e);
+            }
+        }
+    }
+
+    fn drain(&mut self) {
+        let buf = std::mem::take(&mut self.buf);
+        self.write(&buf);
+        self.buf = buf;
+        self.buf.clear();
+    }
+
+    /// Write what is buffered, and the first write error if there was one.
+    pub(crate) fn finish(mut self) -> std::io::Result<()> {
+        self.drain();
+        self.failed.map_or(Ok(()), Err)
+    }
+}
+
+impl<W: std::io::Write> CanonicalWriter for IoSink<'_, W> {
+    fn push(&mut self, bytes: &[u8]) {
+        // A large slice — a payload `seal` kept — is written as it is, never copied in.
+        if bytes.len() >= SINK_BLOCK {
+            self.drain();
+            self.write(bytes);
+            return;
+        }
+        self.buf.extend_from_slice(bytes);
+        if self.buf.len() >= SINK_BLOCK {
+            self.drain();
+        }
+    }
+
+    fn canonical<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), C14nError> {
+        if self.failed.is_some() {
+            return Ok(());
+        }
+        canonical_bytes_with(value, &mut self.buf, &mut self.work)?;
+        if self.buf.len() >= SINK_BLOCK {
+            self.drain();
+        }
+        Ok(())
+    }
+
+    fn elements<T: serde::Serialize + Sync>(&mut self, items: &[T]) -> Result<(), C14nError> {
+        self.drain();
+        if self.failed.is_some() {
+            return Ok(());
+        }
+        par_elements(items, |part| {
+            self.write(part);
+            self.failed.is_none()
+        })
+    }
+}
+
+impl CanonicalWriter for Sha256Sink {
+    fn push(&mut self, bytes: &[u8]) {
+        self.buf.extend_from_slice(bytes);
+        self.drain_if_full();
+    }
+
+    /// Serialized directly into the sink's own buffer.
+    fn canonical<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), C14nError> {
+        canonical_bytes_with(value, &mut self.buf, &mut self.work)?;
+        self.drain_if_full();
+        Ok(())
+    }
+
+    fn elements<T: serde::Serialize + Sync>(&mut self, items: &[T]) -> Result<(), C14nError> {
+        if !self.parallel {
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    self.push(b",");
+                }
+                self.canonical(item)?;
+            }
+            return Ok(());
+        }
+        self.hasher.update(&self.buf);
+        self.buf.clear();
+        par_elements(items, |part| {
+            self.hasher.update(part);
+            true
+        })
+    }
+}
+
 impl Sha256Sink {
     pub(crate) fn new() -> Self {
         Self {
             hasher: Sha256::new(),
+            parallel: false,
             buf: Vec::with_capacity(SINK_BLOCK * 2),
             work: Work::default(),
         }
     }
 
-    /// Write literal bytes — a key, a brace, a comma.
-    pub(crate) fn push(&mut self, bytes: &[u8]) {
-        self.buf.extend_from_slice(bytes);
-        self.drain_if_full();
-    }
-
-    /// Write a value's canonical bytes, serialized directly into the sink's own buffer.
-    pub(crate) fn canonical<T: serde::Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<(), C14nError> {
-        canonical_bytes_with(value, &mut self.buf, &mut self.work)?;
-        self.drain_if_full();
-        Ok(())
+    /// A sink that canonicalizes long arrays on the thread pool: for `seal`, whose process has
+    /// usually woken it to extract pages (an office reader or a re-seal wakes it here, at about
+    /// 2.6 MiB a thread, against a large payload's bytes not kept).
+    /// The digest is the same.
+    pub(crate) fn parallel() -> Self {
+        Self {
+            parallel: true,
+            ..Self::new()
+        }
     }
 
     fn drain_if_full(&mut self) {
@@ -1048,6 +1191,57 @@ mod tests {
         String::from_utf8(c14n_bytes(v).unwrap()).unwrap()
     }
 
+    /// **The parallel element walk writes the array's own bytes**, commas and all, at every
+    /// chunk and window boundary, through both writers: what `IoSink` streams and what
+    /// `Sha256Sink` hashes are the array serialized whole, brackets aside.
+    #[test]
+    fn parallel_elements_write_the_serial_bytes_at_every_boundary() {
+        let window = ELEMENT_CHUNK * ELEMENT_WINDOW * rayon::current_num_threads().max(1);
+        for n in [
+            0,
+            1,
+            2,
+            ELEMENT_CHUNK,
+            ELEMENT_CHUNK + 1,
+            window,
+            window + 1,
+            2 * window + 3,
+        ] {
+            let items: Vec<Value> = (0..n)
+                .map(|i| json!({"b": i, "a": format!("x{i}")}))
+                .collect();
+            let whole = canonical_bytes_of(&items).unwrap();
+            let mut streamed = b"[".to_vec();
+            let mut sink = IoSink::new(&mut streamed);
+            sink.elements(&items).unwrap();
+            sink.push(b"]");
+            sink.finish().unwrap();
+            assert_eq!(streamed, whole, "{n} elements");
+            for mut hashed in [Sha256Sink::new(), Sha256Sink::parallel()] {
+                hashed.push(b"[");
+                hashed.elements(&items).unwrap();
+                hashed.push(b"]");
+                assert_eq!(hashed.finish(), sha256_hex_bytes(&whole), "{n} elements");
+            }
+        }
+    }
+
+    /// **The first error in element order is the one returned**, whichever chunk fails first.
+    #[test]
+    fn parallel_elements_report_the_first_failure_in_order() {
+        let window = ELEMENT_CHUNK * ELEMENT_WINDOW * rayon::current_num_threads().max(1);
+        // Two refusals that read differently, either one first, in different chunks and windows.
+        for (float, too_big) in [(5, window + 3), (ELEMENT_CHUNK + 1, 2)] {
+            let mut items: Vec<Value> = (0..window + 10).map(|i| json!(i)).collect();
+            items[float] = json!(0.5);
+            items[too_big] = json!(u64::MAX);
+            let first = canonical_bytes_of(&items).unwrap_err().to_string();
+            let mut out = Vec::new();
+            let mut sink = IoSink::new(&mut out);
+            assert_eq!(sink.elements(&items).unwrap_err().to_string(), first);
+        }
+    }
+
     // --- parity vectors -------------------------------------------------------------------
     //
     // Lifted from Ethos's committed c14n tests (`ethos-core/src/c14n.rs`), which are themselves
@@ -1347,17 +1541,6 @@ mod tests {
             canonical_bytes_of(&v).expect("streaming"),
             c14n_bytes(&serde_json::to_value(&v).expect("value")).expect("value route"),
         );
-    }
-
-    /// **`canonical_object` reserves the bytes it writes, closing brace included.** One byte
-    /// short, the brace reallocated a buffer the size of the artifact at twice its size.
-    /// `Vec::with_capacity(n)` reports a capacity of exactly `n`, so any regrowth shows here.
-    #[test]
-    fn canonical_object_reserves_its_closing_brace() {
-        let out = canonical_object(vec![("b", b"[2]".as_slice()), ("a", b"1".as_slice())])
-            .expect("no duplicate key");
-        assert_eq!(out, br#"{"a":1,"b":[2]}"#);
-        assert_eq!(out.capacity(), out.len());
     }
 
     #[test]
