@@ -2018,7 +2018,9 @@ fn line_tail<'a>(
 /// **The tail opens the next line**, not the hyphen's line going on: a run within [`same_line`]'s
 /// tolerance of the hyphen's baseline, measured in the hyphen's face or else the word's, is a
 /// line set skewed, as the paragraph reads it, where `non` / `-` / `escrowed` three centipoints
-/// lower closed up `nonescrowed`. Kept here: [`line_tail`]'s exact test is the same-run rule's too.
+/// lower closed up `nonescrowed`. Where neither face is measured the tolerance is unknown and the
+/// hyphen stays: a missed join reads as the page drew it. Kept here: [`line_tail`]'s exact test is
+/// the same-run rule's too.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lone_hyphen_tail<'a>(
     prev: Option<&crate::Node>,
@@ -2066,7 +2068,7 @@ pub(crate) fn lone_hyphen_tail<'a>(
     let along = |tail: &crate::Node| {
         line_key(node)
             .zip(face(node).or_else(|| face(prev)))
-            .is_some_and(|(line, measure)| same_line(line, tail, measure))
+            .is_none_or(|(line, measure)| same_line(line, tail, measure))
     };
     line_tail(node, next, owner).filter(|(tail, text)| {
         text.starts_with(char::is_lowercase) && Style::of(tail) == Style::of(node) && !along(tail)
@@ -7027,13 +7029,16 @@ pub(crate) mod tests {
             artifact_of(struck).markdown,
             "~~the observer models fit the data.~~\n"
         );
-        // The word in a face the page draws no other run in, so none of its glyphs is measured.
-        let mut once = lone_hyphen_lines(LONE_HYPHEN, &[]).payload().clone();
-        if let NodeAttributes::TextRun(a) = &mut once.nodes[0].attributes {
-            a.font_id = "F2".into();
-        }
-        let geometry = lone_hyphen_lines(LONE_HYPHEN, &[]).geometry().to_vec();
-        let once = DocumentRepresentation::seal(once, geometry).unwrap();
+        // The word, or the hyphen, in a face the page draws no other run in, so none of its
+        // glyphs is measured: the other's face measures the line.
+        let in_own_face = |k: usize| {
+            let mut own = lone_hyphen_lines(LONE_HYPHEN, &[]).payload().clone();
+            if let NodeAttributes::TextRun(a) = &mut own.nodes[k].attributes {
+                a.font_id = "F2".into();
+            }
+            let geometry = lone_hyphen_lines(LONE_HYPHEN, &[]).geometry().to_vec();
+            DocumentRepresentation::seal(own, geometry).unwrap()
+        };
         // The hyphen set back inside the word's advance, deeper than a glyph, as a justified line
         // pads a letter's advance past where its ink ends, and reaching past it.
         let padded = unit_lines(&[
@@ -7042,7 +7047,11 @@ pub(crate) mod tests {
             ("el", 72, 80, 65, 1),
             ("s fit the data.", 80, 150, 65, 1),
         ]);
-        for (what, repr) in [("measured once", once), ("padded", padded)] {
+        for (what, repr) in [
+            ("word measured once", in_own_face(0)),
+            ("hyphen measured once", in_own_face(1)),
+            ("padded", padded),
+        ] {
             assert_eq!(
                 artifact_of(repr).markdown,
                 "the observer models fit the data.\n",
@@ -7159,17 +7168,22 @@ pub(crate) mod tests {
         ));
         // The tail three centipoints off the hyphen's baseline: a line set skewed going on, which
         // the paragraph reads as one line ([`same_line`]), not the next line; and so with the
-        // hyphen in a face of its own, unmeasured, by the word's.
+        // hyphen in a face of its own, unmeasured, by the word's; and with all three in faces of
+        // their own, where nothing measures the tolerance and the hyphen stays.
         let skewed = repr_of_placed(&[
             ("the observer non", None, 7200, 7200, Some(6800), None),
             ("-", None, 14000, 7200, Some(300), None),
             ("escrowed", None, 14300, 7203, Some(3200), None),
         ]);
-        let mut own = skewed.payload().clone();
-        if let NodeAttributes::TextRun(a) = &mut own.nodes[1].attributes {
-            a.font_id = "F2".into();
+        for faces in [&[1][..], &[0, 1, 2]] {
+            let mut own = skewed.payload().clone();
+            for &k in faces {
+                if let NodeAttributes::TextRun(a) = &mut own.nodes[k].attributes {
+                    a.font_id = format!("F{}", k + 2);
+                }
+            }
+            reprs.push(DocumentRepresentation::seal(own, skewed.geometry().to_vec()).unwrap());
         }
-        reprs.push(DocumentRepresentation::seal(own, skewed.geometry().to_vec()).unwrap());
         reprs.push(skewed);
         for (k, repr) in reprs.into_iter().enumerate() {
             let a = artifact_of(repr);

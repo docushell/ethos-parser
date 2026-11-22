@@ -51,7 +51,8 @@ hyphen is counted in `hyphenation-rejoin-dropped-v1` as that one is.
   inferred, an item a marker opens is no word's tail. And the tail must open the next line, not
   sit within the tolerance a skewed line keeps: ParseBench-2 `annotated__076523s007lbl_p2` sets its
   columns on baselines a few centipoints apart, and the rule had closed `dur-` onto the next
-  column's `ample` (`durample`, with `transamidrug` and `erygiven` on that page).
+  column's `ample` (`durample`, with `transamidrug` and `erygiven` on that page). Where neither
+  the hyphen's face nor the word's is measured, that tolerance is unknown and the hyphen stays.
 - It stays where the word before it holds a `/`, an `@`, `www.` or a hyphen already — an address or
   a slug broken at its own characters, or a compound — or has no lower-case letter (`HWCVD-` /
   `deposited`, `X-` / `ray`), and where the run after it is struck through, underlined, bold or
