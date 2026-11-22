@@ -15,7 +15,7 @@
 //! **A document's items, each with its box and a label the record states** (decision #137).
 //!
 //! One flat list for a consumer that wants the page's pieces — text, section headers, running heads
-//! and folios, tables, pictures and form fields — without reading the representation's nodes,
+//! and folios, captions, list items, tables, pictures and form fields — without reading the representation's nodes,
 //! tables and figures itself. It began as the view the ParseBench adapter built in Python (`_layout` in
 //! `docs/measurements/parsebench/ethos_bench.py`, decisions #38, #41, #46, #62, #97), and departs
 //! from it where the adapter is wrong for a consumer; each departure is named below.
@@ -37,8 +37,11 @@
 //!   declares, as both projections read it ([`crate::markdown::heading_level`]), a
 //!   `section-header`; then a run's tagged role path after the document's `/RoleMap`, as Markdown
 //!   reads it, innermost role first — `H`, `H1`–`H6` are a `section-header`, and `Title`, `LI`,
-//!   `LBody`, `Lbl` and `Caption` settle it as `text`, since this view has no title, list or
-//!   caption label (`docs/06-STEAL-REFUSE.md` P14); then a run's `inferred_heading` (decision #29)
+//!   a unit opening with a tagged `Caption` is a `caption`, and one opening with a list item
+//!   exactly as both projections read one (an `L` above it, read at its innermost role; a DOCX
+//!   paragraph's declared numbering) a `list-item`; `Title`, and any other `LI`, `Lbl`, `LBody` or
+//!   `Caption`, settle it as `text` (decision #166: only roles the document declares, none read
+//!   from a font or a prefix, `docs/06-STEAL-REFUSE.md` P14); then a run's `inferred_heading` (decision #29)
 //!   at a level 1–6, a `section-header`. Otherwise `text`. **The label tier, level 7, is `text`**,
 //!   as both projections write it (decision #47); the adapter called it a heading. A tagged
 //!   `Table` role labels nothing: the table is its record.
@@ -165,6 +168,11 @@ pub enum ElementLabel {
     Picture,
     /// An interactive form field (decision #163).
     FormField,
+    /// A caption the document tagged as one (decision #166).
+    Caption,
+    /// A list item the document declared: a tagged `LI`, `Lbl` or `LBody`, or a DOCX paragraph's
+    /// numbering (decision #166).
+    ListItem,
 }
 
 /// One item.
@@ -395,11 +403,18 @@ fn label_of(nodes: &[crate::Node], members: &[usize]) -> (ElementLabel, Option<u
             None => {}
         }
     }
-    for &i in members {
+    for (k, &i) in members.iter().enumerate() {
         let node = &nodes[i];
+        // Decision #166: a caption or a list item is the unit's when the unit opens with it; a
+        // unit that opens with other text and goes on into one is text.
+        let opens = k == 0;
         if text_run_attributes(node).is_none() {
             if let Some(level) = crate::markdown::heading_level(node) {
                 return (ElementLabel::SectionHeader, Some(level));
+            }
+            // Decision #166: a DOCX paragraph's declared numbering, as both projections read it.
+            if opens && crate::markdown::list_role(node).is_some() {
+                return (ElementLabel::ListItem, None);
             }
         }
         if let Some(StructuralLocator::PdfTagged(t)) = &node.structural_locator {
@@ -412,6 +427,15 @@ fn label_of(nodes: &[crate::Node], members: &[usize]) -> (ElementLabel, Option<u
                     "H4" => Some(4),
                     "H5" => Some(5),
                     "H6" => Some(6),
+                    // Decision #166: a tagged caption, and a list item exactly where both
+                    // projections read one (`list_role`: an `L` above it, its innermost role); a
+                    // `TOCI`'s or a `Note`'s `Lbl` is no list. Only where the unit opens with it.
+                    "Caption" if opens => return (ElementLabel::Caption, None),
+                    "LI" | "LBody" | "Lbl"
+                        if opens && crate::markdown::list_role(node).is_some() =>
+                    {
+                        return (ElementLabel::ListItem, None)
+                    }
                     "Title" | "LI" | "LBody" | "Lbl" | "Caption" => {
                         return (ElementLabel::Text, None)
                     }
@@ -1021,19 +1045,57 @@ mod tests {
                 ("Heading in a list", Some(&["Document", "H1", "LI"])),
                 ("Bare", Some(&["Document", "P"])),
                 ("Prose", Some(&["Document", "P"])),
+                ("Figure 1. Rates", Some(&["Document", "Figure", "Caption"])),
+                ("A title", Some(&["Document", "Title"])),
+                ("1.", Some(&["Document", "L", "LI", "Lbl"])),
+                ("2.", Some(&["Document", "L", "Lbl"])),
+                ("3", Some(&["Document", "TOC", "TOCI", "Lbl"])),
+                ("Note mark", Some(&["Document", "Note", "Lbl"])),
             ]),
             &[2, 4],
         );
+        // Decision #166: a declared caption and list item are labels of their own, before an
+        // inferred heading, a list item only under an `L` as both projections read it; a title,
+        // a heading's list role and a contents entry's or a note's label stay text.
         assert_eq!(
             summary(&repr),
             [
                 (ElementLabel::SectionHeader, "Intro".into(), Some(2)),
                 (ElementLabel::Text, "Cell".into(), None),
-                (ElementLabel::Text, "Item".into(), None),
+                (ElementLabel::ListItem, "Item".into(), None),
                 (ElementLabel::Text, "Heading in a list".into(), None),
                 (ElementLabel::SectionHeader, "Bare".into(), Some(1)),
                 (ElementLabel::Text, "Prose".into(), None),
+                (ElementLabel::Caption, "Figure 1. Rates".into(), None),
+                (ElementLabel::Text, "A title".into(), None),
+                (ElementLabel::ListItem, "1.".into(), None),
+                (ElementLabel::ListItem, "2.".into(), None),
+                (ElementLabel::Text, "3".into(), None),
+                (ElementLabel::Text, "Note mark".into(), None),
             ]
+        );
+    }
+
+    /// **A unit is a caption or a list item where it opens with one** (decision #166): a lead-in
+    /// line joined with the item after it is text, and an item joined with its continuation is an
+    /// item.
+    #[test]
+    fn a_unit_is_a_list_item_where_it_opens_with_one() {
+        let lines = |paths: [&[&str]; 2]| {
+            with_units(
+                repr_of_paths(&[("First", Some(paths[0])), ("Second", Some(paths[1]))]),
+                &[Some(1), Some(1)],
+            )
+        };
+        let item: &[&str] = &["Document", "L", "LI", "LBody"];
+        let prose: &[&str] = &["Document", "P"];
+        let caption: &[&str] = &["Document", "Figure", "Caption"];
+        assert_eq!(summary(&lines([prose, item]))[0].0, ElementLabel::Text);
+        assert_eq!(summary(&lines([item, prose]))[0].0, ElementLabel::ListItem);
+        assert_eq!(summary(&lines([prose, caption]))[0].0, ElementLabel::Text);
+        assert_eq!(
+            summary(&lines([caption, prose]))[0].0,
+            ElementLabel::Caption
         );
     }
 

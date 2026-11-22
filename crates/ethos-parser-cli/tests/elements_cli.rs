@@ -68,7 +68,7 @@ fn scratch(label: &str) -> Scratch {
 
 /// PDFs that reach each label and each omission the view writes, a two-page PDF, and office
 /// documents.
-const SOURCES: [&str; 14] = [
+const SOURCES: [&str; 15] = [
     "fixtures/engine/heading-display-line/document.pdf",
     "fixtures/engine/heading-label-line/document.pdf",
     "fixtures/engine/untagged-artifact-furniture/document.pdf",
@@ -76,6 +76,7 @@ const SOURCES: [&str; 14] = [
     "fixtures/engine/image-xobject-drawn/document.pdf",
     "fixtures/engine/figure-paths-drawn/document.pdf",
     "fixtures/engine/tagged-structure-roles/document.pdf",
+    "fixtures/engine/tagged-list-items/document.pdf",
     "fixtures/engine/absent-font-metrics/document.pdf",
     "fixtures/engine/form-field-value/document.pdf",
     "fixtures/engine/annotation-contents/document.pdf",
@@ -222,6 +223,7 @@ fn every_node_is_in_exactly_one_place_and_every_label_is_reached() {
     }
     let all = [
         "form-field",
+        "list-item",
         "page-footer",
         "page-header",
         "picture",

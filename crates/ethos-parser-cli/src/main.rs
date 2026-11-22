@@ -199,11 +199,13 @@ enum Command {
     ///
     /// **One flat list of the document's items**, each with its page, its box, its text, the node
     /// ids it covers and a label the record states: `text`, `section-header`, `page-header`,
-    /// `page-footer`, `table` (with its grid), `picture` or `form-field` (with its name, label, type,
+    /// `page-footer`, `caption`, `list-item`, `table` (with its grid), `picture` or `form-field`
+    /// (with its name, label, type,
     /// value and a check box's state, and no box: a field's declared rectangle is not a measured
     /// one; decision #163). No label is inferred here: a heading is
     /// a tagged one or one the reader inferred from its type, as Markdown writes it with `#`; a
-    /// header or footer is the reader's page furniture; there is no list or caption label. A DOCX
+    /// header or footer is the reader's page furniture; a `caption` and a `list-item` are roles the
+    /// document tagged, or a DOCX paragraph's declared numbering (decision #166). A DOCX
     /// paragraph is one element. Boxes are integer centipoints from the top-left of the page; a
     /// source with no pages has neither pages nor boxes. A table the next page goes on with is
     /// one `table` element on its first page (decision #142): the next page's rows follow its

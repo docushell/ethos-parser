@@ -1269,10 +1269,13 @@ fn the_elements_schema_pins_the_version_and_rule_the_code_emits() {
         Table,
         Picture,
         FormField,
+        Caption,
+        ListItem,
     ];
     for label in labels {
         match label {
-            Text | SectionHeader | PageHeader | PageFooter | Table | Picture | FormField => {}
+            Text | SectionHeader | PageHeader | PageFooter | Table | Picture | FormField
+            | Caption | ListItem => {}
         }
     }
     let written: Vec<serde_json::Value> = labels

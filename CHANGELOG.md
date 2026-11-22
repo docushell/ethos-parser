@@ -32,6 +32,18 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A declared caption and list item are labels of their own (decision #166)
+
+The element view settled a tagged `Caption`, `LI`, `Lbl` and `LBody` as `text`, and a DOCX
+paragraph's declared numbering too, so a program could not find a document's captions or list
+items without reading the representation's role paths. A unit that opens with a tagged `Caption`
+is now a `caption`, and one that opens with a list item exactly as both projections read one — an
+`L` above it, read at its innermost role, or a DOCX `<w:numPr>` — a `list-item`; a contents entry's
+or a note's `Lbl`, a `Title`, and a unit that only goes on into a caption or an item stay `text`.
+Every one is a role the document declares, and none is read from a font, a prefix or a bullet (P14
+stands). Folded into `elements-units-v1` and schema
+`0.1.0`, which no release carries; no other output changes.
+
 ### A table element names the rule that read it (decision #165)
 
 The element view's `table` grid did not say how its table was found, so a program could not tell a

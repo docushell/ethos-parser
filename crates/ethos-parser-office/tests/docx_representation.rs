@@ -1195,3 +1195,25 @@ fn crc32(data: &[u8]) -> u32 {
     }
     !crc
 }
+
+/// **A paragraph's declared numbering is a list item in the element view** (decision #166), as
+/// both projections write it `- `; a heading stays a section header and a `Title` style text.
+#[test]
+fn a_declared_list_item_is_a_list_item_element() {
+    let repr = ethos_parser_office::read(&letter(LETTER_BODY)).expect("reads");
+    let elements = ethos_parser_core::to_elements(&repr, "test").expect("projects");
+    let label = |text: &str| {
+        elements
+            .elements
+            .iter()
+            .find(|e| e.text == text)
+            .map(|e| e.label)
+            .unwrap_or_else(|| panic!("no element `{text}`"))
+    };
+    use ethos_parser_core::ElementLabel;
+    assert_eq!(label("Basic pay"), ElementLabel::ListItem);
+    assert_eq!(label("Metro rate"), ElementLabel::ListItem);
+    assert_eq!(label("Special"), ElementLabel::ListItem);
+    assert_eq!(label("Offer Letter"), ElementLabel::Text);
+    assert_eq!(label("Salary"), ElementLabel::SectionHeader);
+}
