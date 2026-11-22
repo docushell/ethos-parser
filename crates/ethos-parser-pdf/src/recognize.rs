@@ -1254,17 +1254,153 @@ mod tests {
 
     #[test]
     fn a_page_that_shows_text_is_not_asked() {
+        // Decision #161: a page of text over a scan, as many characters as the stray-text bound,
+        // is a page of text; and a few words over an image that paints under the share are a
+        // page with a picture.
+        let profile = Profile::ocr_v0();
+        // At 1 point the bound's characters fit the page, so the run is boxed and only the bound
+        // keeps the page from the trigger (the mutation sweep found 12 points ran off it).
+        let text = "x".repeat(crate::thresholds::STRAY_TEXT_MAX_CHARS);
+        for page in [
+            page_with(&format!(
+                "q 200 0 0 100 0 0 cm /Im0 Do Q BT /F1 1 Tf 10 50 Td ({text}) Tj ET"
+            )),
+            scanned("79 0 0 100 0 0", 1, Some("drawn")),
+        ] {
+            let doc = Document::open_bytes(&page, &profile).expect("opens");
+            let mut fake = Fake::new();
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert!(artifact.pages[0]
+                .runs
+                .iter()
+                .all(|r| r.geometry.measured().is_some()));
+            assert!(fake.requests.is_empty());
+            assert!(artifact.pages[0]
+                .runs
+                .iter()
+                .all(|r| r.derivation == DerivationClass::Extracted));
+            assert!(
+                !codes(&artifact).contains(&ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED)
+            );
+        }
+    }
+
+    #[test]
+    fn a_few_words_over_a_scan_stay_drawn_and_the_scan_is_read_beside_them() {
+        // Decision #161: `drawn`, set at (10, 50) up, has its box over "Hello" (20 to 90 points
+        // across, 20 to 80 down) and clear of "world" (110 to 180 across). The page is asked; the
+        // drawn run is kept as drawn, "world" is written beside it, and "Hello" is not, counted.
         let profile = Profile::ocr_v0();
         let doc = Document::open_bytes(&scanned("200 0 0 100 0 0", 1, Some("drawn")), &profile)
             .expect("opens");
         let mut fake = Fake::new();
         let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert_eq!(fake.requests.len(), 1);
+        let mut runs: Vec<(&str, DerivationClass)> = artifact.pages[0]
+            .runs
+            .iter()
+            .map(|r| (r.text.as_str(), r.derivation))
+            .collect();
+        runs.sort_unstable_by_key(|r| r.0);
+        assert_eq!(
+            runs,
+            [
+                ("drawn", DerivationClass::Extracted),
+                ("world", DerivationClass::Recognized)
+            ]
+        );
+        assert!(
+            codes(&artifact).contains(&ethos_parser_core::codes::RECOGNIZED_WORDS_UNDER_DRAWN_TEXT)
+        );
+        crate::to_representation(&artifact, &profile).expect("seals");
+
+        // Without a recognizer the page is counted as `--ocr` would read it (decision #132).
+        let plain = Profile::default();
+        let doc = Document::open_bytes(&scanned("200 0 0 100 0 0", 1, Some("drawn")), &plain)
+            .expect("opens");
+        let artifact = crate::extract(&doc, &plain).expect("extracts");
+        assert_eq!(reason(&artifact).as_deref(), Some("ocr-not-requested"));
+    }
+
+    #[test]
+    fn a_few_words_with_no_box_keep_the_scan_from_the_trigger() {
+        // Decision #161: a drawn run whose font gives no metrics has no box, so no word could be
+        // shown clear of it; the page is not asked, as it was not before.
+        let profile = Profile::ocr_v0();
+        let page = page_with_resources(
+            "q 200 0 0 100 0 0 cm /Im0 Do Q BT /F1 12 Tf 10 50 Td (drawn) Tj ET",
+            |doc, resources| {
+                let font = doc.add_object(lopdf::dictionary! {
+                    "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "NoSuchFont"
+                });
+                resources.set("Font", lopdf::dictionary! { "F1" => font });
+            },
+        );
+        let doc = Document::open_bytes(&page, &profile).expect("opens");
+        let mut fake = Fake::new();
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        let drawn = &artifact.pages[0].runs[0];
+        assert_eq!(drawn.text, "drawn");
+        assert!(matches!(
+            drawn.geometry,
+            ethos_parser_core::GeometryPresence::Absent(a)
+                if a != ethos_parser_core::GeometryAbsence::NoInkToMeasure
+        ));
         assert!(fake.requests.is_empty());
+    }
+
+    #[test]
+    fn a_run_of_spaces_over_a_scan_covers_nothing() {
+        // Decision #161: a drawn run that drew no ink has no box, and covers nothing a word could
+        // sit on; it neither keeps the page from the trigger nor a word from the page.
+        let profile = Profile::ocr_v0();
+        let page = page_with(
+            "q 200 0 0 100 0 0 cm /Im0 Do Q BT /F1 12 Tf 10 50 Td (drawn) Tj 140 30 Td ( ) Tj ET",
+        );
+        let doc = Document::open_bytes(&page, &profile).expect("opens");
+        let mut fake = Fake::new();
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert_eq!(fake.requests.len(), 1);
         assert!(artifact.pages[0]
             .runs
             .iter()
-            .all(|r| r.derivation == DerivationClass::Extracted));
-        assert!(!codes(&artifact).contains(&ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED));
+            .any(|r| r.text == "world" && r.derivation == DerivationClass::Recognized));
+        crate::to_representation(&artifact, &profile).expect("seals");
+    }
+
+    #[test]
+    fn a_few_words_over_a_composed_scan_are_composed_around() {
+        // Decision #161 with #156: text shown on a page painted with two images no longer ends
+        // the composition — here the text is shown first, so both images follow it; the drawn
+        // run, clear of both words here, stays beside them.
+        let profile = Profile::ocr_v0();
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        let page = page_with(&format!(
+            "BT /F1 12 Tf 10 50 Td (drawn) Tj ET {image} {image}"
+        ));
+        let doc = Document::open_bytes(&page, &profile).expect("opens");
+        let mut fake = Fake::new();
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert_eq!(fake.requests.len(), 1);
+        let ImageSpec::Composite(spec) = &fake.requests[0].image else {
+            panic!("composed: {:?}", fake.requests[0].image);
+        };
+        assert_eq!(spec.layers.len(), 2);
+        let mut runs: Vec<(&str, DerivationClass)> = artifact.pages[0]
+            .runs
+            .iter()
+            .map(|r| (r.text.as_str(), r.derivation))
+            .collect();
+        runs.sort_unstable_by_key(|r| r.0);
+        assert_eq!(
+            runs,
+            [
+                ("Hello ", DerivationClass::Recognized),
+                ("drawn", DerivationClass::Extracted),
+                ("world", DerivationClass::Recognized)
+            ]
+        );
+        crate::to_representation(&artifact, &profile).expect("seals");
     }
 
     #[test]
@@ -2066,10 +2202,13 @@ mod tests {
         // Decision #156: a page of several images it would compose, too.
         let two = extract(&scanned("200 0 0 100 0 0", 2, None));
         assert_eq!(reason(&two).as_deref(), Some("ocr-not-requested"));
-        // Never on a page that shows text, nor on one the trigger itself does not take.
+        // Never on a page that shows text, nor on one the trigger itself does not take. A few words
+        // over the scan are not a page of text (decision #161): counted above, in
+        // `a_few_words_over_a_scan_stay_drawn_and_the_scan_is_read_beside_them`.
         let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        let text = "x".repeat(crate::thresholds::STRAY_TEXT_MAX_CHARS);
         for bytes in [
-            scanned("200 0 0 100 0 0", 1, Some("drawn")),
+            scanned("200 0 0 100 0 0", 1, Some(&text)),
             page_with(&format!("{image} 0 0 m 50 50 l S {image}")),
         ] {
             let other = extract(&bytes);
@@ -2195,6 +2334,38 @@ mod tests {
             )
         );
         crate::to_representation(&artifact, &profile).expect("seals");
+    }
+
+    #[test]
+    fn beside_drawn_text_a_word_without_a_box_on_the_page_is_left_out() {
+        // Decision #161: beside drawn text a word has to show it sits clear of it, which a box
+        // past the page's edge, or none at all, does not; on a page of its own each keeps its text,
+        // as the two tests below pin. "Hello" lies under `drawn`; "world" runs past the edge, then
+        // encloses nothing. Neither is written, both are counted, and the document seals.
+        let profile = Profile::ocr_v0();
+        for reach in [24, 11] {
+            let doc = Document::open_bytes(&scanned("200 0 0 100 0 0", 1, Some("drawn")), &profile)
+                .expect("opens");
+            let mut fake = Fake::new();
+            fake.reach = reach;
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            assert_eq!(fake.requests.len(), 1);
+            assert!(
+                artifact.pages[0]
+                    .runs
+                    .iter()
+                    .all(|r| r.derivation == DerivationClass::Extracted),
+                "reach {reach}"
+            );
+            let under = artifact
+                .assurance
+                .limitations
+                .iter()
+                .find(|l| l.code == ethos_parser_core::codes::RECOGNIZED_WORDS_UNDER_DRAWN_TEXT)
+                .expect("counted");
+            assert!(under.detail.starts_with("2 word(s)"), "{}", under.detail);
+            crate::to_representation(&artifact, &profile).expect("seals");
+        }
     }
 
     #[test]

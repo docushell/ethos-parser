@@ -924,9 +924,10 @@ pub fn scanned_page_not_recognized(page: u32, reason: &str) -> Limitation {
         page,
         ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED,
         format!(
-            "This page showed no text and placed an image, and was NOT read by the recognizer: \
-             `{reason}`. Its text, if it has any, is absent from this artifact. An empty run list \
-             on this page is a declared gap, not a blank page."
+            "This page showed no text, or a few words over images that paint much of it \
+             (decision #161), and placed an image, and was NOT read by the recognizer: \
+             `{reason}`. The image's text, if it has any, is absent from this artifact. A run \
+             list empty or short on this page is a declared gap, not a blank page."
         ),
     )
 }
@@ -939,6 +940,18 @@ pub fn recognized_words_outside_visible_box(words: u32) -> Limitation {
             "{words} word(s) the recognizer read lie outside their page's visible box, where an \
              image runs past the crop, and were NOT written: text a viewer does not show is not \
              the page's."
+        ),
+    )
+}
+
+/// Recognized words not written because a drawn run lies where they would (decision #161).
+pub fn recognized_words_under_drawn_text(words: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::RECOGNIZED_WORDS_UNDER_DRAWN_TEXT,
+        format!(
+            "{words} word(s) the recognizer read on a page that also shows drawn text lie where a \
+             drawn run's box lies, or have no box to tell them from one, and were NOT written: \
+             the drawn text is the page's, and a recognized word is never merged into it."
         ),
     )
 }

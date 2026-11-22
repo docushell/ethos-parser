@@ -180,7 +180,7 @@ because a lane added without these rules contaminates everything upstream of it.
 | --- | --- | --- | --- | --- |
 | Deterministic reader | `Extracted` | base | Text, origins, font identity, marked-content ids | — |
 | Deterministic rules | `Computed` | base, rule version pinned | Reading order, line grouping, ink boxes | Overwrite `Extracted` |
-| **OCR (v3)** | `Recognized` | **its own** | Nodes **only on canvases where the deterministic reader found no text layer at all** | Overwrite `Extracted`. Merge into the native stream. Filter on confidence |
+| **OCR (v3)** | `Recognized` | **its own** | Nodes **only where the deterministic reader found no drawn text**: a canvas with no text layer at all, or a scan's area outside every drawn run's box (decision #161) | Overwrite `Extracted`. Merge into the native stream. Filter on confidence |
 | **Assist (v4)** | **`Proposed`** | its own | Suggestions | Be citable. Be evidence. Overwrite anything |
 
 **Four rules that make this safe:**

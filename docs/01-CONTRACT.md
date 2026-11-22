@@ -230,7 +230,7 @@ without laundering into born-digital certainty.
 | --- | --- | --- | --- |
 | **`Extracted`** | Read from the source's own encoding | Text, origins, font identity, `mcid` | The only class v0 produces |
 | **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, boxes from font metrics (§5.3), a structure tag this engine wrote and read back ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)) | The rule's version is part of the profile |
-| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v3 (decision #120, `--ocr`), own profile. **May author only on canvases where the deterministic reader found no text layer at all** |
+| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v3 (decision #120, `--ocr`), own profile. **May author only where the deterministic reader found no drawn text: on a canvas with no text layer at all, or, on a scan carrying a few drawn words (decision #161), outside every drawn run's box** |
 | **`Proposed`** | Suggested by a model | Nothing citable, ever | v4. Never evidence. Since decision #145, a drafting model's reply blocks, carried in the record's `assist` key and never as nodes, under a profile that pins the model |
 
 Four hard rules:

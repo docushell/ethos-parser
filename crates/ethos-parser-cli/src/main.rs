@@ -1070,7 +1070,7 @@ fn hint_ocr(repr: &ethos_parser_core::DocumentRepresentation, ask: &str) {
     };
     let _ = writeln!(
         std::io::stderr(),
-        "engine: {pages} page(s) show no text and were not read: {}{not_asked} [{}]",
+        "engine: {pages} scanned page(s) were not read: {}{not_asked} [{}]",
         why.join(", "),
         ethos_parser_core::codes::SCANNED_PAGE_NOT_RECOGNIZED
     );

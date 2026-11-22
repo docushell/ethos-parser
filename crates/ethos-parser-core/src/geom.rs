@@ -166,6 +166,14 @@ impl QRect {
     pub fn to_array(self) -> [i64; 4] {
         [self.x0, self.y0, self.x1, self.y1]
     }
+
+    /// Whether the two share area: edges that only touch do not (decision #161). The one test
+    /// both the reader, which leaves a recognized word out where it would sit on drawn text, and
+    /// the seal, which refuses one that does, apply, so the seal never refuses what the reader
+    /// kept.
+    pub fn overlaps(self, other: Self) -> bool {
+        self.x0 < other.x1 && other.x0 < self.x1 && self.y0 < other.y1 && other.y0 < self.y1
+    }
 }
 
 /// A rectangle could not be constructed.

@@ -203,6 +203,92 @@ fn declared_len(count: usize) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 
+/// Decision #161: a page that showed text and placed a scan — [`stray_text`] — keeps its drawn
+/// runs, and a recognized word is written only where its box lies on the page and shares no area
+/// with a drawn run's box: the test the seal applies (`check_recognized_placement`), so nothing
+/// written here is refused there. A word with no box, or beside a drawn run with none, is left
+/// out, as nothing shows the two apart; a drawn run that drew no ink, a run of spaces, covers
+/// nothing. Returns the words kept and how many were left out.
+fn beside_drawn(
+    words: Vec<crate::recognize::PageWord>,
+    page: &PageExtract,
+) -> (Vec<crate::recognize::PageWord>, u32) {
+    if page.runs.is_empty() {
+        return (words, 0);
+    }
+    let drawn: Vec<Option<ethos_parser_core::QRect>> = page
+        .runs
+        .iter()
+        .filter_map(|r| drawn_area(r.geometry))
+        .collect();
+    let on_page = |r: ethos_parser_core::QRect| {
+        r.x0() >= 0 && r.y0() >= 0 && r.x1() <= page.width && r.y1() <= page.height
+    };
+    let read = words.len();
+    let kept: Vec<_> = words
+        .into_iter()
+        .filter(|w| {
+            w.rect.is_some_and(|r| {
+                on_page(r) && drawn.iter().all(|d| d.is_some_and(|d| !d.overlaps(r)))
+            })
+        })
+        .collect();
+    let under = declared_len(read - kept.len());
+    (kept, under)
+}
+
+/// Decision #161: the area a drawn run covers, as the seal reads it — its box; `Some(None)`,
+/// unknown, where it has none; and `None`, nothing, where it drew no ink, as a run of spaces.
+fn drawn_area(g: ethos_parser_core::GeometryPresence) -> Option<Option<ethos_parser_core::QRect>> {
+    match g {
+        ethos_parser_core::GeometryPresence::Measured(r) => Some(Some(r)),
+        ethos_parser_core::GeometryPresence::Absent(
+            ethos_parser_core::GeometryAbsence::NoInkToMeasure,
+        ) => None,
+        ethos_parser_core::GeometryPresence::Absent(_) => Some(None),
+    }
+}
+
+/// Decision #161: a page that showed text, all of it under
+/// [`STRAY_TEXT_MAX_CHARS`](crate::thresholds::STRAY_TEXT_MAX_CHARS) characters and every run of
+/// it boxed but what drew no ink, over images that paint at least
+/// [`STRAY_TEXT_MIN_IMAGE_PERCENT`](crate::thresholds::STRAY_TEXT_MIN_IMAGE_PERCENT) of its
+/// visible box together: a scan carrying a stray text layer, which `--ocr`'s trigger takes as it
+/// takes a page that showed none. A reason code like the rest of the trigger, never a score.
+fn stray_text(
+    runs: &[crate::nodes::TextRun],
+    images: &[crate::nodes::ImageRecord],
+    visible: crate::tables::QuantRect,
+) -> bool {
+    let chars: usize = runs.iter().map(|r| r.text.chars().count()).sum();
+    if runs.is_empty()
+        || chars >= crate::thresholds::STRAY_TEXT_MAX_CHARS
+        || runs.iter().any(|r| drawn_area(r.geometry) == Some(None))
+    {
+        return false;
+    }
+    let area = |x0: i64, y0: i64, x1: i64, y1: i64| -> i128 {
+        i128::from((x1 - x0).max(0)) * i128::from((y1 - y0).max(0))
+    };
+    let shown = area(visible.x0, visible.y0, visible.x1, visible.y1);
+    if shown == 0 {
+        return false;
+    }
+    let painted: i128 = images
+        .iter()
+        .filter_map(|i| match &i.locator.rect {
+            ethos_parser_core::PaintedRect::Painted(q) => Some(area(
+                q.x0().max(visible.x0),
+                q.y0().max(visible.y0),
+                q.x1().min(visible.x1),
+                q.y1().min(visible.y1),
+            )),
+            _ => None,
+        })
+        .sum();
+    painted.min(shown) * 100 >= shown * i128::from(crate::thresholds::STRAY_TEXT_MIN_IMAGE_PERCENT)
+}
+
 /// Whether a document declares no **author** structure — decision #29's gate
 /// (`docs/28-HEADINGS-SCOPE.md` §6.1).
 ///
@@ -714,6 +800,9 @@ struct PageYield {
     ocr_refusal: Option<String>,
     /// v3: recognized words not written because no viewer shows where they lie.
     recognized_outside: u32,
+    /// Decision #161: recognized words not written because a drawn run lies where they would, or
+    /// because no box tells them apart from one.
+    recognized_under_text: u32,
 }
 
 /// One page's whole extraction, exactly the body the sequential loop ran, with two
@@ -2233,8 +2322,14 @@ fn extract_page(
         // recognizer can compose with the fills between them (decision #156), and refused by name
         // when it did not. Decided on the first reading only. Under a profile that pins none, the
         // page it would read is taken too, and counted after the pages are read (decision #132);
-        // a page it would refuse here is not counted there.
-        if words.is_none() && interp.text_operators == 0 {
+        // a page it would refuse here is not counted there. Since decision #161, a page that
+        // showed a few words over a scan is taken too ([`stray_text`]), its drawn runs kept and
+        // its recognized words written only beside them ([`beside_drawn`]).
+        let stray = || {
+            crate::tables::quantize_rect(visible.x0, visible.y0, visible.x1, visible.y1)
+                .is_ok_and(|shown| stray_text(&runs, &images, shown))
+        };
+        if words.is_none() && (interp.text_operators == 0 || stray()) {
             let placed = interp.images.len() + interp.inline_images as usize;
             let composite = &interp.composite;
             // Decision #156 (review): what an image's own `/OC` makes of it, and whether the page
@@ -2435,6 +2530,7 @@ fn extract_page(
         candidate,
         ocr_refusal,
         recognized_outside: 0,
+        recognized_under_text: 0,
     }))
 }
 
@@ -2812,6 +2908,7 @@ fn extract_counted(
     let mut unresolved_xobjects: u32 = 0;
     let mut undescended_xobjects: u32 = 0;
     let mut recognized_outside: u32 = 0;
+    let mut recognized_under_text: u32 = 0;
     let mut form_mcids: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
@@ -3007,6 +3104,7 @@ fn extract_counted(
                         generation: u32::from(candidate.object.1),
                     });
             let (words, outside) = crate::recognize::place(&candidate, &answer, image)?;
+            let (words, under) = beside_drawn(words, &y.page);
             if !words.is_empty() {
                 let again = read(
                     *page_number,
@@ -3018,6 +3116,7 @@ fn extract_counted(
                 *y = again;
             }
             y.recognized_outside = declare(y.recognized_outside, outside);
+            y.recognized_under_text = declare(y.recognized_under_text, under);
         }
     } else {
         // Decision #132: with no recognizer, a page the trigger took is counted as `--ocr` would
@@ -3208,6 +3307,7 @@ fn extract_counted(
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
         recognized_outside = declare(recognized_outside, y.recognized_outside);
+        recognized_under_text = declare(recognized_under_text, y.recognized_under_text);
         if let Some(why) = &y.ocr_refusal {
             limitations.push(lim::scanned_page_not_recognized(page_number, why));
         }
@@ -3589,6 +3689,11 @@ fn extract_counted(
     if recognized_outside > 0 {
         limitations.push(lim::recognized_words_outside_visible_box(
             recognized_outside,
+        ));
+    }
+    if recognized_under_text > 0 {
+        limitations.push(lim::recognized_words_under_drawn_text(
+            recognized_under_text,
         ));
     }
     if image_file.is_some() {

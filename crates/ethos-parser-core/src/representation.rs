@@ -3325,13 +3325,27 @@ impl DocumentRepresentation {
     /// Contract §6's placement rule, checked rather than trusted (`docs/35-OCR-SCOPE.md` §6).
     ///
     /// A recognized run is a text run of derivation `Recognized` under a
-    /// [`NativeLocator::Recognized`] address, and nothing else carries either; and no page holds
-    /// both a `Recognized` node and an `Extracted` text run. A recognizer authors only where the
-    /// deterministic reader found no text layer at all, and is never merged into one — the failure
-    /// `docs/07-VERIFY-BOUNDARY.md` §8.3 names.
+    /// [`NativeLocator::Recognized`] address, and nothing else carries either; and no recognized
+    /// run's box shares area with an `Extracted` text run's box on its page. A recognizer authors
+    /// only where the deterministic reader found no drawn text — a page with no text layer, or,
+    /// since decision #161, the part of a scan a few drawn words do not cover — and is never
+    /// merged into one: the failure `docs/07-VERIFY-BOUNDARY.md` §8.3 names. Where either box is
+    /// absent, nothing shows the two apart, and the run is refused as the page rule refused it —
+    /// but a drawn run that drew no ink, a run of spaces, covers nothing a word could sit on.
     fn check_recognized_placement(&self) -> Result<(), EngineError> {
-        let mut extracted_pages = std::collections::BTreeSet::new();
-        for node in &self.representation.nodes {
+        let measured = |g: &NodeGeometry| match g.presence {
+            GeometryPresence::Measured(r) => Some(r),
+            GeometryPresence::Absent(_) => None,
+        };
+        // A drawn run's area: its box, unknown where it has none, and nothing where it drew no ink.
+        let covered = |g: &NodeGeometry| match g.presence {
+            GeometryPresence::Measured(r) => Some(Some(r)),
+            GeometryPresence::Absent(crate::derivation::GeometryAbsence::NoInkToMeasure) => None,
+            GeometryPresence::Absent(_) => Some(None),
+        };
+        let mut drawn: std::collections::BTreeMap<&NodeId, Vec<Option<QRect>>> =
+            std::collections::BTreeMap::new();
+        for (node, g) in self.representation.nodes.iter().zip(&self.geometry) {
             let recognized = node.derivation == DerivationClass::Recognized;
             let addressed = matches!(node.native_locator, NativeLocator::Recognized(_));
             if recognized != addressed || (recognized && node.kind != NodeKind::TextRun) {
@@ -3342,16 +3356,25 @@ impl DocumentRepresentation {
                 )));
             }
             if node.kind == NodeKind::TextRun && node.derivation == DerivationClass::Extracted {
-                extracted_pages.insert(&node.parent);
+                if let Some(area) = covered(g) {
+                    drawn.entry(&node.parent).or_default().push(area);
+                }
             }
         }
-        for node in &self.representation.nodes {
-            if node.derivation == DerivationClass::Recognized
-                && extracted_pages.contains(&node.parent)
-            {
+        for (node, g) in self.representation.nodes.iter().zip(&self.geometry) {
+            if node.derivation != DerivationClass::Recognized {
+                continue;
+            }
+            let Some(boxes) = drawn.get(&node.parent) else {
+                continue;
+            };
+            let on_drawn =
+                measured(g).is_none_or(|r| boxes.iter().any(|b| b.is_none_or(|b| b.overlaps(r))));
+            if on_drawn {
                 return Err(Self::malformed(format!(
-                    "node `{}` is recognized text on a page holding extracted text; a recognizer \
-                     authors only where the page has no text layer at all (contract §6)",
+                    "node `{}` is recognized text where its page holds extracted text, with no box \
+                     apart from it; a recognizer authors only where the page shows no drawn text \
+                     (contract §6, decision #161)",
                     node.id
                 )));
             }
@@ -3970,8 +3993,9 @@ mod tests {
     }
 
     /// Contract §6's placement rule is the seal's (`docs/35-OCR-SCOPE.md` §6): a recognized run
-    /// seals on a page of its own, and is refused beside extracted text, under a drawn run's
-    /// address, or as anything but a text run.
+    /// seals on a page of its own, and beside extracted text only where its box shares no area
+    /// with a drawn run's (decision #161); it is refused on drawn text, where a box is absent,
+    /// under a drawn run's address, or as anything but a text run.
     #[test]
     fn recognized_text_seals_only_where_no_text_was_extracted() {
         let recognized = |n: Node| Node {
@@ -4011,9 +4035,45 @@ mod tests {
 
         let beside = recognized(node(&mut alloc, &p1.id, 2, 1));
         let g = rows(&[&drawn, &beside]);
-        let e = seal(vec![drawn.clone(), beside], vec![p1.clone()], g)
-            .expect_err("recognized text on a page holding extracted text");
-        assert!(e.to_string().contains("no text layer at all"), "{e}");
+        let e = seal(vec![drawn.clone(), beside.clone()], vec![p1.clone()], g)
+            .expect_err("recognized text on a drawn run's box");
+        assert!(e.to_string().contains("shows no drawn text"), "{e}");
+
+        // Decision #161: beside a drawn run, where the two boxes share no area, it seals; an edge
+        // the two only touch is no shared area.
+        let apart =
+            |x0: i64, x1: i64| GeometryPresence::Measured(QRect::new(x0, 4800, x1, 7200).unwrap());
+        let mut g = rows(&[&drawn, &beside]);
+        g[1] = geom(&beside, apart(8200, 9200));
+        seal(vec![drawn.clone(), beside.clone()], vec![p1.clone()], g)
+            .expect("a recognized word beside a drawn one, touching it, seals");
+        // Where either box is absent nothing shows the two apart, and it is refused.
+        let mut g = rows(&[&drawn, &beside]);
+        g[1] = geom(
+            &beside,
+            GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure),
+        );
+        assert!(seal(vec![drawn.clone(), beside.clone()], vec![p1.clone()], g).is_err());
+        let mut g = rows(&[&drawn, &beside]);
+        g[0] = geom(
+            &drawn,
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+        );
+        g[1] = geom(&beside, apart(9000, 10000));
+        assert!(seal(
+            vec![drawn.clone(), beside.clone()],
+            vec![p1.clone()],
+            g.clone()
+        )
+        .is_err());
+        // A drawn run that drew no ink, a run of spaces, covers nothing: the word on its place seals.
+        g[0] = geom(
+            &drawn,
+            GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure),
+        );
+        g[1] = geom(&beside, apart(7200, 8200));
+        seal(vec![drawn.clone(), beside], vec![p1.clone()], g)
+            .expect("a word over a run of spaces seals");
 
         let laundered = Node {
             derivation: DerivationClass::Extracted,

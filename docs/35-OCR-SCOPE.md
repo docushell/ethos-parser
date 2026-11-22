@@ -18,7 +18,9 @@ or from this repository's own fixtures.
 exactly one image was painted, is read by a pinned recognizer whose output is the same bytes on
 every supported CPU**; each word it reads is a run of derivation `Recognized`, under the OCR
 profile, on that page and nowhere else. **Amended (decision #156):** or several images, which the
-recognizer composes into one raster with the rectangles filled between them (§14).
+recognizer composes into one raster with the rectangles filled between them (§14). **Amended
+(decision #161):** or a page that showed a few words over a scan, its drawn runs kept and its
+recognized words written only outside their boxes (§15).
 
 ## 2. Why now
 
@@ -75,7 +77,9 @@ server. The output is byte-identical at the default count, two threads and one.
   exactly one image placement. The coverage threshold the census used to sort pages is not a
   condition: one image on a page with no text layer is read whatever its size. **Amended
   (decision #156):** or several placements, where everything the page paints is an image or a
-  rectangle filled in a known colour (§14).
+  rectangle filled in a known colour (§14). **Amended (decision #161):** or a page that showed
+  text, under 200 characters of it, every run boxed, over images that paint at least 40% of its
+  visible box together (§15).
 - **The image is decoded by the recognizer**, not the engine: DCT and Flate streams, Flate with
   PNG and TIFF predictors; DeviceGray, DeviceRGB, DeviceCMYK, ICC-based by component count,
   Indexed, CalGray and CalRGB; 1, 2, 4, 8 and 16 bits per component; `/Decode` and `/ImageMask`.
@@ -149,7 +153,7 @@ server. The output is byte-identical at the default count, two threads and one.
 A page that needs OCR and is not read is counted under a named reason, never dropped in silence.
 **Amended (decision #132, owner 2026-11-14):** that includes a read without `--ocr`. A page the
 trigger takes — no text-showing operator, exactly one image placed and loaded, or several it
-composes (§14), no inline image —
+composes (§14), no inline image; or a few drawn words over such a scan (§15) —
 is counted under the default profile by the reason the request for it would be refused for (a
 filter, a mask, a colour space, a placement), the same name `--ocr` writes, and as
 `ocr-not-requested` where the request would be sent. A page the trigger itself refuses — several
@@ -201,6 +205,8 @@ drawn invoice's do.
   PP-OCRv5 mobile; rten; byte-identical on every CPU; a separate binary on its own toolchain; scans
   first, photos later.
 - Contract §6: "Keep §6 as is" — pages with a scanner's stray text layer are not read.
+  **Reopened 2026-11-22**, "Yes, build and measure": a scan carrying a few drawn words is read
+  beside them (decision #161, §15).
 - Numbering: "Renumber: OCR v3".
 - CI: "Yes, push a CI branch now" (a throwaway branch; its results are in §3).
 - Image files: "Yes, include image files".
@@ -253,7 +259,8 @@ drawn invoice's do.
 
 Photos (perspective, lighting, a photo's own orientation; a scanned page's quarter and half turns
 are decided, §13); composite pages that paint anything but images and filled rectangles (pages of
-images and fills are decided, §14); CCITT, JPEG 2000 and JBIG2; grounding an image file; pages with a stray text layer (contract §6 as it stands); tables,
+images and fills are decided, §14); CCITT, JPEG 2000 and JBIG2; grounding an image file; a scan whose own text layer is long but
+wrong (pages with a few drawn words are decided, §15); tables,
 headings and emphasis on recognized pages; languages other than English. How the recognizer is
 released is decided (§9): beside `ethos-parser` in every release archive.
 
@@ -372,3 +379,72 @@ cropped page turned 270° it read the raster wrongly. Samples are nearest, so a 
 300 dpi is sampled down. The rule id stays `ppocrv5-mobile-v1`, which no release carries; a
 recognizer from before this decision has the same identity and fails the read on the new request
 kind, `composite`, rather than one page (both binaries ship together, §9).
+
+## 15. A scan carrying a few drawn words (2026-11-22, decision #161)
+
+**The rule.** Under `--ocr`, the trigger also takes a page that showed text when all of it is under
+200 characters, every run of it has a box (a run that drew no ink, a run of spaces, covers
+nothing and is not asked for one), and the page's images paint at least 40% of its visible box
+between them (`thresholds::STRAY_TEXT_MAX_CHARS`, `STRAY_TEXT_MIN_IMAGE_PERCENT`). The image is
+read as any scan is, alone or composed with the others (§14): text the page shows no longer ends
+a composition, and is not painted into it. The drawn runs are kept as drawn. A recognized word
+is written only where its box lies on the page and shares no area with a drawn run's box; a word
+with no box, one past the page's edge, or one beside a drawn run with no box, is left out and
+counted under `recognized-words-under-drawn-text`.
+
+**Why the seal moved, and how far.** Contract §6 let a recognizer author only where the page had
+no text layer at all, and the seal refused any page holding both derivations. A scanner's stamp,
+a court filing's header, an archive's title, a signature line: a few drawn words over a scan kept
+every word of the scan from the record, and nothing said so. The seal now refuses a recognized
+run whose box shares area with an extracted run's, or that has no box where the page holds
+extracted text — the one test the reader applies before it writes (`QRect::overlaps`). Rule 1
+stands: nothing overwrites `Extracted`; and a recognized run stays `Recognized`, under the OCR
+profile, so the guard `07-VERIFY-BOUNDARY` §8.3 names — the derivation class and profile
+isolation — holds for every run.
+
+**Without `--ocr`.** A page the widened trigger takes is counted under
+`scanned-page-not-recognized` as `ocr-not-requested` (decision #132), and the stderr line offers
+the flag; the Markdown and HTML are unchanged. The line now reads "scanned page(s) were not
+read", since such a page shows text.
+
+**Measured** on `7bca4fe` with and without this decision, the same recognizer, parse-bench 2.1.1
+(and 2.1.0, the board's, for ParseBench-2):
+
+| | Before | After |
+| --- | ---: | ---: |
+| ParseBench-2, `--ocr`, overall | 57.96 | **58.52** |
+| — text | 62.51 | 63.71 |
+| — formatting | 78.97 | 81.16 |
+| ParseBench-2, `--ocr`, overall at 2.1.0 | 57.94 | **58.50** |
+| ParseBench, `--ocr`, overall | 55.14 | **55.53** |
+| — content faithfulness | 77.39 | 78.97 |
+| — semantic formatting | 53.17 | 53.52 |
+
+- **Without `--ocr` no Markdown moves** on any of 6,562 PDFs: ParseBench's 2,037, ParseBench-2's
+  4,296, opendataloader-bench's 200 and the private real-document set's 29 (37 are refused before
+  and after). The report moves: 65 documents now count one page under
+  `scanned-page-not-recognized` that said nothing before — 51 as `ocr-not-requested`, 14 by the
+  filter or colour space that keeps the image from the recognizer.
+- **With `--ocr`, 44 documents' Markdown moves** — 23 distinct pages: 21 in both ParseBench sets,
+  one table page of ParseBench-2's financial set whose rows are an image under a drawn title, and
+  one opendataloader-bench survey page whose chart labels, which its reference holds, are an
+  image (that benchmark is scored without `--ocr`, so its score does not move). Of the other 21
+  documents the trigger takes, 14 are refused as without `--ocr`, 3 are refused
+  `colour-space-not-read:jpeg`, and on 4 the recognizer finds no word.
+- **Per page.** ParseBench: content gains on 21 pages and falls on one (below, −0.018); formatting
+  gains on 4 and falls on none; tables, charts and layout do not move. ParseBench-2: every one of
+  the 22 documents gains in words found; the parts that scored a near-empty page as clean fall
+  where words now stand — integrity on 3 documents, critical words on 2, order on 2.
+- **Words left out** beside drawn text: 59 on 6 pages, 41 of them on one page whose drawn numbers
+  sit over a scanned article.
+
+**Known limits.** The recognizer reads no Arabic script: on the one page that falls, a drawn
+browser header over a scanned Arabic page, the scan's words come out as Latin letters it made up,
+as an all-image Arabic scan's already do. Recognized lines change what the projection reads as
+the page's body size, so a drawn run beside them can read differently — on one page a drawn `8`
+is now written as a superscript; the run itself is unchanged. A born-digital page set on a
+page-size background image, with under 200 characters, is taken too: its image is read, and
+whatever text the picture holds is written beside the drawn text. A scan whose own text layer is
+long but wrong is not taken (the census's F3, which would replace extracted text). JPEG 2000,
+CCITT, JBIG2 and the colour spaces the recognizer does not read are refused by name, as on any
+scan.

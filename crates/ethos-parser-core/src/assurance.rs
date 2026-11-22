@@ -292,6 +292,9 @@ pub mod codes {
     pub const SCANNED_PAGE_NOT_RECOGNIZED: &str = "scanned-page-not-recognized";
     /// Recognized words left unwritten because the page's visible box does not show where they lie.
     pub const RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX: &str = "recognized-words-outside-visible-box";
+    /// Recognized words left unwritten because a drawn run's box lies where they would, on a page
+    /// read as a scan carrying a few drawn words (decision #161).
+    pub const RECOGNIZED_WORDS_UNDER_DRAWN_TEXT: &str = "recognized-words-under-drawn-text";
     /// Under the OCR profile: text turned within an upright page is not turned before it is read;
     /// a whole page turned is (decision #153).
     pub const RECOGNIZED_TEXT_ORIENTATION_NOT_CORRECTED: &str =

@@ -69,6 +69,21 @@ pub const RECTANGLE_OPERATOR: &str = "re";
 ///    second condition.
 pub const SPARSE_TEXT_MAX_BYTES: u32 = 20;
 
+/// Decision #161: under this many characters of drawn text, over images that paint at least
+/// [`STRAY_TEXT_MIN_IMAGE_PERCENT`] of the page's visible box, the page is a scan carrying a
+/// stray text layer — a scanner's stamp, a signature line, an archive's title — and `--ocr`'s
+/// trigger takes it as it takes a page with no text at all. Its words are written only where no
+/// drawn run's box lies, so the drawn text stays as drawn (contract §6, rule 1).
+///
+/// The two numbers are the ParseBench-2 census's (2026-11-18), which sized the pages they take
+/// before anything was built. A born-digital page set on a page-size background image can carry
+/// fewer characters and is taken too; what that costs is measured in decision #161's row.
+pub const STRAY_TEXT_MAX_CHARS: usize = 200;
+
+/// Decision #161: the share of the page's visible box, in percent, the images must paint
+/// together for [`STRAY_TEXT_MAX_CHARS`] to read the page as a scan.
+pub const STRAY_TEXT_MIN_IMAGE_PERCENT: u64 = 40;
+
 /// Path operators on a page before it counts as vector-heavy, when no text is present.
 ///
 /// Deliberately high. The signal is "someone drew glyphs as curves", and a page with a logo and a

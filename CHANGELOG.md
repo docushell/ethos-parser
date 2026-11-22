@@ -256,6 +256,35 @@ tenth ParseBench-2 document), at one thread and at twelve.
   `docs/measurements/memory-ceiling/` §18 and §19.
 - `ethos-parser-core` depends on `rayon`, already in the lockfile through the PDF reader.
 
+### A scan carrying a few drawn words is read beside them with `--ocr` (decision #161)
+
+A scanner's stamp, a court filing's header, an archive's title, a printed browser header: a few
+words drawn over a scanned image made the page count as text, so `--ocr` never read the scan and
+nothing said so.
+
+- Under `--ocr`, a page whose text is under 200 characters, every run of it boxed, over images
+  that paint at least 40% of its visible box between them, is read as a scan is — one image, or
+  several composed (decision #156); text no longer ends a composition and is not painted into it.
+- The drawn runs are kept as drawn. A recognized word is written only where its box lies on the
+  page and shares no area with a drawn run's box; the rest are left out and counted under the new
+  limitation `recognized-words-under-drawn-text`.
+- The seal moves with the reader: a recognized run is refused where its box shares area with an
+  extracted run's, or has no box on a page holding extracted text. Contract §6 now reads "only
+  where the deterministic reader found no drawn text"; nothing overwrites `Extracted`.
+- Without `--ocr`, such a page is counted under `scanned-page-not-recognized` as
+  `ocr-not-requested`, and the stderr line now reads "scanned page(s) were not read". No Markdown
+  or HTML moves on any of 6,562 benchmark and private PDFs; 65 documents now report one unread
+  page.
+- Measured on `7bca4fe`: ParseBench-2's `--ocr` lane 57.96 → 58.52 (text 62.51 → 63.71,
+  formatting 78.97 → 81.16; 57.94 → 58.50 at parse-bench 2.1.0); ParseBench's `--ocr` lane
+  55.14 → 55.53 (content 77.39 → 78.97). 23 distinct pages move; one falls (−0.018, an Arabic
+  scan the recognizer cannot read, now written as made-up Latin letters).
+- 14 mutations of the final code, all caught.
+- Known limits (`docs/35-OCR-SCOPE.md` §15): a born-digital page on a page-size background image
+  with under 200 characters is taken too; a scan's long but wrong text layer is not; a drawn run
+  beside recognized lines can read differently in the projection (one drawn `8` now a
+  superscript), the run itself unchanged.
+
 ### A line's last hyphen drawn as a run of its own closes its word up (decision #160)
 
 Where a producer draws a line's last hyphen as a run of its own — in a marked-content sequence of its

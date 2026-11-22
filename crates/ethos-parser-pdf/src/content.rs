@@ -1034,11 +1034,12 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Decision #156: whether paint drawn now may still go into [`Self::composite`] — `false` once
-    /// it is refused, or once the page has shown text, which no composition is asked of — and
-    /// refused where it is drawn under a state the composition does not hold. `Ok(false)` is paint
-    /// a viewer does not show, in a layer switched off.
+    /// it is refused — and refused where it is drawn under a state the composition does not hold.
+    /// `Ok(false)` is paint a viewer does not show, in a layer switched off. Text the page shows
+    /// does not end it (decision #161): a scan carrying a few drawn words is composed as one
+    /// carrying none, the drawn words left out of the raster, where they are runs already.
     fn composable(&mut self) -> Option<bool> {
-        if self.composite.refusal.is_some() || self.text_operators > 0 {
+        if self.composite.refusal.is_some() {
             return None;
         }
         let why = match self.layer() {

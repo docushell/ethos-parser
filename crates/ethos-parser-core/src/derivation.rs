@@ -31,7 +31,8 @@ pub enum DerivationClass {
     /// line grouping, boxes computed from font metrics ([`GeometryPresence::Measured`]).
     Computed,
     /// Produced by a recognition engine over pixels. **v4.** Runs under its own profile and
-    /// may author nodes only where the deterministic reader found no text layer at all.
+    /// may author nodes only where the deterministic reader found no drawn text: a canvas with no
+    /// text layer at all, or a scan's area outside every drawn run's box (decision #161).
     Recognized,
     /// Suggested by a model. **v3.** Never citable, never evidence, never overwrites anything.
     Proposed,
@@ -69,7 +70,7 @@ impl DerivationClass {
     /// `Proposed` — which is how a model's output quietly becomes the record.
     ///
     /// What this function deliberately does **not** encode: the v4 constraint that `Recognized`
-    /// may author only on canvases where the deterministic reader found no text layer at all.
+    /// may author only where the deterministic reader found no drawn text (decision #161).
     /// That is a property of *where* a node is placed, not of which classes may replace which, and
     /// inventing a class-pair rule for it here would be a rule the contract does not state.
     pub fn may_be_overwritten_by(self, other: Self) -> bool {

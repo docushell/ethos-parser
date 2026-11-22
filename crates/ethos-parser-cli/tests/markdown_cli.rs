@@ -2640,7 +2640,7 @@ fn a_scan_read_without_ocr_names_the_flag_on_stderr() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(stderr.lines().count(), 1, "{what}: one line: {stderr}");
         assert!(
-            stderr.contains("2 page(s)")
+            stderr.contains("2 scanned page(s)")
                 && stderr.contains("ocr-not-requested")
                 && stderr.contains("--ocr"),
             "{what}: {stderr}"
@@ -2687,7 +2687,7 @@ fn a_scan_ocr_does_not_read_names_its_reason_on_stderr() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(stderr.lines().count(), 1, "{args:?}: one line: {stderr}");
         assert!(
-            stderr.contains("2 page(s)")
+            stderr.contains("2 scanned page(s)")
                 && stderr.contains("filter-not-decoded:CCITTFaxDecode")
                 && !stderr.contains("run with --ocr"),
             "{args:?}: {stderr}"
