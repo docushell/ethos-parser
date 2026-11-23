@@ -4103,9 +4103,10 @@ pub(crate) struct Emit {
     tail: Option<char>,
     /// Decision #168: the boxes the pages draw beside runs, by run id — one before it, one after.
     boxes: std::collections::BTreeMap<String, (bool, bool)>,
-    /// Decision #168: the run a box is drawn after, its box written before the next syntax that
+    /// Decision #168: the run a box is drawn after, and how many wait there — two where a word
+    /// joined over its line's end has one after each half — written before the next syntax that
     /// leaves the run or the next run's text.
-    box_after: Option<String>,
+    box_after: Option<(String, usize)>,
     /// Decision #168: the boxes written, which [`DRAWN_BOXES_WRITTEN`] counts.
     boxes_written: usize,
 }
@@ -4261,8 +4262,8 @@ impl Emit {
     fn open_boxes(&mut self, node: &str, last: &str) {
         if self
             .box_after
-            .as_deref()
-            .is_some_and(|after| after != node && after != last)
+            .as_ref()
+            .is_some_and(|(after, _)| after != node && after != last)
         {
             self.write_box_after(true);
         }
@@ -4272,8 +4273,12 @@ impl Emit {
                 self.boxes_written += 1;
                 self.syntax("\u{2610} ");
             }
+            // Two runs written as one word may each have one after them: both wait.
             if after {
-                self.box_after = Some(last.to_owned());
+                match &mut self.box_after {
+                    Some((run, waiting)) if run == last => *waiting += 1,
+                    _ => self.box_after = Some((last.to_owned(), 1)),
+                }
             }
         }
     }
@@ -4281,9 +4286,13 @@ impl Emit {
     /// Decision #168: the box drawn after the last run written, where one waits — with a space
     /// after it where the next run's text follows it straight on.
     fn write_box_after(&mut self, spaced: bool) {
-        if self.box_after.take().is_some() {
-            self.boxes_written += 1;
-            self.syntax(if spaced { " \u{2610} " } else { " \u{2610}" });
+        if let Some((_, waiting)) = self.box_after.take() {
+            self.boxes_written += waiting;
+            let mut boxes = " \u{2610}".repeat(waiting);
+            if spaced {
+                boxes.push(' ');
+            }
+            self.syntax(&boxes);
         }
     }
 
@@ -6872,6 +6881,22 @@ pub(crate) mod tests {
         }];
         let split = DocumentRepresentation::seal(payload, split.geometry().to_vec()).unwrap();
         assert_eq!(artifact_of(split).markdown, "\u{2610} hyphenated\n");
+        // Second review of PR #57: each half of the joined word with a box after it writes both.
+        let split = repr_of_lines(&["hyphen-", "ated"]);
+        let mut payload = split.payload().clone();
+        let ids: Vec<crate::NodeId> = payload.nodes.iter().map(|n| n.id.clone()).collect();
+        payload.pages[0].drawn_boxes = ids
+            .iter()
+            .map(|id| crate::DrawnBox {
+                rect: QRect::new(20000, 6400, 20900, 7300).unwrap(),
+                beside: id.clone(),
+                side: crate::BoxSide::After,
+            })
+            .collect();
+        let split = DocumentRepresentation::seal(payload, split.geometry().to_vec()).unwrap();
+        let both = artifact_of(split);
+        assert_eq!(both.markdown, "hyphenated \u{2610} \u{2610}\n");
+        assert_eq!(erasure(&both, DRAWN_BOXES_WRITTEN), 2);
         let cell = repr_with_table(&["|Yes"], 1, 1, &[cell(0, 0, &[0])]);
         let mut payload = cell.payload().clone();
         payload.pages[0].drawn_boxes = vec![crate::DrawnBox {
