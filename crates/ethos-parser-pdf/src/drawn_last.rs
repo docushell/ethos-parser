@@ -99,6 +99,9 @@ pub(crate) struct Drawn<'a> {
     pub font: &'a str,
     pub text: &'a str,
     pub artifact: bool,
+    /// Read by a recognizer, not drawn (decision #161): a scan's words beside the few the page
+    /// drew. No filler drew it, so it is neither an overlay's run nor a caption one is read beside.
+    pub recognized: bool,
 }
 
 impl Drawn<'_> {
@@ -270,8 +273,11 @@ pub(crate) fn place(
     regions: &[Option<u32>],
     order: &[usize],
 ) -> Option<(Vec<usize>, Beside)> {
-    let start = overlay(runs)?;
-    if runs.len() - start > MAX_OVERLAY {
+    // Decision #161: the drawn runs only. Recognized words follow them, appended after every
+    // run the page drew, and are read where the recognizer placed them.
+    let drawn = runs.iter().take_while(|r| !r.recognized).count();
+    let start = overlay(&runs[..drawn])?;
+    if drawn - start > MAX_OVERLAY {
         return None;
     }
     let in_table: Vec<bool> = runs
@@ -343,7 +349,7 @@ pub(crate) fn place(
     };
     let mut anchors: Vec<(usize, Anchor)> = Vec::new();
     let mut over = 0usize;
-    for o in start..runs.len() {
+    for o in start..drawn {
         let r = &runs[o];
         // A run the page marks `/Artifact` — a watermark, a running head — is no filler's value.
         if r.words() == 0 || in_table[o] || r.artifact {
@@ -495,6 +501,7 @@ mod tests {
             font,
             text,
             artifact: false,
+            recognized: false,
         }
     }
 
@@ -684,6 +691,26 @@ mod tests {
             ..run(55, 134, 50, "F10", "London")
         };
         assert_eq!(placed(&runs), Some(vec![0, 3, 1, 4, 2, 5]));
+    }
+
+    /// **Recognized words are no filler's values** (decision #161, QA's merge note): a scan's
+    /// words, read beside a few drawn ones and appended after them, in no font of the page's,
+    /// would otherwise read as an overlay and move beside a caption. Here they stand last, unmoved.
+    #[test]
+    fn recognized_words_are_no_overlay() {
+        let mut runs = form();
+        for r in &mut runs[3..] {
+            r.recognized = true;
+            r.font = "";
+        }
+        assert_eq!(placed(&runs), None);
+        // A filler's overlay among the drawn runs before them is read as before.
+        let mut runs = form();
+        runs.push(Drawn {
+            recognized: true,
+            ..run(300, 400, 40, "", "Stamp")
+        });
+        assert_eq!(placed(&runs), Some(vec![0, 3, 1, 4, 2, 5, 6]));
     }
 
     #[test]

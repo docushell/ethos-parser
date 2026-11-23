@@ -279,7 +279,11 @@ nothing said so.
   formatting 78.97 → 81.16; 57.94 → 58.50 at parse-bench 2.1.0); ParseBench's `--ocr` lane
   55.14 → 55.53 (content 77.39 → 78.97). 23 distinct pages move; one falls (−0.018, an Arabic
   scan the recognizer cannot read, now written as made-up Latin letters).
-- 14 mutations of the final code, all caught.
+- Recognized words are never a form filler's values: #157's rule (`gutter-columns-v5`,
+  unreleased) reads only the drawn runs, so a scan's words beside a drawn stamp stay where the
+  recognizer placed them instead of moving beside a caption (a note from #164's review, applied
+  when #161 merged).
+- 14 mutations of the final code, all caught, and one more for the merge note.
 - Known limits (`docs/35-OCR-SCOPE.md` §15): a born-digital page on a page-size background image
   with under 200 characters is taken too; a scan's long but wrong text layer is not; a drawn run
   beside recognized lines can read differently in the projection (one drawn `8` now a

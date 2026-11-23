@@ -1930,6 +1930,7 @@ fn extract_page(
                             r.structural,
                             Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
                         ),
+                        recognized: r.derivation == DerivationClass::Recognized,
                     })
                     .collect();
                 crate::drawn_last::place(&drawn, &boxes, &arranged.regions, &arranged.order)
