@@ -1030,8 +1030,13 @@ pub(crate) fn place(
                         dropped = dropped.saturating_add(1);
                         continue;
                     }
+                    // A word joins the run before it only where its own box, the run's, and the
+                    // two together are clear: a word with no box a drawn run's test takes stays
+                    // apart, to be left out and counted (PR 58's review).
                     match runs.last_mut() {
-                        Some((_, end, at)) if *end + 1 == k && fits(hull(*at, b)) => {
+                        Some((_, end, at))
+                            if *end + 1 == k && fits(*at) && fits(b) && fits(hull(*at, b)) =>
+                        {
                             (*end, *at) = (k, hull(*at, b));
                         }
                         _ => runs.push((k, k, b)),
@@ -2698,6 +2703,61 @@ mod tests {
                 .collect::<Vec<_>>(),
             [("up ", true), ("out", false)]
         );
+    }
+
+    #[test]
+    fn a_turned_word_with_no_box_stays_apart_beside_drawn_text() {
+        // PR 58's review: beside drawn text (here far off, at 10 to 20 points across), a turned
+        // line's word whose box has no width has no box a drawn run's test takes. Before its
+        // neighbour or after it, it is a run of its own, left out by that test, and the neighbour
+        // is written alone.
+        let candidate = Candidate {
+            page_id: (1, 0),
+            object: (2, 0),
+            corners: [(0.0, 100.0), (200.0, 100.0), (200.0, 0.0), (0.0, 0.0)],
+            visible: (0.0, 0.0, 200.0, 100.0),
+            composite: None,
+        };
+        let zero = RecognizedWord {
+            text: "zero".into(),
+            quad: [[150, 30], [150, 10], [150, 10], [150, 30]],
+        };
+        let word = RecognizedWord {
+            text: "word".into(),
+            quad: [[150, 60], [150, 40], [170, 40], [170, 60]],
+        };
+        let drawn = QRect::new(1000, 1000, 2000, 2000).unwrap();
+        let clear = |r: Option<QRect>| r.is_some_and(|r| !r.overlaps(drawn));
+        for (words, kept) in [
+            (
+                vec![zero.clone(), word.clone()],
+                [("zero ", false), ("word", true)],
+            ),
+            (vec![word, zero], [("word ", true), ("zero", false)]),
+        ] {
+            let answer = Recognition {
+                ocr_response: 1,
+                id: "page 1".into(),
+                identity: RecognizerIdentity::ethos_parser_ocr(),
+                width: 200,
+                height: 100,
+                lines: vec![RecognizedLine {
+                    text: String::new(),
+                    quad: [[150, 60], [150, 10], [170, 10], [170, 60]],
+                    words,
+                }],
+                refused: None,
+            };
+            let (placed, dropped) = place(&candidate, &answer, None, &clear).unwrap();
+            assert_eq!(dropped, 0);
+            assert_eq!(
+                placed
+                    .iter()
+                    .map(|w| (w.text.as_str(), clear(w.rect)))
+                    .collect::<Vec<_>>(),
+                kept
+            );
+        }
     }
 
     #[test]

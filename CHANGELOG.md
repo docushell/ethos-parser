@@ -319,6 +319,13 @@ nothing said so.
       the visible box.
     - The one-image limit of §14 now says what a clip and a layer bound.
     - 1 mutation, caught.
+  - Sixth round:
+    - A turned word joins the run before it only where its own box and the run's are clear as
+      well as the two together. A word with no box a drawn run's test takes was written inside a
+      clear neighbour's run.
+    - The one-image limit now says the image's own `/OC` is not applied, so such an image is read;
+      the round before had it read as if it were not.
+    - 2 mutations, both caught.
   - Re-measured on `0ee4b4c` at parse-bench 2.1.0: ParseBench's `--ocr` lane 55.17 → 55.56
     (content 77.52 → 79.12) and ParseBench-2's 58.19 → 58.76; opendataloader-bench `--ocr` 0.8287
     → 0.8306. One page moves that did not before the review, a page of turned text whose words the
@@ -517,7 +524,8 @@ page was refused `several-images` and gave no text.
   ParseBench-2's `--ocr` lanes read as before on every page (55.14; text 62.51), and so does every
   other lane.
 - Known limits: a page of one image keeps its path, so a fill or annotation over a single scanned
-  image is still not read, nor an image its own `/OC` switches off (`docs/35-OCR-SCOPE.md` §14;
+  image is still not read, and the image's own `/OC` is not applied: a single image it switches off
+  is read (`docs/35-OCR-SCOPE.md` §14;
   since #161's review, a rectangular clip and a layer switched off around the image bound what is
   read); optional content's `/AS`
   auto-state is not applied, so a layer a viewer turns on by it stays off.

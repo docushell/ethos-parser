@@ -371,9 +371,9 @@ on every page, opendataloader-bench's 200 documents and the private real-documen
 the same Markdown, and the resume scores are identical.
 
 **Known limits.** A page of one image keeps the path it had (§4): a fill or annotation over a
-single scanned image is not read, nor an image its own `/OC` switches off, since sending such a page
-through the composition would refuse scans read today (a stroked border); that is a decision for
-the owner. Since PR 58's review (decision #161, §15), a rectangular clip around the image, and a
+single scanned image is not read, and the image's own `/OC` is not applied — a single image it
+switches off is read as if shown — since sending such a page through the composition would refuse
+scans read today (a stroked border); that is a decision for the owner. Since PR 58's review (decision #161, §15), a rectangular clip around the image, and a
 layer switched off around it, bound what is read. JBIG2, CCITT and JPEG
 2000 masks, common in scanners' mixed raster output, are refused by name. A composed raster carries
 no orientation from a placement, so the orientation model reads it as it stands; on a made-up
