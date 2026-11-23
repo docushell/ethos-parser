@@ -205,8 +205,9 @@ pub struct ImagePlacement {
     /// claim page area the picture does not cover.
     pub corners: [(f64, f64); 4],
     /// The box around [`Self::corners`], as much of it as the page's rectangular clips and every
-    /// form `/BBox` show, in user space; `None` where they show none of it. A clip of another
-    /// shape is not known to this reader and does not narrow it (decision #161, PR 58's review).
+    /// form `/BBox` show, in user space; `None` where they show none of it, or where it is drawn
+    /// in a layer the default configuration switches off. A clip of another shape is not known to
+    /// this reader and does not narrow it (decision #161, PR 58's review).
     pub shown: Option<PathRect>,
 }
 
@@ -2375,7 +2376,11 @@ impl<'a> Interpreter<'a> {
                 m.apply(1.0, 1.0),
                 m.apply(0.0, 1.0),
             ],
-            shown: self.shown_part(PathRect::of_unit_square(m)),
+            shown: if self.layer() == Some(crate::layers::Layer::Off) {
+                None
+            } else {
+                self.shown_part(PathRect::of_unit_square(m))
+            },
         });
         Ok(())
     }

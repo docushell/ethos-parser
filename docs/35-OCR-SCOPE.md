@@ -386,8 +386,9 @@ kind, `composite`, rather than one page (both binaries ship together, §9).
 200 characters, every run of it has a box (a run that drew no ink, a run of spaces, covers
 nothing and is not asked for one), and the page's upright images paint at least 40% of its
 visible box between them (`thresholds::STRAY_TEXT_MAX_CHARS`, `STRAY_TEXT_MIN_IMAGE_PERCENT`) —
-each as much of it as the page's rectangular clips and form boxes show, and a place two of them
-paint counted once (PR 58's review). The image is
+each as much of it as the page's rectangular clips and form boxes show, a place two of them paint
+counted once, and an image a viewer does not show — drawn in a layer switched off, or switched off
+by its own `/OC` — not at all (PR 58's review). The image is
 read as any scan is, alone or composed with the others (§14): text the page shows no longer ends
 a composition, and is not painted into it. The drawn runs are kept as drawn. A recognized word
 is written only where its box lies on the page and shares no area with a drawn run's box; a word
@@ -395,7 +396,9 @@ with no box, one past the page's edge, or one beside a drawn run with no box, is
 counted under `recognized-words-under-drawn-text`. A line the recognizer reads turned, written as
 one run, is written beside drawn text in runs each clear of it — the line split where the next
 word's box would cross a drawn run's — so a word clear of the drawn text is not left out with one
-that is not (PR 58's review).
+that is not (PR 58's review). A page of one image, a few drawn words or none, is read only as far
+as the page's clips show the image: a word read outside is counted under
+`recognized-words-outside-visible-box`, as one past the page's edge is (PR 58's review).
 
 **Why the seal moved, and how far.** Contract §6 let a recognizer author only where the page had
 no text layer at all, and the seal refused any page holding both derivations. A scanner's stamp,
@@ -450,6 +453,8 @@ read", since such a page shows text.
     keeps (content 0.357 → 0.488).
   - The clip and overlap rule changes no page these sets hold: the same 65 documents report one
     unread page without `--ocr`.
+  - The second round (hidden images, a one-image page read only as far as its clips show it)
+    moves no page either.
 
 **Known limits.** The recognizer reads no Arabic script: on the one page that falls, a drawn
 browser header over a scanned Arabic page, the scan's words come out as Latin letters it made up,

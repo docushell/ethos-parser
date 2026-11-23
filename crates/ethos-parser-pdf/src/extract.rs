@@ -2308,6 +2308,15 @@ fn extract_page(
         let mut images = Vec::new();
         // Decision #161: what of each upright image the page's clips show, for [`stray_text`].
         let mut image_areas = Vec::new();
+        // Decision #156 (review): what an image's own `/OC` makes of it.
+        let image_layer = |object: lopdf::ObjectId| {
+            doc.inner()
+                .get_object(object)
+                .and_then(lopdf::Object::as_stream)
+                .ok()
+                .and_then(|s| s.dict.get(b"OC").ok())
+                .and_then(|oc| doc.layers().layer(doc.inner(), oc))
+        };
         // One stream's facts per object, however often the page draws it: hashing the stored
         // bytes again at every `Do` is the same answer at the stream's cost each time.
         let mut image_facts: std::collections::HashMap<
@@ -2369,7 +2378,10 @@ fn extract_page(
             }
             let corners = placement.corners.map(|(x, y)| geom.to_top_left(x, y));
             let rect = crate::images::painted_rect(corners);
-            if let (ethos_parser_core::PaintedRect::Painted(_), Some(s)) = (&rect, placement.shown)
+            // An image its own `/OC` switches off shows nothing (PR 58's review).
+            let hidden = image_layer(placement.object) == Some(crate::layers::Layer::Off);
+            if let (ethos_parser_core::PaintedRect::Painted(_), Some(s), false) =
+                (&rect, placement.shown, hidden)
             {
                 let ((ax, ay), (bx, by)) =
                     (geom.to_top_left(s.x0, s.y0), geom.to_top_left(s.x1, s.y1));
@@ -2415,16 +2427,8 @@ fn extract_page(
         if words.is_none() && (interp.text_operators == 0 || stray()) {
             let placed = interp.images.len() + interp.inline_images as usize;
             let composite = &interp.composite;
-            // Decision #156 (review): what an image's own `/OC` makes of it, and whether the page
-            // draws an annotation over itself, which a composition does not hold.
-            let image_layer = |object: lopdf::ObjectId| {
-                doc.inner()
-                    .get_object(object)
-                    .and_then(lopdf::Object::as_stream)
-                    .ok()
-                    .and_then(|s| s.dict.get(b"OC").ok())
-                    .and_then(|oc| doc.layers().layer(doc.inner(), oc))
-            };
+            // Decision #156 (review): whether the page draws an annotation over itself, which a
+            // composition does not hold.
             let composite_refusal = composite.refusal.or_else(|| {
                 if draws_annotations(doc.inner(), page_dict) {
                     return Some("annotation");
@@ -2445,11 +2449,28 @@ fn extract_page(
             };
             if interp.images.len() == 1 && interp.inline_images == 0 && images.len() == 1 {
                 let placement = &interp.images[0];
+                // What a viewer sees of the image: the visible box, as far as the page's clips
+                // show the image (PR 58's review). A word read outside it is text no viewer shows,
+                // dropped and counted; an image they show none of shows no word.
+                let seen = match placement.shown.map(|s| shown(&s)) {
+                    Some((x0, y0, x1, y1)) => (
+                        x0.max(visible.x0),
+                        y0.max(visible.y0),
+                        x1.min(visible.x1),
+                        y1.min(visible.y1),
+                    ),
+                    None => (
+                        f64::INFINITY,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                        f64::NEG_INFINITY,
+                    ),
+                };
                 candidate = Some(crate::recognize::Candidate {
                     page_id,
                     object: placement.object,
                     corners: placement.corners.map(corner),
-                    visible: (visible.x0, visible.y0, visible.x1, visible.y1),
+                    visible: seen,
                     composite: None,
                 });
             } else if interp.images.len() > 1

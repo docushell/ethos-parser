@@ -293,6 +293,13 @@ nothing said so.
   - The seal indexes drawn runs only on pages that hold recognized ones.
   - The review checklist (`docs/07-VERIFY-BOUNDARY.md`) now reads as contract §6 does.
   - 11 mutations, all caught.
+  - Second round:
+    - An image a viewer does not show counts toward no share: one drawn in a layer switched off,
+      or one switched off by its own `/OC`.
+    - A page of one image is read only as far as the page's clips show it; a word read outside is
+      counted under `recognized-words-outside-visible-box`. This holds for every one-image scan,
+      not only these.
+    - 6 mutations, all caught; no page these sets hold moves.
   - Re-measured on `0ee4b4c` at parse-bench 2.1.0: ParseBench's `--ocr` lane 55.17 → 55.56
     (content 77.52 → 79.12) and ParseBench-2's 58.19 → 58.76; opendataloader-bench `--ocr` 0.8287
     → 0.8306. One page moves that did not before the review, a page of turned text whose words the

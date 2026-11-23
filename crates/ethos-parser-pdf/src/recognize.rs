@@ -1469,6 +1469,120 @@ mod tests {
         assert_eq!(reason(&artifact), None);
     }
 
+    /// [`page_with_resources`] in a document whose default configuration switches off one
+    /// optional content group, named `/L0` in the page's `/Properties` and handed to `more`.
+    fn with_group_off(
+        ops: &str,
+        more: impl FnOnce(&mut lopdf::Document, &mut lopdf::Dictionary, lopdf::ObjectId),
+    ) -> Vec<u8> {
+        use lopdf::{dictionary, Object};
+        let bytes = page_with_resources(ops, |doc, resources| {
+            let ocg = doc.add_object(dictionary! { "Type" => "OCG", "Name" => "hidden" });
+            resources.set("Properties", dictionary! { "L0" => ocg });
+            more(doc, resources, ocg);
+            // The catalog is made after the page; it takes these once it is.
+            doc.trailer.set(
+                "PendingOC",
+                dictionary! {
+                    "OCGs" => vec![ocg.into()],
+                    "D" => dictionary! { "OFF" => vec![ocg.into()] },
+                },
+            );
+        });
+        edited(&bytes, |doc| {
+            let props = doc.trailer.remove(b"PendingOC").expect("set above");
+            let root = doc
+                .trailer
+                .get(b"Root")
+                .and_then(Object::as_reference)
+                .expect("root");
+            doc.get_object_mut(root)
+                .and_then(Object::as_dict_mut)
+                .expect("the catalog")
+                .set("OCProperties", props);
+        })
+    }
+
+    #[test]
+    fn a_few_words_over_a_hidden_image_count_none_of_it() {
+        // Decision #161 (PR 58's review): an image a viewer does not show — drawn in a layer
+        // switched off, or switched off by its own `/OC` — paints nothing toward the share. Drawn
+        // outside the layer, the same image takes the page.
+        let drawn = "BT /F1 12 Tf 10 50 Td (drawn) Tj ET";
+        let image = "q 200 0 0 100 0 0 cm /Im0 Do Q";
+        assert!(!asked(&with_group_off(
+            &format!("/OC /L0 BDC {image} EMC {drawn}"),
+            |_, _, _| {}
+        )));
+        assert!(asked(&with_group_off(
+            &format!("{image} {drawn}"),
+            |_, _, _| {}
+        )));
+        let own = with_group_off(&format!("{image} {drawn}"), |doc, resources, ocg| {
+            let id = match resources.get(b"XObject") {
+                Ok(lopdf::Object::Dictionary(x)) => x
+                    .get(b"Im0")
+                    .and_then(lopdf::Object::as_reference)
+                    .expect("Im0"),
+                _ => panic!("the page's images"),
+            };
+            doc.get_object_mut(id)
+                .and_then(lopdf::Object::as_stream_mut)
+                .expect("the image")
+                .dict
+                .set("OC", ocg);
+        });
+        assert!(!asked(&own));
+    }
+
+    #[test]
+    fn a_clipped_scan_shows_only_the_words_its_clip_shows() {
+        // PR 58's review: a page-size scan its clip shows the left half of (0 to 100 points) is
+        // read; "Hello" (20 to 90 across) is written, and "world" (110 to 180), which no viewer
+        // sees, is dropped and counted.
+        let profile = Profile::ocr_v0();
+        let page = page_with("q 0 0 100 100 re W n 200 0 0 100 0 0 cm /Im0 Do Q");
+        let doc = Document::open_bytes(&page, &profile).expect("opens");
+        let mut fake = Fake::new();
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert_eq!(fake.requests.len(), 1);
+        assert_eq!(
+            artifact.pages[0]
+                .runs
+                .iter()
+                .map(|r| r.text.as_str())
+                .collect::<Vec<_>>(),
+            ["Hello "]
+        );
+        assert!(codes(&artifact)
+            .contains(&ethos_parser_core::codes::RECOGNIZED_WORDS_OUTSIDE_VISIBLE_BOX));
+        crate::to_representation(&artifact, &profile).expect("seals");
+
+        // A scan 300 points wide on the 200-point page: "world" (165 to 270) lies past its edge,
+        // as before. And a scan drawn in a layer switched off shows no word at all.
+        for (page, kept) in [
+            (page_with("q 300 0 0 100 0 0 cm /Im0 Do Q"), vec!["Hello "]),
+            (
+                with_group_off(
+                    "/OC /L0 BDC q 200 0 0 100 0 0 cm /Im0 Do Q EMC",
+                    |_, _, _| {},
+                ),
+                vec![],
+            ),
+        ] {
+            let doc = Document::open_bytes(&page, &profile).expect("opens");
+            let mut fake = Fake::new();
+            let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+            let runs: Vec<&str> = artifact.pages[0]
+                .runs
+                .iter()
+                .map(|r| r.text.as_str())
+                .collect();
+            assert_eq!(runs, kept);
+            crate::to_representation(&artifact, &profile).expect("seals");
+        }
+    }
+
     #[test]
     fn a_turned_line_beside_drawn_text_keeps_the_words_clear_of_it() {
         // Decision #161 (PR 58's review): a line set up the scan, 20 to 40 points across, crosses
