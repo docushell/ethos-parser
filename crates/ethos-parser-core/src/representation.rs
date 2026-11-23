@@ -3506,8 +3506,8 @@ impl DocumentRepresentation {
         Ok(())
     }
 
-    /// A drawn box lies on its page, beside a text run of that page (decision #168). Pays for a map
-    /// only where a page draws one.
+    /// A drawn box lies on its page, beside a text run of that page, and a run has one box a side
+    /// (decision #168). Pays for a map only where a page draws one.
     fn check_drawn_boxes(&self) -> Result<(), EngineError> {
         let p = &self.representation;
         if p.pages.iter().all(|page| page.drawn_boxes.is_empty()) {
@@ -3525,8 +3525,17 @@ impl DocumentRepresentation {
             .filter(|n| named.contains(n.id.as_str()))
             .map(|n| (n.id.as_str(), n))
             .collect();
+        // One box a side to a run, as the rule reads them and the projections write them.
+        let mut sides = std::collections::BTreeSet::new();
         for page in &p.pages {
             for b in &page.drawn_boxes {
+                if !sides.insert((b.beside.as_str(), b.side == BoxSide::Before)) {
+                    return Err(Self::malformed(format!(
+                        "page `{}` states two drawn boxes on one side of `{}`; a run has one box a \
+                         side",
+                        page.id, b.beside
+                    )));
+                }
                 let r = b.rect;
                 let on_page =
                     r.x0() >= 0 && r.y0() >= 0 && r.x1() <= page.width && r.y1() <= page.height;
@@ -4369,6 +4378,16 @@ mod tests {
             geometry.clone(),
         )
         .expect("a box on its page beside its run");
+        // Two boxes on one side of one run: the projections would write one.
+        let mut twice = boxed(inside, &run.id);
+        twice.drawn_boxes.push(twice.drawn_boxes[0].clone());
+        let err = seal(
+            vec![run.clone(), elsewhere.clone()],
+            vec![twice, p2.clone()],
+            geometry.clone(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("one box a side"), "{err}");
         for (rect, beside) in [
             (inside, NodeId::from_parts(IdKind::Span, 99)),
             (inside, elsewhere.id.clone()),

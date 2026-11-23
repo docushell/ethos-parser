@@ -4254,6 +4254,30 @@ impl Emit {
         self.boxes_written
     }
 
+    /// Decision #168: before `node`'s text, the box drawn after the run written last, where one
+    /// waits, then the one drawn before `node`; the one drawn after `node` waits for whatever
+    /// leaves `last`, the run whose text the write ends in. Each box once: a run's text written
+    /// in pieces, or past an escape, opens its boxes at its first piece.
+    fn open_boxes(&mut self, node: &str, last: &str) {
+        if self
+            .box_after
+            .as_deref()
+            .is_some_and(|after| after != node && after != last)
+        {
+            self.write_box_after(true);
+        }
+        if let Some((before, after)) = self.boxes.get_mut(node) {
+            let (before, after) = (std::mem::take(before), std::mem::take(after));
+            if before {
+                self.boxes_written += 1;
+                self.syntax("\u{2610} ");
+            }
+            if after {
+                self.box_after = Some(last.to_owned());
+            }
+        }
+    }
+
     /// Decision #168: the box drawn after the last run written, where one waits — with a space
     /// after it where the next run's text follows it straight on.
     fn write_box_after(&mut self, spaced: bool) {
@@ -4548,20 +4572,7 @@ impl Emit {
         if s.is_empty() {
             return;
         }
-        // Decision #168: a box drawn after another run, then one drawn before this one.
-        if self.box_after.as_deref().is_some_and(|after| after != node) {
-            self.write_box_after(true);
-        }
-        if let Some((before, after)) = self.boxes.get_mut(node) {
-            let (before, after) = (std::mem::take(before), std::mem::take(after));
-            if before {
-                self.boxes_written += 1;
-                self.syntax("\u{2610} ");
-            }
-            if after {
-                self.box_after = Some(node.to_owned());
-            }
-        }
+        self.open_boxes(node, node);
         if self.holds_mark(node, &s) {
             self.settle(true);
             self.emphasis.mark = Some(Mark {
@@ -4661,6 +4672,9 @@ impl Emit {
         if s.is_empty() {
             return;
         }
+        // Decision #168: both runs' boxes, around the word they now write together.
+        self.open_boxes(first, second);
+        self.open_boxes(second, second);
         self.before_text(first, &s);
         if self.emphasis.unwritten && self.emphasis.open != Style::default() {
             self.emphasis.unwritten_runs += 2;
@@ -4695,6 +4709,10 @@ impl Emit {
     /// come out as `\` + `\|`, and GFM reads that as an escaped backslash followed by a *live*
     /// pipe — the cell would split at a character the document merely printed.
     fn cell_source(&mut self, text: &str, node: &str) {
+        // Decision #168: a box before the run stands before an escape its text opens with.
+        if !text.is_empty() {
+            self.open_boxes(node, node);
+        }
         let mut rest = text;
         while let Some(at) = rest.find(['|', '\\']) {
             self.source(&rest[..at], node);
@@ -6843,6 +6861,27 @@ pub(crate) mod tests {
         let joined = DocumentRepresentation::seal(payload, joined.geometry().to_vec()).unwrap();
         let m = artifact_of(joined).markdown;
         assert!(m.contains("65% \u{2610} Igual"), "{m}");
+        // Review of PR #57: a box before a word joined over its line's end hyphen, and before a
+        // cell whose text opens with an escaped pipe.
+        let split = repr_of_lines(&["hyphen-", "ated"]);
+        let mut payload = split.payload().clone();
+        payload.pages[0].drawn_boxes = vec![crate::DrawnBox {
+            rect: QRect::new(5000, 6400, 5900, 7300).unwrap(),
+            beside: payload.nodes[0].id.clone(),
+            side: crate::BoxSide::Before,
+        }];
+        let split = DocumentRepresentation::seal(payload, split.geometry().to_vec()).unwrap();
+        assert_eq!(artifact_of(split).markdown, "\u{2610} hyphenated\n");
+        let cell = repr_with_table(&["|Yes"], 1, 1, &[cell(0, 0, &[0])]);
+        let mut payload = cell.payload().clone();
+        payload.pages[0].drawn_boxes = vec![crate::DrawnBox {
+            rect: QRect::new(10, 10, 900, 900).unwrap(),
+            beside: payload.nodes[0].id.clone(),
+            side: crate::BoxSide::Before,
+        }];
+        let cell = DocumentRepresentation::seal(payload, cell.geometry().to_vec()).unwrap();
+        let m = artifact_of(cell).markdown;
+        assert!(m.contains("\u{2610} \\|Yes"), "{m}");
         // A page drawing none writes none and counts none.
         assert_eq!(
             erasure(&artifact_of(repr_of_lines(&["Yes"])), DRAWN_BOXES_WRITTEN),
