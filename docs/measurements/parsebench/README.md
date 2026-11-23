@@ -1791,6 +1791,27 @@ Under 2.1.1 ParseBench-2's forms read 71.51 and the overalls 55.94 and 58.23. Ag
 ParseBench content 67.52 -> 67.65 and formatting 51.40 -> 51.43, with `--ocr` 77.39 -> 77.52 and
 53.17 -> 53.19 (#160); ParseBench-2 forms 69.72 -> 71.25 (#168); no other dimension moved.
 
+## Re-measured on `dc625f6` (2026-11-23)
+
+The README's `--ocr` rows after decision #161, a scan carrying a few drawn words read beside them,
+with the six rounds of its review (PR 58). Without `--ocr` the Markdown is byte-identical to
+`0ee4b4c`'s on all 6,545 benchmark PDFs, so the engine rows above stand. Scored at parse-bench
+2.1.0 (`c61ff10`), the board's scorer, through the adapter, network denied; the places are on the
+leaderboards at `d7efdbc`, as above.
+
+| ParseBench lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place of 158 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `--ocr` | 64.54 | 17.30 | 79.12 | 53.55 | 63.30 | 55.56 | 107th |
+
+| ParseBench-2 lane | Text | Formatting | Tables | Charts | Grounding | Forms | Overall | Place of 57 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `--ocr` | 63.71 | 81.16 | 51.71 | 17.94 | 66.76 | 71.25 | 58.76 | 53rd |
+
+Against `0ee4b4c`: ParseBench content 77.52 -> 79.12 and formatting 53.19 -> 53.55; ParseBench-2
+text 62.51 -> 63.71 and formatting 78.97 -> 81.16; no other dimension moved. One page falls, an
+Arabic scan the recognizer cannot read (content −0.018). parse-bench 2.1.1's harness (`d7efdbc`) was
+not at hand to score these rows under it.
+
 ## What it found that is not fixed
 
 - **Content on readable pages** (decision #61's census, 2026-10-11). Of the content lost on text

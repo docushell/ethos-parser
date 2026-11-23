@@ -1,8 +1,8 @@
 # Benchmarks
 
 ethos-parser is scored on three public benchmarks, each with its own evaluator. Every ethos-parser
-number here was measured by this project on `0ee4b4c` — the assist lane's on `0f6c8a3`, not run
-again — and scored as the benchmark's current leaderboard is scored. Every other row is copied from that leaderboard. Higher is better.
+number here was measured by this project on `0ee4b4c` — the `--ocr` lane's on `dc625f6`, the assist
+lane's on `0f6c8a3`, not run again — and scored as the benchmark's current leaderboard is scored. Every other row is copied from that leaderboard. Higher is better.
 
 Three lanes are reported:
 
@@ -24,7 +24,8 @@ How each number is produced, run by run, is in
 enterprise documents, scored on five dimensions. Its leaderboard was re-scored on 15–17 November
 2026 by its harness at `c61ff10` (parse-bench 2.1.0), the dataset unchanged at `2805a1d`; the other
 rows are its `leaderboard.csv` at `d7efdbc`, 157 rows. ethos-parser scores the same under
-parse-bench 2.1.1 (`d7efdbc`) as under the earlier `1f5b37a`, dimension by dimension, in every lane.
+parse-bench 2.1.1 (`d7efdbc`) as under the earlier `1f5b37a`, dimension by dimension, in every lane
+on `0ee4b4c`; the `--ocr` row on `dc625f6` is scored at `c61ff10`, the board's own.
 
 Against the open-source local parsers on its leaderboard, with the highest overall row for scale:
 
@@ -50,7 +51,7 @@ Every lane, placed on the whole leaderboard (158 rows with ethos-parser):
 | Lane | Overall | Tables | Charts | Content | Formatting | Grounding | Place |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ethos-parser | 52.18 | 64.53 | 17.30 | 67.65 | 51.43 | 59.99 | 113th |
-| + `--ocr` | 55.17 | 64.54 | 17.30 | 77.52 | 53.19 | 63.30 | 107th |
+| + `--ocr` | 55.56 | 64.54 | 17.30 | 79.12 | 53.55 | 63.30 | 107th |
 | + assist model, as written | 65.34 | 60.53 | 64.81 | 83.70 | 54.41 | 63.28 | 69th |
 | + assist model, quote markers removed before scoring | 71.93 | 85.75 | 66.67 | 84.18 | 59.75 | 63.28 | 31st |
 
@@ -82,7 +83,7 @@ Around ethos-parser, with the highest overall row and the assist model for scale
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | LlamaParse (Agentic Plus) (highest overall, cloud) | 90.82 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 85.56 |
 | LightOnOCR-3 0.8B (the assist model, on its own) | 77.12 | 81.24 | 80.87 | 78.58 | 61.22 | 82.90 | 77.92 |
-| **ethos-parser + `--ocr`** | **58.19** | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 71.25 |
+| **ethos-parser + `--ocr`** | **58.76** | 63.71 | 81.16 | 51.71 | 17.94 | 66.76 | 71.25 |
 | Falcon-OCR | 57.78 | 64.58 | 75.93 | 72.57 | 0.69 | 64.56 | 68.33 |
 | **ethos-parser** | **55.90** | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 71.25 |
 | jina-ocr-v1 | 48.59 | 75.13 | 79.87 | 55.00 | 8.74 | 0.00 | 72.79 |
@@ -93,7 +94,8 @@ Around ethos-parser, with the highest overall row and the assist model for scale
   `--ocr`.
 - The assist model has not been run through the product on ParseBench-2.
 - parse-bench 2.1.1 (`d7efdbc`) changed how forms are scored after the leaderboard was: under it,
-  ethos-parser's forms read 71.51, and the two overalls 55.94 and 58.23.
+  ethos-parser's forms read 71.51 and its overall 55.94; the `--ocr` row on `dc625f6` was not
+  scored under 2.1.1.
 - Overall is the mean of the six dimensions.
 
 ## opendataloader-bench

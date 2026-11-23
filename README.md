@@ -136,12 +136,13 @@ and counts its 36 characters.
 ## Benchmarks
 
 Scored on three public benchmarks, each with its own scorer, as its leaderboard is scored today.
-Measured on `0ee4b4c` (the assist column on `0f6c8a3`). Higher is better.
+Measured on `0ee4b4c`, the `--ocr` column on `dc625f6` (the assist column on `0f6c8a3`). Higher is
+better.
 
 | Benchmark | ethos-parser | + `--ocr` | + assist model |
 | --- | ---: | ---: | ---: |
-| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.18 | 55.17 | 65.34 |
-| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.90 | 58.19 | — |
+| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.18 | 55.56 | 65.34 |
+| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.90 | 58.76 | — |
 | [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.835 | — | — |
 
 - **ethos-parser** is the engine alone: no OCR, no model, no GPU.
@@ -181,13 +182,13 @@ scores 86.69. Placed among them:
 | Lane | ParseBench overall | Scores above |
 | --- | ---: | ---: |
 | ethos-parser, no model | 52.18 | 36 of 148 |
-| + `--ocr` | 55.17 | 42 of 148 |
+| + `--ocr` | 55.56 | 42 of 148 |
 | + assist model | 65.34 | 80 of 148 |
 
 - **With a model you run**, the assist lane keeps the model's text apart from the document's own.
   Why its score stays below the model's own 74.56 is in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 - **ParseBench-2** lists only hosted services and AI models. With `--ocr`, ethos-parser scores
-  58.19 there on a CPU: above Falcon-OCR (57.78), jina-ocr-v1 (48.59), Qwen3.5-4B (42.86) and
+  58.76 there on a CPU: above Falcon-OCR (57.78), jina-ocr-v1 (48.59), Qwen3.5-4B (42.86) and
   gemma-4-E4B-it (42.74). The other 52 rows score higher, up to 90.82.
 
 ### opendataloader-bench
