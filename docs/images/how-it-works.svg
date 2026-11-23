@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 414" width="1040" height="414" role="img" aria-labelledby="t d">
+<title id="t">How ethos-parser works</title>
+<desc id="d">A PDF or an office file enters the engine, which has no AI model. The engine reads text runs with locators, applies layout rules and writes one record. Markdown, HTML, elements, grounding and annotated PDFs are all projected from that record. Scans pass through the optional --ocr recognizer, and an optional assist model adds text labelled Proposed; both sit outside the engine.</desc>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #59636e; --label: #6e7781; --line: #8c959f;
+    --card: #ffffff; --card-stroke: #d1d9e0; --panel: #f6f8fa; --panel-stroke: #d1d9e0;
+    --accent: #0969da; --on-accent: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #f0f6fc; --muted: #9198a1; --label: #8b949e; --line: #6e7681;
+      --card: #212830; --card-stroke: #3d444d; --panel: #151b23; --panel-stroke: #3d444d;
+      --accent: #4493f8; --on-accent: #0d1117;
+    }
+  }
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+  .col { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; fill: var(--label); }
+  .title { font-size: 15px; font-weight: 600; fill: var(--fg); }
+  .step { font-size: 16px; font-weight: 600; fill: var(--fg); }
+  .sub { font-size: 13px; fill: var(--muted); }
+  .osub { font-size: 12.5px; fill: var(--muted); }
+  .otitle { font-size: 14px; font-weight: 600; fill: var(--fg); }
+  .ltitle { font-size: 13px; font-weight: 600; fill: var(--fg); }
+  .note { font-size: 13px; fill: var(--label); }
+  .num { font-size: 12px; font-weight: 700; fill: var(--on-accent); text-anchor: middle; }
+  .card { fill: var(--card); stroke: var(--card-stroke); stroke-width: 1; }
+  .stepcard { fill: var(--card); stroke: var(--accent); stroke-width: 1.25; }
+  .panel { fill: var(--panel); stroke: var(--panel-stroke); stroke-width: 1; }
+  .optional { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; }
+  .dashed { fill: var(--card); stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 3; }
+  .badge { fill: var(--accent); }
+  .flow { fill: none; stroke: var(--line); stroke-width: 1.25; }
+  .flow.opt { stroke-dasharray: 4 3; }
+  .head { fill: var(--line); }
+</style>
+<defs><marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7.5" refY="4" orient="auto"><path class="head" d="M0.5,0.5 L7.5,4 L0.5,7.5 Z"/></marker></defs>
+<text class="col" x="20" y="38">YOUR FILE</text>
+<text class="col" x="255" y="38">ENGINE  ·  NO AI MODEL  ·  OFFLINE  ·  SAME BYTES EVERY RUN</text>
+<text class="col" x="820" y="38">OUTPUT</text>
+<rect class="panel" x="255" y="52" width="530" height="206" rx="14"/>
+<rect class="optional" x="255" y="294" width="530" height="100" rx="14"/>
+<path class="flow" d="M220,99.5 L271,99.5" marker-end="url(#arrow)"/>
+<path class="flow" d="M220,210.5 L271,210.5" marker-end="url(#arrow)"/>
+<path class="flow" d="M421,155 L445,155" marker-end="url(#arrow)"/>
+<path class="flow" d="M595,155 L619,155" marker-end="url(#arrow)"/>
+<path class="flow" d="M769,155 L802,155 M802,74.0 L802,236.0"/>
+<path class="flow" d="M802,74.0 L820,74.0" marker-end="url(#arrow)"/>
+<path class="flow" d="M802,128.0 L820,128.0" marker-end="url(#arrow)"/>
+<path class="flow" d="M802,182.0 L820,182.0" marker-end="url(#arrow)"/>
+<path class="flow" d="M802,236.0 L820,236.0" marker-end="url(#arrow)"/>
+<path class="flow" d="M220,344.0 L271,344.0" marker-end="url(#arrow)"/>
+<path class="flow" d="M346.0,308 L346.0,226" marker-end="url(#arrow)"/>
+<path class="flow opt" d="M694.0,308 L694.0,226" marker-end="url(#arrow)"/>
+<path class="flow" d="M920.0,258 L920.0,308" marker-end="url(#arrow)"/>
+<text class="note" x="356.0" y="281">recognized runs</text>
+<text class="note" x="684.0" y="281" text-anchor="end">text labelled Proposed</text>
+<rect class="card" x="20" y="52" width="200" height="95" rx="10"/>
+<text class="title" x="36" y="96">PDF</text>
+<text class="sub" x="36" y="116">any PDF with a text layer</text>
+<rect class="card" x="20" y="163" width="200" height="95" rx="10"/>
+<text class="title" x="36" y="197">Office files</text>
+<text class="sub" x="36" y="218">DOCX · XLSX · PPTX · ODT</text>
+<text class="sub" x="36" y="236">ODS · ODP · RTF · EPUB</text>
+<rect class="card" x="20" y="308" width="200" height="72" rx="10"/>
+<text class="title" x="36" y="340">Scans and images</text>
+<text class="sub" x="36" y="360">scanned PDF · PNG · JPEG</text>
+<rect class="stepcard" x="271" y="84" width="150" height="142" rx="10"/>
+<circle class="badge" cx="298" cy="124" r="11"/>
+<text class="num" x="298" y="128.2">1</text>
+<text class="step" x="317" y="129">Read</text>
+<text class="sub" x="287" y="161">Text runs, each</text>
+<text class="sub" x="287" y="180">with a locator</text>
+<text class="sub" x="287" y="199">into the source</text>
+<rect class="stepcard" x="445" y="84" width="150" height="142" rx="10"/>
+<circle class="badge" cx="472" cy="124" r="11"/>
+<text class="num" x="472" y="128.2">2</text>
+<text class="step" x="491" y="129">Structure</text>
+<text class="sub" x="461" y="161">Reading order,</text>
+<text class="sub" x="461" y="180">headings, lists,</text>
+<text class="sub" x="461" y="199">tables, figures</text>
+<rect class="stepcard" x="619" y="84" width="150" height="142" rx="10"/>
+<circle class="badge" cx="646" cy="124" r="11"/>
+<text class="num" x="646" y="128.2">3</text>
+<text class="step" x="665" y="129">Record</text>
+<text class="sub" x="635" y="161">Every character</text>
+<text class="sub" x="635" y="180">traced, every</text>
+<text class="sub" x="635" y="199">gap named</text>
+<rect class="card" x="820" y="52" width="200" height="44" rx="10"/>
+<text class="otitle" x="834" y="71">Markdown · HTML</text>
+<text class="osub" x="834" y="87">with an anchor map</text>
+<rect class="card" x="820" y="106" width="200" height="44" rx="10"/>
+<text class="otitle" x="834" y="125">Elements · locate</text>
+<text class="osub" x="834" y="141">pieces with page and box</text>
+<rect class="card" x="820" y="160" width="200" height="44" rx="10"/>
+<text class="otitle" x="834" y="179">Grounding</text>
+<text class="osub" x="834" y="195">checkable citations</text>
+<rect class="card" x="820" y="214" width="200" height="44" rx="10"/>
+<text class="otitle" x="834" y="233">Overlay · tagged PDF</text>
+<text class="osub" x="834" y="249">annotated PDF copies</text>
+<rect class="card" x="271" y="308" width="150" height="72" rx="10"/>
+<text class="ltitle" x="287" y="334"><tspan class="mono">--ocr</tspan> recognizer</text>
+<text class="osub" x="287" y="353">built in, runs on</text>
+<text class="osub" x="287" y="369">your machine</text>
+<rect class="dashed" x="619" y="308" width="150" height="72" rx="10"/>
+<text class="ltitle" x="635" y="334"><tspan class="mono">--assist</tspan> model</text>
+<text class="osub" x="635" y="353">a server you run,</text>
+<text class="osub" x="635" y="369">opt-in</text>
+<text class="col" x="520.0" y="340" text-anchor="middle">OPTIONAL LANES</text>
+<text class="note" x="520.0" y="359" text-anchor="middle">outside the engine</text>
+<rect class="card" x="820" y="308" width="200" height="72" rx="10"/>
+<text class="otitle" x="834" y="334">Use it from</text>
+<text class="osub" x="834" y="353">CLI · MCP server</text>
+<text class="osub" x="834" y="369">Python · Node · LangChain</text>
+</svg>

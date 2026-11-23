@@ -4,8 +4,8 @@
 `llamaindex/ParseBench` at revision `2805a1d`, both Apache-2.0) scores a parser's Markdown on five
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
 grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**. Re-scored
-2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14**; on `31e4f4d` (2026-11-22): **52.15**
-(below, with ParseBench-2).
+2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14**; on `31e4f4d` (2026-11-22): **52.15**; on
+`0ee4b4c` (2026-11-23): **52.18** (below, with ParseBench-2).
 
 **Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
 It was also run to find defects, and it found them: every engine change it led to is in
@@ -1769,6 +1769,27 @@ Under 2.1.1 ParseBench-2's forms read 69.86 and the overalls 55.67 and 57.96. Ag
 scored the same way: no ParseBench page down in any lane, one formatting page up; ParseBench-2
 forms 67.39 -> 69.86 (#157, after its review: 70.14 before the caption rule kept values beside long
 captions with no colon where they were) and formatting 71.36 -> 71.39 (#159), nothing else moved.
+
+## Re-measured on `0ee4b4c` (2026-11-23)
+
+The README's rows after decisions #160 to #168: a line's last hyphen closing up its word, the form
+and table facts of #162 to #167, which no projection reads, and a form's empty boxes written `☐`.
+Both sets run at parse-bench 2.1.0 (`c61ff10`), the board's scorer, through the adapter, as above.
+The assist lanes were not run again; their rows stay those of `0f6c8a3`.
+
+| ParseBench lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place of 158 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 64.53 | 17.30 | 67.65 | 51.43 | 59.99 | 52.18 | 113th |
+| `--ocr` | 64.54 | 17.30 | 77.52 | 53.19 | 63.30 | 55.17 | 107th |
+
+| ParseBench-2 lane | Text | Formatting | Tables | Charts | Grounding | Forms | Overall | Place of 57 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 57.58 | 71.39 | 49.98 | 17.94 | 67.25 | 71.25 | 55.90 | 54th |
+| `--ocr` | 62.51 | 78.97 | 51.71 | 17.94 | 66.76 | 71.25 | 58.19 | 53rd |
+
+Under 2.1.1 ParseBench-2's forms read 71.51 and the overalls 55.94 and 58.23. Against `31e4f4d`:
+ParseBench content 67.52 -> 67.65 and formatting 51.40 -> 51.43, with `--ocr` 77.39 -> 77.52 and
+53.17 -> 53.19 (#160); ParseBench-2 forms 69.72 -> 71.25 (#168); no other dimension moved.
 
 ## What it found that is not fixed
 

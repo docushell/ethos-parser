@@ -32,6 +32,23 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A README with badges, a flow diagram and benchmarks beside parsers of its kind
+
+- The README opens with status badges (CI, release, licence, toolchain, platforms) and what the
+  engine is: no AI model, offline, byte-identical output, no AGPL dependency.
+- A flow diagram, `docs/images/how-it-works.svg`, shows a file's way from its bytes through the
+  engine's rules to the record, and from the record to each output, with the recognizer and the
+  assist model drawn outside the engine.
+- The quick start runs on the reader's own document and says `--drop-hidden` and `--ocr` need
+  0.66.0. The sample page stays as an optional try, with the Markdown it prints. The overlay
+  picture is gone, and `docs/images/overlay.png` with it.
+- The benchmark numbers are re-measured on `0ee4b4c`, after decisions #160 to #168: ParseBench
+  52.18 for the engine and 55.17 with `--ocr`, ParseBench-2 55.90 and 58.19, opendataloader-bench
+  0.835 as before. ParseBench is shown beside the nine open-source local parsers on its
+  leaderboard, and as the count of its 148 hosted-service and AI-model rows each lane scores
+  above: 36 for the engine, 42 with `--ocr`, 80 with the assist model. Each lane's place on the
+  whole leaderboards stays in `docs/BENCHMARKS.md`.
+
 ### A form's empty boxes are written `☐` beside their options (decision #168)
 
 A form drawn on the page draws its check boxes as small square outlines, and nothing read them:
@@ -456,15 +473,15 @@ found every one permissively licensed, but nothing kept it so.
   a copy fails (review): every binary is copied beside its target before any is renamed over
   one. It is fetched from the repository, so the release assets are unchanged.
 - `docs/sample.pdf`, a made-up one-page report with a ruled table, an image and one line drawn
-  invisible, for the quick start. `docs/images/overlay.png` is its `overlay`, rendered.
+  invisible, for the quick start.
 - The README leads with what the parser is for, the one-line install and three commands on the
   sample, then one install line per kind of user, tested: the CLI, Claude Code's MCP, Python 3.10+
   from a git subdirectory, and Node 18+ from a shallow clone.
-- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `31e4f4d` and placed on
+- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `0ee4b4c` and placed on
   the leaderboards as they are scored today: ParseBench, re-scored by its maintainers on 15–17
-  November, 52.15 for the engine (113th of 158), 55.14 with `--ocr` (107th), 65.34 with the assist
-  model as written (on `0f6c8a3`); ParseBench-2, new here, 55.64 for the engine (54th of 57) and
-  57.94 with `--ocr` (53rd); opendataloader-bench 0.835 (7th of 13). The long install notes move to
+  November, 52.18 for the engine (113th of 158), 55.17 with `--ocr` (107th), 65.34 with the assist
+  model as written (on `0f6c8a3`); ParseBench-2, new here, 55.90 for the engine (54th of 57) and
+  58.19 with `--ocr` (53rd); opendataloader-bench 0.835 (7th of 13). The long install notes move to
   `docs/INSTALL.md`.
 
 ### A page drawn turned is read upright (decision #155)
