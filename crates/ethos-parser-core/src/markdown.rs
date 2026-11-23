@@ -4255,31 +4255,34 @@ impl Emit {
         self.boxes_written
     }
 
-    /// Decision #168: before `node`'s text, the box drawn after the run written last, where one
-    /// waits, then the one drawn before `node`; the one drawn after `node` waits for whatever
-    /// leaves `last`, the run whose text the write ends in. Each box once: a run's text written
-    /// in pieces, or past an escape, opens its boxes at its first piece.
-    fn open_boxes(&mut self, node: &str, last: &str) {
+    /// Decision #168: before the text of `runs` — one run, or the two a word joined over its
+    /// line's end is written from — the box drawn after the run written last, where one waits,
+    /// then each box drawn before one of `runs`; the boxes drawn after them wait for whatever
+    /// leaves `last`, the run whose text the write ends in, and are queued only once every box
+    /// before is written, since writing one flushes what waits. Each box once: a run's text
+    /// written in pieces, or past an escape, opens its boxes at its first piece.
+    fn open_boxes(&mut self, runs: &[&str], last: &str) {
         if self
             .box_after
             .as_ref()
-            .is_some_and(|(after, _)| after != node && after != last)
+            .is_some_and(|(after, _)| !runs.contains(&after.as_str()) && after != last)
         {
             self.write_box_after(true);
         }
-        if let Some((before, after)) = self.boxes.get_mut(node) {
-            let (before, after) = (std::mem::take(before), std::mem::take(after));
-            if before {
-                self.boxes_written += 1;
-                self.syntax("\u{2610} ");
-            }
-            // Two runs written as one word may each have one after them: both wait.
-            if after {
-                match &mut self.box_after {
-                    Some((run, waiting)) if run == last => *waiting += 1,
-                    _ => self.box_after = Some((last.to_owned(), 1)),
+        let mut after = 0;
+        for run in runs {
+            if let Some((b, a)) = self.boxes.get_mut(*run) {
+                let (b, a) = (std::mem::take(b), std::mem::take(a));
+                if b {
+                    self.boxes_written += 1;
+                    self.syntax("\u{2610} ");
                 }
+                after += usize::from(a);
             }
+        }
+        // A run's boxes open once, so none already waits after `last`.
+        if after > 0 {
+            self.box_after = Some((last.to_owned(), after));
         }
     }
 
@@ -4581,7 +4584,7 @@ impl Emit {
         if s.is_empty() {
             return;
         }
-        self.open_boxes(node, node);
+        self.open_boxes(&[node], node);
         if self.holds_mark(node, &s) {
             self.settle(true);
             self.emphasis.mark = Some(Mark {
@@ -4682,8 +4685,7 @@ impl Emit {
             return;
         }
         // Decision #168: both runs' boxes, around the word they now write together.
-        self.open_boxes(first, second);
-        self.open_boxes(second, second);
+        self.open_boxes(&[first, second], second);
         self.before_text(first, &s);
         if self.emphasis.unwritten && self.emphasis.open != Style::default() {
             self.emphasis.unwritten_runs += 2;
@@ -4720,7 +4722,7 @@ impl Emit {
     fn cell_source(&mut self, text: &str, node: &str) {
         // Decision #168: a box before the run stands before an escape its text opens with.
         if !text.is_empty() {
-            self.open_boxes(node, node);
+            self.open_boxes(&[node], node);
         }
         let mut rest = text;
         while let Some(at) = rest.find(['|', '\\']) {
@@ -6897,6 +6899,28 @@ pub(crate) mod tests {
         let both = artifact_of(split);
         assert_eq!(both.markdown, "hyphenated \u{2610} \u{2610}\n");
         assert_eq!(erasure(&both, DRAWN_BOXES_WRITTEN), 2);
+        // Third review of PR #57: a box after the first half and one before the second stand
+        // either side of the joined word.
+        let split = repr_of_lines(&["hyphen-", "ated"]);
+        let mut payload = split.payload().clone();
+        let ids: Vec<crate::NodeId> = payload.nodes.iter().map(|n| n.id.clone()).collect();
+        payload.pages[0].drawn_boxes = vec![
+            crate::DrawnBox {
+                rect: QRect::new(20000, 6400, 20900, 7300).unwrap(),
+                beside: ids[0].clone(),
+                side: crate::BoxSide::After,
+            },
+            crate::DrawnBox {
+                rect: QRect::new(5000, 8800, 5900, 9700).unwrap(),
+                beside: ids[1].clone(),
+                side: crate::BoxSide::Before,
+            },
+        ];
+        let split = DocumentRepresentation::seal(payload, split.geometry().to_vec()).unwrap();
+        assert_eq!(
+            artifact_of(split).markdown,
+            "\u{2610} hyphenated \u{2610}\n"
+        );
         let cell = repr_with_table(&["|Yes"], 1, 1, &[cell(0, 0, &[0])]);
         let mut payload = cell.payload().clone();
         payload.pages[0].drawn_boxes = vec![crate::DrawnBox {
