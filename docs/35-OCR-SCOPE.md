@@ -370,9 +370,11 @@ and loses on none (one formatting part, lists, falls on a page that had no text 
 on every page, opendataloader-bench's 200 documents and the private real-document set's 250 write
 the same Markdown, and the resume scores are identical.
 
-**Known limits.** A page of one image keeps the path it had (§4): a fill, clip, layer or annotation
-over a single scanned image is not read, since sending such a page through the composition would
-refuse scans read today (a stroked border); that is a decision for the owner. JBIG2, CCITT and JPEG
+**Known limits.** A page of one image keeps the path it had (§4): a fill or annotation over a
+single scanned image is not read, nor an image its own `/OC` switches off, since sending such a page
+through the composition would refuse scans read today (a stroked border); that is a decision for
+the owner. Since PR 58's review (decision #161, §15), a rectangular clip around the image, and a
+layer switched off around it, bound what is read. JBIG2, CCITT and JPEG
 2000 masks, common in scanners' mixed raster output, are refused by name. A composed raster carries
 no orientation from a placement, so the orientation model reads it as it stands; on a made-up
 cropped page turned 270° it read the raster wrongly. Samples are nearest, so a mask finer than
@@ -392,13 +394,14 @@ by its own `/OC` — not at all (PR 58's review). The image is
 read as any scan is, alone or composed with the others (§14): text the page shows no longer ends
 a composition, and is not painted into it. The drawn runs are kept as drawn. A recognized word
 is written only where its box lies on the page and shares no area with a drawn run's box; a word
-with no box, one past the page's edge, or one beside a drawn run with no box, is left out and
-counted under `recognized-words-under-drawn-text`. A line the recognizer reads turned, written as
+with no box, one whose box runs past the page's edge, or one beside a drawn run with no box, is
+left out and counted under `recognized-words-under-drawn-text`. A line the recognizer reads turned, written as
 one run, is written beside drawn text in runs each clear of it — the line split where the next
 word's box would cross a drawn run's — so a word clear of the drawn text is not left out with one
 that is not (PR 58's review). A page of one image, a few drawn words or none, is read only as far
-as the page's clips show the image: a word read outside is counted under
-`recognized-words-outside-visible-box`, as one past the page's edge is (PR 58's review).
+as the page's clips show the image: a word whose box's centre lies outside what they show is
+dropped and counted under `recognized-words-outside-visible-box`, as one whose centre lies past
+the page's edge is (PR 58's review).
 
 **Why the seal moved, and how far.** Contract §6 let a recognizer author only where the page had
 no text layer at all, and the seal refused any page holding both derivations. A scanner's stamp,

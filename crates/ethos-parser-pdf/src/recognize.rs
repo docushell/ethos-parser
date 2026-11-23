@@ -1009,12 +1009,19 @@ pub(crate) fn place(
                 (vx0..=vx1).contains(&cx) && (vy0..=vy1).contains(&cy)
             };
             // The words in runs, each as long as its box stays clear: the whole line where it and
-            // every word are shown and its box is clear, and otherwise a run ending where the next
-            // word's box would cross a drawn run or a word is dropped. A line's box can reach past
-            // its words, its centre hidden where theirs are shown (PR 58's review).
+            // every word are shown and its box and every word's are clear, and otherwise a run
+            // ending where the next word's box would cross a drawn run or a word is dropped. A
+            // line's box can reach past its words, its centre hidden where theirs are shown, and a
+            // word's past its line's, over drawn text the line's box is clear of (PR 58's review).
             let whole = (lx0, ly0, lx1, ly1);
             let mut runs: Vec<(usize, usize, Bounds)> = Vec::new();
-            if line.words.iter().all(|w| seen(span(&w.quad))) && seen(whole) && fits(whole) {
+            if line
+                .words
+                .iter()
+                .all(|w| seen(span(&w.quad)) && fits(span(&w.quad)))
+                && seen(whole)
+                && fits(whole)
+            {
                 runs.push((0, last, whole));
             } else {
                 for (k, word) in line.words.iter().enumerate() {
@@ -2642,6 +2649,55 @@ mod tests {
             );
             assert_eq!(dropped, hidden);
         }
+    }
+
+    #[test]
+    fn a_turned_lines_word_reaching_past_it_over_drawn_text_is_kept_apart() {
+        // PR 58's review: a line set up the scan, 150 to 170 points across and 10 to 60 down,
+        // clear of a drawn run at 175 to 190 across and 15 to 25 down. Its word "out", 10 to 30
+        // down, reaches past the line to 185 across, over the drawn run. The line is not written
+        // whole: "out" is a run of its own, over its own box, which the drawn run's test leaves
+        // out, and "up" is written beside it.
+        let candidate = Candidate {
+            page_id: (1, 0),
+            object: (2, 0),
+            corners: [(0.0, 100.0), (200.0, 100.0), (200.0, 0.0), (0.0, 0.0)],
+            visible: (0.0, 0.0, 200.0, 100.0),
+            composite: None,
+        };
+        let answer = Recognition {
+            ocr_response: 1,
+            id: "page 1".into(),
+            identity: RecognizerIdentity::ethos_parser_ocr(),
+            width: 200,
+            height: 100,
+            lines: vec![RecognizedLine {
+                text: "up out".into(),
+                quad: [[150, 60], [150, 10], [170, 10], [170, 60]],
+                words: vec![
+                    RecognizedWord {
+                        text: "up".into(),
+                        quad: [[150, 60], [150, 40], [170, 40], [170, 60]],
+                    },
+                    RecognizedWord {
+                        text: "out".into(),
+                        quad: [[150, 30], [150, 10], [185, 10], [185, 30]],
+                    },
+                ],
+            }],
+            refused: None,
+        };
+        let drawn = QRect::new(17500, 1500, 19000, 2500).unwrap();
+        let clear = |r: Option<QRect>| r.is_some_and(|r| !r.overlaps(drawn));
+        let (placed, dropped) = place(&candidate, &answer, None, &clear).unwrap();
+        assert_eq!(dropped, 0);
+        assert_eq!(
+            placed
+                .iter()
+                .map(|w| (w.text.as_str(), clear(w.rect)))
+                .collect::<Vec<_>>(),
+            [("up ", true), ("out", false)]
+        );
     }
 
     #[test]

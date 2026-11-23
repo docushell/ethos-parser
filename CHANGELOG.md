@@ -298,9 +298,9 @@ nothing said so.
   - Second round:
     - An image a viewer does not show counts toward no share: one drawn in a layer switched off,
       or one switched off by its own `/OC`.
-    - A page of one image is read only as far as the page's clips show it; a word read outside is
-      counted under `recognized-words-outside-visible-box`. This holds for every one-image scan,
-      not only these.
+    - A page of one image is read only as far as the page's clips show it; a word whose box's
+      centre lies outside is counted under `recognized-words-outside-visible-box`. This holds for
+      every one-image scan, not only these.
     - 6 mutations, all caught; no page these sets hold moves.
   - Third round:
     - Each word of a turned line is checked against what a viewer shows before the line is
@@ -310,6 +310,15 @@ nothing said so.
     - 3 mutations, all caught; no page moves.
   - Fourth round: a turned line is kept whole only where its own box's centre is shown too. A
     line whose box reached past its words lost them all. 1 mutation, caught; no page moves.
+  - Fifth round:
+    - A turned line is kept whole only where every word's own box is clear of drawn text too. A
+      word whose box reached past its line, over a drawn run the line's box was clear of, was
+      written there.
+    - The docs say which counter a word left out goes under: one whose box runs past the page's
+      edge goes under drawn text, one whose box's centre lies outside what is shown goes outside
+      the visible box.
+    - The one-image limit of §14 now says what a clip and a layer bound.
+    - 1 mutation, caught.
   - Re-measured on `0ee4b4c` at parse-bench 2.1.0: ParseBench's `--ocr` lane 55.17 → 55.56
     (content 77.52 → 79.12) and ParseBench-2's 58.19 → 58.76; opendataloader-bench `--ocr` 0.8287
     → 0.8306. One page moves that did not before the review, a page of turned text whose words the
@@ -507,8 +516,10 @@ page was refused `several-images` and gave no text.
   outright reads as one; both were refused. Each with a test. Re-measured: ParseBench's and
   ParseBench-2's `--ocr` lanes read as before on every page (55.14; text 62.51), and so does every
   other lane.
-- Known limits: a page of one image keeps its path, so a fill, clip, layer or annotation over a
-  single scanned image is still not read (`docs/35-OCR-SCOPE.md` §14); optional content's `/AS`
+- Known limits: a page of one image keeps its path, so a fill or annotation over a single scanned
+  image is still not read, nor an image its own `/OC` switches off (`docs/35-OCR-SCOPE.md` §14;
+  since #161's review, a rectangular clip and a layer switched off around the image bound what is
+  read); optional content's `/AS`
   auto-state is not applied, so a layer a viewer turns on by it stays off.
 - The two readings the review added are shared with `--drop-hidden` (decision #139): a graphics
   state with a transfer function, and a form box its matrix turns, now leave what is painted under
