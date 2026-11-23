@@ -17,6 +17,11 @@ Markdown's raw characters, and the ground truth writes no emphasis, so every `**
 projection writes counted as a wrong character; the flag leaves the style's marks out and nothing
 else. Measured over `b3030f8` with decision #159: NID 0.8912 -> 0.8988, overall 0.8288 -> 0.8351.
 
+**Re-measured on `0ee4b4c` (2026-11-23)**, after decisions #160 to #168, with `score.py` and the
+adapter as committed, the harness at `7af1d8f`: NID 0.8987, TEDS 0.6666, MHS 0.7058, and 0.8349
+overall by the harness's own per-document mean. The 0.0002 below 0.8351 is decision #160's closed
+hyphens, which the ground truth mostly keeps. This is the row `docs/BENCHMARKS.md` prints as 0.835.
+
 **The units do not travel.** TEDS is a tree edit distance over an HTML DOM; `table-gate-v1.md`
 reports macro cell-slot F1. A TEDS number from here **cannot** be placed beside 69‰ — the same
 mistake six documents made about 0.489 until it was measured.

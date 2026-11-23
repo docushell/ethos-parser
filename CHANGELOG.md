@@ -44,10 +44,10 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   picture is gone, and `docs/images/overlay.png` with it.
 - The benchmark numbers are re-measured on `0ee4b4c`, after decisions #160 to #168: ParseBench
   52.18 for the engine and 55.17 with `--ocr`, ParseBench-2 55.90 and 58.19, opendataloader-bench
-  0.835 as before. ParseBench is shown beside the nine open-source local parsers on its
-  leaderboard, and as the count of its 148 hosted-service and AI-model rows each lane scores
-  above: 36 for the engine, 42 with `--ocr`, 80 with the assist model. Each lane's place on the
-  whole leaderboards stays in `docs/BENCHMARKS.md`.
+  0.835 as before (0.8349, run again on `0ee4b4c`). ParseBench is shown beside the nine open-source
+  local parsers on its leaderboard, and as the count of its 148 hosted-service and AI-model rows
+  each lane scores above: 36 for the engine, 42 with `--ocr`, 80 with the assist model. Each
+  lane's place on the whole leaderboards stays in `docs/BENCHMARKS.md`.
 
 ### A form's empty boxes are written `☐` beside their options (decision #168)
 

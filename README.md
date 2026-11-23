@@ -50,7 +50,7 @@ JSON.
 **2. Run it** on a document of your own: a PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF or EPUB.
 
 ```bash
-# Markdown, with a map from every character back to the page
+# Markdown. The JSON also holds .anchor_map, from every character back to the page
 ethos-parser markdown --source report.pdf | jq -r .markdown
 
 # The same, with invisible text left out and counted
