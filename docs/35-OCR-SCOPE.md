@@ -411,8 +411,10 @@ profile, so the guard `07-VERIFY-BOUNDARY` §8.3 names — the derivation class 
 isolation — holds for every run.
 
 **Without `--ocr`.** A page the widened trigger takes is counted under
-`scanned-page-not-recognized` as `ocr-not-requested` (decision #132), and the stderr line offers
-the flag; the Markdown and HTML are unchanged. The line now reads "scanned page(s) were not
+`scanned-page-not-recognized` as `--ocr` would leave it (decision #132): as `ocr-not-requested`
+where the recognizer would read its image, and the stderr line offers the flag; by the refusal's
+own name where it would not, such as `filter-not-decoded:CCITTFaxDecode`. The Markdown and HTML
+are unchanged. The line now reads "scanned page(s) were not
 read", since such a page shows text.
 
 **Measured** on `7bca4fe` with and without this decision, the same recognizer, parse-bench 2.1.1
@@ -454,7 +456,9 @@ read", since such a page shows text.
   - The clip and overlap rule changes no page these sets hold: the same 65 documents report one
     unread page without `--ocr`.
   - The second round (hidden images, a one-image page read only as far as its clips show it)
-    moves no page either.
+    moves no page either; nor does the third, which checks each word of a turned line against
+    what a viewer shows before the line is joined, a word no viewer shows dropped and counted on
+    its own.
 
 **Known limits.** The recognizer reads no Arabic script: on the one page that falls, a drawn
 browser header over a scanned Arabic page, the scan's words come out as Latin letters it made up,

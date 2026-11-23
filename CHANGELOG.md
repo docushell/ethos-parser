@@ -271,8 +271,10 @@ nothing said so.
 - The seal moves with the reader: a recognized run is refused where its box shares area with an
   extracted run's, or has no box on a page holding extracted text. Contract §6 now reads "only
   where the deterministic reader found no drawn text"; nothing overwrites `Extracted`.
-- Without `--ocr`, such a page is counted under `scanned-page-not-recognized` as
-  `ocr-not-requested`, and the stderr line now reads "scanned page(s) were not read". No Markdown
+- Without `--ocr`, such a page is counted under `scanned-page-not-recognized` as `--ocr` would
+  leave it (decision #132): as `ocr-not-requested` where the recognizer would read its image, and
+  by the refusal's own name where it would not, such as `filter-not-decoded:CCITTFaxDecode`. The
+  stderr line now reads "scanned page(s) were not read". No Markdown
   or HTML moves on any of 6,562 benchmark and private PDFs; 65 documents now report one unread
   page.
 - Measured on `7bca4fe`: ParseBench-2's `--ocr` lane 57.96 → 58.52 (text 62.51 → 63.71,
@@ -300,6 +302,12 @@ nothing said so.
       counted under `recognized-words-outside-visible-box`. This holds for every one-image scan,
       not only these.
     - 6 mutations, all caught; no page these sets hold moves.
+  - Third round:
+    - Each word of a turned line is checked against what a viewer shows before the line is
+      joined, and a word no viewer shows is dropped and counted on its own. The line's centre
+      could be shown where one of its words was not.
+    - The not-requested wording above is qualified.
+    - 3 mutations, all caught; no page moves.
   - Re-measured on `0ee4b4c` at parse-bench 2.1.0: ParseBench's `--ocr` lane 55.17 → 55.56
     (content 77.52 → 79.12) and ParseBench-2's 58.19 → 58.76; opendataloader-bench `--ocr` 0.8287
     → 0.8306. One page moves that did not before the review, a page of turned text whose words the

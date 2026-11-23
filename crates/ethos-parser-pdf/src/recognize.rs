@@ -1002,16 +1002,29 @@ pub(crate) fn place(
             };
             let hull =
                 |a: Bounds, b: Bounds| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3));
-            // The words in runs, each as long as its box stays clear: the whole line where it
-            // does, and beside drawn text a run ending where the next word's box would cross it.
+            // A word whose box's centre no viewer shows is dropped and counted on its own: the
+            // line's centre can be shown where one of its words is not (PR 58's review).
+            let seen = |(x0, y0, x1, y1): Bounds| {
+                let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+                (vx0..=vx1).contains(&cx) && (vy0..=vy1).contains(&cy)
+            };
+            // The words in runs, each as long as its box stays clear: the whole line where every
+            // word is shown and its box is clear, and otherwise a run ending where the next word's
+            // box would cross a drawn run or a word is dropped.
             let mut runs: Vec<(usize, usize, Bounds)> = Vec::new();
-            if fits((lx0, ly0, lx1, ly1)) {
+            if line.words.iter().all(|w| seen(span(&w.quad))) && fits((lx0, ly0, lx1, ly1)) {
                 runs.push((0, last, (lx0, ly0, lx1, ly1)));
             } else {
                 for (k, word) in line.words.iter().enumerate() {
                     let b = span(&word.quad);
+                    if !seen(b) {
+                        dropped = dropped.saturating_add(1);
+                        continue;
+                    }
                     match runs.last_mut() {
-                        Some((_, end, at)) if fits(hull(*at, b)) => (*end, *at) = (k, hull(*at, b)),
+                        Some((_, end, at)) if *end + 1 == k && fits(hull(*at, b)) => {
+                            (*end, *at) = (k, hull(*at, b));
+                        }
                         _ => runs.push((k, k, b)),
                     }
                 }
@@ -2566,6 +2579,55 @@ mod tests {
         let r = side.rect.expect("boxed");
         assert_eq!((r.x0(), r.y0(), r.x1(), r.y1()), (7500, 500, 8500, 4500));
         assert_eq!(words.len(), 3);
+    }
+
+    #[test]
+    fn a_turned_lines_hidden_word_is_dropped_on_its_own() {
+        // PR 58's review: a 200 x 100 pixel scan over a 200 x 100 point page, a point a pixel, its
+        // clip showing the top 60 points. A line set up it, 10 to 90 points down, has its centre
+        // shown; its word 70 to 90 down is not, and is dropped and counted on its own. A word the
+        // recognizer boxed out of order, hidden between two shown ones, splits the line there.
+        let candidate = Candidate {
+            page_id: (1, 0),
+            object: (2, 0),
+            corners: [(0.0, 100.0), (200.0, 100.0), (200.0, 0.0), (0.0, 0.0)],
+            visible: (0.0, 0.0, 200.0, 60.0),
+            composite: None,
+        };
+        let word = |t: &str, y0: i32, y1: i32| RecognizedWord {
+            text: t.into(),
+            quad: [[150, y1], [150, y0], [170, y0], [170, y1]],
+        };
+        for (words, kept) in [
+            (
+                vec![word("low", 70, 90), word("high", 10, 30)],
+                vec!["high"],
+            ),
+            (
+                vec![word("a", 10, 20), word("b", 70, 80), word("c", 25, 35)],
+                vec!["a ", "c"],
+            ),
+        ] {
+            let answer = Recognition {
+                ocr_response: 1,
+                id: "page 1".into(),
+                identity: RecognizerIdentity::ethos_parser_ocr(),
+                width: 200,
+                height: 100,
+                lines: vec![RecognizedLine {
+                    text: String::new(),
+                    quad: [[150, 90], [150, 10], [170, 10], [170, 90]],
+                    words,
+                }],
+                refused: None,
+            };
+            let (placed, dropped) = place(&candidate, &answer, None, &|_| true).unwrap();
+            assert_eq!(
+                placed.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(),
+                kept
+            );
+            assert_eq!(dropped, 1);
+        }
     }
 
     #[test]
