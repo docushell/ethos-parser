@@ -1596,8 +1596,16 @@ pub struct FormFieldAttributes {
 /// **Two states and an absence, never a third state.** A form's button is on or off; where the
 /// widget does not say which, the state is absent with its reason, and counted as
 /// `form-field-state-not-determinable`.
+///
+/// `deny_unknown_fields`, as on every struct of the record: a key beside `kind` and `value` is
+/// refused rather than dropped on a read and a re-write.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+#[serde(
+    rename_all = "snake_case",
+    tag = "kind",
+    content = "value",
+    deny_unknown_fields
+)]
 #[non_exhaustive]
 pub enum CheckState {
     /// The widget shows a state its normal appearance draws, other than `Off`: the box is
@@ -3446,8 +3454,13 @@ impl DocumentRepresentation {
             .map(|n| (n.id.as_str(), n))
             .collect();
         for (node, beside) in bindings {
+            // Paginated, both: a page-less run's parent is a part, and a part is no page.
             let ok = targets.get(beside.as_str()).is_some_and(|t| {
-                t.id != node.id && t.kind == NodeKind::TextRun && t.parent == node.parent
+                t.id != node.id
+                    && t.kind == NodeKind::TextRun
+                    && t.parent == node.parent
+                    && node.native_locator.is_paginated()
+                    && t.native_locator.is_paginated()
             });
             if !ok {
                 return Err(Self::malformed(format!(
@@ -4231,6 +4244,46 @@ mod tests {
         let sealed = seal(vec![n1, n2], Vec::new(), geometry).expect("a page-less document seals");
         assert!(sealed.payload().pages.is_empty());
         assert_eq!(sealed.payload().nodes.len(), 2);
+    }
+
+    /// A check box's state reads its two keys and refuses a third (decision #162, review of
+    /// PR #56): an unknown key would be dropped on a read and a re-write.
+    #[test]
+    fn a_check_state_refuses_a_key_it_does_not_read() {
+        let on: CheckState = serde_json::from_str(r#"{"kind":"checked","value":"Yes"}"#).unwrap();
+        assert_eq!(on, CheckState::Checked("Yes".into()));
+        let off: CheckState = serde_json::from_str(r#"{"kind":"unchecked"}"#).unwrap();
+        assert_eq!(off, CheckState::Unchecked);
+        let err = serde_json::from_str::<CheckState>(
+            r#"{"kind":"checked","value":"Yes","future_fact":true}"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("future_fact"), "{err}");
+    }
+
+    /// A page-less run read beside another run of its part is refused (decision #164, review of
+    /// PR #56): their shared parent is a part, and a part is no page.
+    #[test]
+    fn a_page_less_run_read_beside_another_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+        let part = alloc.next(IdKind::Part).unwrap();
+        let mut caption = docx_node(&mut alloc, &part, 1, 1);
+        let mut value = docx_node(&mut alloc, &part, 2, 2);
+        let attributes = node(&mut alloc, &part, 3, 1).attributes;
+        caption.attributes = attributes.clone();
+        value.attributes = attributes;
+        if let NodeAttributes::TextRun(a) = &mut value.attributes {
+            a.read_beside = Some(caption.id.clone());
+        }
+        let absent = |n: &Node| {
+            geom(
+                n,
+                GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            )
+        };
+        let geometry = vec![absent(&caption), absent(&value)];
+        let err = seal(vec![caption, value], Vec::new(), geometry).unwrap_err();
+        assert!(err.to_string().contains("is read beside"), "{err}");
     }
 
     /// **A PDF node in that same document still refuses.** The second family did not open a hole.

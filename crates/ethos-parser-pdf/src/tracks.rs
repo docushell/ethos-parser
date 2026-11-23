@@ -583,7 +583,10 @@ fn detect_within(
                     if let Some(row) = joined.take() {
                         rows.insert(0, row);
                     }
-                    table = build(page, &rows, &[], 0, runs, alloc)?;
+                    // Decision #167: the first row is the header where it reads as one, as with
+                    // no band over it.
+                    let header = rows.first().is_some_and(|row| heads(row, &rows[1..], runs));
+                    table = build(page, &rows, &[], usize::from(header), runs, alloc)?;
                 }
                 if let Some(table) = table {
                     tables.push(table);
@@ -2591,6 +2594,21 @@ mod tests {
         ]);
         assert_eq!(texts(&found[0])[0], ["Region", "Units", "Price"]);
         assert_eq!(found[0].rows, 5);
+        // Decision #167: that line, reading as a header, is the table's header, as with no band
+        // over it (review of PR #56).
+        let row_heads = |r: u32| {
+            found[0]
+                .cells
+                .iter()
+                .filter(|c| c.position.row == r)
+                .all(|c| c.header)
+        };
+        assert!(row_heads(0), "the first row reads as the header");
+        assert!(found[0]
+            .cells
+            .iter()
+            .filter(|c| c.position.row >= 1)
+            .all(|c| !c.header));
     }
 
     /// A four-column ledger with `first` as its first row a row's pitch above its figures, under a

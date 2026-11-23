@@ -36,7 +36,7 @@
 //!   `page-footer`), a Word header's or footer's included; then a level a DOCX, ODF or EPUB file
 //!   declares, as both projections read it ([`crate::markdown::heading_level`]), a
 //!   `section-header`; then a run's tagged role path after the document's `/RoleMap`, as Markdown
-//!   reads it, innermost role first — `H`, `H1`–`H6` are a `section-header`, and `Title`, `LI`,
+//!   reads it, innermost role first — `H`, `H1`–`H6` are a `section-header`,
 //!   a unit opening with a tagged `Caption` is a `caption`, and one opening with a list item
 //!   exactly as both projections read one (an `L` above it, read at its innermost role; a DOCX
 //!   paragraph's declared numbering) a `list-item`; `Title`, and any other `LI`, `Lbl`, `LBody` or
@@ -947,6 +947,16 @@ fn bind_headers(cells: &mut [ElementCell], rows: u32) -> bool {
         }
     }
     let end = |c: &ElementCell| c.column.saturating_add(c.colspan.max(1));
+    // A header row whose cells overlap (a grid no detector draws, but one a record may hold) has
+    // its spans' ends out of column order, so a search would miss a wide header: its cells are
+    // read one by one.
+    let disjoint: Vec<bool> = column_heads
+        .iter()
+        .map(|list| {
+            list.windows(2)
+                .all(|w| end(&cells[w[0]]) <= cells[w[1]].column)
+        })
+        .collect();
     let mut bound: Vec<(usize, Vec<usize>, Vec<usize>)> = Vec::new();
     for (i, c) in cells.iter().enumerate() {
         if c.header || c.row as usize >= rows {
@@ -954,13 +964,24 @@ fn bind_headers(cells: &mut [ElementCell], rows: u32) -> bool {
         }
         let mut above: Vec<usize> = Vec::new();
         if let Some((s, e)) = block[c.row as usize] {
-            for list in &column_heads[s..e] {
-                let from = list.partition_point(|&h| end(&cells[h]) <= c.column);
-                let to = from + list[from..].partition_point(|&h| cells[h].column < end(c));
+            for (list, &ordered) in column_heads[s..e].iter().zip(&disjoint[s..e]) {
+                let (from, to) = if ordered {
+                    let from = list.partition_point(|&h| end(&cells[h]) <= c.column);
+                    (
+                        from,
+                        from + list[from..].partition_point(|&h| cells[h].column < end(c)),
+                    )
+                } else {
+                    (0, list.len())
+                };
                 if !charge(weight.saturating_mul(to - from).saturating_add(1)) {
                     return false;
                 }
-                above.extend_from_slice(&list[from..to]);
+                above.extend(
+                    list[from..to]
+                        .iter()
+                        .filter(|&&h| end(&cells[h]) > c.column && cells[h].column < end(c)),
+                );
             }
         }
         let mut before: Vec<usize> = Vec::new();
@@ -1383,6 +1404,40 @@ mod tests {
         assert!(at(1, 0).header && at(1, 0).column_headers.is_empty());
         assert!(!grid.headers_unbound);
         assert_eq!(at(2, 1).id, ids[7]);
+    }
+
+    /// Header cells that overlap in their row — one spanning three columns, one inside its span —
+    /// each head every cell their spans meet: a search over their ends, out of column order there,
+    /// missed the wide one (decision #167, review of PR #56).
+    #[test]
+    fn overlapping_header_cells_each_head_the_cells_they_span() {
+        let cell = |row: u32, column: u32, colspan: u32, header: bool, n: u64| ElementCell {
+            row,
+            column,
+            rowspan: 1,
+            colspan,
+            page: None,
+            bbox: None,
+            text: format!("c{n}"),
+            node_ids: Vec::new(),
+            id: NodeId::from_parts(IdKind::Span, n),
+            header,
+            column_headers: Vec::new(),
+            row_headers: Vec::new(),
+        };
+        let mut cells = vec![
+            cell(0, 0, 3, true, 1),
+            cell(0, 1, 1, true, 2),
+            cell(1, 0, 1, false, 3),
+            cell(1, 1, 1, false, 4),
+            cell(1, 2, 1, false, 5),
+        ];
+        assert!(bind_headers(&mut cells, 2));
+        let wide = NodeId::from_parts(IdKind::Span, 1);
+        let inner = NodeId::from_parts(IdKind::Span, 2);
+        assert_eq!(cells[2].column_headers, [wide.clone()]);
+        assert_eq!(cells[3].column_headers, [wide.clone(), inner]);
+        assert_eq!(cells[4].column_headers, [wide]);
     }
 
     /// An empty header cell heads nothing, as in HTML's table model, and a header cell placed past
