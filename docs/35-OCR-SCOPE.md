@@ -384,13 +384,18 @@ kind, `composite`, rather than one page (both binaries ship together, §9).
 
 **The rule.** Under `--ocr`, the trigger also takes a page that showed text when all of it is under
 200 characters, every run of it has a box (a run that drew no ink, a run of spaces, covers
-nothing and is not asked for one), and the page's images paint at least 40% of its visible box
-between them (`thresholds::STRAY_TEXT_MAX_CHARS`, `STRAY_TEXT_MIN_IMAGE_PERCENT`). The image is
+nothing and is not asked for one), and the page's upright images paint at least 40% of its
+visible box between them (`thresholds::STRAY_TEXT_MAX_CHARS`, `STRAY_TEXT_MIN_IMAGE_PERCENT`) —
+each as much of it as the page's rectangular clips and form boxes show, and a place two of them
+paint counted once (PR 58's review). The image is
 read as any scan is, alone or composed with the others (§14): text the page shows no longer ends
 a composition, and is not painted into it. The drawn runs are kept as drawn. A recognized word
 is written only where its box lies on the page and shares no area with a drawn run's box; a word
 with no box, one past the page's edge, or one beside a drawn run with no box, is left out and
-counted under `recognized-words-under-drawn-text`.
+counted under `recognized-words-under-drawn-text`. A line the recognizer reads turned, written as
+one run, is written beside drawn text in runs each clear of it — the line split where the next
+word's box would cross a drawn run's — so a word clear of the drawn text is not left out with one
+that is not (PR 58's review).
 
 **Why the seal moved, and how far.** Contract §6 let a recognizer author only where the page had
 no text layer at all, and the seal refused any page holding both derivations. A scanner's stamp,
@@ -437,6 +442,14 @@ read", since such a page shows text.
   where words now stand — integrity on 3 documents, critical words on 2, order on 2.
 - **Words left out** beside drawn text: 59 on 6 pages, 41 of them on one page whose drawn numbers
   sit over a scanned article.
+- **Re-measured after PR 58's review** on `0ee4b4c`, parse-bench 2.1.0:
+  - ParseBench `--ocr` is 55.17 → 55.56 (content 77.52 → 79.12), and ParseBench-2 `--ocr` is
+    58.19 → 58.76.
+  - opendataloader-bench `--ocr` is 0.8287 → 0.8306.
+  - One page moves that did not before the review: a page of turned text, whose words the split
+    keeps (content 0.357 → 0.488).
+  - The clip and overlap rule changes no page these sets hold: the same 65 documents report one
+    unread page without `--ocr`.
 
 **Known limits.** The recognizer reads no Arabic script: on the one page that falls, a drawn
 browser header over a scanned Arabic page, the scan's words come out as Latin letters it made up,
@@ -445,6 +458,8 @@ the page's body size, so a drawn run beside them can read differently — on one
 is now written as a superscript; the run itself is unchanged. A born-digital page set on a
 page-size background image, with under 200 characters, is taken too: its image is read, and
 whatever text the picture holds is written beside the drawn text. A scan whose own text layer is
-long but wrong is not taken (the census's F3, which would replace extracted text). JPEG 2000,
+long but wrong is not taken (the census's F3, which would replace extracted text). A clip of any
+shape other than a rectangle does not narrow an image's share. A turned line split beside drawn
+text is read in the page's order, so one read upward comes out last part first. JPEG 2000,
 CCITT, JBIG2 and the colour spaces the recognizer does not read are refused by name, as on any
 scan.

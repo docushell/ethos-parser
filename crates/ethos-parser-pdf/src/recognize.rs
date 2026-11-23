@@ -900,22 +900,28 @@ fn turn_matrix(o: u8) -> [[i32; 2]; 2] {
     m
 }
 
-/// One run of a recognized line: its text, its left and right on the page, the pixels it was read
-/// from, and whether it advances along x.
-type Piece = (String, f64, f64, [[i32; 2]; 4], bool);
+/// A box on the page: its left, top, right and bottom.
+type Bounds = (f64, f64, f64, f64);
+
+/// One run of a recognized line: its text, its box on the page, the pixels it was read from, and
+/// whether it advances along x.
+type Piece = (String, Bounds, [[i32; 2]; 4], bool);
 
 /// The words of `answer`, placed on `candidate`'s page: each word's left and right through the
 /// placement, over its line's top and bottom; the space the recognizer read after a word kept on
 /// it; the size the line's own height between its quad's top and bottom edges, not its box's,
 /// which a skewed line makes taller. A line that does not run left to right on the page — turned
 /// within the image, or upside down — is one run, its words joined by spaces, with no advance
-/// along x: a word of it has no left and right a line's rules could read. Words whose box's
-/// centre falls outside the visible box are dropped and counted, as text no viewer shows.
-/// `image` is the image XObject read.
+/// along x: a word of it has no left and right a line's rules could read. Where `clear` refuses
+/// that run's box — it would cover a drawn run (decision #161) — the line is a run per word
+/// instead, each over its own box, so a word clear of the drawn text is not lost with the line
+/// (PR 58's review). Words whose box's centre falls outside the visible box are dropped and
+/// counted, as text no viewer shows. `image` is the image XObject read.
 pub(crate) fn place(
     candidate: &Candidate,
     answer: &Recognition,
     image: Option<PdfObjectNumber>,
+    clear: &dyn Fn(Option<QRect>) -> bool,
 ) -> Result<(Vec<PageWord>, u32), EngineError> {
     let (w, h) = (f64::from(answer.width), f64::from(answer.height));
     let [c00, c10, _, c01] = candidate.corners;
@@ -941,6 +947,23 @@ pub(crate) fn place(
             detail: "a recognized word's place cannot be expressed in centipoints".into(),
         })
     };
+    // A word read in the padding past a short line's end — a lone `−`, the `in Data` of a narrow
+    // label — has steps that map past the line's last column at both edges, so its box encloses
+    // nothing. It keeps its text and its origin, and reports no box, as a drawn run without an
+    // advance reports none; one such word refused the whole document.
+    let boxed = |(qx0, qy0, qx1, qy1): (i64, i64, i64, i64)| match QRect::new(
+        qx0,
+        qy0,
+        qx1.max(qx0),
+        qy1.max(qy0),
+    ) {
+        Ok(rect) => Ok(Some(rect)),
+        Err(QRectError::NonPositiveArea) => Ok(None),
+        Err(QRectError::OutOfRange) => Err(EngineError::Malformed {
+            what: "recognized word".into(),
+            detail: "a recognized word's box is not a rectangle".into(),
+        }),
+    };
     let (vx0, vy0, vx1, vy1) = candidate.visible;
     let (mut out, mut dropped) = (Vec::new(), 0u32);
     for line in &answer.lines {
@@ -950,54 +973,79 @@ pub(crate) fn place(
         let height = q((ux * ux + uy * uy).sqrt())?;
         let (lx0, ly0, lx1, ly1) = span(&line.quad);
         let along_x = dx > 0.0 && dy.abs() <= dx;
+        let last = line.words.len().saturating_sub(1);
+        let spaced = |k: usize, text: &str| {
+            if k < last {
+                format!("{text} ")
+            } else {
+                text.to_string()
+            }
+        };
         let pieces: Vec<Piece> = if along_x {
-            let last = line.words.len().saturating_sub(1);
             line.words
                 .iter()
                 .enumerate()
                 .map(|(k, word)| {
                     let (x0, _, x1, _) = span(&word.quad);
-                    let text = if k < last {
-                        format!("{} ", word.text)
-                    } else {
-                        word.text.clone()
-                    };
-                    (text, x0, x1, word.quad, true)
+                    (spaced(k, &word.text), (x0, ly0, x1, ly1), word.quad, true)
                 })
                 .collect()
         } else {
-            let text = line
-                .words
-                .iter()
-                .map(|wd| wd.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ");
-            vec![(text, lx0, lx1, line.quad, false)]
+            // A box that cannot be written is none, and `clear` takes none only where the page
+            // drew no runs.
+            let fits = |(x0, y0, x1, y1): Bounds| {
+                clear(
+                    (|| boxed((q(x0)?, q(y0)?, q(x1)?, q(y1)?)))()
+                        .ok()
+                        .flatten(),
+                )
+            };
+            let hull =
+                |a: Bounds, b: Bounds| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3));
+            // The words in runs, each as long as its box stays clear: the whole line where it
+            // does, and beside drawn text a run ending where the next word's box would cross it.
+            let mut runs: Vec<(usize, usize, Bounds)> = Vec::new();
+            if fits((lx0, ly0, lx1, ly1)) {
+                runs.push((0, last, (lx0, ly0, lx1, ly1)));
+            } else {
+                for (k, word) in line.words.iter().enumerate() {
+                    let b = span(&word.quad);
+                    match runs.last_mut() {
+                        Some((_, end, at)) if fits(hull(*at, b)) => (*end, *at) = (k, hull(*at, b)),
+                        _ => runs.push((k, k, b)),
+                    }
+                }
+            }
+            runs.into_iter()
+                .filter(|&(first, ..)| first < line.words.len())
+                .map(|(first, end, b)| {
+                    let words = &line.words[first..=end];
+                    let text = words
+                        .iter()
+                        .map(|wd| wd.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let pixels = if (first, end) == (0, last) {
+                        line.quad
+                    } else {
+                        let (a, z) = (&words[0].quad, &words[words.len() - 1].quad);
+                        [a[0], z[1], z[2], a[3]]
+                    };
+                    (spaced(end, &text), b, pixels, false)
+                })
+                .collect()
         };
-        for (text, x0, x1, pixels, advances) in pieces {
+        for (text, (x0, y0, x1, y1), pixels, advances) in pieces {
             if text.is_empty() {
                 continue;
             }
-            let (cx, cy) = ((x0 + x1) / 2.0, (ly0 + ly1) / 2.0);
+            let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
             if !(vx0..=vx1).contains(&cx) || !(vy0..=vy1).contains(&cy) {
                 dropped = dropped.saturating_add(1);
                 continue;
             }
-            let (qx0, qy0, qx1, qy1) = (q(x0)?, q(ly0)?, q(x1)?, q(ly1)?);
-            // A word read in the padding past a short line's end — a lone `−`, the `in Data` of a
-            // narrow label — has steps that map past the line's last column at both edges, so its
-            // box encloses nothing. It keeps its text and its origin, and reports no box, as a
-            // drawn run without an advance reports none; one such word refused the whole document.
-            let rect = match QRect::new(qx0, qy0, qx1.max(qx0), qy1.max(qy0)) {
-                Ok(rect) => Some(rect),
-                Err(QRectError::NonPositiveArea) => None,
-                Err(QRectError::OutOfRange) => {
-                    return Err(EngineError::Malformed {
-                        what: "recognized word".into(),
-                        detail: "a recognized word's box is not a rectangle".into(),
-                    })
-                }
-            };
+            let (qx0, qy0, qx1, qy1) = (q(x0)?, q(y0)?, q(x1)?, q(y1)?);
+            let rect = boxed((qx0, qy0, qx1, qy1))?;
             out.push(PageWord {
                 text,
                 origin_x: qx0,
@@ -1096,6 +1144,8 @@ mod tests {
         reach: i32,
         /// The size it answers a composed page at, where not the size asked for.
         composed_at: Option<(u32, u32)>,
+        /// The lines it answers, where not its one "Hello world".
+        lines: Option<Vec<RecognizedLine>>,
     }
 
     impl Fake {
@@ -1107,6 +1157,7 @@ mod tests {
                 requests: Vec::new(),
                 reach: 18,
                 composed_at: None,
+                lines: None,
             }
         }
     }
@@ -1137,6 +1188,8 @@ mod tests {
                 height,
                 lines: if self.refused.is_some() {
                     Vec::new()
+                } else if let Some(lines) = &self.lines {
+                    lines.clone()
                 } else {
                     vec![RecognizedLine {
                         text: "Hello world".into(),
@@ -1365,6 +1418,87 @@ mod tests {
             .runs
             .iter()
             .any(|r| r.text == "world" && r.derivation == DerivationClass::Recognized));
+        crate::to_representation(&artifact, &profile).expect("seals");
+    }
+
+    /// Whether `--ocr` asked the recognizer for `page`'s scan.
+    fn asked(page: &[u8]) -> bool {
+        let profile = Profile::ocr_v0();
+        let doc = Document::open_bytes(page, &profile).expect("opens");
+        let mut fake = Fake::new();
+        crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        !fake.requests.is_empty()
+    }
+
+    #[test]
+    fn a_few_words_over_a_clipped_image_count_what_the_clip_shows() {
+        // Decision #161 (PR 58's review): a page-size image a clip shows 60 points of (30%) does
+        // not paint the share; one shown 100 points of (50%) does.
+        let page = |width: u32| {
+            page_with(&format!(
+                "q 0 0 {width} 100 re W n 200 0 0 100 0 0 cm /Im0 Do Q \
+                 BT /F1 12 Tf 10 50 Td (drawn) Tj ET"
+            ))
+        };
+        assert!(!asked(&page(60)));
+        assert!(asked(&page(100)));
+    }
+
+    #[test]
+    fn a_few_words_over_images_painting_one_place_count_it_once() {
+        // Decision #161 (PR 58's review): two images over the same 30% of the page paint 30% of it;
+        // two over 25% each, apart, paint 50%.
+        assert!(!asked(&scanned("60 0 0 100 0 0", 2, Some("drawn"))));
+        assert!(asked(&page_with(
+            "q 50 0 0 100 0 0 cm /Im0 Do Q q 50 0 0 100 150 0 cm /Im0 Do Q \
+             BT /F1 12 Tf 10 50 Td (drawn) Tj ET"
+        )));
+    }
+
+    #[test]
+    fn a_few_words_over_a_turned_image_count_none_of_it() {
+        // Decision #161: only an upright image's area counts. One turned an eighth paints a
+        // diamond half the page, its box all of it; the page is not taken, and without `--ocr`
+        // nothing is counted.
+        let page =
+            page_with("q 100 50 -100 50 100 0 cm /Im0 Do Q BT /F1 12 Tf 10 50 Td (drawn) Tj ET");
+        assert!(!asked(&page));
+        let plain = Profile::default();
+        let doc = Document::open_bytes(&page, &plain).expect("opens");
+        let artifact = crate::extract(&doc, &plain).expect("extracts");
+        assert_eq!(reason(&artifact), None);
+    }
+
+    #[test]
+    fn a_turned_line_beside_drawn_text_keeps_the_words_clear_of_it() {
+        // Decision #161 (PR 58's review): a line set up the scan, 20 to 40 points across, crosses
+        // `drawn` (10 to 41 across, about 40 to 53 down) between its words: "one" 80 to 100 points
+        // down and "two" 60 to 80 below it, "three" 0 to 30 above. The line's one box would cover
+        // `drawn`, so it is written in two runs, each clear of it, read in the page's order.
+        let profile = Profile::ocr_v0();
+        let doc = Document::open_bytes(&scanned("200 0 0 100 0 0", 1, Some("drawn")), &profile)
+            .expect("opens");
+        let word = |t: &str, y0: i32, y1: i32| RecognizedWord {
+            text: t.into(),
+            quad: [[2, y1], [2, y0], [4, y0], [4, y1]],
+        };
+        let mut fake = Fake::new();
+        fake.lines = Some(vec![RecognizedLine {
+            text: "one two three".into(),
+            quad: [[2, 10], [2, 0], [4, 0], [4, 10]],
+            words: vec![word("one", 8, 10), word("two", 6, 8), word("three", 0, 3)],
+        }]);
+        let artifact = crate::extract_recognized(&doc, &profile, &mut fake).expect("extracts");
+        assert_eq!(fake.requests.len(), 1);
+        let recognized: Vec<(&str, Option<i64>)> = artifact.pages[0]
+            .runs
+            .iter()
+            .filter(|r| r.derivation == DerivationClass::Recognized)
+            .map(|r| (r.text.as_str(), r.locator.advance))
+            .collect();
+        assert_eq!(recognized, [("three", None), ("one two ", None)]);
+        assert!(!codes(&artifact)
+            .contains(&ethos_parser_core::codes::RECOGNIZED_WORDS_UNDER_DRAWN_TEXT));
         crate::to_representation(&artifact, &profile).expect("seals");
     }
 
@@ -2276,25 +2410,25 @@ mod tests {
                     words: vec![word("May", 10, 40), word("2024", 50, 90)],
                 },
                 // A line set up the image's right edge, read bottom to top: its top-left corner
-                // is its bottom-left on the page.
+                // is its bottom-left on the page. Its words stop short of its ends.
                 RecognizedLine {
                     text: "Side bar".into(),
                     quad: [[150, 90], [150, 10], [170, 10], [170, 90]],
                     words: vec![
                         RecognizedWord {
                             text: "Side".into(),
-                            quad: [[150, 90], [150, 10], [170, 10], [170, 90]],
+                            quad: [[150, 80], [150, 55], [170, 55], [170, 80]],
                         },
                         RecognizedWord {
                             text: "bar".into(),
-                            quad: [[150, 90], [150, 10], [170, 10], [170, 90]],
+                            quad: [[150, 50], [150, 20], [170, 20], [170, 50]],
                         },
                     ],
                 },
             ],
             refused: None,
         };
-        let (words, dropped) = place(&candidate, &answer, None).unwrap();
+        let (words, dropped) = place(&candidate, &answer, None, &|_| true).unwrap();
         assert_eq!(dropped, 0);
         assert_eq!(
             words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(),
@@ -2313,6 +2447,10 @@ mod tests {
             (side.text.as_str(), side.advance, side.font_size),
             ("Side bar", None, 1000)
         );
+        // Over the line's box, 75 to 85 points across and 5 to 45 down, not its words' (PR 58's
+        // review: the line is split only where that box would cover drawn text).
+        let r = side.rect.expect("boxed");
+        assert_eq!((r.x0(), r.y0(), r.x1(), r.y1()), (7500, 500, 8500, 4500));
         assert_eq!(words.len(), 3);
     }
 
@@ -2409,7 +2547,8 @@ mod tests {
             }],
             refused: None,
         };
-        let (words, dropped) = place(&whole_page((1, 0), 200, 100), &answer, None).unwrap();
+        let (words, dropped) =
+            place(&whole_page((1, 0), 200, 100), &answer, None, &|_| true).unwrap();
         assert_eq!(dropped, 0);
         assert_eq!(
             (words[0].origin_x, words[0].origin_y, words[0].advance),
@@ -2439,7 +2578,7 @@ mod tests {
                 data: Vec::new(),
             })
             .expect("answers");
-        let (words, dropped) = place(&candidate, &answer, None).unwrap();
+        let (words, dropped) = place(&candidate, &answer, None, &|_| true).unwrap();
         assert_eq!(
             words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(),
             ["Hello "]

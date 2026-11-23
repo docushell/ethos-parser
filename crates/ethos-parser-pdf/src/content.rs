@@ -204,6 +204,10 @@ pub struct ImagePlacement {
     /// decided from them: a rotated image covers a parallelogram, and its bounding box would
     /// claim page area the picture does not cover.
     pub corners: [(f64, f64); 4],
+    /// The box around [`Self::corners`], as much of it as the page's rectangular clips and every
+    /// form `/BBox` show, in user space; `None` where they show none of it. A clip of another
+    /// shape is not known to this reader and does not narrow it (decision #161, PR 58's review).
+    pub shown: Option<PathRect>,
 }
 
 /// What a page painted, in paint order, for a recognizer to compose into one raster (decision
@@ -2371,6 +2375,7 @@ impl<'a> Interpreter<'a> {
                 m.apply(1.0, 1.0),
                 m.apply(0.0, 1.0),
             ],
+            shown: self.shown_part(PathRect::of_unit_square(m)),
         });
         Ok(())
     }

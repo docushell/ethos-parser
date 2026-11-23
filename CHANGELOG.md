@@ -284,10 +284,26 @@ nothing said so.
   recognizer placed them instead of moving beside a caption (a note from #164's review, applied
   when #161 merged).
 - 14 mutations of the final code, all caught, and one more for the merge note.
+- PR 58's review, before the merge:
+  - The trigger counts each upright image only as far as the page's rectangular clips and form
+    boxes show it, and a place two images paint only once. Adding up the placements counted a
+    clipped page-size image whole, and an image under another twice.
+  - A turned line, written as one run, is written beside drawn text in runs that each stay clear
+    of it. Before, a line whose one box covered a drawn run lost every word.
+  - The seal indexes drawn runs only on pages that hold recognized ones.
+  - The review checklist (`docs/07-VERIFY-BOUNDARY.md`) now reads as contract §6 does.
+  - 11 mutations, all caught.
+  - Re-measured on `0ee4b4c` at parse-bench 2.1.0: ParseBench's `--ocr` lane 55.17 → 55.56
+    (content 77.52 → 79.12) and ParseBench-2's 58.19 → 58.76; opendataloader-bench `--ocr` 0.8287
+    → 0.8306. One page moves that did not before the review, a page of turned text whose words the
+    split keeps (content 0.357 → 0.488). Without `--ocr`, no Markdown moves on 6,545 PDFs, and the
+    same 65 documents report one unread page.
 - Known limits (`docs/35-OCR-SCOPE.md` §15): a born-digital page on a page-size background image
   with under 200 characters is taken too; a scan's long but wrong text layer is not; a drawn run
   beside recognized lines can read differently in the projection (one drawn `8` now a
-  superscript), the run itself unchanged.
+  superscript), the run itself unchanged; a clip of any other shape does not narrow an image's
+  share; a turned line split beside drawn text reads in the page's order, so one read upward comes
+  out last part first.
 
 ### A line's last hyphen drawn as a run of its own closes its word up (decision #160)
 

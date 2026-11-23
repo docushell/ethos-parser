@@ -234,7 +234,9 @@ Named so they can be pointed at in review.
 - [ ] Nothing is re-derived from a verifier report; bytes are relayed verbatim or not at all
 - [ ] Verifier absence produces a named error, never a skip or a stub
 - [ ] A new lane declares a derivation class **and** its own profile
-- [ ] `Recognized` authors only where no text layer exists; `Proposed` is never citable
+- [ ] `Recognized` authors only where the deterministic reader found no drawn text — a page with
+      no text layer, or, on a scan a few drawn words qualify (decision #161), outside every drawn
+      run's box; `Proposed` is never citable
 - [ ] Processor identity is declared per lane, and same-identity draft-plus-evidence is rejected
       mechanically
 - [ ] A foreign parser's path still works

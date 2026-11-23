@@ -3343,9 +3343,10 @@ impl DocumentRepresentation {
             GeometryPresence::Absent(crate::derivation::GeometryAbsence::NoInkToMeasure) => None,
             GeometryPresence::Absent(_) => Some(None),
         };
-        let mut drawn: std::collections::BTreeMap<&NodeId, Vec<Option<QRect>>> =
-            std::collections::BTreeMap::new();
-        for (node, g) in self.representation.nodes.iter().zip(&self.geometry) {
+        // The parents holding a recognized run: only their drawn runs are indexed, so a record no
+        // recognizer read keeps no index of its runs (PR 58's review).
+        let mut read: std::collections::BTreeSet<&NodeId> = std::collections::BTreeSet::new();
+        for node in &self.representation.nodes {
             let recognized = node.derivation == DerivationClass::Recognized;
             let addressed = matches!(node.native_locator, NativeLocator::Recognized(_));
             if recognized != addressed || (recognized && node.kind != NodeKind::TextRun) {
@@ -3355,7 +3356,20 @@ impl DocumentRepresentation {
                     node.id
                 )));
             }
-            if node.kind == NodeKind::TextRun && node.derivation == DerivationClass::Extracted {
+            if recognized {
+                read.insert(&node.parent);
+            }
+        }
+        if read.is_empty() {
+            return Ok(());
+        }
+        let mut drawn: std::collections::BTreeMap<&NodeId, Vec<Option<QRect>>> =
+            std::collections::BTreeMap::new();
+        for (node, g) in self.representation.nodes.iter().zip(&self.geometry) {
+            if node.kind == NodeKind::TextRun
+                && node.derivation == DerivationClass::Extracted
+                && read.contains(&node.parent)
+            {
                 if let Some(area) = covered(g) {
                     drawn.entry(&node.parent).or_default().push(area);
                 }

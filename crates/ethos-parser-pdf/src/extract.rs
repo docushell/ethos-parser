@@ -208,33 +208,36 @@ fn declared_len(count: usize) -> u32 {
 /// with a drawn run's box: the test the seal applies (`check_recognized_placement`), so nothing
 /// written here is refused there. A word with no box, or beside a drawn run with none, is left
 /// out, as nothing shows the two apart; a drawn run that drew no ink, a run of spaces, covers
-/// nothing. Returns the words kept and how many were left out.
+/// nothing. [`clear_of_drawn`] is the test; returns the words kept and how many were left out.
 fn beside_drawn(
     words: Vec<crate::recognize::PageWord>,
-    page: &PageExtract,
+    clear: &dyn Fn(Option<ethos_parser_core::QRect>) -> bool,
 ) -> (Vec<crate::recognize::PageWord>, u32) {
-    if page.runs.is_empty() {
-        return (words, 0);
-    }
+    let read = words.len();
+    let kept: Vec<_> = words.into_iter().filter(|w| clear(w.rect)).collect();
+    let under = declared_len(read - kept.len());
+    (kept, under)
+}
+
+/// Decision #161: whether a recognized word with box `rect` may be written on `page` — every word
+/// on a page that drew no runs; beside drawn runs, one whose box lies on the page and shares no
+/// area with a drawn run's box ([`beside_drawn`]).
+fn clear_of_drawn(page: &PageExtract) -> impl Fn(Option<ethos_parser_core::QRect>) -> bool + '_ {
     let drawn: Vec<Option<ethos_parser_core::QRect>> = page
         .runs
         .iter()
         .filter_map(|r| drawn_area(r.geometry))
         .collect();
-    let on_page = |r: ethos_parser_core::QRect| {
-        r.x0() >= 0 && r.y0() >= 0 && r.x1() <= page.width && r.y1() <= page.height
-    };
-    let read = words.len();
-    let kept: Vec<_> = words
-        .into_iter()
-        .filter(|w| {
-            w.rect.is_some_and(|r| {
-                on_page(r) && drawn.iter().all(|d| d.is_some_and(|d| !d.overlaps(r)))
+    move |rect| {
+        page.runs.is_empty()
+            || rect.is_some_and(|r| {
+                r.x0() >= 0
+                    && r.y0() >= 0
+                    && r.x1() <= page.width
+                    && r.y1() <= page.height
+                    && drawn.iter().all(|d| d.is_some_and(|d| !d.overlaps(r)))
             })
-        })
-        .collect();
-    let under = declared_len(read - kept.len());
-    (kept, under)
+    }
 }
 
 /// Decision #161: the area a drawn run covers, as the seal reads it — its box; `Some(None)`,
@@ -255,9 +258,11 @@ fn drawn_area(g: ethos_parser_core::GeometryPresence) -> Option<Option<ethos_par
 /// [`STRAY_TEXT_MIN_IMAGE_PERCENT`](crate::thresholds::STRAY_TEXT_MIN_IMAGE_PERCENT) of its
 /// visible box together: a scan carrying a stray text layer, which `--ocr`'s trigger takes as it
 /// takes a page that showed none. A reason code like the rest of the trigger, never a score.
+/// `images` are the parts of the page's upright images its clips show; what two of them paint
+/// over the same place counts once (PR 58's review).
 fn stray_text(
     runs: &[crate::nodes::TextRun],
-    images: &[crate::nodes::ImageRecord],
+    images: &[crate::tables::QuantRect],
     visible: crate::tables::QuantRect,
 ) -> bool {
     let chars: usize = runs.iter().map(|r| r.text.chars().count()).sum();
@@ -274,19 +279,86 @@ fn stray_text(
     if shown == 0 {
         return false;
     }
-    let painted: i128 = images
+    union_area(images, visible) * 100
+        >= shown * i128::from(crate::thresholds::STRAY_TEXT_MIN_IMAGE_PERCENT)
+}
+
+/// Decision #161 (PR 58's review): the area `rects` cover together inside `within`, overlap
+/// counted once. A sweep across x: each rectangle enters at its left edge and leaves at its right,
+/// and a segment tree over the distinct y edges keeps the height covered between — O(n log n) in
+/// the rectangles, as a page may place tens of thousands of strips.
+fn union_area(rects: &[crate::tables::QuantRect], within: crate::tables::QuantRect) -> i128 {
+    let inside: Vec<[i64; 4]> = rects
         .iter()
-        .filter_map(|i| match &i.locator.rect {
-            ethos_parser_core::PaintedRect::Painted(q) => Some(area(
-                q.x0().max(visible.x0),
-                q.y0().max(visible.y0),
-                q.x1().min(visible.x1),
-                q.y1().min(visible.y1),
-            )),
-            _ => None,
+        .map(|r| {
+            [
+                r.x0.max(within.x0),
+                r.y0.max(within.y0),
+                r.x1.min(within.x1),
+                r.y1.min(within.y1),
+            ]
         })
-        .sum();
-    painted.min(shown) * 100 >= shown * i128::from(crate::thresholds::STRAY_TEXT_MIN_IMAGE_PERCENT)
+        .filter(|[x0, y0, x1, y1]| x0 < x1 && y0 < y1)
+        .collect();
+    if inside.is_empty() {
+        return 0;
+    }
+    let mut ys: Vec<i64> = inside.iter().flat_map(|r| [r[1], r[3]]).collect();
+    ys.sort_unstable();
+    ys.dedup();
+    let mut edges: Vec<(i64, i32, usize, usize)> = Vec::with_capacity(2 * inside.len());
+    for [x0, y0, x1, y1] in &inside {
+        let (a, b) = (
+            ys.partition_point(|y| y < y0),
+            ys.partition_point(|y| y < y1),
+        );
+        edges.push((*x0, 1, a, b));
+        edges.push((*x1, -1, a, b));
+    }
+    edges.sort_unstable();
+    let mut cover = Cover {
+        ys: &ys,
+        count: vec![0; 4 * ys.len()],
+        height: vec![0; 4 * ys.len()],
+    };
+    let (mut total, mut last) = (0i128, edges[0].0);
+    for (x, enter, a, b) in edges {
+        total += i128::from(cover.height[1]) * i128::from(x - last);
+        cover.add(1, 0, ys.len() - 1, a, b, enter);
+        last = x;
+    }
+    total
+}
+
+/// [`union_area`]'s segment tree over `ys`: node `at` holds the span `ys[lo]..ys[hi]`, `count` how
+/// many rectangles cover all of it, and `height` how much of it is covered.
+struct Cover<'a> {
+    ys: &'a [i64],
+    count: Vec<i32>,
+    height: Vec<i64>,
+}
+
+impl Cover<'_> {
+    /// A rectangle over the spans `a..b` enters (`enter` 1) or leaves (-1) under node `at`.
+    fn add(&mut self, at: usize, lo: usize, hi: usize, a: usize, b: usize, enter: i32) {
+        if b <= lo || hi <= a {
+            return;
+        }
+        if a <= lo && hi <= b {
+            self.count[at] += enter;
+        } else {
+            let mid = (lo + hi) / 2;
+            self.add(2 * at, lo, mid, a, b, enter);
+            self.add(2 * at + 1, mid, hi, a, b, enter);
+        }
+        self.height[at] = if self.count[at] > 0 {
+            self.ys[hi] - self.ys[lo]
+        } else if hi - lo == 1 {
+            0
+        } else {
+            self.height[2 * at] + self.height[2 * at + 1]
+        };
+    }
 }
 
 /// Whether a document declares no **author** structure — decision #29's gate
@@ -2234,6 +2306,8 @@ fn extract_page(
         // readable `/Subtype`: emitting a node for an unlabelled stream would put a picture on the
         // wire the document never called one.
         let mut images = Vec::new();
+        // Decision #161: what of each upright image the page's clips show, for [`stray_text`].
+        let mut image_areas = Vec::new();
         // One stream's facts per object, however often the page draws it: hashing the stored
         // bytes again at every `Do` is the same answer at the stream's cost each time.
         let mut image_facts: std::collections::HashMap<
@@ -2295,6 +2369,14 @@ fn extract_page(
             }
             let corners = placement.corners.map(|(x, y)| geom.to_top_left(x, y));
             let rect = crate::images::painted_rect(corners);
+            if let (ethos_parser_core::PaintedRect::Painted(_), Some(s)) = (&rect, placement.shown)
+            {
+                let ((ax, ay), (bx, by)) =
+                    (geom.to_top_left(s.x0, s.y0), geom.to_top_left(s.x1, s.y1));
+                if let Ok(area) = crate::tables::quantize_rect(ax, ay, bx, by) {
+                    image_areas.push(area);
+                }
+            }
             // Decision #97: the runs drawn over the placement, now that `runs` is in reading order.
             let runs_inside = match &rect {
                 ethos_parser_core::PaintedRect::Painted(q) => {
@@ -2328,7 +2410,7 @@ fn extract_page(
         // its recognized words written only beside them ([`beside_drawn`]).
         let stray = || {
             crate::tables::quantize_rect(visible.x0, visible.y0, visible.x1, visible.y1)
-                .is_ok_and(|shown| stray_text(&runs, &images, shown))
+                .is_ok_and(|shown| stray_text(&runs, &image_areas, shown))
         };
         if words.is_none() && (interp.text_operators == 0 || stray()) {
             let placed = interp.images.len() + interp.inline_images as usize;
@@ -2727,7 +2809,7 @@ pub fn extract_image(
             detail: "the page an image file is set on has no page".into(),
         })?;
     let place = crate::recognize::whole_page(page_id, answer.width, answer.height);
-    let (words, outside) = crate::recognize::place(&place, &answer, None)?;
+    let (words, outside) = crate::recognize::place(&place, &answer, None, &|_| true)?;
     let file = ImageFile {
         media_type,
         sha256: Sha256Hex::parse(format!(
@@ -3104,8 +3186,12 @@ fn extract_counted(
                         object: candidate.object.0,
                         generation: u32::from(candidate.object.1),
                     });
-            let (words, outside) = crate::recognize::place(&candidate, &answer, image)?;
-            let (words, under) = beside_drawn(words, &y.page);
+            let (words, outside, under) = {
+                let clear = clear_of_drawn(&y.page);
+                let (words, outside) = crate::recognize::place(&candidate, &answer, image, &clear)?;
+                let (words, under) = beside_drawn(words, &clear);
+                (words, outside, under)
+            };
             if !words.is_empty() {
                 let again = read(
                     *page_number,
@@ -4825,6 +4911,44 @@ pub(crate) fn page_resources(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Decision #161 (PR 58's review): the images' area is their union inside the visible box — what
+    /// two paint over the same place counts once, what lies outside the box not at all, and parts
+    /// apart add up.
+    #[test]
+    fn union_area_counts_overlap_once() {
+        let r = |x0, y0, x1, y1| crate::tables::QuantRect { x0, y0, x1, y1 };
+        let page = r(0, 0, 100, 100);
+        assert_eq!(union_area(&[], page), 0);
+        assert_eq!(
+            union_area(&[r(0, 0, 20, 100), r(0, 0, 20, 100)], page),
+            2_000
+        );
+        assert_eq!(
+            union_area(&[r(0, 0, 20, 100), r(50, 0, 70, 100)], page),
+            4_000
+        );
+        // Two crossing: 30 x 30 each, 10 x 10 shared.
+        assert_eq!(
+            union_area(&[r(0, 0, 30, 30), r(20, 20, 50, 50)], page),
+            1_700
+        );
+        // Past the box's right and bottom edges.
+        assert_eq!(union_area(&[r(90, 95, 150, 150)], page), 50);
+        // One inside another, one half off the box, one with no area.
+        assert_eq!(
+            union_area(
+                &[
+                    r(10, 10, 90, 90),
+                    r(20, 20, 30, 30),
+                    r(-50, 0, 10, 10),
+                    r(5, 5, 5, 50)
+                ],
+                page
+            ),
+            6_400 + 100
+        );
+    }
 
     /// **A `/TH` reaches only the detected cell that holds its content** (decision #167): on a grid
     /// the tree agrees with, the cell at the `/TH`'s position is a header where it holds a run of
