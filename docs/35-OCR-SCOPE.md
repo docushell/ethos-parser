@@ -458,7 +458,8 @@ read", since such a page shows text.
   - The second round (hidden images, a one-image page read only as far as its clips show it)
     moves no page either; nor does the third, which checks each word of a turned line against
     what a viewer shows before the line is joined, a word no viewer shows dropped and counted on
-    its own.
+    its own; nor the fourth, which keeps a turned line whole only where its own box's centre is
+    shown too.
 
 **Known limits.** The recognizer reads no Arabic script: on the one page that falls, a drawn
 browser header over a scanned Arabic page, the scan's words come out as Latin letters it made up,

@@ -1008,12 +1008,14 @@ pub(crate) fn place(
                 let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
                 (vx0..=vx1).contains(&cx) && (vy0..=vy1).contains(&cy)
             };
-            // The words in runs, each as long as its box stays clear: the whole line where every
-            // word is shown and its box is clear, and otherwise a run ending where the next word's
-            // box would cross a drawn run or a word is dropped.
+            // The words in runs, each as long as its box stays clear: the whole line where it and
+            // every word are shown and its box is clear, and otherwise a run ending where the next
+            // word's box would cross a drawn run or a word is dropped. A line's box can reach past
+            // its words, its centre hidden where theirs are shown (PR 58's review).
+            let whole = (lx0, ly0, lx1, ly1);
             let mut runs: Vec<(usize, usize, Bounds)> = Vec::new();
-            if line.words.iter().all(|w| seen(span(&w.quad))) && fits((lx0, ly0, lx1, ly1)) {
-                runs.push((0, last, (lx0, ly0, lx1, ly1)));
+            if line.words.iter().all(|w| seen(span(&w.quad))) && seen(whole) && fits(whole) {
+                runs.push((0, last, whole));
             } else {
                 for (k, word) in line.words.iter().enumerate() {
                     let b = span(&word.quad);
@@ -2598,14 +2600,26 @@ mod tests {
             text: t.into(),
             quad: [[150, y1], [150, y0], [170, y0], [170, y1]],
         };
-        for (words, kept) in [
+        // A line whose box reaches past its words, 30 to 100 points down, its centre (65) hidden
+        // where both its words' are shown, keeps them, joined over their own box.
+        for (line, words, kept, hidden) in [
             (
+                (10, 90),
                 vec![word("low", 70, 90), word("high", 10, 30)],
                 vec!["high"],
+                1,
             ),
             (
+                (10, 90),
                 vec![word("a", 10, 20), word("b", 70, 80), word("c", 25, 35)],
                 vec!["a ", "c"],
+                1,
+            ),
+            (
+                (30, 100),
+                vec![word("two", 47, 60), word("one", 30, 45)],
+                vec!["two one"],
+                0,
             ),
         ] {
             let answer = Recognition {
@@ -2616,7 +2630,7 @@ mod tests {
                 height: 100,
                 lines: vec![RecognizedLine {
                     text: String::new(),
-                    quad: [[150, 90], [150, 10], [170, 10], [170, 90]],
+                    quad: [[150, line.1], [150, line.0], [170, line.0], [170, line.1]],
                     words,
                 }],
                 refused: None,
@@ -2626,7 +2640,7 @@ mod tests {
                 placed.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(),
                 kept
             );
-            assert_eq!(dropped, 1);
+            assert_eq!(dropped, hidden);
         }
     }
 

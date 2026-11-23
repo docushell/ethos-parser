@@ -308,6 +308,8 @@ nothing said so.
       could be shown where one of its words was not.
     - The not-requested wording above is qualified.
     - 3 mutations, all caught; no page moves.
+  - Fourth round: a turned line is kept whole only where its own box's centre is shown too. A
+    line whose box reached past its words lost them all. 1 mutation, caught; no page moves.
   - Re-measured on `0ee4b4c` at parse-bench 2.1.0: ParseBench's `--ocr` lane 55.17 → 55.56
     (content 77.52 → 79.12) and ParseBench-2's 58.19 → 58.76; opendataloader-bench `--ocr` 0.8287
     → 0.8306. One page moves that did not before the review, a page of turned text whose words the
