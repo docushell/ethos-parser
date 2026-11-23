@@ -1873,6 +1873,36 @@ pub const FURNITURE_RULE_V1: &str = "margin-bands-v1";
 /// tree-stripped copies 265 → 277 regions.
 pub const FIGURE_RULE_V1: &str = "figure-regions-v1";
 
+/// The drawn-box rule decision #168 ships: **a small square a page outlines with nothing drawn
+/// inside it is a form's empty box, read beside the nearest run of its line.**
+///
+/// A painted path of rectangles and axis-aligned lines, four to sixteen points a side and at most a
+/// third longer one way than the other, drawn more often seen than unseen (a white fill alone, or a
+/// white or dashed outline, draws none), abutting no other such square on its row or column — a
+/// comb's cells, a grid's — with no run's glyphs set in it and no other path a reader sees, a
+/// coloured fill or a placed image included, crossing its inner area (a path more than twice its
+/// size, a cell or a panel, does not count). Its line is the baseline nearest its bottom, from two
+/// points above its top to five below; where a run of that line is drawn across it, the box sits
+/// in text and binds nothing; otherwise it binds the run of its line whose near end is nearest
+/// within forty points either side; a run's extent is its ink's, short of its leading and trailing
+/// whitespace. Extraction drops a box half or more of which a form widget covers where the widget
+/// states its check box on, or a state this engine cannot tell. Recorded on its page as
+/// [`crate::DrawnBox`] and written `☐` beside its run by both projections, counted as
+/// `drawn-boxes-written-v1`. A page outlining more than [`DRAWN_BOX_CANDIDATES_MAX`] such squares,
+/// or whose search passes its step budget, reads none.
+///
+/// **Known limits**: a box drawn as four separate lines or with rounded corners is not read; a box
+/// with an inline image inside it, and one under a checked widget whose button type the file does
+/// not state, are read as empty; a white fill alone inside a form XObject, a square the page's clip
+/// hides and one in a layer hidden by default are read although no reader sees them; a run whose
+/// advance holds wide `TJ` spacing reads wider than its ink, and a box against it can bind nothing;
+/// a chart's legend key drawn as an unfilled square reads as a box.
+pub const DRAWN_BOX_RULE_V1: &str = "drawn-boxes-v1";
+
+/// Decision #168: the most squares a page may outline for [`DRAWN_BOX_RULE_V1`] to read any — a
+/// form holds tens; a page of thousands is a drawing, and reading them would cost a scan each.
+pub const DRAWN_BOX_CANDIDATES_MAX: usize = 500;
+
 /// The right-to-left rule decision #54 ships: **a right-to-left line read right to left**, each
 /// glyph's characters kept whole.
 ///
@@ -2963,6 +2993,12 @@ pub struct Profile {
     /// See [`FIGURE_RULE_V1`]. Its own field for `layout_unit_rule`'s reason: it runs only where
     /// the document declares no structure. Refused, not defaulted, when absent.
     pub figure_rule: String,
+    /// Version id of the drawn-box rule in force (decision #168).
+    ///
+    /// See [`DRAWN_BOX_RULE_V1`]. Its own field because it reads evidence no other rule reads —
+    /// the small squares a page outlines — and runs on every PDF. Refused, not defaulted, when
+    /// absent.
+    pub drawn_box_rule: String,
     /// Version id of the right-to-left rule in force (decision #54).
     ///
     /// See [`RIGHT_TO_LEFT_RULE_V1`]. Its own field because it reads evidence no other rule
@@ -3169,6 +3205,7 @@ impl Default for Profile {
             layout_unit_rule: LAYOUT_UNIT_RULE_V7.to_string(),
             furniture_rule: FURNITURE_RULE_V1.to_string(),
             figure_rule: FIGURE_RULE_V1.to_string(),
+            drawn_box_rule: DRAWN_BOX_RULE_V1.to_string(),
             right_to_left_rule: RIGHT_TO_LEFT_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V14.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
@@ -3299,6 +3336,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3379,6 +3417,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3457,6 +3496,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3536,6 +3576,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3602,6 +3643,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3674,6 +3716,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3745,6 +3788,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3819,6 +3863,7 @@ impl Profile {
             layout_unit_rule: NOT_RUN.into(),
             furniture_rule: NOT_RUN.into(),
             figure_rule: NOT_RUN.into(),
+            drawn_box_rule: NOT_RUN.into(),
             right_to_left_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -3958,6 +4003,7 @@ mod tests {
                 layout_unit_rule,
                 furniture_rule,
                 figure_rule,
+                drawn_box_rule,
                 right_to_left_rule,
                 markdown_rule,
                 html_rule,
@@ -4196,6 +4242,7 @@ mod tests {
             layout_unit_rule: _,
             furniture_rule: _,
             figure_rule: _,
+            drawn_box_rule: _,
             right_to_left_rule: _,
             markdown_rule: _,
             html_rule: _,
@@ -4310,6 +4357,11 @@ mod tests {
                 // Decision #46. Which paths come out a figure region.
                 "figure_rule",
                 Box::new(|p: &mut Profile| p.figure_rule = "other-figure-v9".into()),
+            ),
+            (
+                // Decision #168. Which squares come out a drawn box.
+                "drawn_box_rule",
+                Box::new(|p: &mut Profile| p.drawn_box_rule = "other-boxes-v9".into()),
             ),
             (
                 // Mutated toward `false`: the PDF profile infers figure regions.
@@ -4508,12 +4560,13 @@ mod tests {
         // added `table_detection.pies` the same way. Forty-eight since decision #120, which added
         // `recognizer` the same way, and forty-nine since decision #135, which added
         // `table_detection.office` the same way. Fifty since decision #145, which added `assist`
-        // the same way.
+        // the same way, and fifty-one since decision #168, which added `drawn_box_rule` the same
+        // way.
         assert_eq!(
             mutations.len(),
-            50,
-            "{} single-field mutation(s); fifty is the number at decision #145, which added \
-             `assist` with its mutation",
+            51,
+            "{} single-field mutation(s); fifty-one is the number at decision #168, which added \
+             `drawn_box_rule` with its mutation",
             mutations.len()
         );
 
@@ -4568,7 +4621,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"drawn_box_rule":"drawn-boxes-v1","figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field or rule id. Update this vector and the hash below from this test's own output \
@@ -4578,7 +4631,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ea458bac875149bc07f36283f21b7dbd42505c6221d5a50587c44cac77e3ced5"
+            "sha256:b4ff489d44e125cd367bca58ab4a4af0afee55222fae8d395cc93eef1e1e5b71"
         );
     }
 

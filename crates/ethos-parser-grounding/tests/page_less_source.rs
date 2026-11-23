@@ -192,6 +192,7 @@ fn the_same_document_with_a_page_seals_and_projects() {
         rotation: 0,
         turn: 0,
         visible: None,
+        drawn_boxes: Vec::new(),
     };
     let node = text_node(&mut alloc, &page.id);
     let geometry = NodeGeometry {

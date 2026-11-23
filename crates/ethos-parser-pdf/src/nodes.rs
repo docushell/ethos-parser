@@ -289,6 +289,10 @@ pub struct PageExtract {
     /// [`Self::tagged_tables`] is; the representation carries them as figure records.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub figures: Vec<crate::figures::DetectedFigure>,
+    /// The empty boxes the page draws, each beside the run of its line it is drawn by (decision
+    /// #168); the representation carries them on its page record.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drawn_boxes: Vec<ethos_parser_core::DrawnBox>,
     /// Form fields and annotations this page carries (v1-S4).
     ///
     /// **Empty means the walk looked and found none.** The capabilities say which of those a

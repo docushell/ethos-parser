@@ -31,6 +31,7 @@
     "layout_unit_rule",
     "furniture_rule",
     "figure_rule",
+    "drawn_box_rule",
     "right_to_left_rule",
     "form_annotation_rule",
     "observation_rule",
@@ -285,6 +286,14 @@
       "description": "Version id of the figure-region rule in force (decision #46, docs/34-FIGURE-REGIONS-SCOPE.md). `figure-regions-v1`: on a document that declares no author structure, each page's painted paths (on the page and in the forms it draws, less any covering 80% of the page or more and any holding a baseline of more than 60 characters, a panel text is set on) are clustered wherever their boxes come within 3 points of each other across and down; a cluster holding 3 paths or more, covering 0.05% to 80% of the page, less than half inside any one table and holding no baseline of more than 60 characters is a figure region, carried in the representation's `figures` array. Where, never what: a region claims no run. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
       "examples": [
         "figure-regions-v1"
+      ]
+    },
+    "drawn_box_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the drawn-box rule in force (decision #168). `drawn-boxes-v1`, on every PDF: an empty box is a painted path of rectangles and axis-aligned lines, 4 to 16 points a side and at most a third longer one way than the other, drawn more often seen than unseen (a white fill alone, or a white or dashed outline, draws none), abutting no other such square on its row or column, with no run's glyphs set in it and no other path a reader sees, a coloured fill or a placed image included, crossing its inner area (a path more than twice its size, a cell or a panel, does not count); its line is the baseline nearest its bottom, from 2 points above its top to 5 below it, and where a run of that line is drawn across it the box sits in text and binds nothing; otherwise it binds the run of its line whose near end is nearest within 40 points either side. Extraction drops a box half or more of which a form widget covers where the widget states its check box on, or a state this engine cannot tell; a widget stating it off, or stating no button type, leaves the box. A page outlining more than 500 such squares, or whose search passes its step budget (64 steps a path and run, and 100,000 more), reads none. Not read: a box drawn as four separate lines or with rounded corners. Read as empty although marked: a box with an inline image (`BI`…`EI`) inside it, and one under a checked widget whose button type the file does not state. Read although no reader sees it: a white fill alone inside a form XObject, a square the clip hides, a square in a layer hidden by default. A run whose advance holds wide `TJ` spacing reads wider than its ink, and a box against it can bind nothing. A chart's legend key drawn as an unfilled square reads as a box. Each box is carried on its page's `drawn_boxes`. `not-run-for-this-format` on every office profile. A profile with no such key is REFUSED rather than defaulted.",
+      "examples": [
+        "drawn-boxes-v1"
       ]
     },
     "right_to_left_rule": {
@@ -624,6 +633,7 @@
         "origin": "top-left",
         "unit": "centipoint"
       },
+      "drawn_box_rule": "drawn-boxes-v1",
       "figure_rule": "figure-regions-v1",
       "font_metrics_data_version": "core14-afm-2",
       "form_annotation_rule": "form-annotations-v3",

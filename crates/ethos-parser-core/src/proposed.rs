@@ -1339,6 +1339,7 @@ mod tests {
                     rotation,
                     turn,
                     visible,
+                    drawn_boxes: Vec::new(),
                 }
             })
             .collect();

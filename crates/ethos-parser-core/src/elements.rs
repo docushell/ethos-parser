@@ -1752,6 +1752,7 @@ mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let (p1, p2) = (page(&mut alloc, 1), page(&mut alloc, 2));
         let one = text_node(&mut alloc, &p1.id, 1, "One", None);

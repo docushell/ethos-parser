@@ -127,6 +127,12 @@
           "$ref": "#/$defs/quant_rect",
           "$comment": "Decision #62. The box a viewer shows, {x0, y0, x1, y1} in integer centipoints, the page's top-left frame (the declared one, turned by `turn`, decision #155): the /CropBox clipped to the media box, where it is narrower than the page. OMITTED where the page shows the whole of its media box."
         },
+        "drawn_boxes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "object", "additionalProperties": false, "required": ["rect", "beside", "side"], "properties": { "rect": { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4 }, "beside": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" }, "side": { "enum": ["before", "after"] } } },
+          "$comment": "Decision #168, as on the representation's page, which carries them."
+        },
         "runs": {
           "type": "array",
           "items": {

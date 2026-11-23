@@ -456,6 +456,7 @@ pub fn to_html_with(
         crate::markdown::Markup::Html,
         options.unstyled,
     );
+    e.with_drawn_boxes(&payload.pages);
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     // **Only the two erasures GFM alone commits are dropped.** See this module's header: the other
@@ -1105,6 +1106,10 @@ pub fn to_html_with(
             crate::markdown::INLINE_STYLES_NOT_WRITTEN,
             e.unwritten_runs(),
         );
+    }
+    // Decision #168, as in `crate::markdown`.
+    if e.boxes_written() > 0 {
+        erasures.insert(crate::markdown::DRAWN_BOXES_WRITTEN, e.boxes_written());
     }
     let emitted_chars = e.emitted_chars;
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;

@@ -107,6 +107,7 @@ fn five_thousand_and_one_pages() -> DocumentRepresentation {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         })
         .collect();
     payload.nodes.clear();

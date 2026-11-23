@@ -231,6 +231,7 @@ mod tests {
                 rotation: 0,
                 turn,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             let q = page
                 .to_declared(QRect::new(r.0, r.1, r.2, r.3).unwrap())

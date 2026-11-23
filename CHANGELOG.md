@@ -32,6 +32,61 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A form's empty boxes are written `☐` beside their options (decision #168)
+
+A form drawn on the page draws its check boxes as small square outlines, and nothing read them:
+`Yes` and `No` came out with nothing to say a box stood before either, so a program reading the
+Markdown could not tell an option from a sentence. Each page's record now carries `drawn_boxes`,
+under the new `drawn_box_rule` `drawn-boxes-v1`, and both projections write `☐` beside the run
+each box is drawn by:
+
+- **A box** is a painted path of rectangles and axis-aligned lines, four to sixteen points a side
+  and at most a third longer one way than the other, outlined where a reader sees it (a white fill
+  alone, or a white or dashed outline, draws none), abutting no other such square on its row or
+  column — a comb's cells, a grid's. It is empty: no run's glyphs are set in it, and no other path
+  a reader sees, a coloured fill or a placed image among them, crosses its inner area. A tick or a
+  cross makes it none: a glyph is a run, written where #157 reads it.
+- **Its run**: the line is the baseline nearest the box's bottom among the runs within forty
+  points of it across; where a run of that line is drawn across the box, the box sits in text and
+  binds nothing; otherwise the run of that line whose ink ends nearest it, within forty points
+  either side, takes it — `☐ Yes` where the box stands before it, `Signature ☐` after. A run's
+  extent is its ink's, short of its leading and trailing whitespace. A binding by distance on one
+  line: it names no option and claims no state.
+- **A widget over it**: extraction drops a box half or more of which a form widget covers where
+  the widget states its check box on, or a state this engine cannot tell; the widget says what the
+  field holds. One stating it off, or stating no button type, leaves the box.
+- **On the wire**: `{rect, beside, side}` on the page record and on `extract`'s page, omitted
+  where a page draws none; the seal refuses a box off its page or beside no text run of its own.
+  Markdown and HTML write `☐ ` or ` ☐` as syntax, counted as `drawn-boxes-written-v1`; no byte of
+  it inverts to a node. `markdown-blocks-v14` and `html-blocks-v14`, unreleased, fold it in.
+  `profile_sha256` moves. A page outlining more than 500 such squares, or whose search passes its
+  step budget, reads none; each search reads only what lies near its box.
+- **Known limits**: a box drawn as four separate lines or with rounded corners is not read; a box
+  with an inline image inside it, and one under a checked widget whose button type the file does
+  not state, read as empty; a white fill alone inside a form XObject, a square the clip hides and
+  one in a hidden layer read although no reader sees them; a run whose advance holds wide `TJ`
+  spacing reads wider than its ink, and a box against it can bind nothing; a superscript set
+  between a run and its box is written after the box; a chart's legend key drawn as an unfilled
+  square reads as a box (ten chart and layout pages of ParseBench's, none scored differently). A
+  box set inside a bold line closes the bold and opens it again after the box.
+
+**Measured** (default lane unless said; network denied): ParseBench-2 55.67 → 55.94 (scorer
+2.1.0: 55.64 → 55.90), forms 69.86 → 71.51 (2.1.0: 69.72 → 71.25), `--ocr` 57.96 → 58.23; every
+other dimension, ParseBench 1 in both lanes and opendataloader-bench in both modes unchanged. 117
+filled-form pages up and 9 down — each down a box written `☐` before an option whose filler's `X`
+#157 writes on a line of its own before it, which the scorer reads as the box's — and 25 blank
+fillable forms up, none down. Boxes: 1,455 on 180 of ParseBench-2's 500 form pages, 535 on 44 of
+its 100 fillable forms, 32 on three of the eight gate documents (the W-9, Schedule D and a NIST
+security-categorization form), none on opendataloader-bench's 200. The private set: no Markdown
+changed on 250 runs, no new refusal, crash or timeout.
+
+Tested on the rule's own cases and on a two-page form, a two-column page read out of stream
+order, widgets on, off, untyped and brushing, an image tick, and the W-9's classification boxes;
+thirty-two mutations, each caught. Reviewed three rounds: the first found boxes set inside a run's
+text, bound to the line above, and under ticked widgets; the second found the line chosen from
+another column and boxes lost under untyped widgets; the third, a grey badge set against a box
+making it a comb's cell; each was fixed and tested before the run.
+
 ### A table's header cells, as the document or its rule states them (decision #167)
 
 A table record said nothing about which of its cells were headers, though a tagged document says

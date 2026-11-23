@@ -2443,6 +2443,39 @@ pub struct PageRecord {
     /// page was read turned. Absent where the page shows the whole of its media box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<QRect>,
+    /// **The empty boxes the page draws for a mark** (decision #168), each beside the run it is
+    /// drawn before or after on its line, in reading order. `Computed` under the profile's
+    /// `drawn_box_rule`: the outlines are the page's, the reading of one as a box and its
+    /// binding are this engine's. Absent where the page draws none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drawn_boxes: Vec<DrawnBox>,
+}
+
+/// A small square a page outlines with nothing drawn inside it — a form's empty box — beside the
+/// run it is drawn before or after on its line (decision #168, `drawn-boxes-v1`).
+///
+/// **What is drawn, not what it means.** The record states an outline and the run beside it; it
+/// does not say the box is unchecked, a tick drawn inside one being read as the run it is, and it
+/// names no option: the run beside it is the nearest on its line, a binding the rule made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DrawnBox {
+    /// The outline, measured from the path the page painted, in its page's frame.
+    pub rect: QRect,
+    /// The text run on its page it is drawn beside.
+    pub beside: NodeId,
+    /// Whether it is drawn before that run or after it.
+    pub side: BoxSide,
+}
+
+/// Which side of its run a [`DrawnBox`] is drawn (decision #168).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoxSide {
+    /// To the left of the run, in reading order before it: `☐ Yes`.
+    Before,
+    /// To the right of the run, where no run follows it on its line: `Signature ☐`.
+    After,
 }
 
 fn is_no_turn(turn: &i64) -> bool {
@@ -3143,6 +3176,7 @@ impl DocumentRepresentation {
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
         self.check_attributes_agree_with_kind()?;
         self.check_read_beside_names_a_run()?;
+        self.check_drawn_boxes()?;
         self.check_readings_move_characters()?;
         self.check_recognized_placement()?;
 
@@ -3472,6 +3506,45 @@ impl DocumentRepresentation {
         Ok(())
     }
 
+    /// A drawn box lies on its page, beside a text run of that page (decision #168). Pays for a map
+    /// only where a page draws one.
+    fn check_drawn_boxes(&self) -> Result<(), EngineError> {
+        let p = &self.representation;
+        if p.pages.iter().all(|page| page.drawn_boxes.is_empty()) {
+            return Ok(());
+        }
+        let named: std::collections::BTreeSet<&str> = p
+            .pages
+            .iter()
+            .flat_map(|page| &page.drawn_boxes)
+            .map(|b| b.beside.as_str())
+            .collect();
+        let runs: std::collections::BTreeMap<&str, &Node> = p
+            .nodes
+            .iter()
+            .filter(|n| named.contains(n.id.as_str()))
+            .map(|n| (n.id.as_str(), n))
+            .collect();
+        for page in &p.pages {
+            for b in &page.drawn_boxes {
+                let r = b.rect;
+                let on_page =
+                    r.x0() >= 0 && r.y0() >= 0 && r.x1() <= page.width && r.y1() <= page.height;
+                let beside = runs
+                    .get(b.beside.as_str())
+                    .is_some_and(|n| n.kind == NodeKind::TextRun && n.parent == page.id);
+                if !on_page || !beside {
+                    return Err(Self::malformed(format!(
+                        "page `{}` states a drawn box beside `{}` that is off the page or beside \
+                         no text run of its own",
+                        page.id, b.beside
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The sidecar and the payload's own declaration must agree about what is groundable.
     ///
     /// **This is the seam the fingerprint cannot cover.** Geometry sits outside the digest by
@@ -3718,6 +3791,7 @@ mod turn_tests {
             rotation: 0,
             turn,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let r = QRect::new(1000, 2000, 3000, 5000).unwrap();
         let back = |p: PageRecord| {
@@ -3809,6 +3883,7 @@ mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         }
     }
 
@@ -4259,6 +4334,55 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("future_fact"), "{err}");
+    }
+
+    /// **A drawn box lies on its page, beside a text run of that page** (decision #168): one beside
+    /// no node, beside a node of another kind or another page's run, or off its page, is refused at
+    /// the seal.
+    #[test]
+    fn a_drawn_box_off_its_page_or_beside_no_run_of_it_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let p = page(&mut alloc, 1);
+        let p2 = page(&mut alloc, 2);
+        let run = node(&mut alloc, &p.id, 1, 1);
+        let elsewhere = node(&mut alloc, &p2.id, 1, 2);
+        let g = |n: &Node| {
+            geom(
+                n,
+                GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+            )
+        };
+        let geometry = vec![g(&run), g(&elsewhere)];
+        let boxed = |rect: QRect, beside: &NodeId| {
+            let mut q = p.clone();
+            q.drawn_boxes = vec![DrawnBox {
+                rect,
+                beside: beside.clone(),
+                side: BoxSide::Before,
+            }];
+            q
+        };
+        let inside = QRect::new(100, 100, 1000, 1000).unwrap();
+        seal(
+            vec![run.clone(), elsewhere.clone()],
+            vec![boxed(inside, &run.id), p2.clone()],
+            geometry.clone(),
+        )
+        .expect("a box on its page beside its run");
+        for (rect, beside) in [
+            (inside, NodeId::from_parts(IdKind::Span, 99)),
+            (inside, elsewhere.id.clone()),
+            (inside, p.id.clone()),
+            (QRect::new(29500, 100, 30500, 1000).unwrap(), run.id.clone()),
+        ] {
+            let err = seal(
+                vec![run.clone(), elsewhere.clone()],
+                vec![boxed(rect, &beside), p2.clone()],
+                geometry.clone(),
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains("drawn box"), "{err}");
+        }
     }
 
     /// A page-less run read beside another run of its part is refused (decision #164, review of

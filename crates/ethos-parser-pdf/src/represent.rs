@@ -260,6 +260,8 @@ pub fn into_representation(
             visible: page
                 .visible
                 .and_then(|v| ethos_parser_core::QRect::new(v.x0, v.y0, v.x1, v.y1).ok()),
+            // Decision #168.
+            drawn_boxes: std::mem::take(&mut page.drawn_boxes),
         });
 
         let run_count = page.runs.len();

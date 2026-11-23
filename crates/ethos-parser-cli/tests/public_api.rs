@@ -226,6 +226,8 @@ const CORE: &[&str] = &[
     "CellValueType",
     // Decision #162: a check box's or radio button's state, and why it can be absent.
     "CheckState",
+    "DrawnBox",
+    "BoxSide",
     "CheckStateAbsence",
     "CellTextSource",
     "XLSX_READING_ORDER_RULE_V1",
@@ -350,6 +352,8 @@ const CORE: &[&str] = &[
     "Furniture",
     // Decision #46. The figure-region rule id and the record it writes.
     "FIGURE_RULE_V1",
+    "DRAWN_BOX_RULE_V1",
+    "DRAWN_BOX_CANDIDATES_MAX",
     "FigureRecord",
     // Decision #54. The right-to-left rule id, and a run as read.
     "RIGHT_TO_LEFT_RULE_V1",

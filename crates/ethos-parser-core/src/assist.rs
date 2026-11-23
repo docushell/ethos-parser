@@ -1861,6 +1861,7 @@ mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             },
             PageRecord {
                 id: ids.next(IdKind::Page).unwrap(),
@@ -1870,6 +1871,7 @@ mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: Some(QRect::new(5000, 5000, 25000, 35000).unwrap()),
+                drawn_boxes: Vec::new(),
             },
         ];
         let mut states: Vec<PageStateEntry> = (1..=2)
@@ -3391,6 +3393,7 @@ mod tests {
                 rotation: 0,
                 turn,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             let read = at(upright(grid, turn), frame_of(&page));
             assert_eq!(
@@ -4242,6 +4245,7 @@ mod tests {
                 // The last page shows a 200 x 250 point crop: a quarter of it is a sixteenth of
                 // the page.
                 visible: (index == 10).then(|| QRect::new(0, 0, 20000, 25000).unwrap()),
+                drawn_boxes: Vec::new(),
             })
             .collect();
         let words = "Seven made-up lanterns guard the quiet northern bay while twelve sailors \

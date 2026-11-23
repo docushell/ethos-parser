@@ -1684,6 +1684,113 @@ fn extract_page(
             crate::decorations::Ink::of(&solid_rules, &uprights, &table_rects, &unseen, &wide);
         crate::decorations::assign(&mut runs, &ems, &ink);
 
+        // Decision #168: the empty boxes the page draws, beside the run of their line, as
+        // content-stream positions until the page's runs take their reading order and their ids.
+        let mut drawn: Vec<(crate::tables::QuantRect, usize, ethos_parser_core::BoxSide)> =
+            Vec::new();
+        if profile.drawn_box_rule == ethos_parser_core::DRAWN_BOX_RULE_V1 {
+            let quant = |r: &crate::content::PathRect| {
+                let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+                let (bx, by) = geom.to_top_left(r.x1, r.y1);
+                crate::tables::quantize_rect(ax, ay, bx, by).ok()
+            };
+            let mut paths: Vec<crate::drawn_boxes::Path> = interp
+                .painted
+                .iter()
+                .filter_map(|(r, shaped)| {
+                    quant(r).map(|rect| crate::drawn_boxes::Path {
+                        rect,
+                        shaped: *shaped,
+                        coloured: false,
+                        unseen: false,
+                    })
+                })
+                .collect();
+            // Beside each path, what fills a colour into it and what no reader sees of it.
+            let coloured = interp
+                .filled
+                .iter()
+                .chain(&interp.marks)
+                .filter(|f| !f.fill.is_white())
+                .filter_map(|f| quant(&f.rect));
+            paths.extend(coloured.map(|rect| crate::drawn_boxes::Path {
+                rect,
+                shaped: false,
+                coloured: true,
+                unseen: false,
+            }));
+            // An image placed in a box marks it as a fill does.
+            let placed_images = interp.images.iter().filter_map(|i| {
+                let xs = i.corners.map(|c| c.0);
+                let ys = i.corners.map(|c| c.1);
+                let lo = (
+                    xs.iter().copied().fold(f64::INFINITY, f64::min),
+                    ys.iter().copied().fold(f64::INFINITY, f64::min),
+                );
+                let hi = (
+                    xs.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                    ys.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                );
+                quant(&crate::content::PathRect {
+                    x0: lo.0,
+                    y0: lo.1,
+                    x1: hi.0,
+                    y1: hi.1,
+                })
+            });
+            paths.extend(placed_images.map(|rect| crate::drawn_boxes::Path {
+                rect,
+                shaped: false,
+                coloured: true,
+                unseen: false,
+            }));
+            paths.extend(unseen.iter().map(|&rect| crate::drawn_boxes::Path {
+                rect,
+                shaped: false,
+                coloured: false,
+                unseen: true,
+            }));
+            let placed: Vec<crate::drawn_boxes::Run> = runs
+                .iter()
+                .map(|r| {
+                    let (x, y) = (r.locator.origin_x, r.locator.origin_y);
+                    let end = r
+                        .locator
+                        .advance
+                        .map_or(r.geometry.measured().map_or(x, |b| b.x1()), |a| {
+                            x.saturating_add(a)
+                        });
+                    // The ink's extent: the advance short of the whitespace at either end, by its
+                    // share of the run's characters.
+                    let chars = r.text.chars().count().max(1) as i64;
+                    let lead = r.text.chars().take_while(|c| c.is_whitespace()).count() as i64;
+                    let trail = r
+                        .text
+                        .chars()
+                        .rev()
+                        .take_while(|c| c.is_whitespace())
+                        .count() as i64;
+                    let span = end - x;
+                    let (ink_x, ink_end) = (
+                        x + span * lead.min(chars) / chars,
+                        end - span * trail.min(chars - lead.min(chars)) / chars,
+                    );
+                    crate::drawn_boxes::Run {
+                        x: ink_x,
+                        y,
+                        end: ink_end,
+                        // Its glyphs' centre: across, its ink's; down, its measured box's.
+                        centre: (
+                            (ink_x + ink_end) / 2,
+                            r.geometry.measured().map_or(y, |b| (b.y0() + b.y1()) / 2),
+                        ),
+                        words: !r.text.trim().is_empty(),
+                    }
+                })
+                .collect();
+            drawn = crate::drawn_boxes::detect(&paths, &placed);
+        }
+
         // v1-S5. **Reading order, and the only order there is.**
         //
         // Runs are in content-stream order at this point. The rule reads the page's whitespace
@@ -1810,6 +1917,30 @@ fn extract_page(
             }
             for &(value, anchor) in &read_beside {
                 runs[position[value]].read_beside = Some(runs[position[anchor]].id.clone());
+            }
+        }
+        // Decision #168: each box names the run it is drawn beside by the id that run took in
+        // reading order, the boxes in the reading order of their runs.
+        let mut drawn_boxes: Vec<(
+            crate::tables::QuantRect,
+            ethos_parser_core::NodeId,
+            ethos_parser_core::BoxSide,
+        )> = Vec::new();
+        if !drawn.is_empty() {
+            let mut position = vec![0usize; order.len()];
+            for (new, &old) in order.iter().enumerate() {
+                position[old] = new;
+            }
+            drawn.sort_by_key(|&(r, i, side)| {
+                (
+                    position[i],
+                    side == ethos_parser_core::BoxSide::After,
+                    r.y0,
+                    r.x0,
+                )
+            });
+            for (rect, i, side) in drawn {
+                drawn_boxes.push((rect, runs[position[i]].id.clone(), side));
             }
         }
 
@@ -2217,6 +2348,43 @@ fn extract_page(
             x1: shown.x1.min(width),
             y1: shown.y1.min(height),
         };
+        // Decision #168: a box on the page; one its edge crosses is none, and so is one a check
+        // box widget covers half of or more where the widget states it on, or states a state this
+        // engine cannot tell — the widget says what the field holds. A widget that states it off,
+        // or states no button type, leaves the box.
+        let drawn_boxes: Vec<ethos_parser_core::DrawnBox> = drawn_boxes
+            .into_iter()
+            .filter(|(r, _, _)| r.x0 >= 0 && r.y0 >= 0 && r.x1 <= width && r.y1 <= height)
+            .filter(|(r, _, _)| {
+                !objects.iter().any(|o| {
+                    let ethos_parser_core::NodeAttributes::FormField(f) = &o.attributes else {
+                        return false;
+                    };
+                    let says_on = matches!(
+                        f.state,
+                        Some(
+                            ethos_parser_core::CheckState::Checked(_)
+                                | ethos_parser_core::CheckState::NotDeterminable(_)
+                        )
+                    );
+                    // Half the box or more under the widget: a field's edge brushing it is not it.
+                    let covers = o.locator.rect.declared().is_some_and(|w| {
+                        let across = (w.x1().min(r.x1) - w.x0().max(r.x0)).max(0);
+                        let down = (w.y1().min(r.y1) - w.y0().max(r.y0)).max(0);
+                        2 * i128::from(across) * i128::from(down)
+                            >= i128::from(r.x1 - r.x0) * i128::from(r.y1 - r.y0)
+                    });
+                    says_on && covers
+                })
+            })
+            .map(|(r, beside, side)| {
+                Ok(ethos_parser_core::DrawnBox {
+                    rect: r.as_qrect_checked()?,
+                    beside,
+                    side,
+                })
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
         page_extract = PageExtract {
             tables,
             tagged_tables: page_tagged_tables,
@@ -2230,6 +2398,7 @@ fn extract_page(
             turn: geom.turn,
             visible: (shown.x0 > 0 || shown.y0 > 0 || shown.x1 < width || shown.y1 < height)
                 .then_some(shown),
+            drawn_boxes,
             runs,
         };
     }
@@ -2971,6 +3140,10 @@ fn extract_counted(
             if let Some(beside) = &run.read_beside {
                 run.read_beside = Some(rebase(beside, IdKind::Span));
             }
+        }
+        // Decision #168.
+        for b in &mut y.page.drawn_boxes {
+            b.beside = rebase(&b.beside, IdKind::Span);
         }
         for table in &mut y.page.tables {
             let id = rebase(&table.id, IdKind::Table);
@@ -4896,6 +5069,7 @@ mod tests {
                     rotation,
                     turn,
                     visible: None,
+                    drawn_boxes: Vec::new(),
                 };
                 assert_eq!(
                     page.to_declared(rect(&turned)),

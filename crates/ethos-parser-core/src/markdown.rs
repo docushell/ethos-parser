@@ -839,6 +839,11 @@ pub const NUMBER_TITLE_GAP_HEIGHTS: i64 = 3;
 /// drew next, so it is counted apart from the baseline joins.
 pub const LAYOUT_UNIT_GAP_JOINS: &str = "layout-unit-gap-joins-v1";
 
+/// The empty boxes a page draws beside its runs (decision #168, [`crate::DrawnBox`]), each written
+/// `☐` before its run or after it as `syntax`: the page drew an outline there, not a character, so
+/// no byte of it inverts to a node.
+pub const DRAWN_BOXES_WRITTEN: &str = "drawn-boxes-written-v1";
+
 /// Runs joined into one block across a change of marked-content sequence, because one element the
 /// document's structure tree declares holds them both — a paragraph, a heading, a list item, a
 /// cell (decision #84, [`sequence_join`]): a producer that changes sequence at every change of
@@ -4096,6 +4101,13 @@ pub(crate) struct Emit {
     /// (decision #158, third review): what a rule reading the text before a span reads, so the
     /// unstyled text decides as the styled one does.
     tail: Option<char>,
+    /// Decision #168: the boxes the pages draw beside runs, by run id — one before it, one after.
+    boxes: std::collections::BTreeMap<String, (bool, bool)>,
+    /// Decision #168: the run a box is drawn after, its box written before the next syntax that
+    /// leaves the run or the next run's text.
+    box_after: Option<String>,
+    /// Decision #168: the boxes written, which [`DRAWN_BOXES_WRITTEN`] counts.
+    boxes_written: usize,
 }
 
 /// Whether a run's font declares itself bold and italic (decision #38), whether a drawn line
@@ -4220,6 +4232,34 @@ impl Emit {
             emphasis: Emphasis::default(),
             cut: false,
             tail: None,
+            boxes: std::collections::BTreeMap::new(),
+            box_after: None,
+            boxes_written: 0,
+        }
+    }
+
+    /// Decision #168: write each box the pages draw beside its run, `☐` as syntax.
+    pub(crate) fn with_drawn_boxes(&mut self, pages: &[crate::PageRecord]) {
+        for b in pages.iter().flat_map(|p| &p.drawn_boxes) {
+            let entry = self.boxes.entry(b.beside.as_str().to_owned()).or_default();
+            match b.side {
+                crate::BoxSide::Before => entry.0 = true,
+                crate::BoxSide::After => entry.1 = true,
+            }
+        }
+    }
+
+    /// The boxes written beside their runs (decision #168): what [`DRAWN_BOXES_WRITTEN`] counts.
+    pub(crate) fn boxes_written(&self) -> usize {
+        self.boxes_written
+    }
+
+    /// Decision #168: the box drawn after the last run written, where one waits — with a space
+    /// after it where the next run's text follows it straight on.
+    fn write_box_after(&mut self, spaced: bool) {
+        if self.box_after.take().is_some() {
+            self.boxes_written += 1;
+            self.syntax(if spaced { " \u{2610} " } else { " \u{2610}" });
         }
     }
 
@@ -4277,6 +4317,7 @@ impl Emit {
 
     /// Close any open span and write any held spaces: the end of the projection.
     pub(crate) fn finish(&mut self) {
+        self.write_box_after(false);
         self.settle(true);
         self.close_emphasis();
         self.flush_held();
@@ -4417,6 +4458,11 @@ impl Emit {
     /// segments per empty cell. It can never merge across a `source` segment, because the match
     /// requires the previous segment to end where this one starts *and* to be syntax.
     pub(crate) fn syntax(&mut self, s: &str) {
+        // Decision #168: a box drawn after a run stands before whatever leaves it; an escape
+        // inside the run's text does not.
+        if self.box_after.is_some() && !s.is_empty() && !s.starts_with('\\') {
+            self.write_box_after(false);
+        }
         if self.emphasis.markup.is_some() && !s.is_empty() {
             // Inside: no syntax either projection writes starts with a letter or a digit.
             self.settle(true);
@@ -4501,6 +4547,20 @@ impl Emit {
         let (s, chars) = writable(s, chars);
         if s.is_empty() {
             return;
+        }
+        // Decision #168: a box drawn after another run, then one drawn before this one.
+        if self.box_after.as_deref().is_some_and(|after| after != node) {
+            self.write_box_after(true);
+        }
+        if let Some((before, after)) = self.boxes.get_mut(node) {
+            let (before, after) = (std::mem::take(before), std::mem::take(after));
+            if before {
+                self.boxes_written += 1;
+                self.syntax("\u{2610} ");
+            }
+            if after {
+                self.box_after = Some(node.to_owned());
+            }
         }
         if self.holds_mark(node, &s) {
             self.settle(true);
@@ -4817,6 +4877,7 @@ pub(crate) fn markdown_of(
     let payload = repr.payload();
 
     let mut e = emitter(&payload.nodes, Markup::Markdown, options.unstyled);
+    e.with_drawn_boxes(&payload.pages);
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
@@ -5498,6 +5559,10 @@ pub(crate) fn markdown_of(
     // Decision #158.
     if e.unwritten_runs() > 0 {
         erasures.insert(INLINE_STYLES_NOT_WRITTEN, e.unwritten_runs());
+    }
+    // Decision #168.
+    if e.boxes_written() > 0 {
+        erasures.insert(DRAWN_BOXES_WRITTEN, e.boxes_written());
     }
     let emitted_chars = e.emitted_chars;
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
@@ -6347,6 +6412,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -6489,6 +6555,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -6572,6 +6639,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -6646,6 +6714,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = texts
             .iter()
@@ -6719,6 +6788,66 @@ pub(crate) mod tests {
             .iter()
             .find(|e| e.code == code)
             .map_or(0, |e| e.count)
+    }
+
+    /// **An empty box a page draws is written `☐` beside its run, as syntax** (decision #168):
+    /// before the run it stands before, after the one it stands after, counted, and inverting to
+    /// no node; the run's own text still inverts. HTML writes it the same way.
+    #[test]
+    fn a_drawn_box_is_written_beside_its_run_as_syntax() {
+        let repr = repr_of_lines(&["Yes", "Signature", "Date"]);
+        let mut payload = repr.payload().clone();
+        let ids: Vec<crate::NodeId> = payload.nodes.iter().map(|n| n.id.clone()).collect();
+        payload.pages[0].drawn_boxes = vec![
+            crate::DrawnBox {
+                rect: QRect::new(5000, 6400, 5900, 7300).unwrap(),
+                beside: ids[0].clone(),
+                side: crate::BoxSide::Before,
+            },
+            crate::DrawnBox {
+                rect: QRect::new(20000, 8800, 20900, 9700).unwrap(),
+                beside: ids[1].clone(),
+                side: crate::BoxSide::After,
+            },
+        ];
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let a = artifact_of(repr.clone());
+        assert!(a.markdown.contains("\u{2610} Yes"), "{}", a.markdown);
+        assert!(a.markdown.contains("Signature \u{2610}"), "{}", a.markdown);
+        assert_eq!(erasure(&a, DRAWN_BOXES_WRITTEN), 2);
+        for (at, _) in a.markdown.match_indices('\u{2610}') {
+            assert!(!a.anchor_map.is_invertible(at, at + '\u{2610}'.len_utf8()));
+        }
+        let yes = a.markdown.find("Yes").unwrap();
+        assert!(a.anchor_map.is_invertible(yes, yes + 3));
+        assert!(a.coverage.balances());
+        let profile = Profile::default();
+        let html = crate::html::to_html(
+            &repr,
+            &profile.parser_version,
+            &profile.profile_sha256().unwrap(),
+            &profile.html_rule,
+        )
+        .unwrap()
+        .html;
+        assert!(html.contains("\u{2610} Yes"), "{html}");
+        assert!(html.contains("Signature \u{2610}"), "{html}");
+        // Review: a box after a run whose next run follows it straight on stands apart from both.
+        let joined = line_of_words(&["65%", "Igual"]);
+        let mut payload = joined.payload().clone();
+        payload.pages[0].drawn_boxes = vec![crate::DrawnBox {
+            rect: QRect::new(8000, 6400, 8900, 7300).unwrap(),
+            beside: payload.nodes[0].id.clone(),
+            side: crate::BoxSide::After,
+        }];
+        let joined = DocumentRepresentation::seal(payload, joined.geometry().to_vec()).unwrap();
+        let m = artifact_of(joined).markdown;
+        assert!(m.contains("65% \u{2610} Igual"), "{m}");
+        // A page drawing none writes none and counts none.
+        assert_eq!(
+            erasure(&artifact_of(repr_of_lines(&["Yes"])), DRAWN_BOXES_WRITTEN),
+            0
+        );
     }
 
     fn artifact_of(repr: DocumentRepresentation) -> MarkdownArtifact {
@@ -8576,6 +8705,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -9546,6 +9676,7 @@ pub(crate) mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             let mut nodes = Vec::new();
             let mut geometry = Vec::new();
@@ -9707,6 +9838,7 @@ pub(crate) mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             let mut nodes = Vec::new();
             let mut geometry = Vec::new();
@@ -9947,6 +10079,7 @@ pub(crate) mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             let mut nodes = Vec::new();
             let mut geometry = Vec::new();
@@ -10637,6 +10770,7 @@ pub(crate) mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             // Median glyph 250, so a word gap of 62: `M` and `ission` abut, `ready` is 300 on.
             let nodes: Vec<Node> = [
@@ -10781,6 +10915,7 @@ pub(crate) mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             };
             let mut specs = corroborating(2);
             specs.push(("FUTURE", None, 7200, 7200, Some(4930), None));
@@ -10846,6 +10981,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let mut nodes = Vec::new();
         let mut geometry = Vec::new();
@@ -10896,6 +11032,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let mut nodes = Vec::new();
         let mut geometry = Vec::new();
@@ -10949,6 +11086,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let mut nodes = Vec::new();
         let mut geometry = Vec::new();
@@ -11181,6 +11319,7 @@ pub(crate) mod tests {
                 rotation: 0,
                 turn: 0,
                 visible: None,
+                drawn_boxes: Vec::new(),
             })
             .collect();
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
@@ -12029,6 +12168,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let mut nodes: Vec<Node> = Vec::new();
         // Two corroborating runs so the pitch reference exists, then the pair under test.
@@ -12087,6 +12227,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = specs
             .iter()
@@ -12210,6 +12351,7 @@ pub(crate) mod tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let nodes: Vec<Node> = [("Yar", 7200i64), ("row", 8200)]
             .iter()

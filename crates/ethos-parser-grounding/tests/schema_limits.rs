@@ -102,6 +102,7 @@ fn pages(alloc: &mut IdAllocator, n: u32) -> Vec<PageRecord> {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         })
         .collect()
 }

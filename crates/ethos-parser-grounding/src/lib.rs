@@ -1210,6 +1210,7 @@ mod frame_tests {
                 rotation,
                 turn,
                 visible: None,
+                drawn_boxes: Vec::new(),
             })
             .rotation
         };
@@ -1352,6 +1353,7 @@ mod schema_limit_tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
         for (i, text) in texts.iter().enumerate() {
@@ -1430,6 +1432,7 @@ mod schema_limit_tests {
             rotation: 0,
             turn: 0,
             visible: None,
+            drawn_boxes: Vec::new(),
         };
         let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
         let mut k = 0usize;
