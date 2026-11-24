@@ -32,6 +32,23 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A TrueType glyph its program names `Euro` reads as `€` (decision #170)
+
+`text_code_rule` moves `declared-font-codes-v4` -> `declared-font-codes-v5`, so `profile_sha256`
+moves.
+
+- **A simple TrueType font's code its `/ToUnicode` declares `¤` (U+00A4) reads `€` (U+20AC) where
+  the font's embedded program names the glyph that code selects the euro sign**: the glyph its Mac
+  Roman cmap (1,0) selects, whose `post` name reads `€` by the glyph-name rules a `/Differences`
+  name is read with (`Euro`). Mac OS 8.5 put the euro sign at Mac Roman's 0xDB, where PDF 32000-1
+  Annex D.2 keeps `currency`; a page macOS Quartz wrote declares `¤` for its subset program's
+  `Euro` glyph, and every amount on it read `240 ¤` where the page shows `240 €`.
+- **Only that.** No other character is replaced, a code the map declares anything else keeps it,
+  and a font that is not TrueType, embeds no program or has no Mac Roman cmap keeps `¤`. The
+  `MacRomanEncoding` table is unchanged: 0xDB with no `/ToUnicode` still reads `¤`, as Annex D.2
+  gives it. The run is not declared apart; the profile's rule id names the reading.
+- **Measured**: pending. Six mutations, each caught.
+
 ### HTML writes `<th>` where the record states a header cell (decision #169)
 
 Decision #167 put a `header` flag on a table record's cells — a tagged `/TH`, a cell of a DOCX

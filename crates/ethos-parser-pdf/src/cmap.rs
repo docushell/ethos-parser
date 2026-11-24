@@ -49,6 +49,11 @@ impl ToUnicode {
         self.map.get(&code).map(String::as_str)
     }
 
+    /// Read `code` as `text`: decision #170's euro sign, on a font's own copy of the map.
+    pub(crate) fn set(&mut self, code: u32, text: &str) {
+        self.map.insert(code, text.to_string());
+    }
+
     /// How many bytes make up one character code.
     pub fn code_bytes(&self) -> usize {
         self.code_bytes

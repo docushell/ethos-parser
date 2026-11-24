@@ -369,6 +369,19 @@ pub const TEXT_CODE_RULE_V3: &str = "declared-font-codes-v3";
 /// whole code units, an inverted or truncated range still refuse the map.
 pub const TEXT_CODE_RULE_V4: &str = "declared-font-codes-v4";
 
+/// [`TEXT_CODE_RULE_V4`] **with a TrueType glyph its own program names `Euro` read as `€`, not as
+/// the `¤` its `/ToUnicode` declares** (decision #170).
+///
+/// Mac OS 8.5 put the euro sign at Mac Roman's 0xDB, where PDF 32000-1 Annex D.2 keeps `currency`,
+/// and a page macOS Quartz wrote declares U+00A4 for the glyph its subset program's Mac Roman cmap
+/// selects and its `post` table names `Euro`, where the page shows `€`. Now a simple TrueType
+/// font's code its `/ToUnicode` declares `¤` reads `€` where the embedded program's Mac Roman cmap
+/// (1,0) selects a glyph whose `post` name reads as the euro sign by the glyph-name rules `-v3`
+/// reads `/Differences` with. The one place the font's program speaks over a declared map: no
+/// other character is replaced, and a code declared anything else keeps it. The `MacRomanEncoding`
+/// table itself is unchanged.
+pub const TEXT_CODE_RULE_V5: &str = "declared-font-codes-v5";
+
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `ethos-parser-pdf` because the profile is `ethos-parser-core`'s and a rule id is
@@ -3217,7 +3230,7 @@ impl Default for Profile {
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
-            text_code_rule: TEXT_CODE_RULE_V4.to_string(),
+            text_code_rule: TEXT_CODE_RULE_V5.to_string(),
             observation_rule: OBSERVATION_RULE_V5.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
@@ -4624,7 +4637,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"drawn_box_rule":"drawn-boxes-v1","figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v4","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0","unicode-bidi":"0.3.18"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"figures":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-5","coordinate_system":{"origin":"top-left","unit":"centipoint"},"drawn_box_rule":"drawn-boxes-v1","figure_rule":"figure-regions-v1","font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v3","furniture_rule":"margin-bands-v1","heading_inference_rule":"type-size-v8","html_rule":"html-blocks-v14","layout_unit_rule":"line-units-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v14","observation_rule":"page-observations-v5","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.66.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v5","recognizer":{"mode":"not_pinned"},"right_to_left_rule":"right-to-left-lines-v1","struct_tree_rule":"struct-tree-v3","table_detection":{"charts":"bar-labels-v3","lines":"point-labels-v1","pies":"slice-labels-v1","ruled":"ruled-rects-v14","stroke_ruled":"stroke-ruled-v2","tagged":"tagged-tables-v2","tracks":"whitespace-tracks-v16","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v2","text_code_rule":"declared-font-codes-v5","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field or rule id. Update this vector and the hash below from this test's own output \
@@ -4634,7 +4647,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b4ff489d44e125cd367bca58ab4a4af0afee55222fae8d395cc93eef1e1e5b71"
+            "sha256:39617b4e17e7c3362de6b600bcfe4a55983c1b4922eb44b7ffbb6e8c850ac778"
         );
     }
 

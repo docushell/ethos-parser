@@ -37,6 +37,10 @@
 //!
 //! **Never a guess.** No character is produced that the font does not state, a control or
 //! private-use value is refused, and a code nothing maps still omits its run.
+//!
+//! **One exception reads over a declared map** (decision #170, `declared-font-codes-v5`): a simple
+//! TrueType font's code its `/ToUnicode` declares `¤`, where the program names the glyph that code
+//! selects the euro sign ([`euro_glyphs`]), reads `€`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -176,6 +180,38 @@ pub(crate) fn from_program(bytes: &[u8], glyphs: Glyphs<'_>) -> BTreeMap<u32, St
         Glyphs::Symbol => {}
     }
     out
+}
+
+/// The codes among `codes` whose glyph an embedded TrueType program names the euro sign
+/// (decision #170): the glyph its Mac Roman cmap (1,0) selects for the code, whose `post` name
+/// [`glyph_text`] reads as `€` — `Euro`. Empty where the program does not parse or has no such cmap.
+pub(crate) fn euro_glyphs(bytes: &[u8], codes: &[u32]) -> Vec<u32> {
+    use skrifa::raw::TableProvider;
+    let Ok(font) = skrifa::FontRef::new(bytes) else {
+        return Vec::new();
+    };
+    let Ok(cmap) = font.cmap() else {
+        return Vec::new();
+    };
+    let Some(mac) = cmap
+        .encoding_records()
+        .iter()
+        .find(|record| record.is_mac_roman())
+        .and_then(|record| record.subtable(cmap.offset_data()).ok())
+    else {
+        return Vec::new();
+    };
+    let names = font.glyph_names();
+    codes
+        .iter()
+        .copied()
+        .filter(|&code| {
+            mac.map_codepoint(code)
+                .and_then(|gid| names.get(gid))
+                .and_then(|name| glyph_text(name.as_str()))
+                .is_some_and(|text| text == "\u{20AC}")
+        })
+        .collect()
 }
 
 #[cfg(test)]
