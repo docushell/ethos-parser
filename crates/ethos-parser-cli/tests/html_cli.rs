@@ -346,7 +346,7 @@ fn the_two_projections_disagree_about_the_merge_and_say_so() {
     );
     assert!(
         !html.contains("<th"),
-        "no header is invented: this projection reads no header declaration"
+        "no header is invented: the record declares none"
     );
 
     let code_of = |a: &Value, code: &str| -> u64 {
@@ -380,6 +380,93 @@ fn the_two_projections_disagree_about_the_merge_and_say_so() {
         0,
         "HTML asserts none, because every cell is a `<td>`"
     );
+}
+
+/// **A tagged `/TH` is a `<th>`, and a row of them over the body a `<thead>`** (decision #169):
+/// the 2x2 tagged grid with its cells retagged `/TH` — its first row, its first column, every
+/// cell. GFM's delimiter row is counted only where row 0 is no header the record declares, and
+/// the Markdown does not move.
+#[test]
+fn a_tagged_th_is_a_th_and_a_row_of_them_a_thead() {
+    let original = std::fs::read(engine_fixture("tagged-table-agrees")).expect("fixture readable");
+    // The fixture's `/TD`s in object order hold A, B (row 0) and C, D (row 1).
+    let retagged = |label: &str, th: &[usize]| {
+        let mut doc = lopdf::Document::load_mem(&original).expect("loads");
+        let mut cells: Vec<lopdf::ObjectId> = doc
+            .objects
+            .iter()
+            .filter(|(_, o)| {
+                o.as_dict()
+                    .ok()
+                    .and_then(|d| d.get(b"S").ok())
+                    .and_then(|s| s.as_name().ok())
+                    == Some(b"TD".as_slice())
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        cells.sort();
+        assert_eq!(cells.len(), 4, "the fixture tags four cells");
+        for &k in th {
+            doc.get_object_mut(cells[k])
+                .and_then(lopdf::Object::as_dict_mut)
+                .expect("a dictionary")
+                .set("S", lopdf::Object::Name(b"TH".to_vec()));
+        }
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).expect("saves");
+        let dir = scratch(label);
+        let pdf = dir.join("document.pdf");
+        std::fs::write(&pdf, bytes).expect("writes");
+        let repr = extract_to(&dir, &pdf);
+        (html_of(&repr), markdown_of(&repr))
+    };
+    let separator = |m: &Value| -> u64 {
+        m["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == "gfm-row-zero-separator-v1")
+            .and_then(|e| e["count"].as_u64())
+            .unwrap_or(0)
+    };
+
+    let (h, plain) = retagged("th-none", &[]);
+    assert!(!h["html"].as_str().unwrap().contains("<th"));
+    assert_eq!(separator(&plain), 1);
+
+    let (h, m) = retagged("th-row", &[0, 1]);
+    assert!(
+        h["html"].as_str().unwrap().contains(
+            "<table>\n<thead>\n<tr>\n<th>A</th>\n<th>B</th>\n</tr>\n</thead>\n<tbody>\n\
+             <tr>\n<td>C</td>\n<td>D</td>\n</tr>\n</tbody>\n</table>"
+        ),
+        "{}",
+        h["html"]
+    );
+    assert_eq!(separator(&m), 0, "row 0 is the header the record declares");
+    assert_eq!(m["markdown"], plain["markdown"]);
+
+    let (h, m) = retagged("th-column", &[0, 2]);
+    assert!(
+        h["html"].as_str().unwrap().contains(
+            "<table>\n<tr>\n<th>A</th>\n<td>B</td>\n</tr>\n<tr>\n<th>C</th>\n<td>D</td>\n\
+             </tr>\n</table>"
+        ),
+        "{}",
+        h["html"]
+    );
+    assert_eq!(separator(&m), 1, "row 0 holds a cell that is no header");
+    assert_eq!(m["markdown"], plain["markdown"]);
+
+    let (h, m) = retagged("th-all", &[0, 1, 2, 3]);
+    let html = h["html"].as_str().unwrap();
+    assert_eq!(html.matches("<th>").count(), 4);
+    assert!(
+        !html.contains("<thead>"),
+        "no body for a header to head: {html}"
+    );
+    assert_eq!(separator(&m), 0);
+    assert_eq!(m["markdown"], plain["markdown"]);
 }
 
 /// The one erasure HTML **does** commit, declared rather than quietly inherited.

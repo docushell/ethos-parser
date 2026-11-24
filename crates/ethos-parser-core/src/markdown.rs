@@ -299,7 +299,9 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// and emphasis stays open where only the script changes between two runs with nothing between.
 /// And so is decision #142's: a table the next page goes on with is one table
 /// ([`continued_tables`]), where `-v13` wrote one a page; and decision #151's: the header row
-/// the next page repeats is left out of it, counted.
+/// the next page repeats is left out of it, counted. And so is decision #169's:
+/// [`GFM_ROW_ZERO_SEPARATOR`] is not counted on a table whose record declares row 0 its header,
+/// not a byte of the Markdown changing.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -323,10 +325,11 @@ pub const GFM_SPAN_SLOTS_UNREPRESENTABLE: &str = "gfm-span-slots-unrepresentable
 /// every renderer draws row 0 as a header because of it. So projecting *any* table asserts
 /// something about row 0.
 ///
-/// **This projection reads no header declaration** — a record cell's `header` (decision #167),
-/// which a tagged `/TH` among others sets, is not consulted — so this fires for every table that
-/// becomes GFM, over-disclosing on a table whose record does declare row 0 its header. Reading
-/// the flag, so the count drops on those tables, is a decision of its own.
+/// **Not where the record declares row 0 its header** (decision #169): where a cell originates in
+/// row 0 and every cell originating there carries the record's `header` flag (decision #167) —
+/// a tagged `/TH`, a DOCX header row, a row a geometric rule read as its table's header — the
+/// delimiter row says what the document said, and nothing is erased. The Markdown is the same
+/// either way; only this count reads the flag.
 ///
 /// **Counted once per table, not once per cell in row 0.** The erasure is one claim — *this
 /// table has a header* — made once about one table. Counting its cells would make a wide table
@@ -5645,11 +5648,11 @@ pub(crate) fn markdown_of(
 ///
 /// `erasures` is **not** the same set on both artifacts, and the caller decides which it passes.
 /// The test is whether that projection commits the erasure: HTML drops `gfm-row-zero-separator-v1`
-/// (it asserts no header) and recomputes `gfm-span-slots-unrepresentable-v1` from what its grid
-/// could not hold, while keeping every code that describes a fault in the **record** rather than a
-/// limit of GFM. See `crate::html`'s module documentation for the table. Copying a code onto an
-/// artifact that does not commit the erasure would disclose nothing; dropping one it does commit
-/// would be worse.
+/// (it asserts no header the record or the table's spans do not state) and recomputes
+/// `gfm-span-slots-unrepresentable-v1` from what its grid could not hold, while keeping every code
+/// that describes a fault in the **record** rather than a limit of GFM. See `crate::html`'s module
+/// documentation for the table. Copying a code onto an artifact that does not commit the erasure
+/// would disclose nothing; dropping one it does commit would be worse.
 ///
 /// `left_out` names the runs an option left out whole (decision #134), which are counted in their
 /// own bucket as a node of a dropped kind is, and so, like one, nowhere else.
@@ -5748,6 +5751,10 @@ pub(crate) struct TablePlan<'a> {
     /// `<td rowspan>` carries the merge — the origin cell has to know its own span, and the slots
     /// it covers must produce no `<td>` at all rather than an empty one.
     pub(crate) roles: Vec<SlotRole>,
+    /// Whether the cell originating in each slot is one the record flags a header (decision
+    /// #167), row-major and the same length as [`Self::roles`]; false on a slot no cell
+    /// originates in (decision #169).
+    pub(crate) headers: Vec<bool>,
     /// Slots a declared merge asked for and this grid could not give it (v1.1-S4).
     ///
     /// Zero on every well-formed table. Non-zero when a span ran off the grid edge or collided
@@ -5765,6 +5772,17 @@ pub(crate) struct TablePlan<'a> {
     /// [`REPEATED_TABLE_HEADER_NOT_PROJECTED`]. Empty where that row is kept a row of the table
     /// (decision #151).
     pub(crate) repeated: Vec<&'a crate::Node>,
+}
+
+impl TablePlan<'_> {
+    /// Whether the record declares `row` a header row (decision #169): a cell originates in it,
+    /// and every cell originating in it is flagged a header (decision #167).
+    pub(crate) fn declares_header_row(&self, row: usize) -> bool {
+        let mut origins = (row * self.columns..(row + 1) * self.columns)
+            .filter(|&i| matches!(self.roles.get(i), Some(SlotRole::Origin { .. })))
+            .peekable();
+        origins.peek().is_some() && origins.all(|i| self.headers.get(i) == Some(&true))
+    }
 }
 
 /// What one slot of a planned grid is (v1.1-S4).
@@ -5843,6 +5861,7 @@ pub(crate) fn plan_tables<'a>(
                 projected: false,
                 slots: Vec::new(),
                 roles: Vec::new(),
+                headers: Vec::new(),
                 spans_clamped: 0,
                 rows,
                 columns,
@@ -5858,6 +5877,7 @@ pub(crate) fn plan_tables<'a>(
                 projected: false,
                 slots: Vec::new(),
                 roles: Vec::new(),
+                headers: Vec::new(),
                 spans_clamped: 0,
                 rows,
                 columns,
@@ -5874,6 +5894,7 @@ pub(crate) fn plan_tables<'a>(
                 projected: false,
                 slots: Vec::new(),
                 roles: Vec::new(),
+                headers: Vec::new(),
                 spans_clamped: 0,
                 rows,
                 columns,
@@ -5886,6 +5907,7 @@ pub(crate) fn plan_tables<'a>(
         let mut slots: Vec<Vec<&crate::Node>> = vec![Vec::new(); rows * columns];
         let mut placed = vec![false; rows * columns];
         let mut roles = vec![SlotRole::Empty; rows * columns];
+        let mut headers = vec![false; rows * columns];
         // Origins with the span they DECLARED, resolved after every cell is placed — a span
         // cannot be clamped against origins that have not been seen yet.
         let mut declared: Vec<(usize, usize, usize, usize, usize)> = Vec::new();
@@ -5902,6 +5924,7 @@ pub(crate) fn plan_tables<'a>(
                 continue;
             }
             placed[index] = true;
+            headers[index] = cell.header;
 
             // **The merge, counted.** `rowspan × colspan - 1` slots held this cell and GFM cannot
             // say so; the text goes in the origin slot and the rest come out empty.
@@ -5985,10 +6008,6 @@ pub(crate) fn plan_tables<'a>(
             }
         }
 
-        // GFM's delimiter row makes row 0 a header on every renderer there is, and nothing in the
-        // representation says the document declared one. Once per table — see the constant.
-        *erasures.entry(GFM_ROW_ZERO_SEPARATOR).or_insert(0) += 1;
-
         // **A worksheet's table is headed by its sheet's name** (decision #135). The name is the
         // file's (`<sheet name>`), and every cell node already carries it in its locator, so the
         // heading quotes the record rather than inventing a label. It is `syntax`: no node's text
@@ -6004,6 +6023,7 @@ pub(crate) fn plan_tables<'a>(
             projected: true,
             slots,
             roles,
+            headers,
             spans_clamped,
             rows,
             columns,
@@ -6036,13 +6056,21 @@ pub(crate) fn plan_tables<'a>(
         head.repeated.extend(part.slots.drain(..skip).flatten());
         head.slots.append(&mut part.slots);
         head.roles.extend(part.roles.drain(skip..));
+        head.headers.extend(part.headers.drain(skip..));
         head.rows += part.rows - usize::from(skip > 0);
         part.projected = false;
         part.roles.clear();
         *erasures.entry(TABLES_JOINED_ACROSS_PAGES).or_insert(0) += 1;
-        if let Some(n) = erasures.get_mut(GFM_ROW_ZERO_SEPARATOR) {
-            *n -= 1;
-        }
+    }
+
+    // GFM's delimiter row makes row 0 a header on every renderer there is. Once per table — see
+    // the constant — and not on a table whose record declares row 0 its header (decision #169):
+    // there the delimiter row says what the document said.
+    for _ in plans
+        .iter()
+        .filter(|p| p.projected && !p.declares_header_row(0))
+    {
+        *erasures.entry(GFM_ROW_ZERO_SEPARATOR).or_insert(0) += 1;
     }
 
     plans
@@ -8177,6 +8205,66 @@ pub(crate) mod tests {
             &[cell(0, 0, &[0]), cell(0, 1, &[1]), cell(0, 2, &[2])],
         ));
         assert_eq!(erasure(&wide, GFM_ROW_ZERO_SEPARATOR), 1);
+    }
+
+    /// **Not where the record declares row 0 its header** (decision #169): the delimiter row then
+    /// says what the document said. A row 0 with a cell that is no header, or holding no cell, is
+    /// still claimed; a table joined across pages is claimed by its first page's row 0; and not a
+    /// byte of the Markdown moves.
+    #[test]
+    fn a_header_row_the_record_declares_is_no_erasure() {
+        let flagged = |repr: &DocumentRepresentation, cells: &[(usize, usize)]| {
+            edited(repr, &|p| {
+                for &(t, k) in cells {
+                    p.tables[t].cells[k].header = true;
+                }
+            })
+        };
+        let grid = repr_with_table(
+            &["A", "B", "C", "D"],
+            2,
+            2,
+            &[
+                cell(0, 0, &[0]),
+                cell(0, 1, &[1]),
+                cell(1, 0, &[2]),
+                cell(1, 1, &[3]),
+            ],
+        );
+        let plain = artifact_of(grid.clone());
+        for (cells, count) in [
+            (&[][..], 1),
+            (&[0, 1][..], 0),
+            (&[0, 1, 2, 3][..], 0),
+            (&[0][..], 1),
+            (&[0, 2][..], 1),
+        ] {
+            let cells: Vec<_> = cells.iter().map(|&k| (0, k)).collect();
+            let a = artifact_of(flagged(&grid, &cells));
+            assert_eq!(erasure(&a, GFM_ROW_ZERO_SEPARATOR), count, "{cells:?}");
+            assert_eq!(a.markdown, plain.markdown, "{cells:?}");
+            assert_eq!(a.anchor_map, plain.anchor_map, "{cells:?}");
+        }
+        let hole = repr_with_table(&["A", "B"], 3, 1, &[cell(1, 0, &[0]), cell(2, 0, &[1])]);
+        let a = artifact_of(flagged(&hole, &[(0, 0), (0, 1)]));
+        assert_eq!(
+            erasure(&a, GFM_ROW_ZERO_SEPARATOR),
+            1,
+            "a row 0 holding no cell"
+        );
+
+        let joined = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        let plain = artifact_of(joined.clone());
+        for (cells, count) in [
+            (&[(0, 0), (0, 1)][..], 0),
+            (&[(0, 0), (0, 1), (1, 0), (1, 1)][..], 0),
+            (&[(1, 0), (1, 1)][..], 1),
+        ] {
+            let a = artifact_of(flagged(&joined, cells));
+            assert_eq!(erasure(&a, TABLES_JOINED_ACROSS_PAGES), 1);
+            assert_eq!(erasure(&a, GFM_ROW_ZERO_SEPARATOR), count, "{cells:?}");
+            assert_eq!(a.markdown, plain.markdown, "{cells:?}");
+        }
     }
 
     /// **Trailing empties stay.** Truncating them is the competitor erasure A14 names: a prettier

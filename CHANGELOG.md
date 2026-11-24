@@ -32,6 +32,34 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### HTML writes `<th>` where the record states a header cell (decision #169)
+
+Decision #167 put a `header` flag on a table record's cells — a tagged `/TH`, a cell of a DOCX
+table's `<w:tblHeader/>` rows, a cell of the row a geometric rule read as its table's header — and
+left both projections as they were. HTML now reads it, and so does one Markdown count:
+
+- **A flagged cell is a `<th>`**, wherever it stands: in a header row, and as a row header down a
+  column of the body.
+- **The leading rows of flagged cells are a `<thead>`**: each row holding a cell, and every cell
+  starting in it flagged, with a row of the table under them. A table every row of which is
+  flagged writes its `<th>` cells with no `<thead>`, as there is no body for them to head; and the
+  header stops above the last row a merge in it reaches past, so a `<thead>` never cuts a
+  `rowspan`. Decision #99's header, read from a column group's spans, stands: a table takes the
+  more rows of the two.
+- **Markdown counts `gfm-row-zero-separator-v1` only where row 0 is no header the record
+  declares.** Where it is, GFM's delimiter row says what the document said. Not a byte of the
+  Markdown changes.
+
+`html-blocks-v14` and `markdown-blocks-v14`, unreleased, fold it in; `profile_sha256` does not
+move.
+
+**Measured**: pending.
+
+Tested on a header row, a row header, a row flagged in part, every row flagged, a row holding no
+cell, a merge a header would cut, a header read from spans beside one the record declares, a table
+joined across pages with its repeated header left out and kept, and a tagged PDF retagged `/TH`
+through the CLI; seventeen mutations, each caught.
+
 ### A README with badges, a flow diagram and benchmarks beside parsers of its kind
 
 - The README opens with status badges (CI, release, licence, toolchain, platforms) and what the
@@ -129,7 +157,8 @@ all-header rows above it whose columns meet its own (so a header a table repeats
 only the rows under it), and `row_headers`, the other header cells before it whose rows meet its own
 (folded into `elements-units-v1`). An empty header cell heads nothing, as in HTML's model. A crafted grid whose header lists would pass sixteen steps a cell (and a thousand more) binds none and says so with `headers_unbound`; its cells keep their flags. `extract`'s detected and tagged cells carry the flag too. Markdown and HTML
 do not read it: `<th>` and GFM's header row are unchanged, and so is the Markdown and HTML text of
-every benchmark document. Twenty-seven mutations, each caught.
+every benchmark document (decision #169, above, writes `<th>` from it). Twenty-seven mutations, each
+caught.
 
 ### A declared caption and list item are labels of their own (decision #166)
 

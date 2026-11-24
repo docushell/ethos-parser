@@ -29,9 +29,10 @@
 //! on every renderer there is, whatever the document said; HTML has no such requirement, so **a
 //! cell is a `<td>`** — except where a table's own spans say a header is there (decision #99): a
 //! cell spanning columns, divided by the row under it into cells that span no rows, heads a column
-//! group, and those two rows are written `<th>` in a `<thead>`. A record cell's `header` (decision
-//! #167) is not read here — writing `<th>` from it is a decision of its own, to be measured — so no
-//! `<th>` is written anywhere else.
+//! group, and those two rows are written `<th>` in a `<thead>`; and where the record flags a cell a
+//! header (decision #167) — a tagged `/TH`, a DOCX header row, a row a geometric rule read as its
+//! table's header — that cell is a `<th>`, and the leading rows of such cells over a row of the
+//! table are a `<thead>` (decision #169). No `<th>` is written anywhere else.
 //!
 //! # Which erasures this artifact declares, and which two it does not
 //!
@@ -40,7 +41,7 @@
 //!
 //! | code | here | why |
 //! | --- | --- | --- |
-//! | `gfm-row-zero-separator-v1` | **dropped** | GFM's delimiter row asserts a header on every renderer; HTML asserts one only where a table's own spans head a column group (decision #99) |
+//! | `gfm-row-zero-separator-v1` | **dropped** | GFM's delimiter row asserts a header on every renderer; HTML asserts one only where a table's own spans head a column group (decision #99) or the record flags its cells (decision #169) |
 //! | `gfm-span-slots-unrepresentable-v1` | **recomputed** | GFM pays a slot for every merge; `<td rowspan>` pays nothing — unless the grid could not hold the span, and then it is counted |
 //! | `gfm-cell-not-placed-v1` | **kept** | a cell outside the declared grid has nowhere to print in either projection |
 //! | `gfm-cell-run-claimed-twice-v1` | **kept** | a run two cells claim is kept by the first in both, or one node's characters would be counted twice |
@@ -166,8 +167,8 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// sequences they cite, decision #85's tagged bold line read on to the one above, decision #94's
 /// tagged heading line read on to the one above it, decision #98's section number set beside its
 /// title in a size of its own, and decision #99's header — a column group's head and the row that
-/// divides it as `<th>` in a `<thead>`, the one header this projection writes — this id carries
-/// too.
+/// divides it as `<th>` in a `<thead>`, the one header this projection wrote until decision #169
+/// — this id carries too.
 ///
 /// `-v13`: decision #109's plain body lines of one layout unit as one `<p>`, keeping their line
 /// breaks, decision #110's run painted over a copy of itself written once, and decision #111's run
@@ -184,7 +185,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// #136's: a DOCX heading, list item and table as the file declares them, and a layout table as
 /// its blocks, as in Markdown. And decision #142's: a table the next page goes on with is one
 /// `<table>`, as in Markdown, and decision #151's: the header row the next page repeats is left
-/// out of it, counted, as in Markdown.
+/// out of it, counted, as in Markdown. And decision #169's: a cell the record flags a header
+/// (decision #167) is a `<th>`, and the leading rows of such cells over a row of the table a
+/// `<thead>` ([`header_rows`]).
 pub const HTML_RULE_BLOCKS_V14: &str = "html-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -399,7 +402,8 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 ///    No font size is read here: the reader measured the type, and this reads its flag.
 /// 3. **`<table>`** at the position of the first run one of its cells claims, with the merge
 ///    carried as `rowspan`/`colspan` and covered slots emitting nothing. A cell is a `<td>`, a
-///    column group's head and the row dividing it `<th>` (decision #99).
+///    column group's head and the row dividing it `<th>` (decision #99), and so is a cell the
+///    record flags a header (decision #169).
 /// 4. **`<ul>`/`<li>`** for runs the tree places in an `/L`, nested from nested `/L`. The document
 ///    drew no bullet, so the marker here is a tag rather than a `- `; where it drew its own
 ///    `/Lbl`, that is source text inside the `<li>`. On request, a unit opening with a marker too,
@@ -494,7 +498,8 @@ pub fn to_html_with(
     // Every merge costs GFM a slot; here a merge costs nothing unless the grid could not hold it,
     // so the blanket count is replaced by what was actually clamped away.
     erasures.remove(GFM_SPAN_SLOTS_UNREPRESENTABLE);
-    // HTML has no delimiter row, so it asserts no header and owes no count for one.
+    // HTML has no delimiter row, so it asserts no header the record or the table's spans do not
+    // state, and owes no count for one.
     erasures.remove(GFM_ROW_ZERO_SEPARATOR);
     let clamped: usize = plans.iter().map(|p| p.spans_clamped).sum();
     if clamped > 0 {
@@ -1147,7 +1152,8 @@ pub fn to_html_with(
 }
 
 /// Write one table: `<tr>` per row, one cell per slot that is not covered by a merge — `<th>` in
-/// the header [`header_rows`] reads, `<td>` everywhere else.
+/// the header [`header_rows`] reads and where the record flags the cell a header (decision #169),
+/// `<td>` everywhere else.
 ///
 /// **The merge is carried rather than counted.** An origin cell spanning two columns comes out as
 /// one `<td colspan="2">`, and the slot it covers emits nothing at all — emitting an empty `<td>`
@@ -1170,13 +1176,12 @@ fn emit_table(
         e.syntax("</h1>\n");
     }
     e.table(true);
-    let header = header_rows(plan);
+    let header = header_rows(plan).max(declared_header_rows(plan));
     e.syntax("<table>\n");
     for row in 0..plan.rows {
         if row == 0 && header > 0 {
             e.syntax("<thead>\n");
         }
-        let tag = if row < header { "th" } else { "td" };
         e.syntax("<tr>\n");
         for column in 0..plan.columns {
             let index = row * plan.columns + column;
@@ -1187,12 +1192,16 @@ fn emit_table(
                 SlotRole::Empty => (1, 1),
             };
 
-            // **`<td>`, and `<th>` only where the table's own spans say so** (decision #99,
-            // [`header_rows`]). A record cell's `header` (decision #167) is not read here —
-            // writing `<th>` from it is a decision of its own — so no header is written anywhere
-            // else. GFM had no such choice — its delimiter row makes row 0 a header on
-            // every renderer — which is why `gfm-row-zero-separator-v1` exists there and no
-            // equivalent is needed here.
+            // **`<td>`, and `<th>` only where the table's own spans or its record say so**: in
+            // the header rows [`header_rows`] reads, and where the record flags the cell a header
+            // (decision #169) — a row header down a column is one. GFM had no such choice — its
+            // delimiter row makes row 0 a header on every renderer — which is why
+            // `gfm-row-zero-separator-v1` exists there and no equivalent is needed here.
+            let tag = if row < header || plan.headers[index] {
+                "th"
+            } else {
+                "td"
+            };
             e.syntax("<");
             e.syntax(tag);
             if rowspan != 1 {
@@ -1241,11 +1250,11 @@ fn emit_table(
 /// How many of a table's first rows are its header (decision #99): two, where its first row holds
 /// a cell spanning columns and the row under it divides every such cell — two cells or more
 /// starting within its columns, none spanning rows and none reaching past it — a column group's
-/// head over the columns it names, with a row of the table under both; none anywhere else. The
-/// one header this projection writes, and it rests on nothing but the spans the table's own
-/// geometry gave it: a span the first data row repeats (`Parameter` over two columns, then a
-/// parameter's name over the same two) divides nothing, and a row-group label set down the rows
-/// under a span is a row of data.
+/// head over the columns it names, with a row of the table under both; none anywhere else. It
+/// rests on nothing but the spans the table's own geometry gave it: a span the first data row
+/// repeats (`Parameter` over two columns, then a parameter's name over the same two) divides
+/// nothing, and a row-group label set down the rows under a span is a row of data. A table takes
+/// the more of this and the rows its record declares ([`declared_header_rows`]).
 fn header_rows(plan: &crate::markdown::TablePlan<'_>) -> usize {
     let origin = |row: usize, column: usize| match plan.roles.get(row * plan.columns + column) {
         Some(SlotRole::Origin { rowspan, colspan }) => Some((*rowspan, *colspan)),
@@ -1272,6 +1281,32 @@ fn header_rows(plan: &crate::markdown::TablePlan<'_>) -> usize {
     } else {
         0
     }
+}
+
+/// How many of a table's first rows the record declares its header (decision #169): the leading
+/// rows it declares header rows ([`TablePlan::declares_header_row`]), where a row of the table
+/// stands under them — a table every row of which is flagged has no body for them to head — cut
+/// at the last row no merge reaches down past, since a `<thead>` holds its merges whole.
+fn declared_header_rows(plan: &TablePlan<'_>) -> usize {
+    let declared = (0..plan.rows)
+        .take_while(|&row| plan.declares_header_row(row))
+        .count();
+    if declared == plan.rows {
+        return 0;
+    }
+    // The row each merge reaches down to, so far, in one pass.
+    let (mut reach, mut header) = (0, 0);
+    for row in 0..declared {
+        for slot in &plan.roles[row * plan.columns..(row + 1) * plan.columns] {
+            if let SlotRole::Origin { rowspan, .. } = slot {
+                reach = reach.max(row + rowspan);
+            }
+        }
+        if reach <= row + 1 {
+            header = row + 1;
+        }
+    }
+    header
 }
 
 /// The digest of an artifact's canonical bytes, for callers that want to pin one.
@@ -2218,10 +2253,10 @@ mod tests {
         assert_tiles(&a);
     }
 
-    /// **No `<th>` from what a cell says.** This projection reads no header declaration, so a
-    /// header row would be invented — which is exactly what GFM forces and
-    /// `gfm-row-zero-separator-v1` had to disclose. Only a column group's head over the row that
-    /// divides it is one (decision #99).
+    /// **No `<th>` from what a cell says.** With no header the record declares, a header row
+    /// would be invented — which is exactly what GFM forces and `gfm-row-zero-separator-v1` had to
+    /// disclose. Only a column group's head over the row that divides it is one (decision #99),
+    /// and a cell the record flags a header (decision #169).
     #[test]
     fn no_header_row_is_synthesized() {
         let a = artifact_of(repr_with_table(
@@ -2232,6 +2267,210 @@ mod tests {
         ));
         assert!(!a.html.contains("<th"), "no header claim: {}", a.html);
         assert!(!a.html.contains("<thead"), "and no header section either");
+    }
+
+    /// `repr`'s first table with the cells at `cells` (indices into its cell list) flagged a
+    /// header, as a tagged `/TH` flags one (decision #167).
+    fn with_header_cells(repr: &DocumentRepresentation, cells: &[usize]) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for &k in cells {
+            payload.tables[0].cells[k].header = true;
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// **A cell the record flags a header is a `<th>`, and the leading rows of such cells a
+    /// `<thead>`** (decision #169): a header row over the body, a row header down a column, a
+    /// row of `<th>` beside a `<td>` that is no header row, and a table every row of which is
+    /// flagged, whose `<th>` head no body.
+    #[test]
+    fn a_cell_the_record_flags_a_header_is_a_th() {
+        let grid = repr_with_table(
+            &["Name", "Dept", "Ann", "Audit", "Bob", "Tax"],
+            3,
+            2,
+            &(0..6u32)
+                .map(|i| cell(i / 2, i % 2, &[i as usize]))
+                .collect::<Vec<_>>(),
+        );
+        let html = |cells: &[usize]| {
+            let a = artifact_of(with_header_cells(&grid, cells));
+            assert_tiles(&a);
+            a.html
+        };
+        assert_eq!(
+            html(&[0, 1]),
+            "<table>\n<thead>\n<tr>\n<th>Name</th>\n<th>Dept</th>\n</tr>\n</thead>\n<tbody>\n\
+             <tr>\n<td>Ann</td>\n<td>Audit</td>\n</tr>\n<tr>\n<td>Bob</td>\n<td>Tax</td>\n</tr>\n\
+             </tbody>\n</table>\n",
+            "a header row over the body"
+        );
+        assert_eq!(
+            html(&[0, 1, 2, 4]),
+            "<table>\n<thead>\n<tr>\n<th>Name</th>\n<th>Dept</th>\n</tr>\n</thead>\n<tbody>\n\
+             <tr>\n<th>Ann</th>\n<td>Audit</td>\n</tr>\n<tr>\n<th>Bob</th>\n<td>Tax</td>\n</tr>\n\
+             </tbody>\n</table>\n",
+            "and a row header down the first column"
+        );
+        assert_eq!(
+            html(&[0, 2, 4]),
+            "<table>\n<tr>\n<th>Name</th>\n<td>Dept</td>\n</tr>\n<tr>\n<th>Ann</th>\n\
+             <td>Audit</td>\n</tr>\n<tr>\n<th>Bob</th>\n<td>Tax</td>\n</tr>\n</table>\n",
+            "a row with a cell no header is no header row; its flagged cell is still a `<th>`"
+        );
+        assert_eq!(
+            html(&[0, 1, 2, 3, 4, 5]),
+            "<table>\n<tr>\n<th>Name</th>\n<th>Dept</th>\n</tr>\n<tr>\n<th>Ann</th>\n\
+             <th>Audit</th>\n</tr>\n<tr>\n<th>Bob</th>\n<th>Tax</th>\n</tr>\n</table>\n",
+            "every row flagged: no body for a header to head"
+        );
+        assert!(!html(&[]).contains("<th"));
+
+        // A row holding no cell is no header row, though every cell it holds is flagged.
+        let a = artifact_of(with_header_cells(
+            &repr_with_table(&["Ann", "Bob"], 3, 1, &[cell(1, 0, &[0]), cell(2, 0, &[1])]),
+            &[0],
+        ));
+        assert_eq!(
+            a.html,
+            "<table>\n<tr>\n<td></td>\n</tr>\n<tr>\n<th>Ann</th>\n</tr>\n<tr>\n<td>Bob</td>\n\
+             </tr>\n</table>\n"
+        );
+    }
+
+    /// **A `<thead>` holds its merges whole** (decision #169): where a flagged row's cell spans
+    /// down into a row the record does not flag, the header stops above the last row a merge
+    /// reaches past, and none is written where the first row's does.
+    #[test]
+    fn a_declared_header_stops_above_a_merge_it_would_cut() {
+        let a = artifact_of(with_header_cells(
+            &repr_with_table(
+                &["Name", "Dept", "Audit", "Bob", "Tax"],
+                3,
+                2,
+                &[
+                    spanning(0, 0, 2, 1, &[0]),
+                    cell(0, 1, &[1]),
+                    cell(1, 1, &[2]),
+                    cell(2, 0, &[3]),
+                    cell(2, 1, &[4]),
+                ],
+            ),
+            &[0, 1],
+        ));
+        assert_eq!(
+            a.html,
+            "<table>\n<tr>\n<th rowspan=\"2\">Name</th>\n<th>Dept</th>\n</tr>\n<tr>\n\
+             <td>Audit</td>\n</tr>\n<tr>\n<td>Bob</td>\n<td>Tax</td>\n</tr>\n</table>\n"
+        );
+        let a = artifact_of(with_header_cells(
+            &repr_with_table(
+                &["Name", "Dept", "Group", "Unit", "Audit", "Bob", "Tax"],
+                4,
+                2,
+                &[
+                    cell(0, 0, &[0]),
+                    cell(0, 1, &[1]),
+                    spanning(1, 0, 2, 1, &[2]),
+                    cell(1, 1, &[3]),
+                    cell(2, 1, &[4]),
+                    cell(3, 0, &[5]),
+                    cell(3, 1, &[6]),
+                ],
+            ),
+            &[0, 1, 2, 3],
+        ));
+        assert_eq!(
+            a.html,
+            "<table>\n<thead>\n<tr>\n<th>Name</th>\n<th>Dept</th>\n</tr>\n</thead>\n<tbody>\n\
+             <tr>\n<th rowspan=\"2\">Group</th>\n<th>Unit</th>\n</tr>\n<tr>\n<td>Audit</td>\n\
+             </tr>\n<tr>\n<td>Bob</td>\n<td>Tax</td>\n</tr>\n</tbody>\n</table>\n",
+            "two rows flagged, the second's merge reaching the third: one header row"
+        );
+        assert_tiles(&a);
+    }
+
+    /// **A table takes the more of its spans' header and its record's** (decision #169): the
+    /// column group decision #99 reads stays two rows where the record flags only the first, and
+    /// three flagged rows over a body are three.
+    #[test]
+    fn a_spanned_header_and_a_declared_one_combine_by_the_more() {
+        let texts = [
+            "Region", "Sales", "2024", "2023", "North", "7", "9", "South", "8", "6",
+        ];
+        let cells = [
+            spanning(0, 0, 2, 1, &[0]),
+            spanning(0, 1, 1, 2, &[1]),
+            cell(1, 1, &[2]),
+            cell(1, 2, &[3]),
+            cell(2, 0, &[4]),
+            cell(2, 1, &[5]),
+            cell(2, 2, &[6]),
+            cell(3, 0, &[7]),
+            cell(3, 1, &[8]),
+            cell(3, 2, &[9]),
+        ];
+        let grid = repr_with_table(&texts, 4, 3, &cells);
+        let thead = |flagged: &[usize]| {
+            let html = artifact_of(with_header_cells(&grid, flagged)).html;
+            let head = html
+                .split("<thead>")
+                .nth(1)
+                .and_then(|s| s.split("</thead>").next())
+                .unwrap_or("")
+                .to_string();
+            head.matches("<tr>").count()
+        };
+        assert_eq!(thead(&[]), 2, "decision #99's alone");
+        assert_eq!(thead(&[0, 1]), 2, "the first row flagged: the spans' two");
+        assert_eq!(
+            thead(&[0, 1, 2, 3, 4, 5, 6]),
+            3,
+            "three rows flagged: three"
+        );
+    }
+
+    /// **A table joined across pages keeps each cell's flag** (decision #169): the second page's
+    /// rows bring theirs, the repeated header left out with its row or kept as a row of `<th>`.
+    #[test]
+    fn a_joined_table_keeps_its_cells_flags() {
+        use crate::markdown::tests::{paged_tables, staff, FIRST, SECOND};
+        let repr = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
+        // `Name` and `Dept` on both pages, and `Cy` heading its row on the second.
+        let mut payload = repr.payload().clone();
+        for (t, k) in [(0, 0), (0, 1), (1, 0), (1, 1), (1, 4)] {
+            payload.tables[t].cells[k].header = true;
+        }
+        let repr = DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap();
+        let a = artifact_of(repr.clone());
+        assert_eq!(
+            a.html,
+            "<p>Staff</p>\n<table>\n<thead>\n<tr>\n<th>Name</th>\n<th>Dept</th>\n</tr>\n</thead>\n\
+             <tbody>\n<tr>\n<td>Ann</td>\n<td>Audit</td>\n</tr>\n<tr>\n<td>Bob</td>\n<td>Tax</td>\n\
+             </tr>\n<tr>\n<th>Cy</th>\n<td>Legal</td>\n</tr>\n</tbody>\n</table>\n\
+             <p>Page 1</p>\n<p>Page 2</p>\n"
+        );
+        let profile = Profile::default();
+        let kept = to_html_with(
+            &repr,
+            &profile.parser_version,
+            &profile.profile_sha256().unwrap(),
+            &profile.html_rule,
+            ProjectionOptions {
+                keep_repeated_header: true,
+                ..ProjectionOptions::default()
+            },
+        )
+        .expect("projects");
+        assert!(
+            kept.html.contains(
+                "<tbody>\n<tr>\n<td>Ann</td>\n<td>Audit</td>\n</tr>\n<tr>\n<th>Name</th>\n\
+                 <th>Dept</th>\n</tr>\n<tr>\n<td>Bob</td>\n<td>Tax</td>\n</tr>\n<tr>\n\
+                 <th>Cy</th>\n<td>Legal</td>\n</tr>\n</tbody>"
+            ),
+            "{}",
+            kept.html
+        );
     }
 
     // ---------------------------------------------------------------------------------------
