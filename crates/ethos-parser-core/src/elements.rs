@@ -628,13 +628,24 @@ pub fn to_elements(
         !blank
     });
 
-    // A picture's text: that of each unit holding a run the record names inside it.
+    // A picture's text: that of each unit holding a run the record names inside it, in unit order.
+    // A run is in one unit at most: blocks are disjoint, and a block's runs join one unit.
+    // `usize::MAX`: a node in no unit's runs.
+    let mut unit_of = vec![usize::MAX; nodes.len()];
+    for (k, u) in units.iter().enumerate() {
+        for &i in &u.runs {
+            unit_of[i] = k;
+        }
+    }
     let text_inside = |named: &[NodeId]| -> String {
-        let named: BTreeSet<&str> = named.iter().map(NodeId::as_str).collect();
-        units
+        let inside: BTreeSet<usize> = named
             .iter()
-            .filter(|u| u.runs.iter().any(|&i| named.contains(nodes[i].id.as_str())))
-            .map(|u| u.text.as_str())
+            .filter_map(|id| index.get(id.as_str()).map(|&i| unit_of[i]))
+            .filter(|&k| k != usize::MAX)
+            .collect();
+        inside
+            .iter()
+            .map(|&k| units[k].text.as_str())
             .collect::<Vec<_>>()
             .join(" ")
     };
@@ -785,8 +796,9 @@ pub fn to_elements(
     }
 
     // Page order, and on a page the record's reading order: each element at the first node it
-    // covers, one covering none last. Stable, so a tie keeps the order built above.
-    out.sort_by_key(|e| {
+    // covers, one covering none last. Stable, so a tie keeps the order built above; each key is
+    // computed once.
+    out.sort_by_cached_key(|e| {
         let first = e
             .node_ids
             .iter()
