@@ -3025,6 +3025,7 @@ mod tests {
                 italic: false,
                 weight: None,
                 fallback: Default::default(),
+                euro: Vec::new(),
             }),
         );
         m
@@ -3056,6 +3057,7 @@ mod tests {
                 italic: false,
                 weight: None,
                 fallback: Default::default(),
+                euro: Vec::new(),
             }),
         );
         m

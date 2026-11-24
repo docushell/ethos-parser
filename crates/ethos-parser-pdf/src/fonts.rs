@@ -123,8 +123,7 @@ pub enum WidthSource {
 #[derive(Debug, Clone)]
 pub enum Decoder {
     /// The document's own `ToUnicode` CMap. Authoritative, and shared by every font naming its
-    /// stream (review 2026-09-26 N11) — save a TrueType font's own copy reading a `¤` its program
-    /// names `Euro` as `€` (decision #170, `euro_named`).
+    /// stream (review 2026-09-26 N11).
     ToUnicode(Arc<ToUnicode>),
     /// A simple encoding plus `/Differences`.
     Simple(SimpleEncoding),
@@ -213,6 +212,11 @@ pub struct Font {
     /// embedded TrueType program's own tables — [`crate::font_fallback`]. Consulted only where the
     /// decoder has no answer, so nothing the document declared is overridden.
     pub fallback: Arc<BTreeMap<u32, String>>,
+    /// Codes this font's `/ToUnicode` declares `¤` that read `€`, because the glyph each selects
+    /// the embedded program names the euro sign (decision #170, [`euro_named`]). Kept beside the
+    /// map, never written into it: the map stays the one parse every font naming its stream
+    /// shares (review 2026-09-26 N11).
+    pub euro: Vec<u32>,
 }
 
 /// A font's ascent-to-descent envelope, measured or typed-absent.
@@ -294,6 +298,7 @@ impl Font {
         // per glyph across every document — and both decoders can lend from their
         // tables. The error message is built only on the failure path.
         match &self.decoder {
+            Decoder::ToUnicode(_) if self.euro.contains(&code) => Ok("\u{20AC}"),
             Decoder::ToUnicode(t) => t.get(code).ok_or_else(|| EngineError::Unsupported {
                 what: "character code".into(),
                 detail: format!(
@@ -709,11 +714,9 @@ fn load_font(
 
     // 1b. Decision #170: a TrueType glyph its own program names `Euro` reads as `€` where the
     //     font's `/ToUnicode` declares `¤` ([`euro_named`]).
-    let decoder = match decoder {
-        Decoder::ToUnicode(map) if subtype == "TrueType" => {
-            Decoder::ToUnicode(euro_named(doc, fd, map))
-        }
-        decoder => decoder,
+    let euro = match &decoder {
+        Decoder::ToUnicode(map) if subtype == "TrueType" => euro_named(doc, fd, map),
+        _ => Vec::new(),
     };
 
     // 2. Widths.
@@ -783,6 +786,7 @@ fn load_font(
         italic,
         weight,
         fallback,
+        euro,
     })
 }
 
@@ -847,38 +851,30 @@ fn embedded_program(doc: &lopdf::Document, holder: &lopdf::Dictionary) -> Option
     crate::budget::decoded(&program, crate::budget::MAX_DECODED_BYTES).ok()
 }
 
-/// A simple TrueType font's `/ToUnicode`, with each code it declares `¤` read as `€` where the
-/// font's embedded program names the glyph that code selects the euro sign (decision #170,
-/// `declared-font-codes-v5`, [`crate::font_fallback::euro_glyphs`]).
+/// The codes a simple TrueType font's `/ToUnicode` declares `¤` whose glyph the font's embedded
+/// program names the euro sign (decision #170, `declared-font-codes-v5`,
+/// [`crate::font_fallback::euro_glyphs`]), which [`Font::decode_code`] reads `€`.
 ///
 /// Mac OS 8.5 put the euro sign at Mac Roman's 0xDB, where PDF 32000-1 Annex D.2 keeps `currency`.
 /// A page macOS Quartz wrote declares `¤` for the glyph its subset program's Mac Roman cmap selects
 /// and its `post` table names `Euro`, and the page shows `€`. The program's name is the narrower
-/// statement, and the only one this reads over a declared map: no other character is replaced, a
-/// code the map declares anything else keeps it, and the font's own copy of the map changes, never
-/// the one other fonts naming the same stream share.
-fn euro_named(
-    doc: &lopdf::Document,
-    fd: &lopdf::Dictionary,
-    map: Arc<ToUnicode>,
-) -> Arc<ToUnicode> {
+/// statement, and the only one this reads over a declared map: no other character is replaced, and
+/// a code the map declares anything else keeps it.
+///
+/// Only where a reader selects the glyph by the code itself through that cmap: a symbolic font
+/// with no `/Encoding`, whose program has no (3,0) cmap to come first (§9.6.6.4). A font with an
+/// `/Encoding`, or a nonsymbolic one, selects its glyph by name — through (3,1), or the name's own
+/// Mac Roman code — so the glyph the raw code selects in (1,0) need not be the one drawn.
+fn euro_named(doc: &lopdf::Document, fd: &lopdf::Dictionary, map: &ToUnicode) -> Vec<u32> {
     let currency: Vec<u32> = (0..=255)
         .filter(|&code| map.get(code) == Some("\u{A4}"))
         .collect();
-    if currency.is_empty() {
-        return map;
+    if currency.is_empty() || fd.has(b"Encoding") || !is_symbolic(doc, fd) {
+        return Vec::new();
     }
-    let euro = embedded_program(doc, fd)
+    embedded_program(doc, fd)
         .map(|bytes| crate::font_fallback::euro_glyphs(&bytes, &currency))
-        .unwrap_or_default();
-    if euro.is_empty() {
-        return map;
-    }
-    let mut named = (*map).clone();
-    for code in euro {
-        named.set(code, "\u{20AC}");
-    }
-    Arc::new(named)
+        .unwrap_or_default()
 }
 
 /// Style words a `/BaseFont` uses for a bold weight, in the case font names write them.
@@ -1900,6 +1896,7 @@ mod tests {
             italic: false,
             weight: None,
             fallback: Default::default(),
+            euro: Vec::new(),
         }
     }
 
@@ -2689,19 +2686,23 @@ mod tests {
         }
     }
 
-    /// A TrueType program with one cmap subtable, format 6, under `record` (platform, encoding),
-    /// mapping code `0x21 + i` to glyph `i + 1`, which its `post` table, format 2, names
-    /// `names[i]`.
-    fn named_program(record: (u16, u16), names: &[&str]) -> Vec<u8> {
+    /// A TrueType program whose `post` table, format 2, names glyph `i + 1` `names[i]`, and whose
+    /// cmap holds, for each `(platform, encoding, first)` of `records`, a format 6 subtable mapping
+    /// code `first + i` to glyph `i + 1`.
+    fn named_program(records: &[(u16, u16, u16)], names: &[&str]) -> Vec<u8> {
         let n = names.len() as u16;
-        let mut cmap: Vec<u8> = [0, 1, record.0, record.1]
-            .iter()
-            .flat_map(|v: &u16| v.to_be_bytes())
-            .collect();
-        cmap.extend_from_slice(&12u32.to_be_bytes());
-        let mut sub: Vec<u16> = vec![6, 10 + 2 * n, 0, 0x21, n];
-        sub.extend(1..=n);
-        cmap.extend(sub.iter().flat_map(|v| v.to_be_bytes()));
+        let (count, length) = (records.len() as u16, 10 + 2 * n);
+        let mut cmap: Vec<u8> = [0, count].iter().flat_map(|v| v.to_be_bytes()).collect();
+        for (i, &(platform, encoding, _)) in records.iter().enumerate() {
+            cmap.extend([platform, encoding].iter().flat_map(|v| v.to_be_bytes()));
+            let offset = 4 + 8 * u32::from(count) + i as u32 * u32::from(length);
+            cmap.extend_from_slice(&offset.to_be_bytes());
+        }
+        for &(_, _, first) in records {
+            let mut sub: Vec<u16> = vec![6, length, 0, first, n];
+            sub.extend(1..=n);
+            cmap.extend(sub.iter().flat_map(|v| v.to_be_bytes()));
+        }
         let mut post = 0x0002_0000u32.to_be_bytes().to_vec();
         post.extend_from_slice(&[0; 28]);
         post.extend_from_slice(&(n + 1).to_be_bytes());
@@ -2717,13 +2718,18 @@ mod tests {
         sfnt(&[(b"cmap", cmap), (b"maxp", maxp), (b"post", post)])
     }
 
-    /// A simple font of `subtype` whose `/ToUnicode` maps code `0x21 + i` to the UTF-16 hex
-    /// `unicode[i]`, and whose descriptor embeds `program` as its `/FontFile2`.
-    fn mapped_font(subtype: &str, unicode: &[&str], program: Option<Vec<u8>>) -> Font {
-        let entries: String = unicode
-            .iter()
-            .enumerate()
-            .map(|(i, hex)| format!("<{:02X}> <{hex}> ", 0x21 + i))
+    /// A simple font dictionary of `subtype` in the shape macOS Quartz writes: no `/Encoding`, a
+    /// `/ToUnicode` mapping code `first + i` to the UTF-16 hex `unicode[i]`, and a descriptor
+    /// setting the Symbolic flag and embedding `program` as its `/FontFile2`.
+    fn mapped_dict(
+        subtype: &str,
+        first: u32,
+        unicode: &[&str],
+        program: Option<Vec<u8>>,
+    ) -> lopdf::Dictionary {
+        let entries: String = (first..)
+            .zip(unicode)
+            .map(|(code, hex)| format!("<{code:02X}> <{hex}> "))
             .collect();
         let cmap = format!(
             "begincmap 1 begincodespacerange <00> <FF> endcodespacerange {} beginbfchar \
@@ -2731,6 +2737,7 @@ mod tests {
             unicode.len()
         );
         let mut desc = lopdf::Dictionary::new();
+        desc.set("Flags", 4);
         if let Some(program) = program {
             desc.set(
                 "FontFile2",
@@ -2747,7 +2754,7 @@ mod tests {
                 cmap.into_bytes(),
             )),
         );
-        load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads")
+        fd
     }
 
     /// **A TrueType glyph its own program names `Euro` reads as `€`, not its `/ToUnicode`'s `¤`**
@@ -2756,40 +2763,112 @@ mod tests {
     /// Only that: a code the map declares as anything else keeps it, a glyph named otherwise keeps
     /// `¤`, and so does a font that is not TrueType, has no program, or whose program has no Mac
     /// Roman cmap.
+    ///
+    /// And only where a reader selects the glyph by the code itself through that Mac Roman cmap
+    /// (PDF 32000-1 §9.6.6.4): a symbolic font with no `/Encoding`, whose program has no (3,0)
+    /// cmap to come first. Elsewhere the glyph drawn is reached another way, and the declared `¤`
+    /// stands (QA round 1 on decision #170).
     #[test]
     fn a_glyph_its_program_names_euro_reads_as_the_euro_sign() {
         let declared = ["00A4", "00A4", "0041", "00A4", "00A4"];
         let names = ["Euro", "currency", "Euro", "uni20AC", "Euro.alt"];
-        let read = |font: &Font| -> Vec<String> {
-            (0x21..0x26)
+        let read = |fd: &lopdf::Dictionary, first: u32| -> Vec<String> {
+            let font = load_font(&lopdf::Document::new(), "F1", fd, &Default::default());
+            let font = font.expect("loads");
+            (first..first + 5)
                 .map(|code| font.decode_code(code).expect("mapped").to_string())
                 .collect()
         };
-        let program = named_program((1, 0), &names);
+        let mac = |first: u16| Some(named_program(&[(1, 0, first)], &names));
+        let euro = ["€", "¤", "A", "€", "€"];
         assert_eq!(
-            read(&mapped_font("TrueType", &declared, Some(program.clone()))),
-            ["€", "¤", "A", "€", "€"]
+            read(&mapped_dict("TrueType", 0x21, &declared, mac(0x21)), 0x21),
+            euro
+        );
+        assert_eq!(
+            read(&mapped_dict("TrueType", 0xDB, &declared, mac(0xDB)), 0xDB),
+            euro,
+            "Mac OS 8.5's own position"
         );
         let standing = ["¤", "¤", "A", "¤", "¤"];
-        assert_eq!(
-            read(&mapped_font("Type1", &declared, Some(program))),
-            standing,
-            "not a TrueType font"
+        for (fd, why) in [
+            (
+                mapped_dict("Type1", 0x21, &declared, mac(0x21)),
+                "not a TrueType font",
+            ),
+            (mapped_dict("TrueType", 0x21, &declared, None), "no program"),
+            (
+                mapped_dict(
+                    "TrueType",
+                    0x21,
+                    &declared,
+                    Some(named_program(&[(3, 1, 0x21)], &names)),
+                ),
+                "only the program's Mac Roman cmap is read",
+            ),
+            (
+                // Code 0x21 selects 0xF021 through (3,0), glyph 2: `currency`.
+                mapped_dict(
+                    "TrueType",
+                    0x21,
+                    &declared,
+                    Some(named_program(&[(1, 0, 0x21), (3, 0, 0xF020)], &names)),
+                ),
+                "a symbolic font's (3,0) cmap comes first",
+            ),
+        ] {
+            assert_eq!(read(&fd, 0x21), standing, "{why}");
+        }
+        let mut fd = mapped_dict("TrueType", 0x21, &declared, mac(0x21));
+        let mut differences = lopdf::Dictionary::new();
+        differences.set(
+            "Differences",
+            vec![33.into(), lopdf::Object::Name(b"currency".to_vec())],
         );
-        assert_eq!(
-            read(&mapped_font("TrueType", &declared, None)),
-            standing,
-            "no program"
+        fd.set("Encoding", lopdf::Object::Dictionary(differences));
+        assert_eq!(read(&fd, 0x21), standing, "an /Encoding selects by name");
+        // A full system font: (1,0) names 0xDB's glyph `Euro`, (3,1) names U+00A4's `currency`.
+        let mut fd = mapped_dict(
+            "TrueType",
+            0xDB,
+            &declared,
+            Some(named_program(&[(1, 0, 0xDB), (3, 1, 0xA3)], &names)),
         );
+        if let Ok(lopdf::Object::Dictionary(desc)) = fd.get_mut(b"FontDescriptor") {
+            desc.set("Flags", 32);
+        }
         assert_eq!(
-            read(&mapped_font(
-                "TrueType",
-                &declared,
-                Some(named_program((3, 1), &names))
-            )),
+            read(&fd, 0xDB),
             standing,
-            "only the program's Mac Roman cmap is read"
+            "a nonsymbolic font selects by name"
         );
+    }
+
+    /// A font reading the euro sign keeps the `/ToUnicode` every font naming its stream shares:
+    /// one parse, charged once (review 2026-09-26 N11). QA round 1 on decision #170 found each
+    /// font name costing a copy of a million-mapping map.
+    #[test]
+    fn a_font_reading_the_euro_sign_shares_its_tounicode() {
+        let names = ["Euro"];
+        let mut fd = mapped_dict(
+            "TrueType",
+            0x21,
+            &["00A4"],
+            Some(named_program(&[(1, 0, 0x21)], &names)),
+        );
+        let mut doc = lopdf::Document::new();
+        let stream = doc.add_object(fd.get(b"ToUnicode").expect("set").clone());
+        fd.set("ToUnicode", lopdf::Object::Reference(stream));
+        let cache = crate::cmap::ToUnicodeCache::default();
+        let fonts = ["F1", "F2"].map(|id| load_font(&doc, id, &fd, &cache).expect("loads"));
+        let [Decoder::ToUnicode(a), Decoder::ToUnicode(b)] = fonts.each_ref().map(|f| &f.decoder)
+        else {
+            panic!("both decode through the /ToUnicode");
+        };
+        assert!(Arc::ptr_eq(a, b), "one parse, shared");
+        for font in &fonts {
+            assert_eq!(font.decode_code(0x21).expect("mapped"), "€");
+        }
     }
 
     /// A Type 3 font dictionary: code 97, width 500, an optional `/FontMatrix`, an optional

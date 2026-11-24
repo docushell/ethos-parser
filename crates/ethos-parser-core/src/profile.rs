@@ -374,12 +374,14 @@ pub const TEXT_CODE_RULE_V4: &str = "declared-font-codes-v4";
 ///
 /// Mac OS 8.5 put the euro sign at Mac Roman's 0xDB, where PDF 32000-1 Annex D.2 keeps `currency`,
 /// and a page macOS Quartz wrote declares U+00A4 for the glyph its subset program's Mac Roman cmap
-/// selects and its `post` table names `Euro`, where the page shows `€`. Now a simple TrueType
-/// font's code its `/ToUnicode` declares `¤` reads `€` where the embedded program's Mac Roman cmap
-/// (1,0) selects a glyph whose `post` name reads as the euro sign by the glyph-name rules `-v3`
-/// reads `/Differences` with. The one place the font's program speaks over a declared map: no
-/// other character is replaced, and a code declared anything else keeps it. The `MacRomanEncoding`
-/// table itself is unchanged.
+/// selects and its `post` table names `Euro`, where the page shows `€`. Now a symbolic simple
+/// TrueType font with no `/Encoding`, whose code its `/ToUnicode` declares `¤`, reads `€` where the
+/// embedded program's Mac Roman cmap (1,0) selects a glyph whose `post` name reads as the euro sign
+/// by the glyph-name rules `-v3` reads `/Differences` with, and the program has no (3,0) cmap: the
+/// shape where a reader selects the glyph by the code itself through (1,0) (PDF 32000-1 §9.6.6.4).
+/// A font with an `/Encoding`, or a nonsymbolic one, selects its glyph by name instead. The one
+/// place the font's program speaks over a declared map: no other character is replaced, and a code
+/// declared anything else keeps it. The `MacRomanEncoding` table itself is unchanged.
 pub const TEXT_CODE_RULE_V5: &str = "declared-font-codes-v5";
 
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.

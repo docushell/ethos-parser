@@ -38,9 +38,9 @@
 //! **Never a guess.** No character is produced that the font does not state, a control or
 //! private-use value is refused, and a code nothing maps still omits its run.
 //!
-//! **One exception reads over a declared map** (decision #170, `declared-font-codes-v5`): a simple
-//! TrueType font's code its `/ToUnicode` declares `¤`, where the program names the glyph that code
-//! selects the euro sign ([`euro_glyphs`]), reads `€`.
+//! **One exception reads over a declared map** (decision #170, `declared-font-codes-v5`): a
+//! symbolic simple TrueType font with no `/Encoding`, whose code its `/ToUnicode` declares `¤`
+//! selects a glyph the program names the euro sign ([`euro_glyphs`]), reads `€`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -184,7 +184,9 @@ pub(crate) fn from_program(bytes: &[u8], glyphs: Glyphs<'_>) -> BTreeMap<u32, St
 
 /// The codes among `codes` whose glyph an embedded TrueType program names the euro sign
 /// (decision #170): the glyph its Mac Roman cmap (1,0) selects for the code, whose `post` name
-/// [`glyph_text`] reads as `€` — `Euro`. Empty where the program does not parse or has no such cmap.
+/// [`glyph_text`] reads as `€` — `Euro`. Empty where the program does not parse, has no such cmap,
+/// or has a (3,0) cmap, which a symbolic font's code selects its glyph through first (PDF 32000-1
+/// §9.6.6.4).
 pub(crate) fn euro_glyphs(bytes: &[u8], codes: &[u32]) -> Vec<u32> {
     use skrifa::raw::TableProvider;
     let Ok(font) = skrifa::FontRef::new(bytes) else {
@@ -193,8 +195,11 @@ pub(crate) fn euro_glyphs(bytes: &[u8], codes: &[u32]) -> Vec<u32> {
     let Ok(cmap) = font.cmap() else {
         return Vec::new();
     };
-    let Some(mac) = cmap
-        .encoding_records()
+    let records = cmap.encoding_records();
+    if records.iter().any(|record| record.is_symbol()) {
+        return Vec::new();
+    }
+    let Some(mac) = records
         .iter()
         .find(|record| record.is_mac_roman())
         .and_then(|record| record.subtable(cmap.offset_data()).ok())
