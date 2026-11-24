@@ -71,7 +71,7 @@
 //! No verdict, no score: every label is one a record field states, every box one the record
 //! measured or the union of such boxes, and every node id a copy.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -510,7 +510,7 @@ pub fn to_elements(
             .map(Some)
             .ok_or_else(|| malformed(format!("`{}` is not a declared page", id.as_str())))
     };
-    let index: BTreeMap<&str, usize> = nodes
+    let index: HashMap<&str, usize> = nodes
         .iter()
         .enumerate()
         .map(|(i, n)| (n.id.as_str(), i))
@@ -665,7 +665,7 @@ pub fn to_elements(
     }
     // Decision #142: a table the next page goes on with is one element with that page's rows
     // under its own, each cell there carrying its page.
-    let links = crate::markdown::continued_tables(repr);
+    let links = crate::markdown::continued_tables(repr, &index);
     let mut tables: Vec<Option<Element>> = Vec::with_capacity(payload.tables.len());
     let mut opens: Vec<usize> = (0..payload.tables.len()).collect();
     for (k, t) in payload.tables.iter().enumerate() {

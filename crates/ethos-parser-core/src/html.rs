@@ -239,7 +239,7 @@ impl HtmlArtifact {
     ///
     /// [`EngineError::Malformed`] if the map does not tile or the census does not balance.
     pub fn validate(&self) -> Result<(), EngineError> {
-        AnchorMap::new(self.anchor_map.segments.clone(), &self.html)?;
+        AnchorMap::check(&self.anchor_map.segments, &self.html)?;
         if !self.coverage.balances() {
             return Err(EngineError::Malformed {
                 what: "html coverage".into(),
@@ -500,7 +500,7 @@ pub fn to_html_with(
     if clamped > 0 {
         *erasures.entry(GFM_SPAN_SLOTS_UNREPRESENTABLE).or_insert(0) += clamped;
     }
-    let mut owner: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let mut owner: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for (t, plan) in plans.iter().enumerate() {
         for slot in &plan.slots {
             for node in slot {

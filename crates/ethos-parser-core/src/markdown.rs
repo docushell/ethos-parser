@@ -370,16 +370,12 @@ pub(crate) const LAYOUT_TABLE_AS_BLOCKS: &str = "layout-table-as-blocks-v1";
 /// holds a name, a contact line, its headings and its jobs as paragraphs of a few cells, and a
 /// grid cell is one line; a table nested in a cell, written as a grid of its own after the outer
 /// one, left its heading behind. **Known limit**: a table nested in the last cell, after every run
-/// of the outer table, is not seen to be nested.
+/// of the outer table, is not seen to be nested. `at` places in `payload.nodes` each node id a
+/// table's cell names.
 pub(crate) fn layout_tables(
     payload: &crate::representation::RepresentationPayload,
+    at: &std::collections::HashMap<&str, usize>,
 ) -> std::collections::BTreeSet<usize> {
-    let at: std::collections::BTreeMap<&str, usize> = payload
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (n.id.as_str(), i))
-        .collect();
     // Each DOCX table's runs, as indices in reading order: first and last.
     let spans: Vec<(usize, usize, usize)> = payload
         .tables
@@ -467,16 +463,14 @@ const JOINABLE_RULES: [&str; 4] = [
 ///   the second's first row is cited by the very elements, within a table row (`/TR`), that cite
 ///   the first table's header, as Chrome cites a header it repeats on each page.
 ///
-/// A table of three pages goes on twice.
-pub(crate) fn continued_tables(repr: &crate::DocumentRepresentation) -> Vec<Option<(usize, bool)>> {
+/// A table of three pages goes on twice. `at` places in `payload.nodes` each node id a table's cell
+/// names.
+pub(crate) fn continued_tables(
+    repr: &crate::DocumentRepresentation,
+    at: &std::collections::HashMap<&str, usize>,
+) -> Vec<Option<(usize, bool)>> {
     let payload = repr.payload();
     let tables = &payload.tables;
-    let at: std::collections::BTreeMap<&str, usize> = payload
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (n.id.as_str(), i))
-        .collect();
     let runs = |t: &crate::TableRecord| -> Vec<usize> {
         t.cells
             .iter()
@@ -497,7 +491,7 @@ pub(crate) fn continued_tables(repr: &crate::DocumentRepresentation) -> Vec<Opti
 
     // What may lie between: furniture another page repeats, read as `--drop-furniture` reads it,
     // with each table's runs left to it; an `/Artifact`; whatever no projection writes as text.
-    let owner: std::collections::BTreeMap<&str, usize> = tables
+    let owner: std::collections::HashMap<&str, usize> = tables
         .iter()
         .enumerate()
         .flat_map(|(t, r)| {
@@ -991,6 +985,13 @@ impl AnchorMap {
     /// **A hole is worse than no map**, because the hole is exactly where an unquotable byte
     /// hides, so every one of those is a hard error rather than a repair.
     pub fn new(segments: Vec<Segment>, markdown: &str) -> Result<Self, EngineError> {
+        Self::check(&segments, markdown)?;
+        Ok(Self { segments })
+    }
+
+    /// [`AnchorMap::new`]'s checks, on segments it does not take: an artifact re-checks its own
+    /// map without copying it.
+    pub(crate) fn check(segments: &[Segment], markdown: &str) -> Result<(), EngineError> {
         let len = markdown.len();
         let bad = |detail: String| EngineError::Malformed {
             what: "anchor map".into(),
@@ -999,7 +1000,7 @@ impl AnchorMap {
 
         if segments.is_empty() {
             if len == 0 {
-                return Ok(Self { segments });
+                return Ok(());
             }
             return bad(format!(
                 "no segments for {len} byte(s) of markdown; the map must tile the whole string"
@@ -1071,7 +1072,7 @@ impl AnchorMap {
             .pipe_err();
         }
 
-        Ok(Self { segments })
+        Ok(())
     }
 
     /// The segments a byte range touches, in order.
@@ -1259,7 +1260,7 @@ impl MarkdownArtifact {
     ///
     /// [`EngineError::Malformed`] if the map does not tile or the census does not balance.
     pub fn validate(&self) -> Result<(), EngineError> {
-        AnchorMap::new(self.anchor_map.segments.clone(), &self.markdown)?;
+        AnchorMap::check(&self.anchor_map.segments, &self.markdown)?;
         if !self.coverage.balances() {
             return Err(EngineError::Malformed {
                 what: "markdown coverage".into(),
@@ -1773,7 +1774,7 @@ pub(crate) fn list_role_at(
     Some(ListRole {
         reads_on: reads_on(&text),
         pitch: text_run_attributes(node)
-            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .and_then(|t| pitch.get(&(t.font_id.as_str(), t.font_size)))
             .map(|m| m.pitch),
         ..role
     })
@@ -1938,7 +1939,7 @@ pub(crate) fn hyphen_tail<'a>(
     head: &crate::Node,
     head_text: &str,
     next: Option<&'a crate::Node>,
-    owner: &std::collections::BTreeMap<&str, usize>,
+    owner: &std::collections::HashMap<&str, usize>,
 ) -> Option<(&'a crate::Node, String)> {
     let stem = head_text.strip_suffix('-')?;
     if !stem.chars().next_back().is_some_and(char::is_alphabetic) || heading_level(head).is_some() {
@@ -1953,7 +1954,7 @@ pub(crate) fn hyphen_tail<'a>(
 fn line_tail<'a>(
     head: &crate::Node,
     next: Option<&'a crate::Node>,
-    owner: &std::collections::BTreeMap<&str, usize>,
+    owner: &std::collections::HashMap<&str, usize>,
 ) -> Option<(&'a crate::Node, String)> {
     let next = next?;
     if next.parent != head.parent
@@ -2032,7 +2033,7 @@ pub(crate) fn lone_hyphen_tail<'a>(
     node: &crate::Node,
     text: &str,
     next: Option<&'a crate::Node>,
-    owner: &std::collections::BTreeMap<&str, usize>,
+    owner: &std::collections::HashMap<&str, usize>,
     pending_space: bool,
     stretches: &Stretches<'_>,
     pitch: &PitchReference,
@@ -2067,7 +2068,7 @@ pub(crate) fn lone_hyphen_tail<'a>(
     }
     let face = |n: &crate::Node| {
         let a = text_run_attributes(n)?;
-        pitch.get(&(a.font_id.clone(), a.font_size)).copied()
+        pitch.get(&(a.font_id.as_str(), a.font_size)).copied()
     };
     let along = |tail: &crate::Node| {
         line_key(node)
@@ -2102,7 +2103,7 @@ const OVERPRINT_CHARS_READ: usize = 1024;
 /// opendataloader-bench unchanged on every document.
 pub(crate) fn overprinted_runs<'a>(
     nodes: &'a [crate::Node],
-    owner: &std::collections::BTreeMap<&str, usize>,
+    owner: &std::collections::HashMap<&str, usize>,
     left_out: &std::collections::BTreeSet<&str>,
     pitch: &PitchReference,
 ) -> std::collections::BTreeSet<&'a str> {
@@ -2137,7 +2138,7 @@ pub(crate) fn overprinted_runs<'a>(
         };
         let chars = i64::try_from(node.text.chars().count()).unwrap_or(i64::MAX);
         let width = advance.checked_div(chars).unwrap_or(0);
-        let measure = pitch.get(&(a.font_id.clone(), size));
+        let measure = pitch.get(&(font, size));
         let glyph = measure.map_or(0, |m| width.min(m.pitch));
         let drawn = || node.text.chars().filter(|c| !c.is_whitespace());
         let id = node.id.as_str();
@@ -2293,7 +2294,7 @@ pub(crate) fn script_continues(
     };
     let glyph = |n: &crate::Node| {
         text_run_attributes(n)
-            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .and_then(|t| pitch.get(&(t.font_id.as_str(), t.font_size)))
             .map_or(0, |m| m.pitch)
     };
     let along = b.origin_x > a.origin_x
@@ -2813,8 +2814,8 @@ pub(crate) fn sequence_join(
         return None;
     }
     if open.element.is_some() && open.element == key.element {
-        let measure =
-            text_run_attributes(prev).and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))?;
+        let measure = text_run_attributes(prev)
+            .and_then(|t| pitch.get(&(t.font_id.as_str(), t.font_size)))?;
         let (Some(a), Some(b)) = (
             prev.native_locator.run_locator(),
             node.native_locator.run_locator(),
@@ -3198,7 +3199,7 @@ pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
 /// so it is not a constant in this source at all. A key with fewer than two runs is **absent**:
 /// one observation cannot corroborate itself, and a run whose font appears nowhere else is
 /// refused rather than trusted.
-pub(crate) type PitchReference = std::collections::HashMap<(String, i64), FontMeasure>;
+pub(crate) type PitchReference<'a> = std::collections::HashMap<(&'a str, i64), FontMeasure>;
 
 /// What one font at one size measures on this page, taken from the page's own drawing.
 ///
@@ -3223,14 +3224,14 @@ impl FontMeasure {
     }
 }
 
-pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
-    let mut per_font: std::collections::HashMap<(String, i64), Vec<i64>> =
+pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference<'_> {
+    let mut per_font: std::collections::HashMap<(&str, i64), Vec<i64>> =
         std::collections::HashMap::new();
     // **The space the page draws, kept apart from the glyphs it draws beside it.** A run whose
     // text is nothing but whitespace and whose characters the reader did not insert is the
     // document stating, in its own metrics, how wide a word gap is in this font at this size.
     // Nothing here decides what that width should be.
-    let mut per_font_space: std::collections::HashMap<(String, i64), Vec<i64>> =
+    let mut per_font_space: std::collections::HashMap<(&str, i64), Vec<i64>> =
         std::collections::HashMap::new();
     for node in nodes {
         let (Some(a), Some(loc)) = (text_run_attributes(node), node.native_locator.run_locator())
@@ -3244,10 +3245,10 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
         if advance <= 0 || glyphs == 0 {
             continue;
         }
-        let key = (a.font_id.clone(), a.font_size);
+        let key = (a.font_id.as_str(), a.font_size);
         if a.synthesized.is_empty() && !node.text.is_empty() && node.text.trim().is_empty() {
             per_font_space
-                .entry(key.clone())
+                .entry(key)
                 .or_default()
                 .push(advance / glyphs);
             continue;
@@ -3338,7 +3339,7 @@ pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i
     if glyphs == 0 {
         return None;
     }
-    let measure = *pitch.get(&(a.font_id.clone(), a.font_size))?;
+    let measure = *pitch.get(&(a.font_id.as_str(), a.font_size))?;
     Some((
         loc.origin_x + advance.min((glyphs + 1) * 2 * measure.pitch),
         measure,
@@ -3562,7 +3563,7 @@ pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node, pitch: &PitchRefe
     let gap = y.origin_x - (x.origin_x + advance);
     gap <= INK_EPSILON_CENTIPOINTS
         || text_run_attributes(a)
-            .and_then(|t| pitch.get(&(t.font_id.clone(), t.font_size)))
+            .and_then(|t| pitch.get(&(t.font_id.as_str(), t.font_size)))
             .is_some_and(|measure| gap < measure.word_gap())
 }
 
@@ -3837,7 +3838,7 @@ pub(crate) fn leave_cells(plans: &mut [TablePlan<'_>], left: &std::collections::
 /// [`overprinted_runs`] leaves it. A Word header or footer part's runs are [`office_furniture`]'s.
 pub(crate) fn repeated_furniture<'a>(
     repr: &'a DocumentRepresentation,
-    owner: &std::collections::BTreeMap<&str, usize>,
+    owner: &std::collections::HashMap<&str, usize>,
 ) -> std::collections::BTreeSet<&'a str> {
     type Ink = (i64, i64, i64, i64);
     let payload = repr.payload();
@@ -4943,7 +4944,7 @@ pub(crate) fn markdown_of(
     // Which table, if any, owns each run. A run in this map is emitted **inside** its table and
     // nowhere else; that is decision 1 of v1.1-S2, and it is the difference between a projection
     // that moves characters and one that duplicates them.
-    let mut owner: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let mut owner: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for (t, plan) in plans.iter().enumerate() {
         for slot in &plan.slots {
             for node in slot {
@@ -5803,13 +5804,28 @@ pub(crate) fn plan_tables<'a>(
     leave_out_repeated: bool,
 ) -> Vec<TablePlan<'a>> {
     let payload = repr.payload();
-    let by_id: std::collections::BTreeMap<&str, &crate::Node> =
-        payload.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+    // The place in `payload.nodes` of each node id a table's cell names, built once for every
+    // table read below; no other id is read.
+    let named: std::collections::HashSet<&str> = payload
+        .tables
+        .iter()
+        .flat_map(|t| &t.cells)
+        .flat_map(|c| &c.node_ids)
+        .map(|id| id.as_str())
+        .collect();
+    let at: std::collections::HashMap<&str, usize> = payload
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| named.contains(n.id.as_str()))
+        .map(|(i, n)| (n.id.as_str(), i))
+        .collect();
+    let by_id = |id: &str| at.get(id).map(|&i| &payload.nodes[i]);
     // Document-wide, not per table: two tables on one page can only claim the same run if the
     // detectors overlapped, and the first one still keeps it.
     let mut claimed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     let mut plans = Vec::with_capacity(payload.tables.len());
-    let layout = layout_tables(payload);
+    let layout = layout_tables(payload, &at);
     // The tables left out whole, by index.
     let mut left = std::collections::BTreeSet::new();
 
@@ -5908,11 +5924,11 @@ pub(crate) fn plan_tables<'a>(
                 // A cell naming a node this record does not carry is refused at seal time
                 // (`DocumentRepresentation::check_cell_runs_are_declared_nodes`), so a miss here
                 // is a record that never existed rather than a case to guess at.
-                let Some(node) = by_id.get(id.as_str()) else {
+                let Some(node) = by_id(id.as_str()) else {
                     continue;
                 };
                 if claimed.insert(id.as_str()) {
-                    slots[index].push(*node);
+                    slots[index].push(node);
                 } else {
                     *erasures.entry(GFM_CELL_RUN_CLAIMED_TWICE).or_insert(0) += 1;
                 }
@@ -5982,7 +5998,7 @@ pub(crate) fn plan_tables<'a>(
             .cells
             .iter()
             .flat_map(|cell| &cell.node_ids)
-            .find_map(|id| sheet_name(by_id.get(id.as_str())?));
+            .find_map(|id| sheet_name(by_id(id.as_str())?));
 
         plans.push(TablePlan {
             projected: true,
@@ -5999,7 +6015,7 @@ pub(crate) fn plan_tables<'a>(
     // Decision #142: a table the next page goes on with takes that page's rows under its own,
     // and the continuation is no grid of its own. Its delimiter row goes with it.
     let mut opens: Vec<usize> = (0..plans.len()).collect();
-    for (t, link) in continued_tables(repr).into_iter().enumerate() {
+    for (t, link) in continued_tables(repr, &at).into_iter().enumerate() {
         let Some((prev, repeated)) = link else {
             continue;
         };
@@ -11702,7 +11718,7 @@ pub(crate) mod tests {
             })
             .collect();
         assert_eq!(
-            pitch_reference(&nodes)[&("F1".to_string(), 2400)],
+            pitch_reference(&nodes)[&("F1", 2400)],
             FontMeasure {
                 pitch: 330,
                 space: Some(290)
@@ -12921,7 +12937,14 @@ pub(crate) mod tests {
         // Out of reading order, as no reader writes it: no join, no panic.
         let swapped = edited(&repr, &|p| p.tables.reverse());
         two(swapped.clone(), "swapped");
-        assert_eq!(continued_tables(&swapped), vec![None, None]);
+        let at = swapped
+            .payload()
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id.as_str(), i))
+            .collect();
+        assert_eq!(continued_tables(&swapped, &at), vec![None, None]);
         // No rows, or no columns, on either side.
         two(edited(&repr, &|p| p.tables[1].rows = 0), "no rows second");
         two(edited(&repr, &|p| p.tables[0].rows = 0), "no rows first");
