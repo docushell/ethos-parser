@@ -147,7 +147,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |
 /// | 0.65.0 | `markdown-blocks-v13` | plain body lines of one layout unit are one block, keeping their line breaks (decision #109); a run painted over a copy of itself is written once (decision #110) |
-/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131); a DOCX heading, list item and table as the file declares them, a heading's line break one space and a list paragraph's runs one item, and a layout table — a cell of two paragraphs or more, or a nested table — written as its blocks in document order, counted as `layout-table-as-blocks-v1` (decision #136); a line's last hyphen drawn as a run of its own closes its word up (decision #160) |
+/// | decision #126 | `markdown-blocks-v14` | a tagged element's next line keeps its line break, except in a heading, on a line its column wrapped, from bold onto bold but a label, and before a line CommonMark reads as a block; two list bodies the file numbers are two items, and one body's join is no guess (decision #128); a DOCX paragraph's runs are one block, keeping its tabs and line breaks (decision #130); a raised or lowered mark stays on its line (decision #131); a DOCX heading, list item and table as the file declares them, a heading's line break one space and a list paragraph's runs one item, and a layout table — a cell of two paragraphs or more, or a nested table — written as its blocks in document order, counted as `layout-table-as-blocks-v1` (decision #136); a line's last hyphen drawn as a run of its own closes its word up (decision #160); a whole line in bold and underlined alone is `**<u>X</u>**` (decision #171) |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -301,7 +301,10 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// ([`continued_tables`]), where `-v13` wrote one a page; and decision #151's: the header row
 /// the next page repeats is left out of it, counted. And so is decision #169's:
 /// [`GFM_ROW_ZERO_SEPARATOR`] is not counted on a table whose record declares row 0 its header,
-/// not a byte of the Markdown changing.
+/// not a byte of the Markdown changing. And so is decision #171's: a whole line in bold and
+/// underlined alone, nothing else on it, is written `**<u>X</u>**`, the bold outside, where
+/// decision #154 wrote `<u>**X**</u>`; a span on part of a line, struck, or whose bold stops
+/// short of its underline keeps the underline outside.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -4154,7 +4157,8 @@ impl Style {
     /// emphasis — `**x<sup>2</sup>**` — and is written as an HTML element in both projections,
     /// since Markdown has no syntax of its own for one. A strikeout (`~~`, `<s>`) holds the
     /// emphasis, and an underline (`<u>` in both, Markdown having none) holds the strikeout
-    /// (decision #154): `<u>~~**x**~~</u>`.
+    /// (decision #154): `<u>~~**x**~~</u>`. A whole line in bold and underlined alone is written
+    /// with the bold outside, `**<u>x</u>**`, once the line ends ([`Emit::bold_outside`]).
     fn markers(self, markup: Markup) -> (String, String) {
         let (uopen, uclose) = if self.under {
             ("<u>", "</u>")
@@ -4216,6 +4220,9 @@ struct Emphasis {
     unwritten: bool,
     /// Decision #158: the runs written in a style whose marks went unwritten.
     unwritten_runs: usize,
+    /// Decision #171: where the open span's marker, written at this offset, opens its line with
+    /// `<u>**` and the bold inside it has not changed since.
+    whole_line: Option<usize>,
 }
 
 /// A mark held after a bold span (decision #83): what [`Emit::source_encoded`] or
@@ -4349,7 +4356,7 @@ impl Emit {
     pub(crate) fn table(&mut self, inside: bool) {
         if inside {
             self.settle(true);
-            self.close_emphasis();
+            self.close_emphasis(false);
             self.flush_held();
         }
         self.emphasis.table = inside;
@@ -4359,16 +4366,38 @@ impl Emit {
     pub(crate) fn finish(&mut self) {
         self.write_box_after(false);
         self.settle(true);
-        self.close_emphasis();
+        self.close_emphasis(true);
         self.flush_held();
     }
 
-    fn close_emphasis(&mut self) {
+    /// Close the open span; `line_end` where its line ends after it, held spaces aside.
+    fn close_emphasis(&mut self, line_end: bool) {
         if let Some(markup) = self.emphasis.markup {
             let (_, close) = self.emphasis.open.markers(markup);
             self.write_mark(&close);
+            if let Some(at) = self.emphasis.whole_line.take().filter(|_| line_end) {
+                self.bold_outside(at);
+            }
             self.emphasis.open = Style::default();
         }
+    }
+
+    /// Decision #171: a whole line in bold and underlined alone, `<u>**X**</u>` just closed, is
+    /// written `**<u>X</u>**` — the same bytes, the bold now outside — since ParseBench reads a
+    /// line as a bold title only where it opens and closes with `**`. Only a whole line: two bold
+    /// spans abutting mid-line would run into `****`. Both markers are syntax of their own length,
+    /// so every segment stands.
+    fn bold_outside(&mut self, at: usize) {
+        let bold = if self.emphasis.open.italic {
+            "***"
+        } else {
+            "**"
+        };
+        let end = self.markdown.len();
+        self.markdown
+            .replace_range(end - bold.len() - 4..end, &format!("</u>{bold}"));
+        self.markdown
+            .replace_range(at..at + bold.len() + 3, &format!("{bold}<u>"));
     }
 
     /// A style's mark: written, or, where the caller asked for unstyled text (decision #158), left
@@ -4408,7 +4437,7 @@ impl Emit {
     fn settle(&mut self, inside: bool) {
         if let Some(mark) = self.emphasis.mark.take() {
             if !inside {
-                self.close_emphasis();
+                self.close_emphasis(false);
             }
             self.flush_held();
             self.write_source(&mark.text, mark.chars, &mark.node, mark.continuing);
@@ -4468,9 +4497,10 @@ impl Emit {
             self.flush_held();
             self.write_mark(&inner(style).markers(markup).0);
             self.emphasis.open = style;
+            self.emphasis.whole_line = None;
             return;
         }
-        self.close_emphasis();
+        self.close_emphasis(false);
         self.flush_held();
         // Decision #154 (review): GFM opens no `~~` set between a letter or digit and punctuation,
         // so `cost~~-~~effective` is text: a run whose `~~` would stand so is not written struck.
@@ -4487,8 +4517,13 @@ impl Emit {
                 style.strike = false;
             }
         }
-        self.write_mark(&style.markers(markup).0);
+        // Decision #171: a span opening its line `<u>**` may be the whole line.
+        let (marker, at) = (style.markers(markup).0, self.markdown.len());
+        let opens_line = at == 0 || self.markdown.ends_with('\n');
+        self.write_mark(&marker);
         self.emphasis.open = style;
+        self.emphasis.whole_line =
+            (!self.emphasis.unwritten && opens_line && marker.starts_with("<u>**")).then_some(at);
     }
 
     /// Bytes this exporter invented. Coalesced with an immediately preceding syntax segment.
@@ -4510,7 +4545,7 @@ impl Emit {
                 self.emphasis.held.push_str(s);
                 return;
             }
-            self.close_emphasis();
+            self.close_emphasis(s.starts_with('\n'));
             self.flush_held();
             if s.contains('\n') {
                 self.emphasis.heading = false;
@@ -4615,7 +4650,7 @@ impl Emit {
         }
         if self.emphasis.markup.is_some() {
             self.settle(true);
-            self.close_emphasis();
+            self.close_emphasis(false);
             self.flush_held();
         }
         let start = self.markdown.len();
@@ -10498,6 +10533,92 @@ pub(crate) mod tests {
         assert_eq!(words(&["~5", "km"], &[0], &[]), "~5km\n");
         assert_eq!(words(&["~", "5 km"], &[0, 1], &[]), "~5 km\n");
         assert_eq!(words(&["500", "~"], &[0], &[]), "500~\n");
+    }
+
+    /// **A whole line in bold and underlined alone is `**<u>X</u>**`** (decision #171): the
+    /// same markers, the bold outside, so a reader taking a line that opens and closes with `**`
+    /// for a bold title takes it. The text keeps its anchors and the markers are syntax. Part of
+    /// a line, a line whose bold stops short of its underline, a strikeout, an underline without
+    /// bold, unstyled text and HTML keep what they wrote.
+    #[test]
+    fn a_whole_bold_underlined_line_has_its_bold_outside() {
+        let lines = |bold: &[usize], italic: &[usize], struck: &[usize], under: &[usize]| {
+            with_marks(
+                with_styles(repr_of_lines(&["Title", "Body"]), bold, italic),
+                struck,
+                under,
+            )
+        };
+        let a = artifact_of(lines(&[0], &[], &[], &[0]));
+        assert_eq!(a.markdown, "**<u>Title</u>**\n\nBody\n");
+        assert!(a.anchor_map.is_invertible(5, 10), "the text is source");
+        assert!(!a.anchor_map.is_invertible(0, 5), "the marker is syntax");
+        assert!(!a.anchor_map.is_invertible(10, 16), "the marker is syntax");
+        assert!(a.coverage.balances());
+        let md = |r| artifact_of(r).markdown;
+        assert_eq!(
+            md(lines(&[1], &[1], &[], &[1])),
+            "Title\n\n***<u>Body</u>***\n"
+        );
+        assert_eq!(
+            md(lines(&[0], &[], &[0], &[0])),
+            "<u>~~**Title**~~</u>\n\nBody\n"
+        );
+        assert_eq!(md(lines(&[], &[0], &[], &[0])), "<u>*Title*</u>\n\nBody\n");
+        assert_eq!(md(lines(&[], &[], &[], &[0])), "<u>Title</u>\n\nBody\n");
+
+        let line = |bold: &[usize], under: &[usize]| {
+            md(with_marks(
+                with_styles(styled_line(), bold, &[]),
+                &[],
+                under,
+            ))
+        };
+        assert_eq!(line(&[6], &[6]), "Total revenue rose <u>**sharply**</u>\n");
+        assert_eq!(line(&[0], &[0]), "<u>**Total**</u> revenue rose sharply\n");
+        assert_eq!(
+            line(&[0], &[0, 1, 2, 3, 4, 5, 6]),
+            "<u>**Total** revenue rose sharply</u>\n"
+        );
+
+        // Unstyled text writes neither order, and keeps the styled text's segments.
+        let repr = lines(&[0], &[], &[], &[0]);
+        let plain = artifact_with(
+            &repr,
+            ProjectionOptions {
+                unstyled: true,
+                ..ProjectionOptions::default()
+            },
+        );
+        assert_eq!(plain.markdown, "Title\n\nBody\n");
+        let sources = |a: &MarkdownArtifact| -> Vec<Vec<String>> {
+            let source = a.anchor_map.segments.iter();
+            source
+                .filter(|s| s.kind == SegmentKind::Source)
+                .map(|s| s.node_ids.clone())
+                .collect()
+        };
+        assert_eq!(sources(&plain), sources(&a));
+        let html = crate::html::to_html(
+            &repr,
+            &Profile::default().parser_version,
+            &Profile::default().profile_sha256().unwrap(),
+            &Profile::default().html_rule,
+        )
+        .unwrap()
+        .html;
+        assert!(html.contains("<u><strong>Title</strong></u>"), "{html}");
+
+        // The projection's end ends the line; other syntax after the span does not.
+        let nodes = &repr.payload().nodes;
+        let mut e = Emit::with_emphasis(nodes, Markup::Markdown);
+        e.source("Title", nodes[0].id.as_str());
+        e.finish();
+        assert_eq!(e.markdown, "**<u>Title</u>**");
+        let mut e = Emit::with_emphasis(nodes, Markup::Markdown);
+        e.source("Title", nodes[0].id.as_str());
+        e.syntax("|\n");
+        assert_eq!(e.markdown, "<u>**Title**</u>|\n");
     }
 
     /// **A run set as a superscript or a subscript is written `<sup>` or `<sub>`** (decision

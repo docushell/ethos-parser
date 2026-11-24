@@ -32,6 +32,22 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### A whole bold, underlined line is written `**<u>X</u>**` (decision #171)
+
+`markdown_rule` stays `markdown-blocks-v14`, unreleased, which takes the change in; the profile
+does not move.
+
+- **A Markdown line whose text is all one span in bold and underlined, with nothing else on it, is
+  written `**<u>X</u>**`**, the bold outside the underline, where decision #154 wrote
+  `<u>**X**</u>`. The same markers in another order: the text, its anchors and every segment are
+  as before. A reader that takes a line opening and closing with `**` for a bold title, as
+  ParseBench's title and bold rules do, now takes it.
+- **Only that.** A span on part of a line keeps `<u>**x**</u>`: two bold spans side by side
+  mid-line would run into `****`. So does a line whose bold stops short of its underline or whose
+  emphasis changes inside it, a struck one (`<u>~~**x**~~</u>`), and an underline with no bold.
+  HTML keeps `<u><strong>`, and `--unstyled` writes no mark either way.
+- **Measured**: pending. Fourteen mutations, each caught.
+
 ### A TrueType glyph its program names `Euro` reads as `€` (decision #170)
 
 `text_code_rule` moves `declared-font-codes-v4` -> `declared-font-codes-v5`, so `profile_sha256`
