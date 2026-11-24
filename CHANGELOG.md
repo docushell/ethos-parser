@@ -41,11 +41,18 @@ the profile do not move. Without `--ocr` nothing moves.
   indices is decoded and read**, where the recognizer refused it `colour-space-not-read:jpeg` and
   the page gave no text. Its samples are read as stored, through the colour space and `/Decode`,
   as a Flate stream's are. PDF 32000-1 §7.4.8 has the filter undo only the JPEG's own colour
-  transform, so an Adobe YCCK file is turned back to CMYK as libjpeg turns it, and the inks an
-  Adobe file stores inverted are its `/Decode`'s to turn. MuPDF reads the benchmarks' three such
-  pages to the same samples, within 6 of 255 where the two decoders round apart.
+  transform, so four components under Adobe transform 1 or 2 are YCCK, turned back to CMYK as
+  libjpeg turns them (another transform is refused by name), and the inks an Adobe file stores
+  inverted are its `/Decode`'s to turn. MuPDF reads the benchmarks' three such pages to the same
+  samples, within 6 of 255 where the two decoders round apart. `/DecodeParms /ColorTransform` is
+  not carried: four components with no Adobe segment read as CMYK whatever it says (no benchmark
+  image sets it to 1).
+- **Sized from its header before it is decoded.** A frame other than its dictionary's is refused
+  `image-size-mismatch` and one past the 512 MiB `image` allows a gray or RGB JPEG is refused
+  `stream-not-decoded`, as theirs is, so a 10 KB PDF can no longer make the recognizer allocate
+  8 GB (QA round 1); a `/BitsPerComponent` other than 8 is refused `bits-per-component-not-read`.
 - **Only that.** Gray and RGB JPEGs read as before. A JPEG whose components its colour space does
-  not hold — three under CMYK, any number but one under a palette — is refused as before.
+  not hold — three under CMYK, any number but one under a palette — is still refused by name.
 - Decoded by `zune-jpeg`, the decoder `image` already runs for gray and RGB JPEGs, now named in
   `ocr/Cargo.toml` to reach the samples as stored: the lockfile gains no crate.
 - **Expected to change**, both ParseBench sets with `--ocr`: three pages, each in both — a court
@@ -53,7 +60,7 @@ the profile do not move. Without `--ocr` nothing moves.
   stored as an Adobe YCCK JPEG, and a page that is one CMYK emblem, read to no useful word. One
   opendataloader-bench page's CMYK image is now read and holds no word: its Markdown is unchanged
   and its record no longer counts the page under `scanned-page-not-recognized`.
-- **Measured**: pending. Fourteen mutations, each caught.
+- **Measured**: pending. Twenty-eight mutations, each caught.
 
 ### A whole bold, underlined line is written `**<u>X</u>**` (decision #171)
 

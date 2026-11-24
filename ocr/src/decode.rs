@@ -175,12 +175,21 @@ fn dct(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
 
 /// A JPEG stream of four inks, or of one index into a palette (decision #172): its samples as
 /// stored, read as a Flate stream's are, through the colour space and `/Decode`. The filter undoes
-/// only the JPEG's own colour transform (32000-1 §7.4.8) — an Adobe YCCK file's back to CMYK, as
-/// libjpeg does — so the inverted inks an Adobe file stores are its `/Decode`'s to turn.
+/// only the JPEG's own colour transform (32000-1 §7.4.8) — four components under Adobe transform 1
+/// or 2 are YCCK, turned back to CMYK as libjpeg does, and zune refuses another — so the inverted
+/// inks an Adobe file stores are its `/Decode`'s to turn. `/DecodeParms /ColorTransform` is not
+/// carried: four components with no Adobe segment are read as CMYK whatever it says.
 fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
     use zune_jpeg::zune_core::{
         bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions,
     };
+    // A JPEG's samples are 8 bits: a dictionary that says otherwise is refused, not read past.
+    if spec.bits_per_component != 8 {
+        return Err(format!(
+            "bits-per-component-not-read:{}",
+            spec.bits_per_component
+        ));
+    }
     // The options `image` decodes the gray and RGB ones with.
     let options = DecoderOptions::default()
         .set_strict_mode(false)
@@ -197,14 +206,23 @@ fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
     if !fits {
         return Err("colour-space-not-read:jpeg".into());
     }
-    jpeg.set_options(jpeg.options().jpeg_set_out_colorspace(stored));
-    let mut px = jpeg
-        .decode()
-        .map_err(|_| "stream-not-decoded".to_string())?;
+    // Sized from the header before a sample is decoded: a frame other than the dictionary's, which
+    // the engine's caps count, or past the allocation `image` allows the gray and RGB ones.
     if jpeg.dimensions() != Some((spec.width as usize, spec.height as usize)) {
         return Err("image-size-mismatch".into());
     }
-    if stored == ColorSpace::YCCK {
+    jpeg.set_options(jpeg.options().jpeg_set_out_colorspace(stored));
+    let size = jpeg.output_buffer_size().ok_or("stream-not-decoded")?;
+    image::Limits::default()
+        .reserve_usize(size)
+        .map_err(|_| "stream-not-decoded".to_string())?;
+    let mut px = jpeg
+        .decode()
+        .map_err(|_| "stream-not-decoded".to_string())?;
+    // zune labels Adobe transform 1 on four components CMYK.
+    if stored == ColorSpace::YCCK
+        || (stored == ColorSpace::CMYK && adobe_transform(data) == Some(1))
+    {
         // libjpeg's YCbCr to RGB in 16-bit fixed point (jdcolor.c), each ink 255 less it.
         for p in px.as_chunks_mut::<4>().0 {
             let (y, cb, cr) = (
@@ -219,6 +237,23 @@ fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
         }
     }
     samples(spec, &px)
+}
+
+/// The colour transform of a JPEG's Adobe APP14 segment, the last if several, as libjpeg reads it.
+/// Segments are walked from the start, each 0xFF, a marker and a big-endian length counting
+/// itself, until none begins where the last ended.
+fn adobe_transform(jpeg: &[u8]) -> Option<u8> {
+    let (mut at, mut transform) = (2, None);
+    while let Some(&[0xFF, marker, hi, lo]) = jpeg.get(at..at + 4) {
+        let end = at + 2 + usize::from(u16::from_be_bytes([hi, lo]));
+        if let (0xEE, Some([b'A', b'd', b'o', b'b', b'e', _, _, _, _, _, _, t, ..])) =
+            (marker, jpeg.get(at + 4..end))
+        {
+            transform = Some(*t);
+        }
+        at = end;
+    }
+    transform
 }
 
 /// Undo a PNG (10-15) or TIFF (2, 8 bits) predictor.
@@ -570,18 +605,52 @@ mod tests {
         )
         .unwrap();
         assert_eq!(inverted.px, inks.px);
+        // A comment, and an APP14 segment not Adobe's, holding a 1 where Adobe's transform sits
+        // after Adobe's own 0: no transform, as libjpeg reads them.
+        let jpeg = flat_jpeg(&[64, 32, 16, 8], Some(0));
+        let decoys = [
+            &[0xFF, 0xFE, 0, 14][..],
+            b"Adobe",
+            &[0, 0, 0, 0, 0, 0, 1],
+            &[0xFF, 0xEE, 0, 14],
+            b"Other",
+            &[0, 0, 0, 0, 0, 0, 1],
+        ]
+        .concat();
+        let jpeg = [&jpeg[..18], &decoys, &jpeg[18..]].concat();
+        let decoyed = pdf(&dct_spec(8, Colour::Cmyk, None), &jpeg).unwrap();
+        assert_eq!(decoyed.px, inks.px);
     }
 
     #[test]
     fn an_adobe_ycck_jpeg_is_turned_back_to_its_inks() {
         // Y 150, Cb 168, Cr 98 is RGB 108, 158, 221 by libjpeg, as MuPDF decodes it: inks 147, 97
-        // and 34, over K 10.
-        let img = pdf(
-            &dct_spec(8, Colour::Cmyk, None),
-            &flat_jpeg(&[150, 168, 98, 10], Some(2)),
-        )
-        .unwrap();
-        assert!(img.px.chunks(3).all(|p| p == [211, 148, 98]));
+        // and 34, over K 10. libjpeg, MuPDF and pdf.js read four components as YCCK under any
+        // Adobe transform but 0, so transform 1 reads the same (QA round 1), and under the last
+        // of two Adobe segments.
+        let ycck = flat_jpeg(&[150, 168, 98, 10], Some(1));
+        let adobe0 = [&[0xFF, 0xEE, 0, 14][..], b"Adobe", &[0, 100, 0, 0, 0, 0, 0]].concat();
+        for jpeg in [
+            flat_jpeg(&[150, 168, 98, 10], Some(2)),
+            [&ycck[..2], &adobe0, &ycck[2..]].concat(),
+            ycck,
+        ] {
+            let img = pdf(&dct_spec(8, Colour::Cmyk, None), &jpeg).unwrap();
+            assert!(img.px.chunks(3).all(|p| p == [211, 148, 98]));
+        }
+        // Past either end of a byte an ink is clamped, as MuPDF decodes these: inks 5, 30, 0
+        // (blue 378) and 255, 159, 250 (red -174), over K 0.
+        for (ycc, bgr) in [
+            ([250, 200, 128], [255, 225, 250]),
+            ([5, 128, 0], [5, 96, 0]),
+        ] {
+            let img = pdf(
+                &dct_spec(8, Colour::Cmyk, None),
+                &flat_jpeg(&[ycc[0], ycc[1], ycc[2], 0], Some(2)),
+            )
+            .unwrap();
+            assert!(img.px.chunks(3).all(|p| p == bgr), "{ycc:?}");
+        }
     }
 
     #[test]
@@ -593,6 +662,44 @@ mod tests {
         };
         let img = pdf(&dct_spec(8, c, None), &flat_jpeg(&[1], None)).unwrap();
         assert!(img.px.chunks(3).all(|p| p == [255, 0, 0]));
+        // One component is gray to libjpeg whatever an Adobe segment says.
+        let gray = Colour::Indexed {
+            base: Base::Gray,
+            hival: 255,
+            lookup: (0..=255).collect(),
+        };
+        let img = pdf(&dct_spec(8, gray, None), &flat_jpeg(&[100], Some(1))).unwrap();
+        assert!(img.px.iter().all(|&v| v == 100));
+    }
+
+    /// `jpeg` with its frame's height and width set, its one block of scan unchanged.
+    fn framed(mut jpeg: Vec<u8>, w: u16, h: u16) -> Vec<u8> {
+        let at = jpeg.windows(2).position(|m| m == [0xFF, 0xC0]).unwrap() + 5;
+        jpeg[at..at + 4].copy_from_slice(&[h.to_be_bytes(), w.to_be_bytes()].concat());
+        jpeg
+    }
+
+    #[test]
+    fn a_jpeg_is_sized_by_its_header_before_it_is_decoded() {
+        // QA round 1: a 16000 x 16000 frame, one block of scan, under an 8 x 8 dictionary took
+        // 1 GB before it was refused. Its size is refused from the header, before the allocation
+        // the gray and RGB path refuses; a frame past that allocation is refused as theirs is.
+        let jpeg = framed(flat_jpeg(&[64, 32, 16, 8], Some(0)), 16000, 16000);
+        let refused = pdf(&dct_spec(8, Colour::Cmyk, None), &jpeg).unwrap_err();
+        assert_eq!(refused, "image-size-mismatch");
+        // 11586 x 11586 x 4 bytes is past 512 MiB.
+        let jpeg = framed(flat_jpeg(&[64, 32, 16, 8], Some(0)), 11586, 11586);
+        let mut s = dct_spec(11586, Colour::Cmyk, None);
+        s.height = 11586;
+        assert_eq!(pdf(&s, &jpeg).unwrap_err(), "stream-not-decoded");
+    }
+
+    #[test]
+    fn a_jpeg_under_a_depth_other_than_eight_is_refused_by_name() {
+        let mut s = dct_spec(8, Colour::Cmyk, None);
+        s.bits_per_component = 4;
+        let refused = pdf(&s, &flat_jpeg(&[64, 32, 16, 8], Some(0))).unwrap_err();
+        assert_eq!(refused, "bits-per-component-not-read:4");
     }
 
     #[test]
