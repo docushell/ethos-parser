@@ -724,8 +724,10 @@ fn page_heading_lines(
 
 /// Decision #167: where the tree and a detector describe the same grid, a cell the tree tags `/TH`
 /// is a header cell of the table the detector found — when the detected cell at its position holds
-/// a run of the marked content the `/TH` cites on this page. Where the content does not meet, no
-/// tag is carried onto another cell. `mcid_of` gives a detected cell's run's marked-content id.
+/// a run of the marked content the `/TH` cites on this page, or, where the `/TH` cites none, holds
+/// no run: an empty header cell, a table's blank top-left corner among them, as a table read from
+/// the tags flags it. Where the content does not meet, no tag is carried onto another cell.
+/// `mcid_of` gives a detected cell's run's marked-content id.
 fn carry_tagged_headers(
     cells: &mut [crate::tables::DetectedCell],
     tagged: &[crate::structure::TaggedCell],
@@ -734,7 +736,8 @@ fn carry_tagged_headers(
 ) {
     let heads: std::collections::BTreeMap<(u32, u32), Vec<i64>> = tagged
         .iter()
-        .filter(|t| t.header && t.page == Some(page))
+        // A `/TH` citing no content names no page.
+        .filter(|t| t.header && (t.page == Some(page) || t.mcids.is_empty()))
         .map(|t| {
             let mut mcids = t.mcids.clone();
             mcids.sort_unstable();
@@ -746,10 +749,13 @@ fn carry_tagged_headers(
     }
     for cell in cells {
         if let Some(mcids) = heads.get(&(cell.position.row, cell.position.column)) {
-            cell.header |= cell
-                .run_indices
-                .iter()
-                .any(|&i| mcid_of(i).is_some_and(|m| mcids.binary_search(&m).is_ok()));
+            cell.header |= if mcids.is_empty() {
+                cell.run_indices.is_empty()
+            } else {
+                cell.run_indices
+                    .iter()
+                    .any(|&i| mcid_of(i).is_some_and(|m| mcids.binary_search(&m).is_ok()))
+            };
         }
     }
 }
@@ -4980,7 +4986,7 @@ mod tests {
     /// **A `/TH` reaches only the detected cell that holds its content** (decision #167): on a grid
     /// the tree agrees with, the cell at the `/TH`'s position is a header where it holds a run of
     /// the marked content the `/TH` cites on this page, and not where it holds other content, nor
-    /// where the `/TH` names another page.
+    /// where the `/TH` names another page; a `/TH` citing no content reaches a cell holding none.
     #[test]
     fn a_th_is_carried_only_onto_the_cell_holding_its_content() {
         let mut alloc = IdAllocator::new(
@@ -5023,6 +5029,22 @@ mod tests {
         carry_tagged_headers(&mut cells, &tags, here, |i| Some(10 + i as i64));
         let got: Vec<bool> = cells.iter().map(|c| c.header).collect();
         assert_eq!(got, [true, false, false]);
+
+        // A `/TH` citing no content, which names no page: the detected cell holding no run is a
+        // header, a blank corner among them, and one holding a run is not.
+        let mut empty = detected(0, 0);
+        empty.run_indices.clear();
+        let mut cells = vec![empty, detected(1, 1)];
+        let blank = |column: u32| crate::structure::TaggedCell {
+            mcids: Vec::new(),
+            page: None,
+            ..th(column, 0, here)
+        };
+        carry_tagged_headers(&mut cells, &[blank(0), blank(1)], here, |i| {
+            Some(10 + i as i64)
+        });
+        let got: Vec<bool> = cells.iter().map(|c| c.header).collect();
+        assert_eq!(got, [true, false]);
     }
 
     /// **A caption names a figure or a table and heads no section** (decision #159): a caption

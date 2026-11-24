@@ -6060,6 +6060,7 @@ pub(crate) fn plan_tables<'a>(
         head.rows += part.rows - usize::from(skip > 0);
         part.projected = false;
         part.roles.clear();
+        part.headers.clear();
         *erasures.entry(TABLES_JOINED_ACROSS_PAGES).or_insert(0) += 1;
     }
 

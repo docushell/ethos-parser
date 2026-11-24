@@ -384,14 +384,30 @@ fn the_two_projections_disagree_about_the_merge_and_say_so() {
 
 /// **A tagged `/TH` is a `<th>`, and a row of them over the body a `<thead>`** (decision #169):
 /// the 2x2 tagged grid with its cells retagged `/TH` — its first row, its first column, every
-/// cell. GFM's delimiter row is counted only where row 0 is no header the record declares, and
-/// the Markdown does not move.
+/// cell, and its first row with a blank corner. GFM's delimiter row is counted only where row 0
+/// is no header the record declares, and the Markdown does not move.
 #[test]
 fn a_tagged_th_is_a_th_and_a_row_of_them_a_thead() {
     let original = std::fs::read(engine_fixture("tagged-table-agrees")).expect("fixture readable");
     // The fixture's `/TD`s in object order hold A, B (row 0) and C, D (row 1).
-    let retagged = |label: &str, th: &[usize]| {
+    let retagged = |label: &str, th: &[usize], blank_corner: bool| {
         let mut doc = lopdf::Document::load_mem(&original).expect("loads");
+        if blank_corner {
+            // `A` drawn nowhere and its cell citing no content: a blank top-left corner.
+            let page = doc
+                .get_object_mut((4, 0))
+                .and_then(lopdf::Object::as_stream_mut);
+            let page = page.expect("the page's content stream");
+            let drawn = String::from_utf8(page.content.clone()).expect("ASCII");
+            let without = drawn.replace("/TD <</MCID 0>> BDC 1 0 0 1 50 94 Tm (A) Tj EMC ", "");
+            assert_ne!(without, drawn, "the fixture draws `A` in its own sequence");
+            page.set_content(without.into_bytes());
+            doc.get_object_mut((10, 0))
+                .and_then(lopdf::Object::as_dict_mut)
+                .expect("`A`'s cell")
+                .remove(b"K")
+                .expect("cites its content");
+        }
         let mut cells: Vec<lopdf::ObjectId> = doc
             .objects
             .iter()
@@ -430,11 +446,11 @@ fn a_tagged_th_is_a_th_and_a_row_of_them_a_thead() {
             .unwrap_or(0)
     };
 
-    let (h, plain) = retagged("th-none", &[]);
+    let (h, plain) = retagged("th-none", &[], false);
     assert!(!h["html"].as_str().unwrap().contains("<th"));
     assert_eq!(separator(&plain), 1);
 
-    let (h, m) = retagged("th-row", &[0, 1]);
+    let (h, m) = retagged("th-row", &[0, 1], false);
     assert!(
         h["html"].as_str().unwrap().contains(
             "<table>\n<thead>\n<tr>\n<th>A</th>\n<th>B</th>\n</tr>\n</thead>\n<tbody>\n\
@@ -446,7 +462,23 @@ fn a_tagged_th_is_a_th_and_a_row_of_them_a_thead() {
     assert_eq!(separator(&m), 0, "row 0 is the header the record declares");
     assert_eq!(m["markdown"], plain["markdown"]);
 
-    let (h, m) = retagged("th-column", &[0, 2]);
+    // The drawn grid's empty corner holds no run, and its `/TH` cites none: still a header.
+    let (h, m) = retagged("th-corner", &[0, 1], true);
+    assert!(
+        h["html"].as_str().unwrap().contains(
+            "<table>\n<thead>\n<tr>\n<th></th>\n<th>B</th>\n</tr>\n</thead>\n<tbody>\n\
+             <tr>\n<td>C</td>\n<td>D</td>\n</tr>\n</tbody>\n</table>"
+        ),
+        "{}",
+        h["html"]
+    );
+    assert_eq!(
+        separator(&m),
+        0,
+        "a blank corner leaves row 0 the declared header"
+    );
+
+    let (h, m) = retagged("th-column", &[0, 2], false);
     assert!(
         h["html"].as_str().unwrap().contains(
             "<table>\n<tr>\n<th>A</th>\n<td>B</td>\n</tr>\n<tr>\n<th>C</th>\n<td>D</td>\n\
@@ -458,7 +490,7 @@ fn a_tagged_th_is_a_th_and_a_row_of_them_a_thead() {
     assert_eq!(separator(&m), 1, "row 0 holds a cell that is no header");
     assert_eq!(m["markdown"], plain["markdown"]);
 
-    let (h, m) = retagged("th-all", &[0, 1, 2, 3]);
+    let (h, m) = retagged("th-all", &[0, 1, 2, 3], false);
     let html = h["html"].as_str().unwrap();
     assert_eq!(html.matches("<th>").count(), 4);
     assert!(

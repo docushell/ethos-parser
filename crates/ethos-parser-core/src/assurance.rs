@@ -188,7 +188,8 @@ pub mod codes {
     /// `rowspan` and no `colspan`, and its delimiter row makes row 0 a header whatever the
     /// document said. Both are **structural** erasures rather than character ones — the text is
     /// all still there — so this profile-scoped sentence names them and the artifact's own
-    /// `coverage.structural_erasures` counts them per document.
+    /// `coverage.structural_erasures` counts them per document: the delimiter row only on a table
+    /// whose row 0 the record does not declare a header (decision #169), as the sentence says.
     pub const MARKDOWN_TABLE_SPANS_FLATTENED: &str = "markdown-table-spans-flattened";
 
     /// The alignment rule built a candidate lattice on some page and **refused** it.
@@ -710,8 +711,10 @@ impl Capabilities {
                  covering several slots is expanded — its text stays in the origin slot and the \
                  slots it covered come out empty. GFM also has no headerless table, so the \
                  delimiter row after row 0 asserts a header on every table, whether or not the \
-                 record states one: this projection does not read a cell's `header`. Both are \
-                 structural erasures rather than lost characters — \
+                 record states one; the Markdown text reads no cell's `header`, and \
+                 `gfm-row-zero-separator-v1` is counted only on a table whose row 0 the record \
+                 does not declare a header. Both are structural erasures rather than lost \
+                 characters — \
                  every character still reaches the Markdown and the `coverage` census accounts \
                  for it — so each is counted per document in `coverage.structural_erasures` \
                  rather than as a dropped-character bucket that would read `0` and disclose \
@@ -1865,6 +1868,15 @@ mod tests {
             !remaining.contains(&codes::MULTI_COLUMN_READING_ORDER),
             "v1-S5 ships the reading-order rule, so `read in the WRONG ORDER` must be GONE from \
              a profile that claims the capability — same reason, and the same move S2 made"
+        );
+        // Decision #169: the delimiter row is not counted where the record declares row 0 its
+        // header, and the sentence must say so rather than that no `header` is read.
+        let spans = &all_declared[0].detail;
+        assert!(
+            !spans.contains("does not read a cell's `header`")
+                && spans
+                    .contains("counted only on a table whose row 0 the record does not declare"),
+            "{spans}"
         );
     }
 

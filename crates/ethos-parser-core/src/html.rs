@@ -2326,7 +2326,8 @@ mod tests {
         );
         assert!(!html(&[]).contains("<th"));
 
-        // A row holding no cell is no header row, though every cell it holds is flagged.
+        // A row 0 holding no cell is no header row, so a flagged cell under it starts no
+        // `<thead>`.
         let a = artifact_of(with_header_cells(
             &repr_with_table(&["Ann", "Bob"], 3, 1, &[cell(1, 0, &[0]), cell(2, 0, &[1])]),
             &[0],
