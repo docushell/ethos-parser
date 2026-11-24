@@ -86,6 +86,14 @@ server. The output is byte-identical at the default count, two threads and one.
   **Amended:** CCITT was listed here and is not decoded — no decoder is in the dependency tree, and
   one is a new dependency or about 500 lines. A CCITT page (5 of ParseBench's) is refused by name,
   `filter-not-decoded:CCITTFaxDecode`, as JBIG2 and JPEG 2000 are.
+  **Amended (decision #172):** a DCT stream was read in gray or RGB only, so a JPEG of four inks
+  (DeviceCMYK, or ICC-based with four components) or of a palette's indices was refused
+  `colour-space-not-read:jpeg`. Its samples are now read as stored, through the colour space and
+  `/Decode` as a Flate stream's are. The filter undoes only the JPEG's own colour transform (PDF
+  32000-1 §7.4.8): an Adobe YCCK file is turned back to CMYK as libjpeg turns it, and the inks
+  an Adobe file stores inverted are its `/Decode`'s to turn. MuPDF reads the benchmarks' three
+  such pages to the same samples, within 6 of 255 where the two decoders round apart. A JPEG
+  whose components its colour space does not hold is still refused so.
 - **Its placement is any of the eight axis-aligned orientations** of the unit square, after the
   page's `/Rotate`. The raster is turned upright before it is read and every box is mapped back.
 - **An image file is a one-page document.** PNG and JPEG, known by their signatures at byte 0, are

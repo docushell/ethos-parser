@@ -32,6 +32,29 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### `--ocr` reads a scan stored as a CMYK or indexed JPEG (decision #172)
+
+The recognizer's rule id stays `ppocrv5-mobile-v1`, which no release carries; its identity and
+the profile do not move. Without `--ocr` nothing moves.
+
+- **A JPEG of four inks — `/DeviceCMYK`, or ICC-based with four components — or of a palette's
+  indices is decoded and read**, where the recognizer refused it `colour-space-not-read:jpeg` and
+  the page gave no text. Its samples are read as stored, through the colour space and `/Decode`,
+  as a Flate stream's are. PDF 32000-1 §7.4.8 has the filter undo only the JPEG's own colour
+  transform, so an Adobe YCCK file is turned back to CMYK as libjpeg turns it, and the inks an
+  Adobe file stores inverted are its `/Decode`'s to turn. MuPDF reads the benchmarks' three such
+  pages to the same samples, within 6 of 255 where the two decoders round apart.
+- **Only that.** Gray and RGB JPEGs read as before. A JPEG whose components its colour space does
+  not hold — three under CMYK, any number but one under a palette — is refused as before.
+- Decoded by `zune-jpeg`, the decoder `image` already runs for gray and RGB JPEGs, now named in
+  `ocr/Cargo.toml` to reach the samples as stored: the lockfile gains no crate.
+- **Expected to change**, both ParseBench sets with `--ocr`: three pages, each in both — a court
+  order whose small indexed JPEGs kept its whole composed page from being read, a list of species
+  stored as an Adobe YCCK JPEG, and a page that is one CMYK emblem, read to no useful word. One
+  opendataloader-bench page's CMYK image is now read and holds no word: its Markdown is unchanged
+  and its record no longer counts the page under `scanned-page-not-recognized`.
+- **Measured**: pending. Fourteen mutations, each caught.
+
 ### A whole bold, underlined line is written `**<u>X</u>**` (decision #171)
 
 `markdown_rule` stays `markdown-blocks-v14`, unreleased, which takes the change in; the profile

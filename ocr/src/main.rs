@@ -48,6 +48,8 @@ use serde::{Deserialize, Serialize};
 use pipeline::{Bgr, Line, Quad, Recognizer};
 
 /// The pipeline's rule id: moves whenever any step around the models changes what is written.
+/// No release carries it yet, so a change before the first is taken in rather than moving it:
+/// the latest, decision #172, decodes a JPEG of four inks or of a palette's indices, refused before.
 pub const RULE: &str = "ppocrv5-mobile-v1";
 pub const DET_SHA256: &str = "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae";
 pub const REC_SHA256: &str = "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8";

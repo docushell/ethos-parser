@@ -147,12 +147,14 @@ pub fn pdf(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
     samples(spec, &bytes)
 }
 
-/// A JPEG stream: gray or RGB, inverted where `/Decode` says so.
+/// A JPEG stream: gray or RGB, inverted where `/Decode` says so; four inks or a palette's
+/// indices by `dct_samples`.
 fn dct(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
     let comps = match &spec.colour {
         Some(Colour::Gray) => 1,
         Some(Colour::Rgb) => 3,
-        _ => return Err("colour-space-not-read:jpeg".into()),
+        Some(Colour::Cmyk | Colour::Indexed { .. }) => return dct_samples(spec, data),
+        None => return Err("colour-space-not-read:jpeg".into()),
     };
     let img = image::load_from_memory_with_format(data, image::ImageFormat::Jpeg)
         .map_err(|_| "stream-not-decoded".to_string())?;
@@ -169,6 +171,54 @@ fn dct(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
         Some(_) => return Err("decode-array-not-read".into()),
     }
     Ok(out)
+}
+
+/// A JPEG stream of four inks, or of one index into a palette (decision #172): its samples as
+/// stored, read as a Flate stream's are, through the colour space and `/Decode`. The filter undoes
+/// only the JPEG's own colour transform (32000-1 §7.4.8) — an Adobe YCCK file's back to CMYK, as
+/// libjpeg does — so the inverted inks an Adobe file stores are its `/Decode`'s to turn.
+fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
+    use zune_jpeg::zune_core::{
+        bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions,
+    };
+    // The options `image` decodes the gray and RGB ones with.
+    let options = DecoderOptions::default()
+        .set_strict_mode(false)
+        .set_max_width(usize::MAX)
+        .set_max_height(usize::MAX);
+    let mut jpeg = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(data), options);
+    jpeg.decode_headers()
+        .map_err(|_| "stream-not-decoded".to_string())?;
+    let stored = jpeg.input_colorspace().ok_or("stream-not-decoded")?;
+    let fits = match spec.colour {
+        Some(Colour::Cmyk) => matches!(stored, ColorSpace::CMYK | ColorSpace::YCCK),
+        _ => stored == ColorSpace::Luma,
+    };
+    if !fits {
+        return Err("colour-space-not-read:jpeg".into());
+    }
+    jpeg.set_options(jpeg.options().jpeg_set_out_colorspace(stored));
+    let mut px = jpeg
+        .decode()
+        .map_err(|_| "stream-not-decoded".to_string())?;
+    if jpeg.dimensions() != Some((spec.width as usize, spec.height as usize)) {
+        return Err("image-size-mismatch".into());
+    }
+    if stored == ColorSpace::YCCK {
+        // libjpeg's YCbCr to RGB in 16-bit fixed point (jdcolor.c), each ink 255 less it.
+        for p in px.as_chunks_mut::<4>().0 {
+            let (y, cb, cr) = (
+                i32::from(p[0]),
+                i32::from(p[1]) - 128,
+                i32::from(p[2]) - 128,
+            );
+            let ink = |d: i32| (255 - (y + d).clamp(0, 255)) as u8;
+            p[0] = ink((91881 * cr + 32768) >> 16);
+            p[1] = ink((-22554 * cb - 46802 * cr + 32768) >> 16);
+            p[2] = ink((116130 * cb + 32768) >> 16);
+        }
+    }
+    samples(spec, &px)
 }
 
 /// Undo a PNG (10-15) or TIFF (2, 8 bits) predictor.
@@ -450,5 +500,119 @@ mod tests {
         let mut s = spec(1, 1, 8, Some(Colour::Gray));
         s.filters = vec!["JPXDecode".into()];
         assert_eq!(pdf(&s, &[0]).unwrap_err(), "filter-not-decoded:JPXDecode");
+    }
+
+    /// A baseline JPEG of 8 by 8 samples, each component one flat value: a quantisation table of
+    /// 8s, so a value v is the DC coefficient v - 128; a DC table whose code for each category is
+    /// the category in four bits; an AC table of the end of block alone. `adobe` writes an APP14
+    /// segment with that colour transform.
+    fn flat_jpeg(values: &[u8], adobe: Option<u8>) -> Vec<u8> {
+        let n = values.len() as u8;
+        let mut j = vec![0xFF, 0xD8];
+        if let Some(t) = adobe {
+            j.extend([0xFF, 0xEE, 0, 14]);
+            j.extend(b"Adobe");
+            j.extend([0, 100, 0, 0, 0, 0, t]);
+        }
+        j.extend([0xFF, 0xDB, 0, 67, 0]);
+        j.extend([8; 64]);
+        j.extend([0xFF, 0xC0, 0, 8 + 3 * n, 8, 0, 8, 0, 8, n]);
+        (1..=n).for_each(|c| j.extend([c, 0x11, 0]));
+        j.extend([0xFF, 0xC4, 0, 31, 0x00, 0, 0, 0, 12]);
+        j.extend([0; 12]);
+        j.extend(0..12);
+        j.extend([0xFF, 0xC4, 0, 20, 0x10, 1]);
+        j.extend([0; 16]);
+        j.extend([0xFF, 0xDA, 0, 6 + 2 * n, n]);
+        (1..=n).for_each(|c| j.extend([c, 0]));
+        j.extend([0, 63, 0]);
+        let mut bits = Vec::new();
+        for &v in values {
+            let d = i32::from(v) - 128;
+            let category = 32 - d.unsigned_abs().leading_zeros();
+            let extra = if d < 0 { d - 1 } else { d };
+            bits.extend((0..4).rev().map(|k| (category >> k) & 1 == 1));
+            bits.extend((0..category).rev().map(|k| (extra >> k) & 1 == 1));
+            bits.push(false);
+        }
+        bits.resize(bits.len().div_ceil(8) * 8, true);
+        for byte in bits.chunks(8) {
+            let b = byte.iter().fold(0u8, |a, &x| (a << 1) | u8::from(x));
+            j.push(b);
+            if b == 0xFF {
+                j.push(0);
+            }
+        }
+        j.extend([0xFF, 0xD9]);
+        j
+    }
+
+    fn dct_spec(width: u32, colour: Colour, decode: Option<Vec<f64>>) -> PdfImage {
+        let mut s = spec(width, 8, 8, Some(colour));
+        s.filters = vec!["DCTDecode".into()];
+        s.decode = decode;
+        s
+    }
+
+    #[test]
+    fn a_cmyk_jpeg_is_read_as_its_inks_through_decode() {
+        // Decision #172: inks C 64, M 32, Y 16, K 8 as stored, and stored inverted, as an Adobe
+        // file stores them, under `/Decode [1 0 1 0 1 0 1 0]`: the same colour.
+        let inks = pdf(
+            &dct_spec(8, Colour::Cmyk, None),
+            &flat_jpeg(&[64, 32, 16, 8], Some(0)),
+        )
+        .unwrap();
+        assert!(inks.px.chunks(3).all(|p| p == [231, 215, 183]));
+        let inverted = pdf(
+            &dct_spec(8, Colour::Cmyk, Some([1.0, 0.0].repeat(4))),
+            &flat_jpeg(&[191, 223, 239, 247], Some(0)),
+        )
+        .unwrap();
+        assert_eq!(inverted.px, inks.px);
+    }
+
+    #[test]
+    fn an_adobe_ycck_jpeg_is_turned_back_to_its_inks() {
+        // Y 150, Cb 168, Cr 98 is RGB 108, 158, 221 by libjpeg, as MuPDF decodes it: inks 147, 97
+        // and 34, over K 10.
+        let img = pdf(
+            &dct_spec(8, Colour::Cmyk, None),
+            &flat_jpeg(&[150, 168, 98, 10], Some(2)),
+        )
+        .unwrap();
+        assert!(img.px.chunks(3).all(|p| p == [211, 148, 98]));
+    }
+
+    #[test]
+    fn an_indexed_jpeg_looks_up_its_palette() {
+        let c = Colour::Indexed {
+            base: Base::Rgb,
+            hival: 1,
+            lookup: vec![255, 0, 0, 0, 0, 255],
+        };
+        let img = pdf(&dct_spec(8, c, None), &flat_jpeg(&[1], None)).unwrap();
+        assert!(img.px.chunks(3).all(|p| p == [255, 0, 0]));
+    }
+
+    #[test]
+    fn a_jpeg_its_colour_space_does_not_hold_or_of_another_size_is_refused_by_name() {
+        let gray = Colour::Indexed {
+            base: Base::Gray,
+            hival: 255,
+            lookup: (0..=255).collect(),
+        };
+        for (colour, values, adobe) in [
+            (Colour::Cmyk, &[200, 90, 60][..], None),
+            (Colour::Cmyk, &[1], None),
+            (gray, &[64, 32, 16, 8], Some(0)),
+        ] {
+            let jpeg = flat_jpeg(values, adobe);
+            let refused = pdf(&dct_spec(8, colour, None), &jpeg).unwrap_err();
+            assert_eq!(refused, "colour-space-not-read:jpeg");
+        }
+        let jpeg = flat_jpeg(&[64, 32, 16, 8], Some(0));
+        let refused = pdf(&dct_spec(4, Colour::Cmyk, None), &jpeg).unwrap_err();
+        assert_eq!(refused, "image-size-mismatch");
     }
 }
