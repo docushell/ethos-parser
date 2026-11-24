@@ -8209,9 +8209,9 @@ pub(crate) mod tests {
     }
 
     /// **Not where the record declares row 0 its header** (decision #169): the delimiter row then
-    /// says what the document said. A row 0 with a cell that is no header, or holding no cell, is
-    /// still claimed; a table joined across pages is claimed by its first page's row 0; and not a
-    /// byte of the Markdown moves.
+    /// says what the document said, a hole beside its flagged cells included. A row 0 with a cell
+    /// that is no header, or holding no cell, is still claimed; a table joined across pages is
+    /// claimed by its first page's row 0; and not a byte of the Markdown moves.
     #[test]
     fn a_header_row_the_record_declares_is_no_erasure() {
         let flagged = |repr: &DocumentRepresentation, cells: &[(usize, usize)]| {
@@ -8253,6 +8253,15 @@ pub(crate) mod tests {
             1,
             "a row 0 holding no cell"
         );
+        // A hole beside row 0's flagged cell is no cell of it, so row 0 is still declared.
+        let hole = repr_with_table(
+            &["B", "C", "D"],
+            2,
+            2,
+            &[cell(0, 1, &[0]), cell(1, 0, &[1]), cell(1, 1, &[2])],
+        );
+        let a = artifact_of(flagged(&hole, &[(0, 0)]));
+        assert_eq!(erasure(&a, GFM_ROW_ZERO_SEPARATOR), 0, "a hole in row 0");
 
         let joined = paged_tables(&staff(&[]), &[FIRST, SECOND], crate::TABLE_DETECTION_V14);
         let plain = artifact_of(joined.clone());

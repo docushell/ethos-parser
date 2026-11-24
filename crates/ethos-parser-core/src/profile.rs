@@ -898,9 +898,10 @@ pub const TABLE_DETECTION_TAGGED_V1: &str = "tagged-tables-v1";
 /// v2 (decision #167): the same tables from the same tags, and each cell the tree tags `/TH` a
 /// header cell — on a table read from the tags, and on a table a detector found where the tree
 /// describes the same grid (the tagged-versus-geometric check passes) and the detected cell holds
-/// the `/TH`'s marked content, or, where the `/TH` cites none, holds no run: a blank top-left
-/// corner is a header cell on both kinds of table. Where the two grids differ no tag is carried
-/// onto the detected one.
+/// the `/TH`'s marked content, or, where the `/TH` cites no content the page draws, holds no run
+/// while another tagged cell's content lies in its detected cell: a blank top-left corner is a
+/// header cell on both kinds of table. Where the two grids differ no tag is carried onto the
+/// detected one.
 pub const TABLE_DETECTION_TAGGED_V2: &str = "tagged-tables-v2";
 
 /// The rule that infers a grid from the **whitespace a table leaves across its rows** (decision

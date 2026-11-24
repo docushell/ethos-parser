@@ -43,16 +43,20 @@ left both projections as they were. HTML now reads it, and so does one Markdown 
 - **The leading rows of flagged cells are a `<thead>`**: each row holding a cell, and every cell
   starting in it flagged, with a row of the table under them. A table every row of which is
   flagged writes its `<th>` cells with no `<thead>`, as there is no body for them to head; and the
-  rows the record declares stop above the last row a merge in them reaches past, so none of their
-  `rowspan`s crosses into the `<tbody>`. Decision #99's header, read from a column group's spans,
-  stands: a table takes the more rows of the two.
+  header the record declares stops above the last row a merge in it reaches past, so it cuts no
+  `rowspan`. Decision #99's header, read from a column group's spans, stands: a table takes the
+  more rows of the two, and where decision #99's is the more it is not yet cut so (a follow-up).
 - **Markdown counts `gfm-row-zero-separator-v1` only where row 0 is no header the record
   declares.** Where it is, GFM's delimiter row says what the document said. Not a byte of the
   Markdown changes; the `markdown-table-spans-flattened` limitation says so, where it said the
   projection reads no cell's `header`.
 - **A tagged `/TH` citing no content is a header on a drawn grid too**, where the detected cell
   at its position holds no run: a blank top-left corner, flagged on a table read from the tags,
-  was not flagged on the ruled grid the same tags describe, so its row was no `<thead>` there.
+  was not flagged on the ruled grid the same tags describe, so its row was no `<thead>` there, and
+  in `elements` the body cells under it now name its header cells (`column_headers`). A `/TH`
+  whose marked content wraps nothing counts as citing none. Such a `/TH` has no content to check
+  its pairing by, so it is carried only where another of the table's tagged cells has its content
+  in its detected cell; a grid paired with the wrong table of its shape gets no flag from it.
   Folded into `tagged-tables-v2`, unreleased (decision #167).
 
 `html-blocks-v14`, `markdown-blocks-v14` and `tagged-tables-v2`, unreleased, fold it in;
@@ -61,9 +65,11 @@ left both projections as they were. HTML now reads it, and so does one Markdown 
 **Measured**: pending.
 
 Tested on a header row, a row header, a row flagged in part, every row flagged, a row holding no
-cell, a merge a header would cut, a header read from spans beside one the record declares, a table
-joined across pages with its repeated header left out and kept, and a tagged PDF retagged `/TH`
-through the CLI, its drawn grid's corner left blank among them; twenty-one mutations, each caught.
+cell, a hole in a header row, a merge a header would cut, merges carried from row to row, a header
+read from spans beside one the record declares, a table joined across pages with its repeated
+header left out and kept, a tagged PDF retagged `/TH` through the CLI, its drawn grid's corner left
+blank among them, and an empty `/TH` whose marked content wraps nothing or whose table is paired
+with the wrong grid; twenty-eight mutations, each caught by a failing test.
 
 ### A README with badges, a flow diagram and benchmarks beside parsers of its kind
 
@@ -146,7 +152,8 @@ carries `header` where the record states one:
 
 - a tagged `/TH` — on a table read from the tags, and on a table a detector found where the tags
   describe the same grid and the detected cell holds the marked content the `/TH` cites, or holds
-  none where the `/TH` cites none (a blank corner; decision #169).
+  none where the `/TH` cites no content the page draws and another cell's content confirms the
+  pairing (a blank corner; decision #169).
   `tagged-tables-v1` → `tagged-tables-v2`; `profile_sha256` moves. On the
   gate, `irs-fw9` carries 6 such cells, `nist-sp-800-207` 35 and `nist-sp-800-218` 142;
 - a cell of a DOCX table's leading rows marked `<w:tblHeader/>` (a marked row below an unmarked one

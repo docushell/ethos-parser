@@ -724,39 +724,62 @@ fn page_heading_lines(
 
 /// Decision #167: where the tree and a detector describe the same grid, a cell the tree tags `/TH`
 /// is a header cell of the table the detector found — when the detected cell at its position holds
-/// a run of the marked content the `/TH` cites on this page, or, where the `/TH` cites none, holds
-/// no run: an empty header cell, a table's blank top-left corner among them, as a table read from
-/// the tags flags it. Where the content does not meet, no tag is carried onto another cell.
-/// `mcid_of` gives a detected cell's run's marked-content id.
+/// a run of the marked content the `/TH` cites on this page, or, where the `/TH` cites no content
+/// this page draws (it cites none, or its marked content wraps nothing), holds no run: an empty
+/// header cell, a table's blank top-left corner among them, as a table read from the tags flags
+/// it. An empty `/TH` has no content to check its pairing by, so it is carried only where some
+/// tagged cell of the table has its content in its detected cell. Where the content does not
+/// meet, no tag is carried onto another cell. `run_mcids` gives each of the page's runs its
+/// marked-content id.
 fn carry_tagged_headers(
     cells: &mut [crate::tables::DetectedCell],
     tagged: &[crate::structure::TaggedCell],
     page: lopdf::ObjectId,
-    mcid_of: impl Fn(usize) -> Option<i64>,
+    run_mcids: &[Option<i64>],
 ) {
-    let heads: std::collections::BTreeMap<(u32, u32), Vec<i64>> = tagged
+    let drawn: std::collections::BTreeSet<i64> = run_mcids.iter().flatten().copied().collect();
+    let at: std::collections::BTreeMap<(u32, u32), usize> = cells
         .iter()
-        // A `/TH` citing no content names no page.
-        .filter(|t| t.header && (t.page == Some(page) || t.mcids.is_empty()))
-        .map(|t| {
-            let mut mcids = t.mcids.clone();
-            mcids.sort_unstable();
-            ((t.row, t.column), mcids)
+        .enumerate()
+        .map(|(n, c)| ((c.position.row, c.position.column), n))
+        .collect();
+    // Each tagged cell at a detected cell, with the content it cites that this page draws.
+    let tags: Vec<(usize, &crate::structure::TaggedCell, Vec<i64>)> = tagged
+        .iter()
+        .filter_map(|t| {
+            let n = *at.get(&(t.row, t.column))?;
+            let shown = t
+                .mcids
+                .iter()
+                .copied()
+                .filter(|m| t.page == Some(page) && drawn.contains(m))
+                .collect();
+            Some((n, t, shown))
         })
         .collect();
-    if heads.is_empty() {
-        return;
-    }
-    for cell in cells {
-        if let Some(mcids) = heads.get(&(cell.position.row, cell.position.column)) {
-            cell.header |= if mcids.is_empty() {
-                cell.run_indices.is_empty()
-            } else {
-                cell.run_indices
-                    .iter()
-                    .any(|&i| mcid_of(i).is_some_and(|m| mcids.binary_search(&m).is_ok()))
-            };
-        }
+    let holds = |n: usize, shown: &[i64]| {
+        cells[n]
+            .run_indices
+            .iter()
+            .any(|&i| run_mcids[i].is_some_and(|m| shown.contains(&m)))
+    };
+    let met = tags.iter().any(|(n, _, shown)| holds(*n, shown));
+    let carried: Vec<usize> = tags
+        .iter()
+        .filter(|(n, t, shown)| {
+            t.header
+                && if shown.is_empty() {
+                    // A `/TH` citing no content names no page.
+                    met && (t.page == Some(page) || t.mcids.is_empty())
+                        && cells[*n].run_indices.is_empty()
+                } else {
+                    holds(*n, shown)
+                }
+        })
+        .map(|(n, _, _)| *n)
+        .collect();
+    for n in carried {
+        cells[n].header = true;
     }
 }
 
@@ -1793,9 +1816,13 @@ fn extract_page(
                             found.cells.iter().map(|c| c.position.clone()).collect();
                         let check = tagged.check_against(found.rows, found.columns, &positions);
                         if matches!(check.outcome, ethos_parser_core::TaggedGridStatus::Ok) {
-                            carry_tagged_headers(&mut found.cells, &tagged.cells, page_id, |i| {
-                                runs[i].mcid
-                            });
+                            let run_mcids: Vec<Option<i64>> = runs.iter().map(|r| r.mcid).collect();
+                            carry_tagged_headers(
+                                &mut found.cells,
+                                &tagged.cells,
+                                page_id,
+                                &run_mcids,
+                            );
                         }
                         found.tagged_check = Some(check);
                     }
@@ -4986,7 +5013,8 @@ mod tests {
     /// **A `/TH` reaches only the detected cell that holds its content** (decision #167): on a grid
     /// the tree agrees with, the cell at the `/TH`'s position is a header where it holds a run of
     /// the marked content the `/TH` cites on this page, and not where it holds other content, nor
-    /// where the `/TH` names another page; a `/TH` citing no content reaches a cell holding none.
+    /// where the `/TH` names another page; a `/TH` citing no content this page draws reaches a cell
+    /// holding none, and only where the content of another of the table's cells confirms the pair.
     #[test]
     fn a_th_is_carried_only_onto_the_cell_holding_its_content() {
         let mut alloc = IdAllocator::new(
@@ -5023,28 +5051,46 @@ mod tests {
             header: true,
         };
         let here = (4, 0);
-        // Run `i` carries marked-content id `10 + i`.
+        // Run `i` carries marked-content id `10 + i`; run 3 lies in no cell of this table.
+        let run_mcids: Vec<Option<i64>> = (10..14).map(Some).collect();
         let mut cells = vec![detected(0, 0), detected(1, 1), detected(2, 2)];
         let tags = [th(0, 10, here), th(1, 99, here), th(2, 12, (5, 0))];
-        carry_tagged_headers(&mut cells, &tags, here, |i| Some(10 + i as i64));
+        carry_tagged_headers(&mut cells, &tags, here, &run_mcids);
         let got: Vec<bool> = cells.iter().map(|c| c.header).collect();
         assert_eq!(got, [true, false, false]);
 
-        // A `/TH` citing no content, which names no page: the detected cell holding no run is a
-        // header, a blank corner among them, and one holding a run is not.
+        // A `/TH` citing no content, which names no page, or content this page does not draw (a
+        // marked-content sequence wrapping nothing): the detected cell holding no run is a header,
+        // a blank corner among them, and one holding a run is not — where another tagged cell's
+        // content, a `/TD`'s here, is in its detected cell. One naming another page is not.
         let mut empty = detected(0, 0);
         empty.run_indices.clear();
-        let mut cells = vec![empty, detected(1, 1)];
         let blank = |column: u32| crate::structure::TaggedCell {
             mcids: Vec::new(),
             page: None,
             ..th(column, 0, here)
         };
-        carry_tagged_headers(&mut cells, &[blank(0), blank(1)], here, |i| {
-            Some(10 + i as i64)
-        });
-        let got: Vec<bool> = cells.iter().map(|c| c.header).collect();
-        assert_eq!(got, [true, false]);
+        let td = |column: u32, mcid: i64| crate::structure::TaggedCell {
+            header: false,
+            ..th(column, mcid, here)
+        };
+        for (corner, header) in [
+            (blank(0), true),
+            (th(0, 99, here), true),
+            (th(0, 12, (5, 0)), false),
+        ] {
+            let mut cells = vec![empty.clone(), detected(1, 1), detected(2, 2)];
+            let tags = [corner.clone(), blank(1), td(2, 12)];
+            carry_tagged_headers(&mut cells, &tags, here, &run_mcids);
+            let got: Vec<bool> = cells.iter().map(|c| c.header).collect();
+            assert_eq!(got, [header, false, false], "{corner:?}");
+
+            // Paired with the wrong table (QA round 2): no tagged cell's content is in its
+            // detected cell, so nothing confirms the pairing and the empty `/TH` is not carried.
+            let mut cells = vec![empty.clone(), detected(1, 1), detected(2, 2)];
+            carry_tagged_headers(&mut cells, &[corner.clone(), td(2, 13)], here, &run_mcids);
+            assert!(cells.iter().all(|c| !c.header), "{corner:?}");
+        }
     }
 
     /// **A caption names a figure or a table and heads no section** (decision #159): a caption

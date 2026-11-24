@@ -314,7 +314,8 @@ pub struct TableCellRecord {
     pub node_ids: Vec<NodeId>,
     /// Whether the record states this cell is a header cell (decision #167): a tagged `/TH` (on a
     /// table read from the tags, or on a geometric grid whose `tagged_check` is `Ok` and whose cell
-    /// holds that `/TH`'s runs, or holds none where the `/TH` cites none: a blank corner), a cell
+    /// holds that `/TH`'s runs, or holds none where the `/TH` cites no content the page draws and
+    /// another tagged cell's content lies in its detected cell: a blank corner), a cell
     /// of a DOCX row the file repeats as its table's header
     /// (`<w:tblHeader/>`), or a cell of the row a geometric rule read as its table's header (the
     /// ruled rule's names above the top rule, decision #74; the whitespace rule's header band and

@@ -2281,8 +2281,8 @@ mod tests {
 
     /// **A cell the record flags a header is a `<th>`, and the leading rows of such cells a
     /// `<thead>`** (decision #169): a header row over the body, a row header down a column, a
-    /// row of `<th>` beside a `<td>` that is no header row, and a table every row of which is
-    /// flagged, whose `<th>` head no body.
+    /// row of `<th>` beside a `<td>` that is no header row, a table every row of which is
+    /// flagged, whose `<th>` head no body, and a header row with a hole in it.
     #[test]
     fn a_cell_the_record_flags_a_header_is_a_th() {
         let grid = repr_with_table(
@@ -2337,11 +2337,29 @@ mod tests {
             "<table>\n<tr>\n<td></td>\n</tr>\n<tr>\n<th>Ann</th>\n</tr>\n<tr>\n<td>Bob</td>\n\
              </tr>\n</table>\n"
         );
+
+        // A hole beside a flagged cell is no cell of its row, so the row is still a header row.
+        let a = artifact_of(with_header_cells(
+            &repr_with_table(
+                &["Dept", "Ann", "Audit"],
+                2,
+                2,
+                &[cell(0, 1, &[0]), cell(1, 0, &[1]), cell(1, 1, &[2])],
+            ),
+            &[0],
+        ));
+        assert_eq!(
+            a.html,
+            "<table>\n<thead>\n<tr>\n<th></th>\n<th>Dept</th>\n</tr>\n</thead>\n<tbody>\n\
+             <tr>\n<td>Ann</td>\n<td>Audit</td>\n</tr>\n</tbody>\n</table>\n"
+        );
+        assert_tiles(&a);
     }
 
     /// **A `<thead>` holds its merges whole** (decision #169): where a flagged row's cell spans
     /// down into a row the record does not flag, the header stops above the last row a merge
-    /// reaches past, and none is written where the first row's does.
+    /// reaches past, and none is written where the first row's does, a merge carried from row to
+    /// row among them.
     #[test]
     fn a_declared_header_stops_above_a_merge_it_would_cut() {
         let a = artifact_of(with_header_cells(
@@ -2389,6 +2407,45 @@ mod tests {
             "two rows flagged, the second's merge reaching the third: one header row"
         );
         assert_tiles(&a);
+
+        // Two rows flagged, with a merge reaching past both: from the first row down three, or
+        // from the first down into the second chained to one from the second down past it.
+        let texts = ["Name", "Dept", "Unit", "Audit", "Bob", "Tax"];
+        for (cells, html) in [
+            (
+                [
+                    spanning(0, 0, 3, 1, &[0]),
+                    cell(0, 1, &[1]),
+                    cell(1, 1, &[2]),
+                    cell(2, 1, &[3]),
+                    cell(3, 0, &[4]),
+                    cell(3, 1, &[5]),
+                ],
+                "<table>\n<tr>\n<th rowspan=\"3\">Name</th>\n<th>Dept</th>\n</tr>\n<tr>\n\
+                 <th>Unit</th>\n</tr>\n<tr>\n<td>Audit</td>\n</tr>\n<tr>\n<td>Bob</td>\n\
+                 <td>Tax</td>\n</tr>\n</table>\n",
+            ),
+            (
+                [
+                    spanning(0, 0, 2, 1, &[0]),
+                    cell(0, 1, &[1]),
+                    spanning(1, 1, 2, 1, &[2]),
+                    cell(2, 0, &[3]),
+                    cell(3, 0, &[4]),
+                    cell(3, 1, &[5]),
+                ],
+                "<table>\n<tr>\n<th rowspan=\"2\">Name</th>\n<th>Dept</th>\n</tr>\n<tr>\n\
+                 <th rowspan=\"2\">Unit</th>\n</tr>\n<tr>\n<td>Audit</td>\n</tr>\n<tr>\n\
+                 <td>Bob</td>\n<td>Tax</td>\n</tr>\n</table>\n",
+            ),
+        ] {
+            let a = artifact_of(with_header_cells(
+                &repr_with_table(&texts, 4, 2, &cells),
+                &[0, 1, 2],
+            ));
+            assert_eq!(a.html, html);
+            assert_tiles(&a);
+        }
     }
 
     /// **A table takes the more of its spans' header and its record's** (decision #169): the
