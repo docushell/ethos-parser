@@ -90,8 +90,8 @@ Everything else filed under v2.2 has shipped: D4-S0 to S4, the `v2.2-S0` to `S8`
 
 ### 2.3 The local plan's other v2.2 definition
 
-`.plans/v22-v23-implementation-plan-v3.md` §10 is untracked. It defines "v2.2 done" as three
-conditions. Their state, and the reconciliation recorded as North Star row #27:
+The local plan is not part of this repository. It defined "v2.2 done" as three conditions. Their
+state, and the reconciliation recorded as North Star row #27:
 - a refused table candidate emits something a retrieval pipeline can use — retired on the plan's own
   §5.3 T2 finding that there is nothing useful for a refused candidate to emit;
 - TEDS re-measured and published as a band — **done 2026-09-16 at 0.58.0**: 0.0000..0.9802, median

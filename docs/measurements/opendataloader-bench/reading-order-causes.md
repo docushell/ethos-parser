@@ -276,7 +276,7 @@ position where the cut found no evidence of columns.
 ### 2. PageIndex ships that route in production, and bounds it two ways
 
 [`VectifyAI/PageIndex`](https://github.com/VectifyAI/PageIndex) (MIT) was read against this engine on
-2026-09-22; the full review is in `.plans/PAGEINDEX-REVIEW.md`. Its `flash` layer is a deterministic,
+2026-09-22; what it found is in [`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md). Its `flash` layer is a deterministic,
 LLM-free PDF layout extractor, and it orders a page like this — **read in its source at `9c4c3ff`,
 not taken from its documentation**:
 

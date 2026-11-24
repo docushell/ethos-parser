@@ -49,8 +49,6 @@ These describe the engine as it is now. Read them to work on it.
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen export list per crate. Checked by a test |
 | [`RELEASING.md`](RELEASING.md) | How a version is numbered, tagged and released — written before the act, because a publish cannot be undone |
 | [`draft-schemas/`](draft-schemas/) | Draft JSON Schemas for every artifact shape. Documentation, not a shipped contract |
-| [`reference/`](reference/) | A stub explaining where the research archive went |
-| [`attic/`](attic/) | Patches kept for the record, not for reuse. Its one entry, `stroke-ruled-v1`, was parked at v1-S7b and then revived and shipped at 0.10.0 |
 
 ## Scope documents
 

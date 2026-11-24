@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 BENCH = Path(os.environ.get("ETHOS_BENCH", Path.home() / "ethos-external-benchmarks/opendataloader-bench")).expanduser()
-REPO = Path("/Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser")
+REPO = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BENCH / "src"))
 sys.path.insert(0, str(REPO / "docs/measurements/opendataloader-bench"))

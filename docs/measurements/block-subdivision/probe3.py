@@ -33,8 +33,7 @@ import json
 import sys
 from collections import Counter, defaultdict
 
-sys.path.insert(0, "/private/tmp/claude-501/-Users-saumildiwaker-Desktop-Stuff-project-repo-ethos-parser/b06430fd-969a-4694-b6d8-a5e5a3044056/scratchpad")
-from labelled import lines_with_roles, leading_of  # noqa: E402
+from labelled import lines_with_roles, leading_of
 
 MIN_LEAD = 600      # centipoints; below this the "band" is a column interleave, not a text flow
 MIN_SHARE = 0.25    # the modal gap must actually dominate

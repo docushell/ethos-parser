@@ -8,8 +8,8 @@ its 506 text documents show no text in their pages' own streams, and the broad c
 refuted there — charts and slide exports draw their labels through forms. The scope's §13 holds what
 the build measured. **What follows is the 2026-09-22 record, unchanged.**
 
-**Measured 2026-09-22.** Task G3 in `.plans/PRIORITIES.md`, proposed by the PageIndex review
-(`.plans/PAGEINDEX-REVIEW.md` §3.3) as *"the largest pure-recall item the review found"*.
+**Measured 2026-09-22.** The PageIndex review ([`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md))
+proposed it as the largest pure-recall item that review found.
 
 **It is not that, and it is not nothing.** The measurement separates two populations that the
 proposal had folded into one incidence figure:
@@ -124,8 +124,8 @@ rather than merely shape-matched**, and at 1.53% it corroborates the order of ma
 machine and cannot be re-fetched. So the *incidence* of total loss is measured; its
 *volume* is not.
 
-The census file itself is `full_census.json` at the repository root and is **git-excluded**, so it is
-not redistributable with the repository; the figures above are quoted here because the file is not.
+The per-document census behind these figures is not part of this repository, so the figures above
+are quoted here in full.
 
 ## 5. Why the declaration already does the job
 

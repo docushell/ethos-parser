@@ -9,8 +9,7 @@ import json
 import sys
 from collections import defaultdict
 
-sys.path.insert(0, "/private/tmp/claude-501/-Users-saumildiwaker-Desktop-Stuff-project-repo-ethos-parser/b06430fd-969a-4694-b6d8-a5e5a3044056/scratchpad")
-from gap_dist import body_lines, band_gaps, leading_of  # noqa: E402
+from gap_dist import body_lines, band_gaps, leading_of
 
 BANDS = [(0.0, 0.9), (0.9, 1.1), (1.1, 1.3), (1.3, 1.5), (1.5, 1.8), (1.8, 2.2), (2.2, 3.0)]
 

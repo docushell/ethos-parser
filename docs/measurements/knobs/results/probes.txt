@@ -1,6 +1,6 @@
-engine: /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser (ethos-parser 0.58.0)
+engine: target/aarch64-apple-darwin/release/ethos-parser (ethos-parser 0.58.0)
 qpdf: qpdf version 12.3.2
-== encryption variants of /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-oracle/fixtures/synthetic/simple-text/document.pdf, engine /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser
+== encryption variants of ../ethos-oracle/fixtures/synthetic/simple-text/document.pdf, engine target/aarch64-apple-darwin/release/ethos-parser
   owner-only-aes256: qpdf --requires-password exit 3; R = 6; file encryption method: AESv3
     classify exit 0
     extract exit 0
@@ -22,9 +22,9 @@ qpdf: qpdf version 12.3.2
   user-secret-rc4-128: qpdf --requires-password exit 0; R = 3
     classify exit 2: engine: encrypted source: document is encrypted; a password is required to read it [encrypted]
     extract exit 2: engine: encrypted source: document is encrypted; a password is required to read it [encrypted]
-== page-local error: /private/tmp/claude-501/-Users-saumildiwaker-Desktop-Stuff-project-repo-ethos-parser/74352f65-5125-42b4-91fa-26175f35b3be/scratchpad/knobs-tmp/probes/page2-unknown-operator.pdf (qpdf --check: No syntax or stream encoding errors found; the file may still contain)
+== page-local error: $KNOBS_TMP/probes/page2-unknown-operator.pdf (qpdf --check: No syntax or stream encoding errors found; the file may still contain)
   extract: exit 2: engine: unsupported pdf operator: `foo` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: an unrecognised operator may move or delete text, and skipping it produces a well-formed artifact that is silently wrong. [unsupported]
   extract --max-pages 1: exit 0; terminal {"state": "partial", "value": {"first_gap_page": 2, "pages_not_processed": 2}}; coverage {"pages_authorized": 3, "pages_failed": 0, "pages_not_attempted": 0, "pages_processed": 1, "pages_quarantined": 2, "pages_unsupported": 0}; pages [('p1', 1)]; nodes [('s1', 'page one')]
   extract --max-pages 2: exit 2: engine: unsupported pdf operator: `foo` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: an unrecognised operator may move or delete text, and skipping it produces a well-formed artifact that is silently wrong. [unsupported]
-  failing-page: /private/tmp/claude-501/-Users-saumildiwaker-Desktop-Stuff-project-repo-ethos-parser/74352f65-5125-42b4-91fa-26175f35b3be/scratchpad/knobs-tmp/probes/page2-unknown-operator.pdf: 3 pages; first failing page 2 (4 probes); pages 1..1 extract cleanly; error: engine: unsupported pdf operator: `foo` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: an unrecognised operator may move or delete text, and skipping it produces a well-formed artifact that is silently wrong. [unsupported]
+  failing-page: $KNOBS_TMP/probes/page2-unknown-operator.pdf: 3 pages; first failing page 2 (4 probes); pages 1..1 extract cleanly; error: engine: unsupported pdf operator: `foo` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: an unrecognised operator may move or delete text, and skipping it produces a well-formed artifact that is silently wrong. [unsupported]
   classify: exit 0

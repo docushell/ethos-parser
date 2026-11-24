@@ -1,4 +1,4 @@
-# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser
+# floor.py — ethos-parser 0.58.0 — binary target/aarch64-apple-darwin/release/ethos-parser
 # started 2026-09-16 20:09:41 +0530, 49 s; load average at start (2.25537109375, 3.7509765625, 3.5478515625), at end (2.66845703125, 3.64501953125, 3.51953125)
 # rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
 # fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
@@ -76,7 +76,7 @@ control:untagged-shredded-line	max0	0	2	1	553	3604480	1868112	-	0
 control:untagged-shredded-line	max0	0	3	1	493	3637248	1900880	-	0
 control:untagged-shredded-line	full	-	1	1	2407	5259264	2638160	-	0
 control:untagged-shredded-line	full-size-pass	-	2	1	2462	5193728	2572624	11430	0
-# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes classify0
+# floor.py — ethos-parser 0.58.0 — binary target/aarch64-apple-darwin/release/ethos-parser — modes classify0
 # started 2026-09-16 20:14:40 +0530, 1 s; load average at start (2.4501953125, 3.0634765625, 3.294921875), at end (2.57421875, 3.07861328125, 3.298828125)
 # rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
 # fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
@@ -107,14 +107,14 @@ nist-sp-800-53Ar5	classify0	-	3	-	189641	202817536	201376248	-	0
 control:untagged-shredded-line	classify0	-	1	-	496	2981888	1442104	-	0
 control:untagged-shredded-line	classify0	-	2	-	318	2867200	1327416	-	0
 control:untagged-shredded-line	classify0	-	3	-	340	2965504	1425720	-	0
-# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes full
+# floor.py — ethos-parser 0.58.0 — binary target/aarch64-apple-darwin/release/ethos-parser — modes full
 # started 2026-09-16 20:14:41 +0530, 2 s; load average at start (2.57421875, 3.07861328125, 3.298828125), at end (2.57421875, 3.07861328125, 3.298828125)
 # rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
 # fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
 nist-sp-800-207	full	-	1	59	569972	218726400	188367424	-	0
 nist-sp-800-207	full	-	2	59	568701	214007808	183632400	-	0
 nist-sp-800-207	full	-	3	59	567835	214630400	184238608	-	0
-# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes ladder — ladders {'nist-sp-800-171r3': [8, 32], 'nist-sp-800-53Ar5': [8, 32, 64, 256, 512]}
+# floor.py — ethos-parser 0.58.0 — binary target/aarch64-apple-darwin/release/ethos-parser — modes ladder — ladders {'nist-sp-800-171r3': [8, 32], 'nist-sp-800-53Ar5': [8, 32, 64, 256, 512]}
 # started 2026-09-16 20:14:43 +0530, 16 s; load average at start (2.57421875, 3.07861328125, 3.298828125), at end (3.15966796875, 3.1875, 3.33349609375)
 # rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
 # fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
@@ -125,7 +125,7 @@ nist-sp-800-53Ar5	budget	32	1	733	750172	391577600	310919864	-	0
 nist-sp-800-53Ar5	budget	64	1	733	1281465	572080128	442581760	-	0
 nist-sp-800-53Ar5	budget	256	1	733	4458109	1549549568	1099515440	-	0
 nist-sp-800-53Ar5	budget	512	1	733	8789000	2852831232	2272577768	-	0
-# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes ladder — ladders {'nist-sp-800-53Ar5': [128, 128, 128]}
+# floor.py — ethos-parser 0.58.0 — binary target/aarch64-apple-darwin/release/ethos-parser — modes ladder — ladders {'nist-sp-800-53Ar5': [128, 128, 128]}
 # started 2026-09-16 20:17:06 +0530, 7 s; load average at start (3.09814453125, 3.09619140625, 3.2705078125), at end (3.41015625, 3.16064453125, 3.2919921875)
 # rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
 # fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit

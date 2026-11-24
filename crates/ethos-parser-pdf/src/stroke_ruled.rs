@@ -85,7 +85,7 @@
 //!
 //! **The id is still `-v1`, and deliberately.** A rule version exists so that two artifacts either
 //! side of it are correctly non-comparable — and the parked rule never shipped. It sat in
-//! `docs/attic/stroke-ruled-v1/` as a patch, was never named by a profile and never produced a
+//! the tree as a patch (commit `76b3b34`), was never named by a profile and never produced a
 //! table on any wire, so there is no artifact anywhere claiming `stroke-ruled-v1` that means
 //! anything other than what this module does. Burning a `-v2` for a rule nobody ever ran would
 //! make the id count builds rather than behaviours.
