@@ -301,10 +301,11 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// ([`continued_tables`]), where `-v13` wrote one a page; and decision #151's: the header row
 /// the next page repeats is left out of it, counted. And so is decision #169's:
 /// [`GFM_ROW_ZERO_SEPARATOR`] is not counted on a table whose record declares row 0 its header,
-/// not a byte of the Markdown changing. And so is decision #171's: a whole line in bold and
-/// underlined alone, nothing else on it, is written `**<u>X</u>**`, the bold outside, where
-/// decision #154 wrote `<u>**X**</u>`; a span on part of a line, struck, or whose bold stops
-/// short of its underline keeps the underline outside.
+/// not a byte of the Markdown changing. And so is decision #171's: a whole line in
+/// bold and underlined alone, nothing else on it, is written `**<u>X</u>**`, the bold outside,
+/// where decision #154 wrote `<u>**X**</u>`; a span on part of a line, struck, whose bold stops
+/// short of its underline or whose emphasis changes inside it, or whose text opens or closes with
+/// `*` or closes with `\` keeps the underline outside.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -4386,7 +4387,8 @@ impl Emit {
     /// written `**<u>X</u>**` — the same bytes, the bold now outside — since ParseBench reads a
     /// line as a bold title only where it opens and closes with `**`. Only a whole line: two bold
     /// spans abutting mid-line would run into `****`. Both markers are syntax of their own length,
-    /// so every segment stands.
+    /// so every segment stands. Not where the text opens or closes with a `*`, which would join the
+    /// bold's run and undo it, or closes with a `\`, which would escape `</u>`.
     fn bold_outside(&mut self, at: usize) {
         let bold = if self.emphasis.open.italic {
             "***"
@@ -4394,6 +4396,10 @@ impl Emit {
             "**"
         };
         let end = self.markdown.len();
+        let text = &self.markdown[at + bold.len() + 3..end - bold.len() - 4];
+        if text.starts_with('*') || text.ends_with(['*', '\\']) {
+            return;
+        }
         self.markdown
             .replace_range(end - bold.len() - 4..end, &format!("</u>{bold}"));
         self.markdown
@@ -10567,6 +10573,21 @@ pub(crate) mod tests {
         assert_eq!(md(lines(&[], &[0], &[], &[0])), "<u>*Title*</u>\n\nBody\n");
         assert_eq!(md(lines(&[], &[], &[], &[0])), "<u>Title</u>\n\nBody\n");
 
+        // A `*` at the text's edge would join the bold's run, a closing `\` escape `</u>`.
+        let edge = |text: &str, italic: &[usize]| {
+            md(with_marks(
+                with_styles(repr_of_lines(&[text, "Body"]), &[0], italic),
+                &[],
+                &[0],
+            ))
+        };
+        assert_eq!(edge("Notice*", &[]), "<u>**Notice***</u>\n\nBody\n");
+        assert_eq!(edge("*Required", &[]), "<u>***Required**</u>\n\nBody\n");
+        assert_eq!(edge("Notice*", &[0]), "<u>***Notice****</u>\n\nBody\n");
+        assert_eq!(edge("*Required", &[0]), "<u>****Required***</u>\n\nBody\n");
+        assert_eq!(edge("Total \\", &[]), "<u>**Total \\**</u>\n\nBody\n");
+        assert_eq!(edge("No*te", &[]), "**<u>No*te</u>**\n\nBody\n");
+
         let line = |bold: &[usize], under: &[usize]| {
             md(with_marks(
                 with_styles(styled_line(), bold, &[]),
@@ -10619,6 +10640,14 @@ pub(crate) mod tests {
         e.source("Title", nodes[0].id.as_str());
         e.syntax("|\n");
         assert_eq!(e.markdown, "<u>**Title**</u>|\n");
+        // A line after a single line break, inside a block, opens its line too.
+        let mut e = Emit::with_emphasis(nodes, Markup::Markdown);
+        e.source("Body", nodes[1].id.as_str());
+        e.syntax("\n");
+        e.source("Title", nodes[0].id.as_str());
+        e.syntax("\n");
+        e.finish();
+        assert_eq!(e.markdown, "Body\n**<u>Title</u>**\n");
     }
 
     /// **A run set as a superscript or a subscript is written `<sup>` or `<sub>`** (decision

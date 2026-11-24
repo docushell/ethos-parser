@@ -44,9 +44,11 @@ does not move.
   ParseBench's title and bold rules do, now takes it.
 - **Only that.** A span on part of a line keeps `<u>**x**</u>`: two bold spans side by side
   mid-line would run into `****`. So does a line whose bold stops short of its underline or whose
-  emphasis changes inside it, a struck one (`<u>~~**x**~~</u>`), and an underline with no bold.
+  emphasis changes inside it, a struck one (`<u>~~**x**~~</u>`), an underline with no bold, and a
+  line whose text opens or closes with `*`, which would join the bold's run, or closes with `\`,
+  which would escape `</u>`.
   HTML keeps `<u><strong>`, and `--unstyled` writes no mark either way.
-- **Measured**: pending. Fourteen mutations, each caught.
+- **Measured**: pending. Nineteen mutations, each caught.
 
 ### A TrueType glyph its program names `Euro` reads as `€` (decision #170)
 
