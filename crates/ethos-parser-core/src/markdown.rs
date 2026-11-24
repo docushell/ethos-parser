@@ -304,8 +304,8 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// not a byte of the Markdown changing. And so is decision #171's: a whole line in
 /// bold and underlined alone, nothing else on it, is written `**<u>X</u>**`, the bold outside,
 /// where decision #154 wrote `<u>**X**</u>`; a span on part of a line, struck, whose bold stops
-/// short of its underline or whose emphasis changes inside it, or whose text opens or closes with
-/// `*` or closes with `\` keeps the underline outside.
+/// short of its underline or whose emphasis changes inside it, or whose text holds a `*` or closes
+/// with `\` keeps the underline outside.
 pub const MARKDOWN_RULE_BLOCKS_V14: &str = "markdown-blocks-v14";
 
 // -------------------------------------------------------------------------------------------
@@ -4159,7 +4159,8 @@ impl Style {
     /// since Markdown has no syntax of its own for one. A strikeout (`~~`, `<s>`) holds the
     /// emphasis, and an underline (`<u>` in both, Markdown having none) holds the strikeout
     /// (decision #154): `<u>~~**x**~~</u>`. A whole line in bold and underlined alone is written
-    /// with the bold outside, `**<u>x</u>**`, once the line ends ([`Emit::bold_outside`]).
+    /// with the bold outside, `**<u>x</u>**`, once the line ends, save where
+    /// [`Emit::bold_outside`] says not.
     fn markers(self, markup: Markup) -> (String, String) {
         let (uopen, uclose) = if self.under {
             ("<u>", "</u>")
@@ -4387,8 +4388,9 @@ impl Emit {
     /// written `**<u>X</u>**` — the same bytes, the bold now outside — since ParseBench reads a
     /// line as a bold title only where it opens and closes with `**`. Only a whole line: two bold
     /// spans abutting mid-line would run into `****`. Both markers are syntax of their own length,
-    /// so every segment stands. Not where the text opens or closes with a `*`, which would join the
-    /// bold's run and undo it, or closes with a `\`, which would escape `</u>`.
+    /// so every segment stands. Not where the text holds a `*`, which the bold's run would take for
+    /// its partner once the outer `**` stands against the line's edge, so that CommonMark reads no
+    /// bold, or closes with a `\`, which would escape `</u>`.
     fn bold_outside(&mut self, at: usize) {
         let bold = if self.emphasis.open.italic {
             "***"
@@ -4397,7 +4399,7 @@ impl Emit {
         };
         let end = self.markdown.len();
         let text = &self.markdown[at + bold.len() + 3..end - bold.len() - 4];
-        if text.starts_with('*') || text.ends_with(['*', '\\']) {
+        if text.contains('*') || text.ends_with('\\') {
             return;
         }
         self.markdown
@@ -10573,7 +10575,7 @@ pub(crate) mod tests {
         assert_eq!(md(lines(&[], &[0], &[], &[0])), "<u>*Title*</u>\n\nBody\n");
         assert_eq!(md(lines(&[], &[], &[], &[0])), "<u>Title</u>\n\nBody\n");
 
-        // A `*` at the text's edge would join the bold's run, a closing `\` escape `</u>`.
+        // A `*` in the text would pair with the outer `**`, a closing `\` escape `</u>`.
         let edge = |text: &str, italic: &[usize]| {
             md(with_marks(
                 with_styles(repr_of_lines(&[text, "Body"]), &[0], italic),
@@ -10586,7 +10588,28 @@ pub(crate) mod tests {
         assert_eq!(edge("Notice*", &[0]), "<u>***Notice****</u>\n\nBody\n");
         assert_eq!(edge("*Required", &[0]), "<u>****Required***</u>\n\nBody\n");
         assert_eq!(edge("Total \\", &[]), "<u>**Total \\**</u>\n\nBody\n");
-        assert_eq!(edge("No*te", &[]), "**<u>No*te</u>**\n\nBody\n");
+        assert_eq!(edge("No*te", &[]), "<u>**No*te**</u>\n\nBody\n");
+        assert_eq!(
+            edge("(*Required fields)", &[]),
+            "<u>**(*Required fields)**</u>\n\nBody\n"
+        );
+        assert_eq!(
+            edge("Fees (*excl. VAT).", &[]),
+            "<u>**Fees (*excl. VAT).**</u>\n\nBody\n"
+        );
+        assert_eq!(edge("(see note*)", &[]), "<u>**(see note*)**</u>\n\nBody\n");
+        // A script changing inside the line leaves it whole.
+        assert_eq!(
+            md(with_scripts(
+                with_marks(
+                    with_styles(line_of_words(&["Revenue", "1"]), &[0, 1], &[]),
+                    &[],
+                    &[0, 1],
+                ),
+                &[(1, crate::Script::Superscript)],
+            )),
+            "**<u>Revenue<sup>1</sup></u>**\n"
+        );
 
         let line = |bold: &[usize], under: &[usize]| {
             md(with_marks(
@@ -10600,6 +10623,16 @@ pub(crate) mod tests {
         assert_eq!(
             line(&[0], &[0, 1, 2, 3, 4, 5, 6]),
             "<u>**Total** revenue rose sharply</u>\n"
+        );
+        // Emphasis changing inside the underline drops the line itself, not through the `*` guard:
+        // a last character of several bytes would otherwise be cut through.
+        assert_eq!(
+            md(with_marks(
+                with_styles(line_of_words(&["Total", " ", "“sharply”"]), &[0], &[]),
+                &[],
+                &[0, 1, 2],
+            )),
+            "<u>**Total** “sharply”</u>\n"
         );
 
         // Unstyled text writes neither order, and keeps the styled text's segments.

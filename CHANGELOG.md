@@ -45,8 +45,8 @@ does not move.
 - **Only that.** A span on part of a line keeps `<u>**x**</u>`: two bold spans side by side
   mid-line would run into `****`. So does a line whose bold stops short of its underline or whose
   emphasis changes inside it, a struck one (`<u>~~**x**~~</u>`), an underline with no bold, and a
-  line whose text opens or closes with `*`, which would join the bold's run, or closes with `\`,
-  which would escape `</u>`.
+  line whose text holds a `*`, which would pair with the outer `**` and leave no bold, or closes
+  with `\`, which would escape `</u>`.
   HTML keeps `<u><strong>`, and `--unstyled` writes no mark either way.
 - **Measured**: pending. Nineteen mutations, each caught.
 
