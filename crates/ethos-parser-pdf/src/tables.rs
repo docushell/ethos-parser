@@ -87,7 +87,11 @@
 //!    for a grid every other line of which is drawn end to end: one read through merged cells
 //!    keeps its sides as `-v12` asked them. And a rule another rectangle ends on part-way along
 //!    it, as a column rule ends on such a table's top border, is a line of the grid, not an
-//!    underline ([`without_decoration`]).
+//!    underline ([`without_decoration`]). Since `ruled-rects-v14` (decision #175) a grid read
+//!    through merged cells takes an outer line drawn across one band at least whose every gap
+//!    rules close, a fill's edge closing none ([`Lattice::merged_cells`]); such a grid stands with
+//!    one column left empty, never two, and not with most of its rows one cell across every column
+//!    holding text.
 //! 8. **A header set above the top rule is the table's first row** (`ruled-rects-v13`, decision
 //!    #74, [`header_above`]), where the document declares no structure and the grid's own first
 //!    row is no header: the lines just above the rule, a label over two columns or more and each
@@ -840,7 +844,7 @@ pub fn detect_ruled_with(
     let rects = &rects[..];
     // Read on a trial allocator: a grid refused below takes no table id.
     let mut trial = alloc.clone();
-    let (tables, refusal) = ruled_grid(page, rects, runs, &mut trial, None)?;
+    let (tables, refusal, _) = ruled_grid(page, rects, runs, &mut trial, None)?;
     // `ruled-rects-v14` (decision #117): a ruled row of the page's lattice holding rows the page
     // did not rule refuses it, as clause 2 of [`standing`] refuses a group's grid — below its first
     // row where a row under that holds text, since a header's names wrapped onto shared baselines
@@ -875,6 +879,7 @@ pub fn detect_ruled_with(
     }
     let mut trial = alloc.clone();
     let mut grids = Vec::new();
+    let mut ruled_gaps = Vec::new();
     let mut first = None;
     for mut group in touching_groups(rects, GROUP_GAP) {
         // `ruled-rects-v11`: a rectangle painted twice is one rectangle — as two, both claim its
@@ -885,17 +890,18 @@ pub fn detect_ruled_with(
             Some(inset) => without_decoration(group, inset),
             None => group,
         };
-        let (found, refused) = ruled_grid(
+        let (found, refused, gaps) = ruled_grid(
             page,
             &group,
             runs,
             &mut trial,
             Some((white, decoration.is_some())),
         )?;
+        ruled_gaps.extend(found.iter().map(|_| gaps));
         grids.extend(found);
         first = first.or(refused);
     }
-    let mut grids = standing(grids, runs);
+    let mut grids = standing(grids, &ruled_gaps, runs);
     if grids.is_empty() {
         return Ok((grids, refusal));
     }
@@ -1048,8 +1054,16 @@ pub(crate) fn root(parent: &mut [usize], mut i: usize) -> usize {
 /// 3. **Not a grid with half its rows or more running on beside it on their own baselines**, in
 ///    text no other grid holds and within its width of its edge: it is part of a wider table.
 /// 4. **Not a grid with a column that holds no letter or digit in any row**: a split the text does
-///    not make, as when a row's shading is drawn piece by piece around a currency sign.
-fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTable> {
+///    not make, as when a row's shading is drawn piece by piece around a currency sign. Since
+///    `ruled-rects-v14` (decision #175), one column holding no text at all is no split in a grid
+///    whose outer line's gaps its rules closed (`ruled_gaps`, one per grid): a rate filing's form
+///    rules a column it leaves empty. Two left empty are a drawing or a form's boxes, and still
+///    refuse it.
+fn standing(
+    grids: Vec<DetectedTable>,
+    ruled_gaps: &[bool],
+    runs: &[RunOrigin<'_>],
+) -> Vec<DetectedTable> {
     let columns = |t: &DetectedTable| -> Vec<(i64, i64)> {
         (0..t.columns)
             .filter_map(|k| {
@@ -1139,18 +1153,21 @@ fn standing(grids: Vec<DetectedTable>, runs: &[RunOrigin<'_>]) -> Vec<DetectedTa
             .count();
         2 * beside >= t.rows as usize
     };
-    let split = |t: &DetectedTable| {
+    let split = |t: &DetectedTable, gaps: bool| {
+        let column = |k: u32| t.cells.iter().filter(move |c| c.position.column == k);
+        let empty = |k: u32| column(k).all(|c| c.text.trim().is_empty());
+        // Only one column left empty: a form's blank column, not its boxes.
+        let gaps = gaps && (0..t.columns).filter(|&k| empty(k)).count() == 1;
         (0..t.columns).any(|k| {
-            !t.cells
-                .iter()
-                .any(|c| c.position.column == k && c.text.chars().any(char::is_alphanumeric))
+            !(column(k).any(|c| c.text.chars().any(char::is_alphanumeric)) || (gaps && empty(k)))
         })
     };
     grids
         .into_iter()
         .zip(banded)
-        .filter(|(t, banded)| !banded && !unruled_rows(t) && !wider(t) && !split(t))
-        .map(|(t, _)| t)
+        .zip(ruled_gaps)
+        .filter(|((t, banded), gaps)| !banded && !unruled_rows(t) && !wider(t) && !split(t, **gaps))
+        .map(|((t, _), _)| t)
         .collect()
 }
 
@@ -1346,16 +1363,18 @@ fn first_row_is_header(t: &DetectedTable) -> bool {
 /// ([`Lattice::merged_cells`]) — only for one group's rectangles, whose grids [`standing`] then
 /// asks after — and its flag, that the document declares no structure, lets the grid be read
 /// without a line it draws across none of its bands (decision #76), as a group's decoration is.
+/// The last value says whether rules closed a gap in the grid's outer line (decision #175), which
+/// [`standing`] reads.
 fn ruled_grid(
     page: u32,
     rects: &[QuantRect],
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
     merges: Option<(&[QuantRect], bool)>,
-) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
+) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>, bool), EngineError> {
     let lattice = match Lattice::build(rects, merges.map(|(white, open)| (runs, white, open))) {
         Ok(l) => l,
-        Err(refusal) => return Ok((Vec::new(), refusal)),
+        Err(refusal) => return Ok((Vec::new(), refusal, false)),
     };
 
     let table_rect = lattice.bounds();
@@ -1483,7 +1502,7 @@ fn ruled_grid(
         .iter()
         .all(|c| c.position.colspan == lattice.columns())
     {
-        return Ok((Vec::new(), None));
+        return Ok((Vec::new(), None, false));
     }
     // `ruled-rects-v14` (decision #113): **text no cell holds, set inside the grid in two of its
     // columns or more, is rows of a table the page drew only in part** — a table striped in
@@ -1515,6 +1534,7 @@ fn ruled_grid(
             Some(RuledRefusal::RowsUndrawn {
                 columns: unheld.len(),
             }),
+            false,
         ));
     }
     let check = cross_check(table_rect, lattice.rows(), lattice.columns(), &detected);
@@ -1560,6 +1580,7 @@ fn ruled_grid(
                     structural: structural.len(),
                     geometric: geometric.len(),
                 }),
+                false,
             ));
         }
     }
@@ -1581,6 +1602,7 @@ fn ruled_grid(
             rule: ethos_parser_core::TABLE_DETECTION_V14.to_string(),
         }],
         None,
+        lattice.ruled_gaps,
     ))
 }
 
@@ -1711,6 +1733,9 @@ struct Lattice {
     /// `ruled-rects-v10`: a traced grid's cells where its lines stop at merged cells
     /// ([`Self::merged_cells`]). Empty where every face is a cell.
     merged: Vec<Span>,
+    /// `ruled-rects-v14` (decision #175): a gap in an outer line was closed by rules
+    /// ([`Self::merged_cells`]).
+    ruled_gaps: bool,
 }
 
 impl Lattice {
@@ -1800,6 +1825,7 @@ impl Lattice {
             ys,
             traced: false,
             merged: Vec::new(),
+            ruled_gaps: false,
         };
         let occupied = all.occupied_faces(rects, faces);
         let (rows_crossed, cols_crossed) = all.bands_crossed_by_rules(rects);
@@ -1851,6 +1877,7 @@ impl Lattice {
             ys: all.ys,
             traced: false,
             merged: Vec::new(),
+            ruled_gaps: false,
         };
 
         // **And the page must draw a division inside the grid on both axes.** The lattice is
@@ -1893,8 +1920,9 @@ impl Lattice {
         if joined_x || joined_y || !lattice.every_kept_face_covered(&occupied_kept) {
             if let Some((axis, index, lines)) = lattice.first_untraced_line(rects) {
                 let mut line = None;
+                let mut ruled_gaps = false;
                 let Some(cells) = merges.and_then(|(runs, white, _)| {
-                    lattice.merged_cells(rects, runs, white, &mut line)
+                    lattice.merged_cells(rects, runs, white, &mut line, &mut ruled_gaps)
                 }) else {
                     // Only where the document declares no structure, as a group's decoration is
                     // left out only there ([`Self::build`] reads the grid again without it).
@@ -1910,6 +1938,7 @@ impl Lattice {
                     }));
                 };
                 lattice.merged = cells;
+                lattice.ruled_gaps = ruled_gaps;
             }
             lattice.traced = true;
         }
@@ -2174,7 +2203,10 @@ impl Lattice {
     ///    drawn here** (`ruled-rects-v13` closes it only for a grid traced whole): a table shaded
     ///    in bands draws no column line across its shaded rows, and closing its open sides read
     ///    each shaded row's values as one merged cell — opendataloader-bench `01030000000064`,
-    ///    TEDS 1.00 -> 0.81, for no page gained;
+    ///    TEDS 1.00 -> 0.81, for no page gained. Since `ruled-rects-v14` (decision #175) an outer
+    ///    line drawn across one band at least, its every gap closed by RULES (ink no thicker than a
+    ///    lattice line across it), is drawn: a fill's edge closes nothing, and a side drawn across
+    ///    no band is still open;
     /// 2. **every interior line is drawn across one band at least**: a line drawn across none is
     ///    ink from elsewhere on the page that happens to fall inside the grid, not a division of
     ///    it — and since `ruled-rects-v13` (decision #76) [`Self::build`] reads the grid again
@@ -2188,19 +2220,38 @@ impl Lattice {
     ///    whose lines sit on the rows of the columns it did rule, and those are rows left undrawn.
     ///    A wrapped label beside them sits on baselines of its own — and since `ruled-rects-v13`
     ///    (decision #76) a label whose text holds half the rows it spans or fewer is one cell: a
-    ///    column left unruled holds text down most of its rows.
+    ///    column left unruled holds text down most of its rows;
+    /// 5. **where rules closed a side** (clause 1, `ruled-rects-v14`, decision #175), **not most
+    ///    of its rows one cell across every column holding text**: rows ruled across only under a
+    ///    divided header are rows of values the page did not divide.
     fn merged_cells(
         &self,
         rects: &[QuantRect],
         runs: &[RunOrigin<'_>],
         white: &[QuantRect],
         undrawn: &mut Option<(Axis, i64)>,
+        ruled_gaps: &mut bool,
     ) -> Option<Vec<Span>> {
         let drawn_ink: Vec<QuantRect> = rects
             .iter()
             .copied()
             .filter(|r| !white.contains(r))
             .collect();
+        // The rules among them, by the axis of the outer line they close: ink no thicker than a
+        // lattice line across the line it lies on. A fill's edge is no rule — a row shaded between
+        // rows left white closes nothing (opendataloader-bench `01030000000064`).
+        let (rules_v, rules_h): (Vec<QuantRect>, Vec<QuantRect>) = (
+            drawn_ink
+                .iter()
+                .copied()
+                .filter(|r| r.y1 - r.y0 <= LATTICE_TOLERANCE)
+                .collect(),
+            drawn_ink
+                .iter()
+                .copied()
+                .filter(|r| r.x1 - r.x0 <= LATTICE_TOLERANCE)
+                .collect(),
+        );
         let (rows, cols) = (self.row_bands.len(), self.col_bands.len());
         let bands = |lines: &[i64], kept: &[usize]| -> Vec<(i64, i64)> {
             kept.iter().map(|b| (lines[*b], lines[b + 1])).collect()
@@ -2246,6 +2297,25 @@ impl Lattice {
                     })
                     .collect();
                 if drawn.iter().all(|d| *d) {
+                    continue;
+                }
+                // `ruled-rects-v14` (decision #175): an outer line the page draws, every gap in it
+                // closed by RULES ([`closed_by_rules`]), is drawn — a rate filing's form leaves its
+                // border out beside a row or two. A side drawn across no band is still open
+                // (clause 1).
+                let outer = i == kept[0] || i == kept[kept.len() - 1] + 1;
+                let rules = match axis {
+                    Axis::Vertical => &rules_v,
+                    Axis::Horizontal => &rules_h,
+                };
+                if outer
+                    && drawn.iter().any(|d| *d)
+                    && across
+                        .iter()
+                        .zip(&drawn)
+                        .all(|(band, d)| *d || closed_by_rules(rules, axis, *line, *band))
+                {
+                    *ruled_gaps = true;
                     continue;
                 }
                 let k = kept.iter().position(|b| b + 1 == i)?;
@@ -2336,6 +2406,19 @@ impl Lattice {
                 .map(|o| o.y)
                 .collect()
         };
+        // `ruled-rects-v14` (decision #175): where rules closed an outer line's gaps, a grid most
+        // of whose rows are one cell across every column, holding text, is rows of values the page
+        // did not divide.
+        if *ruled_gaps {
+            let undivided = cells
+                .iter()
+                .filter(|s| s.colspan as usize == cols)
+                .filter(|s| !lines_in(s, row_iv[s.row as usize]).is_empty())
+                .count();
+            if 2 * undivided > rows {
+                return None;
+            }
+        }
         for m in cells.iter().filter(|s| s.rowspan > 1) {
             let aligned = (m.row..m.row + m.rowspan)
                 .filter(|&r| {
@@ -2675,7 +2758,7 @@ mod tests {
         rects.push(footer());
         // The page's rectangles as one lattice take the footer's end as a column line nothing
         // traces, and are refused.
-        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        let (whole, refused, _) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
         assert!(whole.is_empty() && refused.is_some());
         // The grid's own group stands.
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
@@ -2967,7 +3050,7 @@ mod tests {
         for y in [200, 210, 220] {
             runs.extend([run_at(105, y, "b1"), run_at(205, y, "b2")]);
         }
-        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        let (whole, refused, _) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
         assert_eq!((whole.len(), refused), (1, None));
         let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         let shapes: Vec<(i64, u32, u32)> = tables
@@ -3417,7 +3500,7 @@ mod tests {
         runs.push(at(1, 0, "Focus area"));
         runs.extend((0..3).map(|c| at(2, c, label(2, c))));
         // The page-wide lattice never merges.
-        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        let (whole, refused, _) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
         assert!(whole.is_empty() && refused.is_some());
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
@@ -3640,7 +3723,7 @@ mod tests {
         // The footer refuses the page's rectangles as one lattice, so the table's own group is
         // read, decoration and all: `ruled-rects-v12` read both borders as underlines there, and
         // both sides as undrawn.
-        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        let (whole, refused, _) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
         assert!(whole.is_empty() && refused.is_some());
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
@@ -3664,6 +3747,151 @@ mod tests {
             }
         });
         rects.extend([r(100, 100, 401, 101), r(100, 220, 401, 221)]);
+        let runs: Vec<RunOrigin> = (0..3)
+            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    /// A grid of `cols` columns whose row 1 is a heading across them, its right edge left out
+    /// beside row 2 — a gap the rules above and below that row close.
+    fn gapped(cols: i64, gap: bool) -> (Vec<QuantRect>, Vec<RunOrigin<'static>>) {
+        let rects = segments(3, cols, |vertical, line, band| {
+            !(vertical && band == 1 && (1..cols).contains(&line))
+                && !(gap && vertical && line == cols && band == 2)
+        });
+        let mut runs: Vec<RunOrigin> = (0..3).map(|c| at(0, c, label(0, c))).collect();
+        runs.push(at(1, 0, "Focus area"));
+        runs.extend((0..3).map(|c| at(2, c, label(2, c))));
+        (rects, runs)
+    }
+
+    #[test]
+    fn a_gap_its_rules_close_in_an_outer_line_is_drawn_beside_merged_cells() {
+        // `ruled-rects-v14`: the right edge is left out beside row 2, and the rules above and below
+        // that row run out to it; the grid is read through its heading row.
+        let (rects, runs) = gapped(3, true);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        let t = &tables[0];
+        assert_eq!((t.rows, t.columns, t.cells.len()), (3, 3, 7));
+        let heading = t.cells.iter().find(|c| c.position.row == 1).unwrap();
+        assert_eq!(
+            (heading.position.colspan, heading.text.as_str()),
+            (3, "Focus area")
+        );
+    }
+
+    #[test]
+    fn a_gap_its_rules_close_in_any_outer_line_is_drawn_beside_merged_cells() {
+        // `ruled-rects-v14` (decision #175): the left edge left out beside row 2, the top edge
+        // beside column 2 and the bottom edge beside column 0, each closed by the rules running
+        // out to it — every side is read alike.
+        for (vertical, line, band) in [(true, 0, 2), (false, 0, 2), (false, 3, 0)] {
+            let rects = segments(3, 3, |v, l, b| {
+                !(v && b == 1 && (1..3).contains(&l)) && (v, l, b) != (vertical, line, band)
+            });
+            let (_, runs) = gapped(3, true);
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert_eq!(tables.len(), 1, "{vertical} {line} {band}: {tables:?}");
+            let t = &tables[0];
+            assert_eq!((t.rows, t.columns, t.cells.len()), (3, 3, 7));
+        }
+    }
+
+    #[test]
+    fn a_grid_its_rules_close_stands_with_half_its_rows_one_cell_across() {
+        // `ruled-rects-v14` (decision #175): headings across rows 1 and 3, values between them —
+        // half the rows one cell across is a grid with headings, not rows the page did not divide;
+        // and a row across left blank sets no value, so it is no such row either.
+        let rects = segments(4, 3, |vertical, line, band| {
+            !(vertical && ((band % 2 == 1 && (1..3).contains(&line)) || (line == 3 && band == 2)))
+        });
+        let mut runs: Vec<RunOrigin> = [0, 2]
+            .into_iter()
+            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        runs.extend([at(1, 0, "Focus area"), at(3, 0, "Other area")]);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(
+            (tables[0].rows, tables[0].columns, tables[0].cells.len()),
+            (4, 3, 8)
+        );
+        // Rows 1 and 2 across, row 2 left blank.
+        let rects = segments(3, 3, |vertical, line, band| {
+            !(vertical && ((band > 0 && (1..3).contains(&line)) || (line == 3 && band == 2)))
+        });
+        let mut runs: Vec<RunOrigin> = (0..3).map(|c| at(0, c, label(0, c))).collect();
+        runs.push(at(1, 0, "Focus area"));
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(
+            (tables[0].rows, tables[0].columns, tables[0].cells.len()),
+            (3, 3, 5)
+        );
+    }
+
+    #[test]
+    fn a_gap_only_a_fills_edge_closes_is_not_drawn_beside_merged_cells() {
+        // Rows 0 and 2 shaded cell by cell, row 1 left white, one rule between the first two
+        // columns down all three: the white row's last two values have no line between them, and
+        // the shaded rows' edges are no rules — the grid is not read through it
+        // (opendataloader-bench `01030000000064`).
+        let mut rects: Vec<QuantRect> = [0, 2]
+            .into_iter()
+            .flat_map(|row| {
+                (0..3).map(move |c| r(100 + 100 * c, 100 + 40 * row, 200 + 100 * c, 140 + 40 * row))
+            })
+            .collect();
+        rects.push(r(200, 100, 201, 220));
+        let runs: Vec<RunOrigin> = (0..3)
+            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+            .collect();
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_column_left_empty_stands_only_where_rules_close_an_outer_lines_gap() {
+        // `ruled-rects-v14`: a rate filing's form rules a column it leaves empty. With the gap the
+        // grid stands with its empty column; drawn whole, it is read as one lattice no more, and
+        // the empty column is still the split clause 4 of `standing` refuses.
+        let (rects, runs) = gapped(4, true);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!((tables[0].rows, tables[0].columns), (3, 4));
+        let (rects, runs) = gapped(4, false);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+        // A column holding signs alone is not left empty: it is still a split.
+        let (rects, mut runs) = gapped(4, true);
+        runs.extend([at(0, 3, "$"), at(2, 3, "$")]);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn a_grid_its_rules_close_with_two_columns_left_empty_does_not_stand() {
+        // The same gapped grid holding text in two columns of four, and in none: more than one
+        // column left empty is a drawing or a form's boxes, not a form with a column left blank.
+        let (rects, runs) = gapped(4, true);
+        let two: Vec<RunOrigin> = runs.into_iter().filter(|o| o.x < pt(300)).collect();
+        for runs in [two, Vec::new()] {
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "{tables:?}");
+        }
+    }
+
+    #[test]
+    fn rows_ruled_only_across_under_a_divided_header_are_not_cells_across_the_grid() {
+        // A header row divided into three columns, and two rows under it ruled across only: the
+        // right side stops at the header, every row's rules run out to it, and each row sets a
+        // value in every column — rows of values the page did not divide, not one cell each.
+        let rects = segments(3, 3, |vertical, line, band| {
+            !vertical || band == 0 || line == 0
+        });
         let runs: Vec<RunOrigin> = (0..3)
             .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
             .collect();
@@ -3709,7 +3937,7 @@ mod tests {
                 text,
             })
             .collect();
-        let (whole, refused) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
+        let (whole, refused, _) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
         assert!(whole.is_empty() && refused.is_some());
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
@@ -3983,6 +4211,7 @@ mod tests {
                         ys,
                         traced: false,
                         merged: Vec::new(),
+                        ruled_gaps: false,
                     };
                     assert!(
                         !spec(&lattice),

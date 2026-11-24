@@ -821,6 +821,14 @@ pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 /// records `rows the page did not rule`. With the figure rule `whitespace-tracks-v16` took in the
 /// same decision, ParseBench tables 0.6224 → 0.6326 and visual grounding 0.5915 → 0.5987, overall
 /// 51.49 → 51.84; opendataloader-bench 0.7999 → 0.8004; the gate documents' 556 tables unchanged.
+///
+/// **And a group's grid read through its merged cells takes an outer line left out beside a row or
+/// two where its rules close every such gap** (decision #175, folded in): a line drawn across one
+/// band at least, the rules above and below each band it leaves out running out to it, is drawn;
+/// a fill's edge closes nothing, so a table shaded in bands is still not read through its shading.
+/// Such a grid stands with one column holding no text, a form's blank column, but not with two,
+/// and not where more than half its rows are one cell across every column holding text: rows
+/// ruled across only under a divided header are rows of values the page did not divide.
 pub const TABLE_DETECTION_V14: &str = "ruled-rects-v14";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

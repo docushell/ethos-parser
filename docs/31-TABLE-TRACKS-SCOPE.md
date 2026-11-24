@@ -1789,3 +1789,43 @@ plain page numbers only. On `fh_2025_004e` p7 the section heading over the share
 stacked into the new table's first header cell (`Name ●Major shareholders`), and the two bold labels
 of the box beside it, `Number of shareholders` and `Number of shares outstanding`, are written on
 one Markdown line; no text is lost.
+
+## 44. An outer line its rules close, beside merged cells (2026-11-24, decision #175)
+
+**What `ruled-rects-v14` missed.** §23 counts an outer line as drawn across a row whose rules above
+and below both run out to it, but only for a grid traced whole: a grid read through its merged
+cells (§13's `ruled-rects-v10`, `Lattice::merged_cells`) asked every outer line to be drawn end to
+end, since closing its sides read opendataloader-bench `01030000000064`'s banded rows as merged
+cells (TEDS 1.00 → 0.81). A rate filing's form, a rating worksheet or a course grid often draws
+both: a heading row across every column, which breaks each column line across it, and a border
+left out beside a row or two, which the rules either side of that row run out to. Such a grid was
+refused, and its values read as prose or fragments.
+
+**The change**, folded into `-v14`, which no release carries:
+
+- **In a grid read through its merged cells, an outer line drawn across one band at least, every
+  band it leaves out closed by rules, is drawn.** A rule here is drawn ink no thicker than a
+  lattice line across the line it lies on; a fill's edge is none, so a table shaded in bands, whose
+  shading is all that runs out to its open sides, closes nothing and reads as before. A side drawn
+  across no band is still open.
+- **Such a grid stands with one column holding no text at all** (`standing`'s fourth clause): a
+  form rules a column it leaves blank. Two left empty are a drawing or a form's boxes, and still
+  refuse it.
+- **Not where more than half its rows are one cell across every column, holding text**
+  (`merged_cells`' fifth clause): a header row divided into columns over rows ruled across only
+  reads each row's values as one cell, and those are rows the page did not divide.
+
+**Measured**: pending.
+
+**Measured and not used**, on the prototypes: the clause with neither guard changed 38 benchmark
+documents, 12 of them for the worse — 8 empty grids where the page sets no table (a report's
+layout page, a complex header, three fillable forms), a tax form's comb boxes read as a table that
+splits a word across two cells, and three tables with nine of their eleven columns empty. Allowing
+empty columns up to half a grid's still read one form as a table. Refusing instead any cell across
+the grid whose values sit in two columns on one baseline lost nine good pages of one filing. The
+first guard alone read an employee table on the private real-document set as two grids, each
+row's values merged into one cell; the second guard restores it.
+
+**Known limits**: a grid whose open sides only fill edges close, as `01030000000064`'s, is still
+not read through its merged cells; a grid with two columns or more left empty — a credibility table
+with nine of its eleven columns blank — is still refused.
