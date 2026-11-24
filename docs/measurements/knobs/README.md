@@ -15,7 +15,7 @@ and they read artifacts the engine emits or inspect PDFs with qpdf. No corpus fi
   `SHA256SUMS.txt` there marks `verified`. `target/release/ethos-parser` on the same host prints
   0.57.0 and is stale; a first pass taken with it was discarded and every engine reading below was
   re-taken with the 0.58.0 binary. The qpdf census does not run the engine and was not re-taken.
-- **qpdf 12.3.2** at `/opt/homebrew/bin/qpdf` (Apache-2.0), used out of band as a second reader.
+- **qpdf 12.3.2** on `PATH` (Apache-2.0), used out of band as a second reader.
 - **Host:** Apple M4 Pro, 12 cores, 48 GiB, macOS, shared with other work — load average 2.0 to 3.1
   before and after the timing runs. Python 3.9.6.
 

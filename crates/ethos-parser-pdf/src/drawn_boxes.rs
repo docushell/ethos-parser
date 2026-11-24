@@ -40,8 +40,8 @@
 //! none: each search reads only what lies near its box, so the rule's work is linear in what the
 //! page draws. Extraction drops a box half or more of which a check box widget covers where the
 //! widget states it on, or a state this engine cannot tell: the widget, not the outline under it,
-//! says what the field holds. The constants are the PB2 census's
-//! (`target/proto/pb2census/forms`, 2026-11-18), which measured them on drawn forms.
+//! says what the field holds. The constants are those a 2026-11-18 census of ParseBench-2's forms
+//! measured on drawn forms, with an out-of-tree instrument.
 
 use crate::tables::QuantRect;
 use ethos_parser_core::BoxSide;

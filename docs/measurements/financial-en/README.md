@@ -1,7 +1,7 @@
 # Made-up English financial documents: GST invoices and bank statements in DOCX, XLSX and PDF
 
-**Measured 2026-11-14** with the snapshot binary `target/proto/measure/bin/c9b364c/ethos-parser`
-(`ethos-parser 0.66.0-dev.1`, built at c9b364c; its sha256 is in [`results.json`](results.json)).
+**Measured 2026-11-14** with a release build of c9b364c (`ethos-parser 0.66.0-dev.1`; its sha256
+is in [`results.json`](results.json)).
 Sixteen made-up documents are written by [`make_financial.py`](make_financial.py), each with an
 answer key; §3 and `results.json` score the first fifteen, and §3a the sixteenth, added later. They are scored by the shared scorer
 [`../office-resumes/score.py`](../office-resumes/score.py).
@@ -81,8 +81,9 @@ How each format holds these shapes:
 ## 2. Run it
 
 ```bash
+cargo build --release --locked                                # at c9b364c to reproduce results.json
 python3 docs/measurements/financial-en/make_financial.py      # -> target/measure-sets/financial-en/
-ETHOS_PARSER_BIN=target/proto/measure/bin/c9b364c/ethos-parser \
+ETHOS_PARSER_BIN=target/release/ethos-parser \
   python3 docs/measurements/office-resumes/score.py \
     --set target/measure-sets/financial-en \
     --out docs/measurements/financial-en/results.json

@@ -228,8 +228,9 @@ pub mod codes {
     /// a grid the author never actually divided would be indistinguishable from a page that drew
     /// no lines at all.
     ///
-    /// **The parked `stroke-ruled-v1` never had it**, and its own revival notes called that the
-    /// slice's one real incompleteness: refusals returned an empty vector and said nothing, so the
+    /// **The parked `stroke-ruled-v1` never had it**, and its own revival notes
+    /// (`docs/attic/stroke-ruled-v1/README.md` at commit `76b3b34`) called that the slice's one
+    /// real incompleteness: refusals returned an empty vector and said nothing, so the
     /// rule declined bands in silence. Wiring it was a precondition of shipping the rule at all —
     /// standing rule 3, no silent drop.
     ///

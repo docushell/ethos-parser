@@ -38,7 +38,7 @@
 # `compiled` artifacts are still packaged, because a release that omits Linux helps nobody, but
 # they are labelled in `SHA256SUMS.txt` and in the manifest so a release note cannot silently
 # imply they were tested. Promoting one to `verified` needs a machine of that platform, which is
-# what plan item 6.1 is for.
+# what `docs/OPEN-WORK.md` item 6.1 is for.
 #
 # Across runners the comparison is stricter, because there is no native build to defer to: under
 # `--assemble`, a target is `verified` only when its fingerprint is byte-identical to EVERY other
@@ -332,9 +332,9 @@ assemble() {
     echo "# state 'verified' means the archive's binaries, ethos-parser, ethos-parser-ocr and"
     echo "# ethos-parser-assist, were EXECUTED on the runner that built them and every artifact"
     echo "# digest over the gate corpus equalled every other runner's: one fingerprint on every system"
-    echo "# below. That is plan item 6.1's operating-system axis, measured on these binaries. Nothing"
-    echo "# here is 'compiled' — a fingerprint that differed would have failed the assembly, and this"
-    echo "# file would not exist."
+    echo "# below. That is the operating-system axis of cross-OS byte identity (docs/OPEN-WORK.md,"
+    echo "# item 6.1), measured on these binaries. Nothing here is 'compiled' — a fingerprint that"
+    echo "# differed would have failed the assembly, and this file would not exist."
     echo "#"
     for i in "${!targets[@]}"; do
       echo "# ${targets[$i]}  ->  verified"
@@ -547,7 +547,7 @@ done
   echo "# ethos-parser-assist, were EXECUTED on the build host and every artifact digest over the"
   echo "# gate corpus equalled the native build's. State 'compiled' means they were built and never"
   echo "# run: this host could not execute them. A compiled artifact is not evidence of anything"
-  echo "# about the platform it targets. See plan item 6.1."
+  echo "# about the platform it targets. See docs/OPEN-WORK.md, item 6.1 (cross-OS byte identity)."
   echo "#"
   for i in "${!built[@]}"; do
     echo "# ${built[$i]}  ->  ${states[$i]}"

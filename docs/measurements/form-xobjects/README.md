@@ -8,8 +8,9 @@ its 506 text documents show no text in their pages' own streams, and the broad c
 refuted there — charts and slide exports draw their labels through forms. The scope's §13 holds what
 the build measured. **What follows is the 2026-09-22 record, unchanged.**
 
-**Measured 2026-09-22.** The PageIndex review ([`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md))
-proposed it as the largest pure-recall item that review found.
+**Measured 2026-09-22.** The PageIndex review proposed it as, in that review's own words,
+*"the largest pure-recall item the review found"*; the verdict is
+[`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md#form-xobject-descent--measured-2026-09-22-and-the-verdict-split).
 
 **It is not that, and it is not nothing.** The measurement separates two populations that the
 proposal had folded into one incidence figure:

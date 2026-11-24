@@ -22,8 +22,9 @@ name: Release artifacts
 # On one host the comparison is against the native build. Here every runner is a host of its own,
 # so the comparison is across all of them: a target is `verified` when it was executed on the
 # runner that built it AND its fingerprint — every artifact digest over the gate corpus — equals
-# every other runner's. That is plan item 6.1's operating-system axis, measured on the release
-# binaries themselves. Fingerprints that differ fail `verify`, and nothing is labelled anything.
+# every other runner's. That is `docs/OPEN-WORK.md` item 6.1's operating-system axis, measured on
+# the release binaries themselves. Fingerprints that differ fail `verify`, and nothing is
+# labelled anything.
 #
 # # It has never run
 #

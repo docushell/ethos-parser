@@ -1,7 +1,7 @@
 # Made-up Word resumes: what `markdown --source` keeps of a DOCX resume
 
-**Measured 2026-11-14** with the snapshot binary `target/proto/measure/bin/c9b364c/ethos-parser`
-(`ethos-parser 0.66.0-dev.1`, built at c9b364c; its sha256 is in [`results.json`](results.json)).
+**Measured 2026-11-14** with a release build of c9b364c (`ethos-parser 0.66.0-dev.1`; its sha256
+is in [`results.json`](results.json)).
 Twenty made-up DOCX resumes, written by [`make_resumes.py`](make_resumes.py) together with an
 answer key for each, and scored by [`score.py`](score.py), which [`../financial-en/`](../financial-en/)
 uses too.
@@ -43,8 +43,9 @@ checks above.
 ## 2. Run it
 
 ```bash
+cargo build --release --locked                                # at c9b364c to reproduce results.json
 python3 docs/measurements/office-resumes/make_resumes.py      # -> target/measure-sets/office-resumes/
-ETHOS_PARSER_BIN=target/proto/measure/bin/c9b364c/ethos-parser \
+ETHOS_PARSER_BIN=target/release/ethos-parser \
   python3 docs/measurements/office-resumes/score.py \
     --set target/measure-sets/office-resumes \
     --out docs/measurements/office-resumes/results.json

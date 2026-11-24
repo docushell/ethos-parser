@@ -297,7 +297,8 @@ release, so that is a fact about the workflow rather than a promise in it.
   fingerprints must be whole and byte-identical, and each tarball must digest to what its runner
   recorded; only then is `SHA256SUMS.txt` written, with every target `verified`. **`verified`
   here means executed on the runner that built it and every artifact digest equal across every
-  runner** — plan item 6.1's operating-system axis, measured on the release binaries themselves.
+  runner** — [`OPEN-WORK.md`](OPEN-WORK.md) item 6.1's operating-system axis, measured on the
+  release binaries themselves.
   One differing fingerprint fails the job, names the rows, and labels nothing: no
   `SHA256SUMS.txt`, no bundle.
 - **Attaching.** The owner downloads `release-bundle` and attaches it with step 2's command:

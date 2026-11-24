@@ -533,10 +533,11 @@ band at all. On the benchmark that was `01030000000120.pdf` (3 × 5) and `010300
 | **`-v6`** | **0** | **0** | 193 · 147 · 714 · 22 |
 
 (`161r1`, `37r2`, `53Ar5`, `171r3`.) **No page `-v6` refuses is one `-v4` did not**, on any document
-in the three populations. Over 41 distinct PDFs from `../ethos`, `../ethos-oracle` and
-`../docuShell`, `-v6` removes one more disclaimer (`nist-sp-800-63b`) and adds nothing. The 43
-engine fixtures emit the same tables and refuse the same pages; two change bytes, because the
-refusal now names `-v6` instead of `-v3` and its explanation stops saying tracing replaced faces.
+in the three populations. Over 41 distinct PDFs from `../ethos`, `../ethos-oracle` and the
+project owner's private test PDFs, `-v6` removes one more disclaimer (`nist-sp-800-63b`) and adds
+nothing. The 43 engine fixtures emit the same tables and refuse the same pages; two change bytes,
+because the refusal now names `-v6` instead of `-v3` and its explanation stops saying tracing
+replaced faces.
 
 ### What this does not settle
 
@@ -559,8 +560,11 @@ commit:
 ```bash
 ETHOS_BENCH_CORPUS=~/ethos-external-benchmarks/opendataloader-bench \
   docs/measurements/table-refusals/rule_ab.py v5=<binary> v6=target/release/ethos-parser \
-  --extra ../ethos/fixtures --extra ../ethos-oracle --extra ../docuShell
+  --extra ../ethos/fixtures --extra ../ethos-oracle
 ```
+
+The 41-PDF reading in §4g also passed a third `--extra`, the project owner's private test PDFs,
+which are not redistributable; without it the run reads fewer documents.
 
 The engine is deterministic and the script only reads its output, so two runs agree exactly. The
 script prints any refusal line its patterns fail to match and calls the taxonomy incomplete when

@@ -125,7 +125,7 @@ so the lattice cross-check is `NotApplicable` with that reason — as a tagged t
 
 ## 5. Measured (2026-10-04)
 
-**The prototype** (`target/proto/chart_proto.py`, bars read with PyMuPDF as an instrument, text from
+**The prototype** (an out-of-tree script, bars read with PyMuPDF as an instrument, text from
 the engine): charts 0.0024 → 0.0930. Against ParseBench's ground truth, 310 cells agreed and 2
 disagreed — both the ground truth's fault, checked on the rendered pages: one rule names India's
 ride-sharing value as 4.5 where the chart prints 3.6, one omits which of two panels it means. Its

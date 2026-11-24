@@ -973,7 +973,7 @@ jobs:
           fi
 
   # -----------------------------------------------------------------------------------------
-  # Plan item 6.1, the operating-system axis: one set of inputs, three systems, one set of bytes
+  # OPEN-WORK.md item 6.1, the operating-system axis: one set of inputs, three systems, one set of bytes
   # -----------------------------------------------------------------------------------------
   #
   # `docs/measurements/cross-architecture/` settled the instruction-set axis on one Mac — aarch64
