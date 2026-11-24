@@ -36,27 +36,32 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 A rate filing's form, a rating worksheet or a course grid often draws a heading row across every
 column, which breaks each column line across it, and leaves its border out beside a row or two,
-where the rules either side of that row run out to it. The ruled rule read the first through the
-table's merged cells only where every outer line was drawn end to end, so such a table was refused
-and its values read as prose or fragments. Folded into `ruled-rects-v14`, which no release carries,
+where the rules either side of that row run out to it. The ruled rule read a table through its
+merged cells only where every outer line was drawn end to end, so such a table was refused and its
+values read as prose or fragments. Folded into `ruled-rects-v14`, which no release carries,
 so no rule id and no `profile_sha256` moves:
 
 - **An outer line drawn across one band at least, every band it leaves out closed by rules, is
   drawn** in a grid read through its merged cells. A rule is drawn ink no thicker than a lattice
-  line across the line it lies on; a fill's edge closes nothing, so a table shaded in bands
-  (opendataloader-bench `01030000000064`) still reads as before.
-- **Such a grid stands with one column holding no text**, a form's blank column; with two left
-  empty it is a drawing or a form's boxes, and is refused.
-- **Not where more than half its rows are one cell across every column holding text**: rows ruled
-  across only under a divided header are rows of values the page did not divide.
+  line across the line it lies on; a fill's edge draws the band it runs along but closes no gap, so
+  a table shaded in bands (opendataloader-bench `01030000000064`) still reads as before.
+- **Such a grid stands with one column holding no text**, a form's blank column, where it has three
+  columns or more; with two left empty it is a drawing or a form's boxes, and with two columns in
+  all a list of labels, and is refused.
+- **Not where a row beside a gap holds a cell across columns with text in each of them**: values
+  set column by column in a row only rules divide — a row ruled across under a divided header, a
+  white row between shaded ones — are not one cell. A heading across a form, which leaves some of
+  the columns it spans blank, and a blank row stand.
 
 **Measured**: pending.
 
-Seven new tests on made-up grids — a gap its rules close beside a heading row, and in each other
-side; a gap only fills close; one empty column with and without the gap, and a column of signs
-alone; two empty columns and none filled; rows ruled across under a divided header; headings
-across half the rows, and a blank row across, standing. The test of a table open at its sides
-holds. Eighteen mutations, each caught.
+Nine new tests on made-up grids — a gap its rules close beside a heading row, and in each other
+side, and the top edge's gap making no row a gap's; a gap only fills close; one empty column with
+and without the gap, and a column of signs alone; two empty columns and none filled; one empty
+column of two; one or two rows ruled across under a divided header; values across a label
+column's neighbours, and across a white row between shaded ones with rules between the rows; a
+heading and a blank row across beside the gap, standing. The test of a table open at its sides
+holds. Each rule's mutations caught.
 
 ### An appendix number and a number in any script's digits open a section (decision #174)
 

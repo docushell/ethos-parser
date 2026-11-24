@@ -1806,14 +1806,21 @@ refused, and its values read as prose or fragments.
 - **In a grid read through its merged cells, an outer line drawn across one band at least, every
   band it leaves out closed by rules, is drawn.** A rule here is drawn ink no thicker than a
   lattice line across the line it lies on; a fill's edge is none, so a table shaded in bands, whose
-  shading is all that runs out to its open sides, closes nothing and reads as before. A side drawn
-  across no band is still open.
-- **Such a grid stands with one column holding no text at all** (`standing`'s fourth clause): a
-  form rules a column it leaves blank. Two left empty are a drawing or a form's boxes, and still
-  refuse it.
-- **Not where more than half its rows are one cell across every column, holding text**
-  (`merged_cells`' fifth clause): a header row divided into columns over rows ruled across only
-  reads each row's values as one cell, and those are rows the page did not divide.
+  shading is all that runs out to its open sides, closes nothing and reads as before. A fill's edge
+  still draws the band it runs along, as everywhere in the lattice; the third point below is what
+  keeps shaded rows from closing a white row's values into one cell. A side drawn across no band
+  is still open.
+- **Such a grid stands with one column holding no text at all** (`standing`'s fourth clause), where
+  it has three columns or more: a form rules a column it leaves blank. Two left empty are a drawing
+  or a form's boxes, and one of two is a list of labels — as `standing` refuses each drawn whole.
+- **Not where a row beside a gap holds a cell across columns with text in each of them**
+  (`merged_cells`' fifth clause): such a row is divided only by the rules above and below it, and
+  its values set column by column read as one cell — a header row divided into columns over rows
+  ruled across only, a label column ruled down beside columns divided only in the header, a white
+  row between rows shaded cell by cell with rules between the rows. A rate filing leaves its
+  border out beside its section headings and blank rows, and those stand: a heading leaves some of
+  the columns it spans blank. A cell across rows beside a gap in the top or bottom is clause 4's,
+  which refuses one whose lines sit on its neighbours' baselines.
 
 **Measured**: pending.
 
@@ -1824,8 +1831,16 @@ splits a word across two cells, and three tables with nine of their eleven colum
 empty columns up to half a grid's still read one form as a table. Refusing instead any cell across
 the grid whose values sit in two columns on one baseline lost nine good pages of one filing. The
 first guard alone read an employee table on the private real-document set as two grids, each
-row's values merged into one cell; the second guard restores it.
+row's values merged into one cell. A guard refusing the grid where more than half its rows were
+one cell across every column holding text restored it, but read a header over one such row, a
+label column's neighbours and a banded table with rules between its rows through merged cells
+(QA, on made-up grids); the fifth clause restores all of them and the employee table, and keeps
+every benchmark document the change moves. Refusing any cell across columns beside a gap, text or
+not, lost 21 of those 26 documents: a rate filing's section headings and blank rows sit beside its
+gaps.
 
 **Known limits**: a grid whose open sides only fill edges close, as `01030000000064`'s, is still
 not read through its merged cells; a grid with two columns or more left empty — a credibility table
-with nine of its eleven columns blank — is still refused.
+with nine of its eleven columns blank — is still refused. A row beside a gap whose values leave a
+column blank, or whose sides are drawn, is still read as one cell across them, as a grid drawn
+whole is (a banded table boxed at its sides, `ruled-rects-v10`, is a decision of its own).

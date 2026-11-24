@@ -826,9 +826,10 @@ pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 /// two where its rules close every such gap** (decision #175, folded in): a line drawn across one
 /// band at least, the rules above and below each band it leaves out running out to it, is drawn;
 /// a fill's edge closes nothing, so a table shaded in bands is still not read through its shading.
-/// Such a grid stands with one column holding no text, a form's blank column, but not with two,
-/// and not where more than half its rows are one cell across every column holding text: rows
-/// ruled across only under a divided header are rows of values the page did not divide.
+/// Such a grid of three columns or more stands with one column holding no text, a form's blank
+/// column, but not with two, and not where a row beside a gap holds a cell across columns with text
+/// in each of them: values the rules alone divide, under a divided header or between shaded rows,
+/// are not one cell, while a form's heading or blank row beside its gap stands.
 pub const TABLE_DETECTION_V14: &str = "ruled-rects-v14";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

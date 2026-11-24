@@ -89,9 +89,9 @@
 //!    it, as a column rule ends on such a table's top border, is a line of the grid, not an
 //!    underline ([`without_decoration`]). Since `ruled-rects-v14` (decision #175) a grid read
 //!    through merged cells takes an outer line drawn across one band at least whose every gap
-//!    rules close, a fill's edge closing none ([`Lattice::merged_cells`]); such a grid stands with
-//!    one column left empty, never two, and not with most of its rows one cell across every column
-//!    holding text.
+//!    rules close, a fill's edge closing none ([`Lattice::merged_cells`]); such a grid of three
+//!    columns or more stands with one column left empty, never two, and not where a row beside a
+//!    gap holds a cell across columns with text in each of them.
 //! 8. **A header set above the top rule is the table's first row** (`ruled-rects-v13`, decision
 //!    #74, [`header_above`]), where the document declares no structure and the grid's own first
 //!    row is no header: the lines just above the rule, a label over two columns or more and each
@@ -1056,9 +1056,9 @@ pub(crate) fn root(parent: &mut [usize], mut i: usize) -> usize {
 /// 4. **Not a grid with a column that holds no letter or digit in any row**: a split the text does
 ///    not make, as when a row's shading is drawn piece by piece around a currency sign. Since
 ///    `ruled-rects-v14` (decision #175), one column holding no text at all is no split in a grid
-///    whose outer line's gaps its rules closed (`ruled_gaps`, one per grid): a rate filing's form
-///    rules a column it leaves empty. Two left empty are a drawing or a form's boxes, and still
-///    refuse it.
+///    of three columns or more whose outer line's gaps its rules closed (`ruled_gaps`, one per
+///    grid): a rate filing's form rules a column it leaves empty. Two left empty are a drawing or
+///    a form's boxes, and one of two a list of labels, and still refuse it.
 fn standing(
     grids: Vec<DetectedTable>,
     ruled_gaps: &[bool],
@@ -1156,8 +1156,9 @@ fn standing(
     let split = |t: &DetectedTable, gaps: bool| {
         let column = |k: u32| t.cells.iter().filter(move |c| c.position.column == k);
         let empty = |k: u32| column(k).all(|c| c.text.trim().is_empty());
-        // Only one column left empty: a form's blank column, not its boxes.
-        let gaps = gaps && (0..t.columns).filter(|&k| empty(k)).count() == 1;
+        // Only one column left empty, beside two others at least: a form's blank column, not its
+        // boxes, nor a list of labels.
+        let gaps = gaps && t.columns > 2 && (0..t.columns).filter(|&k| empty(k)).count() == 1;
         (0..t.columns).any(|k| {
             !(column(k).any(|c| c.text.chars().any(char::is_alphanumeric)) || (gaps && empty(k)))
         })
@@ -2156,8 +2157,9 @@ impl Lattice {
     ///
     /// **An outer line is drawn across a band its rules close** (`ruled-rects-v13`,
     /// [`closed_by_rules`]): a table open at its sides draws no outer column line, and its rows'
-    /// rules running out to where that line would be are its edge. Here only, where a grid is
-    /// traced whole — [`Self::merged_cells`] says why not there.
+    /// rules running out to where that line would be are its edge. Here for a grid traced whole;
+    /// [`Self::merged_cells`] closes one only where it is drawn across one band at least and rules,
+    /// not a fill's edge, close each gap (decision #175).
     fn first_untraced_line(&self, rects: &[QuantRect]) -> Option<(Axis, usize, usize)> {
         let row_intervals: Vec<(i64, i64)> = self
             .row_bands
@@ -2206,7 +2208,9 @@ impl Lattice {
     ///    TEDS 1.00 -> 0.81, for no page gained. Since `ruled-rects-v14` (decision #175) an outer
     ///    line drawn across one band at least, its every gap closed by RULES (ink no thicker than a
     ///    lattice line across it), is drawn: a fill's edge closes nothing, and a side drawn across
-    ///    no band is still open;
+    ///    no band is still open. A fill's edge still draws the band it runs along — clause 5 keeps
+    ///    the white row between two shaded cell by cell, its rules closing the sides, from reading
+    ///    as one cell;
     /// 2. **every interior line is drawn across one band at least**: a line drawn across none is
     ///    ink from elsewhere on the page that happens to fall inside the grid, not a division of
     ///    it — and since `ruled-rects-v13` (decision #76) [`Self::build`] reads the grid again
@@ -2221,9 +2225,12 @@ impl Lattice {
     ///    A wrapped label beside them sits on baselines of its own — and since `ruled-rects-v13`
     ///    (decision #76) a label whose text holds half the rows it spans or fewer is one cell: a
     ///    column left unruled holds text down most of its rows;
-    /// 5. **where rules closed a side** (clause 1, `ruled-rects-v14`, decision #175), **not most
-    ///    of its rows one cell across every column holding text**: rows ruled across only under a
-    ///    divided header are rows of values the page did not divide.
+    /// 5. **no row beside a side's gap its rules closed** (clause 1, `ruled-rects-v14`, decision
+    ///    #175) **holds a cell across columns with text in each of them**: values set column by
+    ///    column in a row only its rules divide — under a divided header, beside a ruled label
+    ///    column, white between shaded rows — are not one cell. A heading across a rate filing's
+    ///    form, beside which it leaves its border out, leaves some of its columns blank, and a
+    ///    blank row stands too. A cell across rows beside the top's or bottom's gap is clause 4's.
     fn merged_cells(
         &self,
         rects: &[QuantRect],
@@ -2264,6 +2271,8 @@ impl Lattice {
         // of the other axis.
         let mut open_v = vec![vec![false; rows]; cols - 1];
         let mut open_h = vec![vec![false; cols]; rows - 1];
+        // `gap_rows[r]`: a side is left out beside row `r`, its gap closed by rules (clause 1).
+        let mut gap_rows = vec![false; rows];
         for (axis, lines, kept, across, open) in [
             (
                 Axis::Vertical,
@@ -2316,6 +2325,11 @@ impl Lattice {
                         .all(|(band, d)| *d || closed_by_rules(rules, axis, *line, *band))
                 {
                     *ruled_gaps = true;
+                    if axis == Axis::Vertical {
+                        for (gap, d) in gap_rows.iter_mut().zip(&drawn) {
+                            *gap |= !d;
+                        }
+                    }
                     continue;
                 }
                 let k = kept.iter().position(|b| b + 1 == i)?;
@@ -2406,18 +2420,27 @@ impl Lattice {
                 .map(|o| o.y)
                 .collect()
         };
-        // `ruled-rects-v14` (decision #175): where rules closed an outer line's gaps, a grid most
-        // of whose rows are one cell across every column, holding text, is rows of values the page
-        // did not divide.
-        if *ruled_gaps {
-            let undivided = cells
-                .iter()
-                .filter(|s| s.colspan as usize == cols)
-                .filter(|s| !lines_in(s, row_iv[s.row as usize]).is_empty())
-                .count();
-            if 2 * undivided > rows {
-                return None;
-            }
+        // `ruled-rects-v14` (decision #175): a row beside a side's gap holds no cell across
+        // columns with text in each of them — values the page divides from the next row by its
+        // rules alone, not a heading across a form. A cell across rows is clause 4's.
+        if cells.iter().any(|s| {
+            s.colspan > 1
+                && (s.row..s.row + s.rowspan).any(|r| {
+                    gap_rows[r as usize]
+                        && (s.column..s.column + s.colspan).all(|c| {
+                            !lines_in(
+                                &Span {
+                                    column: c,
+                                    colspan: 1,
+                                    ..*s
+                                },
+                                row_iv[r as usize],
+                            )
+                            .is_empty()
+                        })
+                })
+        }) {
+            return None;
         }
         for m in cells.iter().filter(|s| s.rowspan > 1) {
             let aligned = (m.row..m.row + m.rowspan)
@@ -3798,28 +3821,34 @@ mod tests {
             let t = &tables[0];
             assert_eq!((t.rows, t.columns, t.cells.len()), (3, 3, 7));
         }
+        // The top edge left out beside column 1 leaves no side out beside row 1: the heading,
+        // its words set in every column, is one cell still.
+        let rects = segments(3, 3, |v, l, b| {
+            !(v && b == 1 && (1..3).contains(&l)) && (v, l, b) != (false, 0, 1)
+        });
+        let (_, mut runs) = gapped(3, true);
+        runs.extend([at(1, 1, "and"), at(1, 2, "notes")]);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        assert_eq!(tables[0].cells.len(), 7);
     }
 
     #[test]
-    fn a_grid_its_rules_close_stands_with_half_its_rows_one_cell_across() {
-        // `ruled-rects-v14` (decision #175): headings across rows 1 and 3, values between them —
-        // half the rows one cell across is a grid with headings, not rows the page did not divide;
-        // and a row across left blank sets no value, so it is no such row either.
-        let rects = segments(4, 3, |vertical, line, band| {
-            !(vertical && ((band % 2 == 1 && (1..3).contains(&line)) || (line == 3 && band == 2)))
+    fn a_heading_or_a_blank_row_across_beside_a_gap_its_rules_close_stands() {
+        // `ruled-rects-v14` (decision #175): the right edge left out beside the heading row itself,
+        // as a rate filing leaves it beside its section headings — a heading set in one of the
+        // columns it spans is no row of values; and a row across left blank sets none.
+        let rects = segments(3, 3, |vertical, line, band| {
+            !(vertical && band == 1 && (1..=3).contains(&line))
         });
-        let mut runs: Vec<RunOrigin> = [0, 2]
-            .into_iter()
-            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
-            .collect();
-        runs.extend([at(1, 0, "Focus area"), at(3, 0, "Other area")]);
+        let (_, runs) = gapped(3, true);
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
         assert_eq!(
             (tables[0].rows, tables[0].columns, tables[0].cells.len()),
-            (4, 3, 8)
+            (3, 3, 7)
         );
-        // Rows 1 and 2 across, row 2 left blank.
+        // Rows 1 and 2 across, row 2 left blank beside the gap.
         let rects = segments(3, 3, |vertical, line, band| {
             !(vertical && ((band > 0 && (1..3).contains(&line)) || (line == 3 && band == 2)))
         });
@@ -3856,8 +3885,8 @@ mod tests {
     #[test]
     fn a_column_left_empty_stands_only_where_rules_close_an_outer_lines_gap() {
         // `ruled-rects-v14`: a rate filing's form rules a column it leaves empty. With the gap the
-        // grid stands with its empty column; drawn whole, it is read as one lattice no more, and
-        // the empty column is still the split clause 4 of `standing` refuses.
+        // grid stands with its empty column; drawn whole, it is read through its merged cells as
+        // before, and the empty column is still the split clause 4 of `standing` refuses.
         let (rects, runs) = gapped(4, true);
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
@@ -3885,18 +3914,65 @@ mod tests {
     }
 
     #[test]
-    fn rows_ruled_only_across_under_a_divided_header_are_not_cells_across_the_grid() {
-        // A header row divided into three columns, and two rows under it ruled across only: the
-        // right side stops at the header, every row's rules run out to it, and each row sets a
-        // value in every column — rows of values the page did not divide, not one cell each.
-        let rects = segments(3, 3, |vertical, line, band| {
-            !vertical || band == 0 || line == 0
+    fn a_grid_its_rules_close_of_two_columns_one_left_empty_does_not_stand() {
+        // A form's heading across two columns, labels under it and the column beside them left
+        // blank, the right edge left out beside row 2: a list of labels, not a table — as it is
+        // drawn whole.
+        let rects = segments(4, 2, |vertical, line, band| {
+            !(vertical && ((line == 1 && band == 0) || (line == 2 && band == 2)))
         });
-        let runs: Vec<RunOrigin> = (0..3)
-            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+        let runs: Vec<RunOrigin> = ["Section", "Name", "Address", "Phone"]
+            .into_iter()
+            .zip(0..)
+            .map(|(text, row)| at(row, 0, text))
             .collect();
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert!(tables.is_empty(), "{tables:?}");
+    }
+
+    #[test]
+    fn rows_ruled_only_across_under_a_divided_header_are_not_cells_across_the_grid() {
+        // A header row divided into three columns, and one row or two under it ruled across only:
+        // the right side stops at the header, every row's rules run out to it, and each row sets a
+        // value in every column — rows of values the page did not divide, not one cell each.
+        for rows in [2, 3] {
+            let rects = segments(rows, 3, |vertical, line, band| {
+                !vertical || band == 0 || line == 0
+            });
+            let runs: Vec<RunOrigin> = (0..rows)
+                .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+                .collect();
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "{rows}: {tables:?}");
+        }
+    }
+
+    #[test]
+    fn values_across_columns_beside_a_gap_its_rules_close_are_not_one_cell() {
+        // A label column ruled down the grid, the columns after it divided only in the header, the
+        // right side drawn beside the header alone: each row's values are not one cell across
+        // three columns.
+        let labelled = segments(4, 4, |vertical, line, band| {
+            !vertical || band == 0 || line <= 1
+        });
+        // Rows 0 and 2 shaded cell by cell, row 1 white, thin rules between the rows and one
+        // between the first two columns: the shaded rows' edges draw both sides, the rules close
+        // them beside the white row, whose last two values are not one cell either.
+        let mut banded: Vec<QuantRect> = [0, 2]
+            .into_iter()
+            .flat_map(|row| {
+                (0..3).map(move |c| r(100 + 100 * c, 100 + 40 * row, 200 + 100 * c, 140 + 40 * row))
+            })
+            .collect();
+        banded.push(r(200, 100, 201, 220));
+        banded.extend((0..4).map(|k| r(100, 100 + 40 * k, 401, 101 + 40 * k)));
+        for (rects, rows, cols) in [(labelled, 4, 4), (banded, 3, 3)] {
+            let runs: Vec<RunOrigin> = (0..rows)
+                .flat_map(|row| (0..cols).map(move |c| at(row, c, "9")))
+                .collect();
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "{cols}: {tables:?}");
+        }
     }
 
     #[test]
