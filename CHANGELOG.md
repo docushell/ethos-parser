@@ -44,12 +44,18 @@ moves.
   Annex D.2 keeps `currency`; a page macOS Quartz wrote declares `¤` for its subset program's
   `Euro` glyph, and every amount on it read `240 ¤` where the page shows `240 €`.
 - **Only that.** No other character is replaced, a code the map declares anything else keeps it,
-  and a font that is not TrueType, embeds no program or has no Mac Roman cmap keeps `¤`. So does
-  one whose glyph a reader selects another way (PDF 32000-1 §9.6.6.4): a font with an `/Encoding`
-  or a nonsymbolic one, selected by name, and a program with a (3,0) cmap, which comes first. The
-  `MacRomanEncoding` table is unchanged: 0xDB with no `/ToUnicode` still reads `¤`, as Annex D.2
-  gives it. The run is not declared apart; the profile's rule id names the reading.
-- **Measured**: pending. Eleven mutations, each caught.
+  and a font that is not TrueType, embeds no program or has no Mac Roman cmap keeps `¤`, as does a
+  program with a (3,0) cmap, which a symbolic font's code goes through first (PDF 32000-1
+  §9.6.6.4). The rule reads only the shape §9.6.6.4 reads by the code alone, with no `/Encoding`
+  to read by name instead; any other shape keeps `¤` by choice, not because its glyph is known to
+  differ. §9.6.6.4 and Ghostscript read a symbolic font with an `/Encoding` by the code, but MuPDF
+  reads it by name. A nonsymbolic font is read by name: a full system font's (3,1) cmap gives
+  U+00A4 its `currency` glyph, and viewers draw `¤`. Viewers draw `Euro` for a nonsymbolic
+  `/MacRomanEncoding` font whose program has only (1,0); it is left out because no benchmark page
+  has the shape and the same font without a `/ToUnicode` reads `¤` through the `MacRomanEncoding`
+  table, which is unchanged: 0xDB with no `/ToUnicode` still reads `¤`, as Annex D.2 gives it. The
+  run is not declared apart; the profile's rule id names the reading.
+- **Measured**: pending. Thirteen mutations, each caught.
 
 ### HTML writes `<th>` where the record states a header cell (decision #169)
 

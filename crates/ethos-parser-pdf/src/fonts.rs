@@ -122,7 +122,8 @@ pub enum WidthSource {
 /// How a glyph's characters are determined.
 #[derive(Debug, Clone)]
 pub enum Decoder {
-    /// The document's own `ToUnicode` CMap. Authoritative, and shared by every font naming its
+    /// The document's own `ToUnicode` CMap. Authoritative, save the `€` decision #170 reads where
+    /// the program names the glyph `Euro` ([`Font::euro`]), and shared by every font naming its
     /// stream (review 2026-09-26 N11).
     ToUnicode(Arc<ToUnicode>),
     /// A simple encoding plus `/Differences`.
@@ -652,7 +653,8 @@ fn load_font(
     // supplying them for `Arial` is the substitution that stays refused. So the name now has two
     // readers — the standard-14 lookup below, and `base_font_detail` for limitation details.
 
-    // 1. Decoder — ToUnicode wins when the document ships one. A filter that does not decode
+    // 1. Decoder — ToUnicode wins when the document ships one, save the `€` read below where the
+    //    program names the glyph `Euro` (decision #170). A filter that does not decode
     //    leaves the stream's raw bytes, which by its own declaration are not the CMap: refused,
     //    as a page's content stream is, rather than parsed.
     let decoder = if let Some(stream) = resolve_stream(doc, fd.get(b"ToUnicode").ok()) {
@@ -712,13 +714,6 @@ fn load_font(
         }
     };
 
-    // 1b. Decision #170: a TrueType glyph its own program names `Euro` reads as `€` where the
-    //     font's `/ToUnicode` declares `¤` ([`euro_named`]).
-    let euro = match &decoder {
-        Decoder::ToUnicode(map) if subtype == "TrueType" => euro_named(doc, fd, map),
-        _ => Vec::new(),
-    };
-
     // 2. Widths.
     let mut widths = load_widths(doc, fd, &subtype, id);
 
@@ -774,7 +769,20 @@ fn load_font(
     };
 
     let (bold, italic, weight) = font_style(doc, fd);
-    let fallback = Arc::new(fallback_map(doc, fd, &subtype));
+    // A simple TrueType font's embedded program, decoded once for the two readings below. A
+    // composite font's is its descendant's, which `fallback_map` decodes itself.
+    let program = if subtype == "TrueType" {
+        embedded_program(doc, fd)
+    } else {
+        None
+    };
+    // Decision #170: a TrueType glyph its own program names `Euro` reads as `€` where the font's
+    // `/ToUnicode` declares `¤` ([`euro_named`]).
+    let euro = match (&decoder, program.as_deref()) {
+        (Decoder::ToUnicode(map), Some(program)) => euro_named(doc, fd, map, program),
+        _ => Vec::new(),
+    };
+    let fallback = Arc::new(fallback_map(doc, fd, &subtype, program.as_deref()));
     Ok(Font {
         id: id.to_string(),
         kind: FontKind::from_subtype(&subtype),
@@ -793,11 +801,12 @@ fn load_font(
 /// What the font itself states for codes (decision #43): a simple font's declared encoding, then
 /// its embedded TrueType program — a composite font's only under `/Identity-H` or `/Identity-V`,
 /// where the code is the CID, and a simple font's only where the program is TrueType. The encoding
-/// answers first where both do.
+/// answers first where both do. `program` is a simple TrueType font's, decoded by the caller.
 fn fallback_map(
     doc: &lopdf::Document,
     fd: &lopdf::Dictionary,
     subtype: &str,
+    program: Option<&[u8]>,
 ) -> BTreeMap<u32, String> {
     use crate::font_fallback::{from_encoding, from_program, Glyphs};
     let composite = FontKind::from_subtype(subtype) == FontKind::Composite;
@@ -818,7 +827,12 @@ fn fallback_map(
     } else {
         fd.clone()
     };
-    let Some(bytes) = embedded_program(doc, &holder) else {
+    let descendant = if composite {
+        embedded_program(doc, &holder)
+    } else {
+        None
+    };
+    let Some(bytes) = descendant.as_deref().or(program) else {
         return map;
     };
     let cid_to_gid = resolve_stream(doc, holder.get(b"CIDToGIDMap").ok())
@@ -837,7 +851,7 @@ fn fallback_map(
     } else {
         return map;
     };
-    for (code, text) in from_program(&bytes, glyphs) {
+    for (code, text) in from_program(bytes, glyphs) {
         map.entry(code).or_insert(text);
     }
     map
@@ -861,20 +875,26 @@ fn embedded_program(doc: &lopdf::Document, holder: &lopdf::Dictionary) -> Option
 /// statement, and the only one this reads over a declared map: no other character is replaced, and
 /// a code the map declares anything else keeps it.
 ///
-/// Only where a reader selects the glyph by the code itself through that cmap: a symbolic font
-/// with no `/Encoding`, whose program has no (3,0) cmap to come first (§9.6.6.4). A font with an
-/// `/Encoding`, or a nonsymbolic one, selects its glyph by name — through (3,1), or the name's own
-/// Mac Roman code — so the glyph the raw code selects in (1,0) need not be the one drawn.
-fn euro_named(doc: &lopdf::Document, fd: &lopdf::Dictionary, map: &ToUnicode) -> Vec<u32> {
+/// Only in the shape PDF 32000-1 §9.6.6.4 reads by the code alone through that cmap, with no
+/// `/Encoding` to read by name instead: a symbolic font with no `/Encoding`, whose program has no
+/// (3,0) cmap to come first. Any other shape keeps `¤` by choice, not because its glyph is known
+/// to differ: §9.6.6.4 reads a symbolic font's code through (1,0) whatever its `/Encoding` says, as
+/// Ghostscript does, but MuPDF reads it by name; and a nonsymbolic font is read by name, which
+/// reaches a full system font's `currency` glyph through (3,1), and the (1,0) glyph only where the
+/// program has no (3,1).
+fn euro_named(
+    doc: &lopdf::Document,
+    fd: &lopdf::Dictionary,
+    map: &ToUnicode,
+    program: &[u8],
+) -> Vec<u32> {
     let currency: Vec<u32> = (0..=255)
         .filter(|&code| map.get(code) == Some("\u{A4}"))
         .collect();
     if currency.is_empty() || fd.has(b"Encoding") || !is_symbolic(doc, fd) {
         return Vec::new();
     }
-    embedded_program(doc, fd)
-        .map(|bytes| crate::font_fallback::euro_glyphs(&bytes, &currency))
-        .unwrap_or_default()
+    crate::font_fallback::euro_glyphs(program, &currency)
 }
 
 /// Style words a `/BaseFont` uses for a bold weight, in the case font names write them.
@@ -2764,10 +2784,11 @@ mod tests {
     /// `¤`, and so does a font that is not TrueType, has no program, or whose program has no Mac
     /// Roman cmap.
     ///
-    /// And only where a reader selects the glyph by the code itself through that Mac Roman cmap
-    /// (PDF 32000-1 §9.6.6.4): a symbolic font with no `/Encoding`, whose program has no (3,0)
-    /// cmap to come first. Elsewhere the glyph drawn is reached another way, and the declared `¤`
-    /// stands (QA round 1 on decision #170).
+    /// And only in the shape PDF 32000-1 §9.6.6.4 reads by the code alone through that Mac Roman
+    /// cmap: a symbolic font with no `/Encoding`, whose program has no (3,0) cmap to come first,
+    /// whatever its (3,1) says. Elsewhere the declared `¤` stands by choice (QA rounds 1 and 2 on
+    /// decision #170): a symbolic font with an `/Encoding`, which MuPDF reads by name, and a
+    /// nonsymbolic one, read by name.
     #[test]
     fn a_glyph_its_program_names_euro_reads_as_the_euro_sign() {
         let declared = ["00A4", "00A4", "0041", "00A4", "00A4"];
@@ -2789,6 +2810,12 @@ mod tests {
             read(&mapped_dict("TrueType", 0xDB, &declared, mac(0xDB)), 0xDB),
             euro,
             "Mac OS 8.5's own position"
+        );
+        let beside = named_program(&[(1, 0, 0x21), (3, 1, 0xA3)], &names);
+        assert_eq!(
+            read(&mapped_dict("TrueType", 0x21, &declared, Some(beside)), 0x21),
+            euro,
+            "a symbolic font's code goes through (1,0) where no (3,0) comes first, whatever (3,1) says"
         );
         let standing = ["¤", "¤", "A", "¤", "¤"];
         for (fd, why) in [
@@ -2819,14 +2846,23 @@ mod tests {
         ] {
             assert_eq!(read(&fd, 0x21), standing, "{why}");
         }
-        let mut fd = mapped_dict("TrueType", 0x21, &declared, mac(0x21));
         let mut differences = lopdf::Dictionary::new();
         differences.set(
             "Differences",
             vec![33.into(), lopdf::Object::Name(b"currency".to_vec())],
         );
-        fd.set("Encoding", lopdf::Object::Dictionary(differences));
-        assert_eq!(read(&fd, 0x21), standing, "an /Encoding selects by name");
+        for (encoding, first) in [
+            (lopdf::Object::Dictionary(differences), 0x21),
+            (lopdf::Object::Name(b"MacRomanEncoding".to_vec()), 0xDB),
+        ] {
+            let mut fd = mapped_dict("TrueType", first, &declared, mac(first as u16));
+            fd.set("Encoding", encoding);
+            assert_eq!(
+                read(&fd, first),
+                standing,
+                "a symbolic font with an /Encoding keeps ¤: MuPDF reads it by name"
+            );
+        }
         // A full system font: (1,0) names 0xDB's glyph `Euro`, (3,1) names U+00A4's `currency`.
         let mut fd = mapped_dict(
             "TrueType",
