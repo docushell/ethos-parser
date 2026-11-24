@@ -91,15 +91,20 @@ server. The output is byte-identical at the default count, two threads and one.
   `colour-space-not-read:jpeg`. Its samples are now read as stored, through the colour space and
   `/Decode` as a Flate stream's are. The filter undoes only the JPEG's own colour transform (PDF
   32000-1 §7.4.8): four components under Adobe transform 1 or 2 are YCCK, turned back to CMYK
-  as libjpeg turns them (another transform is refused by name), and the inks an Adobe file
-  stores inverted are its `/Decode`'s to turn. `/DecodeParms /ColorTransform` is not carried:
-  four components with no Adobe segment read as CMYK whatever it says. MuPDF reads the
-  benchmarks' three such pages to the same samples, within 6 of 255 where the two decoders round
-  apart. A JPEG whose components its colour space does not hold is still refused by name. Its
-  size is read from its header before it is decoded: a frame other than the dictionary's is
-  refused `image-size-mismatch`, one past the 512 MiB `image` allows a gray or RGB JPEG
-  `stream-not-decoded`, as theirs is; a `/BitsPerComponent` other than 8 is refused
-  `bits-per-component-not-read:<n>`.
+  as libjpeg turns them (another transform is refused by name, as is a transform 1 segment placed
+  after the frame header, which zune reads as YCbCr), and the inks an Adobe file stores inverted
+  are its `/Decode`'s to turn. The Adobe segment is found as libjpeg finds it, past fill bytes
+  and stray bytes, before the first scan. `/DecodeParms /ColorTransform` is not carried: four
+  components with no Adobe segment read as CMYK whatever it says. MuPDF reads the benchmarks'
+  three such pages to the same samples, within 6 of 255 where the two decoders round apart. A
+  JPEG whose components its colour space does not hold is still refused by name, two or three
+  under CMYK whatever an Adobe segment labels them. Its size is read from its header before it
+  is decoded: a frame other than the dictionary's is refused `image-size-mismatch`, one past the
+  512 MiB `image` allows a gray or RGB JPEG `stream-not-decoded`, as theirs is; a
+  `/BitsPerComponent` other than 8 is refused `bits-per-component-not-read:<n>`. An image its
+  decoder panics on, gray and RGB JPEGs included (zune-jpeg 0.5.15 panics on some valid JPEGs,
+  such as one whose later component is sampled finer than its first), is refused
+  `stream-not-decoded`, where the panic stopped the recognizer and failed the whole document.
 - **Its placement is any of the eight axis-aligned orientations** of the unit square, after the
   page's `/Rotate`. The raster is turned upright before it is read and every box is mapped back.
 - **An image file is a one-page document.** PNG and JPEG, known by their signatures at byte 0, are

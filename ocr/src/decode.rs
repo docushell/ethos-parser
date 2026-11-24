@@ -177,7 +177,8 @@ fn dct(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
 /// stored, read as a Flate stream's are, through the colour space and `/Decode`. The filter undoes
 /// only the JPEG's own colour transform (32000-1 §7.4.8) — four components under Adobe transform 1
 /// or 2 are YCCK, turned back to CMYK as libjpeg does, and zune refuses another — so the inverted
-/// inks an Adobe file stores are its `/Decode`'s to turn. `/DecodeParms /ColorTransform` is not
+/// inks an Adobe file stores are its `/Decode`'s to turn. A transform 1 segment after the frame
+/// header zune labels YCbCr, so it is refused (QA round 2). `/DecodeParms /ColorTransform` is not
 /// carried: four components with no Adobe segment are read as CMYK whatever it says.
 fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
     use zune_jpeg::zune_core::{
@@ -203,7 +204,9 @@ fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
         Some(Colour::Cmyk) => matches!(stored, ColorSpace::CMYK | ColorSpace::YCCK),
         _ => stored == ColorSpace::Luma,
     };
-    if !fits {
+    // An Adobe segment labels two or three components CMYK or YCCK too (QA round 2): the frame
+    // must hold the components its label says, or zune lays them out as four.
+    if !fits || jpeg.info().map(|i| usize::from(i.components)) != Some(stored.num_components()) {
         return Err("colour-space-not-read:jpeg".into());
     }
     // Sized from the header before a sample is decoded: a frame other than the dictionary's, which
@@ -240,18 +243,30 @@ fn dct_samples(spec: &PdfImage, data: &[u8]) -> Result<Bgr, String> {
 }
 
 /// The colour transform of a JPEG's Adobe APP14 segment, the last if several, as libjpeg reads it.
-/// Segments are walked from the start, each 0xFF, a marker and a big-endian length counting
-/// itself, until none begins where the last ended.
+/// Segments are walked from the start to the first scan, each 0xFF, a marker and a big-endian
+/// length counting itself, a marker found as libjpeg's `next_marker` finds it (QA round 2): a byte
+/// that starts none is skipped to the next 0xFF, and a 0xFF fill byte (T.81 B.1.1.2) is stepped
+/// over, as the engine's own walk does (`image_file_size`, decision #132).
 fn adobe_transform(jpeg: &[u8]) -> Option<u8> {
     let (mut at, mut transform) = (2, None);
-    while let Some(&[0xFF, marker, hi, lo]) = jpeg.get(at..at + 4) {
-        let end = at + 2 + usize::from(u16::from_be_bytes([hi, lo]));
-        if let (0xEE, Some([b'A', b'd', b'o', b'b', b'e', _, _, _, _, _, _, t, ..])) =
-            (marker, jpeg.get(at + 4..end))
-        {
-            transform = Some(*t);
+    while let Some(skip) = jpeg
+        .get(at..)
+        .and_then(|b| b.iter().position(|&x| x == 0xFF))
+    {
+        at += skip;
+        match jpeg.get(at + 1..at + 4) {
+            Some(&[0xFF, ..]) => at += 1,
+            Some(&[marker, hi, lo]) if marker != 0xDA => {
+                let end = at + 2 + usize::from(u16::from_be_bytes([hi, lo]));
+                if let (0xEE, Some([b'A', b'd', b'o', b'b', b'e', _, _, _, _, _, _, t, ..])) =
+                    (marker, jpeg.get(at + 4..end))
+                {
+                    transform = Some(*t);
+                }
+                at = end;
+            }
+            _ => break,
         }
-        at = end;
     }
     transform
 }
@@ -620,6 +635,19 @@ mod tests {
         let jpeg = [&jpeg[..18], &decoys, &jpeg[18..]].concat();
         let decoyed = pdf(&dct_spec(8, Colour::Cmyk, None), &jpeg).unwrap();
         assert_eq!(decoyed.px, inks.px);
+        // QA round 2: with no Adobe segment four components are CMYK, as Ghostscript reads them
+        // (32000-1 Table 13), and one past the first scan is not read, as libjpeg reads it.
+        let plain = flat_jpeg(&[64, 32, 16, 8], None);
+        let adobe1 = [&[0xFF, 0xEE, 0, 14][..], b"Adobe", &[0, 100, 0, 0, 0, 0, 1]].concat();
+        let trailing = flat_jpeg(&[64, 32, 16, 8], Some(0));
+        let end = trailing.len() - 2;
+        for jpeg in [
+            plain,
+            [&trailing[..end], &adobe1, &trailing[end..]].concat(),
+        ] {
+            let img = pdf(&dct_spec(8, Colour::Cmyk, None), &jpeg).unwrap();
+            assert_eq!(img.px, inks.px);
+        }
     }
 
     #[test]
@@ -630,9 +658,12 @@ mod tests {
         // of two Adobe segments.
         let ycck = flat_jpeg(&[150, 168, 98, 10], Some(1));
         let adobe0 = [&[0xFF, 0xEE, 0, 14][..], b"Adobe", &[0, 100, 0, 0, 0, 0, 0]].concat();
+        // QA round 2: and past a 0xFF fill byte (T.81 B.1.1.2) or a stray byte before the segment.
         for jpeg in [
             flat_jpeg(&[150, 168, 98, 10], Some(2)),
             [&ycck[..2], &adobe0, &ycck[2..]].concat(),
+            [&ycck[..2], &[0xFF], &ycck[2..]].concat(),
+            [&ycck[..2], &[0x00], &ycck[2..]].concat(),
             ycck,
         ] {
             let img = pdf(&dct_spec(8, Colour::Cmyk, None), &jpeg).unwrap();
@@ -692,6 +723,14 @@ mod tests {
         let mut s = dct_spec(11586, Colour::Cmyk, None);
         s.height = 11586;
         assert_eq!(pdf(&s, &jpeg).unwrap_err(), "stream-not-decoded");
+        // QA round 2: a frame its dictionary states is read, wider than tall and past zune's own
+        // default limit of 16384, as `image` reads a gray or RGB one.
+        let jpeg = framed(flat_jpeg(&[64, 32, 16, 8], Some(0)), 16392, 8);
+        let img = pdf(&dct_spec(16392, Colour::Cmyk, None), &jpeg).unwrap();
+        assert_eq!(
+            (img.w, img.h, &img.px[..3]),
+            (16392, 8, &[231, 215, 183][..])
+        );
     }
 
     #[test]
@@ -709,9 +748,14 @@ mod tests {
             hival: 255,
             lookup: (0..=255).collect(),
         };
+        // QA round 2: an Adobe segment labels two or three components CMYK or YCCK; they are
+        // still not four.
         for (colour, values, adobe) in [
             (Colour::Cmyk, &[200, 90, 60][..], None),
             (Colour::Cmyk, &[1], None),
+            (Colour::Cmyk, &[200, 90], Some(0)),
+            (Colour::Cmyk, &[200, 90, 60], Some(0)),
+            (Colour::Cmyk, &[200, 90, 60], Some(2)),
             (gray, &[64, 32, 16, 8], Some(0)),
         ] {
             let jpeg = flat_jpeg(values, adobe);

@@ -15,7 +15,8 @@
 //! The recognizer answers the fixture requests with exactly the bytes `data/expected.jsonl` holds,
 //! on whatever CPU runs this: `docs/35-OCR-SCOPE.md` §10.1, run in CI on every supported platform.
 //! The requests cover each decode path (a PNG file, a turned PNG stood upright, a gray JPEG stream,
-//! an 8-bit Flate stream with a PNG predictor, a 1-bit Flate stream) and a refusal.
+//! an 8-bit Flate stream with a PNG predictor, a 1-bit Flate stream) and two refusals, one of
+//! them a JPEG its decoder panics on.
 //!
 //! `expected.jsonl` was written on Apple silicon. To write it again after a deliberate change, run
 //! with `ETHOS_OCR_BLESS=1`, and say in the commit why the bytes moved.
@@ -40,6 +41,7 @@ fn answers() -> Vec<String> {
         .arg("serve")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap();
     let mut stdin = child.stdin.take().unwrap();
@@ -57,7 +59,12 @@ fn answers() -> Vec<String> {
         out.push(line.trim_end().to_string());
     }
     drop(stdin);
-    assert!(child.wait().unwrap().success());
+    let status = child.wait().unwrap();
+    let mut said = String::new();
+    std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut said).unwrap();
+    // The engine reads what `serve` writes to stderr only once it stops: written while it answers,
+    // it would fill the pipe and stall it.
+    assert!(status.success() && said.is_empty(), "{said}");
     out
 }
 
@@ -136,4 +143,8 @@ fn the_fixtures_read_the_same_bytes_on_every_cpu() {
     let refused = by_id("pdf-jpx-refused");
     assert_eq!(refused["refused"], "filter-not-decoded:JPXDecode");
     assert!(refused["lines"].as_array().unwrap().is_empty());
+    // Decision #172's QA round 2: a valid CMYK JPEG whose third ink is sampled finer than its
+    // first makes zune-jpeg 0.5.15 panic. The page is refused by name and `serve` reads on.
+    let panicked = by_id("pdf-dct-cmyk-decoder-panic-refused");
+    assert_eq!(panicked["refused"], "stream-not-decoded");
 }

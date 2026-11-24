@@ -115,5 +115,27 @@
    "decode": null,
    "image_mask": false
   }
+ },
+ {
+  "id": "pdf-dct-cmyk-decoder-panic-refused",
+  "file": "cmyk-third-ink-sampled-2x2.jpg",
+  "orientation": 0,
+  "image": {
+   "kind": "pdf",
+   "width": 31,
+   "height": 33,
+   "bits_per_component": 8,
+   "colour": {
+    "space": "cmyk"
+   },
+   "filters": [
+    "DCTDecode"
+   ],
+   "decode_parms": [
+    null
+   ],
+   "decode": null,
+   "image_mask": false
+  }
  }
 ]

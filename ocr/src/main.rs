@@ -224,6 +224,19 @@ fn answer(rec: &Recognizer, id: String, stored: Result<Bgr, String>, orientation
     }
 }
 
+/// A request's image decoded, a panic in its decoder refused `stream-not-decoded`: zune-jpeg 0.5.15
+/// panics on some valid JPEGs, such as one whose later component is sampled finer than its first
+/// (decision #172's QA round 2), and a panic would stop `serve` and with it the whole document.
+/// The panic is not written: the engine reads stderr only once `serve` stops, so a document of
+/// them would fill the pipe and stall it.
+fn caught(decode: impl FnOnce() -> Result<Bgr, String>) -> Result<Bgr, String> {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let decoded = std::panic::catch_unwind(std::panic::AssertUnwindSafe(decode));
+    std::panic::set_hook(hook);
+    decoded.unwrap_or_else(|_| Err("stream-not-decoded".into()))
+}
+
 fn serve(rec: &Recognizer) -> Result<(), String> {
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
@@ -246,11 +259,11 @@ fn serve(rec: &Recognizer) -> Result<(), String> {
         input
             .read_exact(&mut data)
             .map_err(|e| format!("request-bytes-short: {e}"))?;
-        let stored = match &req.image {
+        let stored = caught(|| match &req.image {
             ImageSpec::File => decode::file(&data),
             ImageSpec::Pdf(spec) => decode::pdf(spec, &data),
             ImageSpec::Composite(spec) => compose::compose(spec, &data),
-        };
+        });
         let a = answer(rec, req.id, stored, req.orientation);
         serde_json::to_writer(&mut out, &a).map_err(|e| e.to_string())?;
         out.write_all(b"\n")

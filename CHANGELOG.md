@@ -42,17 +42,26 @@ the profile do not move. Without `--ocr` nothing moves.
   the page gave no text. Its samples are read as stored, through the colour space and `/Decode`,
   as a Flate stream's are. PDF 32000-1 §7.4.8 has the filter undo only the JPEG's own colour
   transform, so four components under Adobe transform 1 or 2 are YCCK, turned back to CMYK as
-  libjpeg turns them (another transform is refused by name), and the inks an Adobe file stores
-  inverted are its `/Decode`'s to turn. MuPDF reads the benchmarks' three such pages to the same
-  samples, within 6 of 255 where the two decoders round apart. `/DecodeParms /ColorTransform` is
-  not carried: four components with no Adobe segment read as CMYK whatever it says (no benchmark
-  image sets it to 1).
+  libjpeg turns them (another transform is refused by name, as is a transform 1 segment placed
+  after the frame header, which zune reads as YCbCr), and the inks an Adobe file stores inverted
+  are its `/Decode`'s to turn. The Adobe segment is found as libjpeg finds it, past 0xFF fill
+  bytes and stray bytes, before the first scan (QA round 2). MuPDF reads the benchmarks' three
+  such pages to the same samples, within 6 of 255 where the two decoders round apart.
+  `/DecodeParms /ColorTransform` is not carried: four components with no Adobe segment read as
+  CMYK whatever it says (no benchmark image sets it to 1).
 - **Sized from its header before it is decoded.** A frame other than its dictionary's is refused
   `image-size-mismatch` and one past the 512 MiB `image` allows a gray or RGB JPEG is refused
   `stream-not-decoded`, as theirs is, so a 10 KB PDF can no longer make the recognizer allocate
   8 GB (QA round 1); a `/BitsPerComponent` other than 8 is refused `bits-per-component-not-read`.
+- **A JPEG its decoder panics on is refused, not the document.** zune-jpeg 0.5.15 panics on some
+  valid JPEGs, such as one whose later component is sampled finer than its first. The panic
+  stopped the recognizer, and with it the whole document under `--ocr`, for gray and RGB JPEGs
+  before this decision too. That page is now refused `stream-not-decoded` and the rest of the
+  document is read; the panic is not written to stderr, which the engine reads only once the
+  recognizer stops (QA round 2).
 - **Only that.** Gray and RGB JPEGs read as before. A JPEG whose components its colour space does
-  not hold — three under CMYK, any number but one under a palette — is still refused by name.
+  not hold — two or three under CMYK, even where an Adobe segment labels them CMYK or YCCK, any
+  number but one under a palette — is still refused by name.
 - Decoded by `zune-jpeg`, the decoder `image` already runs for gray and RGB JPEGs, now named in
   `ocr/Cargo.toml` to reach the samples as stored: the lockfile gains no crate.
 - **Expected to change**, both ParseBench sets with `--ocr`: three pages, each in both — a court
