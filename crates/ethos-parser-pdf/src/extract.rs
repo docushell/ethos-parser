@@ -2317,18 +2317,10 @@ fn extract_page(
                 .and_then(|s| s.dict.get(b"OC").ok())
                 .and_then(|oc| doc.layers().layer(doc.inner(), oc))
         };
-        // One stream's facts per object, however often the page draws it: hashing the stored
+        // One stream's facts per object, however often the document draws it: hashing the stored
         // bytes again at every `Do` is the same answer at the stream's cost each time.
-        let mut image_facts: std::collections::HashMap<
-            lopdf::ObjectId,
-            Option<ethos_parser_core::ImageAttributes>,
-        > = std::collections::HashMap::new();
         for placement in &interp.images {
-            let Some(attributes) = image_facts
-                .entry(placement.object)
-                .or_insert_with(|| crate::images::image_attributes(doc.inner(), placement.object))
-                .clone()
-            else {
+            let Some(attributes) = doc.image_attributes(placement.object) else {
                 // v2.2-S2. **Counted, not merely skipped.** `image_attributes` returns `None` for
                 // a `/Form` and for a stream with no readable `/Subtype`, and until now this
                 // `continue` was the end of it: the placement was discarded and the artifact said
@@ -2951,6 +2943,9 @@ fn extract_counted(
     if doc.opened_encrypted() {
         limitations.push(lim::encrypted_empty_user_password());
     }
+    // Each page's font limitations, held once however many pages repeat them; joined to the rest
+    // after the fold, where `Assurance::new` sorts and deduplicates the whole list anyway.
+    let mut font_limitations = std::collections::BTreeSet::new();
     let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(doc.pages().len());
     // Accumulated across pages: how much text is missing from this artifact because a font's
     // encoding could not map it, and the first failure's reason for the declaration's detail.
@@ -3430,11 +3425,7 @@ fn extract_counted(
         for (code, n) in y.findings_seen {
             *findings_seen.entry(code).or_insert(0) += n;
         }
-        for entry in y.font_limitations {
-            if !limitations.contains(&entry) {
-                limitations.push(entry);
-            }
-        }
+        font_limitations.extend(y.font_limitations);
 
         // The page's counters, kept beside its operator indices before the sums above lose the
         // page (auto-tagging S2, scope §3.7's per-page comparison).
@@ -3460,6 +3451,7 @@ fn extract_counted(
             state: PageState::Processed,
         });
     }
+    limitations.extend(font_limitations);
 
     if let Some(b) = budget.max_pages_to_process() {
         if b < page_count {
@@ -4385,10 +4377,14 @@ pub(crate) fn content_operations(
         } else {
             Vec::new()
         };
+        // A lone `FlateDecode` read to its end in one inflate settles both reads below
+        // (`tagging::inflated_once`); every other stream is read both ways.
+        let whole = crate::tagging::inflated_once(stream, &filters, remaining);
         // `lopdf` returns a truncated inflate's partial output as a success wherever `FlateDecode`
         // sits in the chain, so each one's input is checked: the stream's bytes for the first
         // filter, and for a later one what the filters before it decode them to.
-        for at in (0..filters.len()).filter(|&at| filters[at] == b"FlateDecode") {
+        for at in (0..filters.len()).filter(|&at| whole.is_none() && filters[at] == b"FlateDecode")
+        {
             let decoded_before;
             let input: &[u8] = if at == 0 {
                 &stream.content
@@ -4420,7 +4416,9 @@ pub(crate) fn content_operations(
         // Decoded here rather than through `get_page_content`, whose fallback for a filter it
         // cannot decode is the stream's raw bytes: text the stream's own filter says is not there.
         // An empty chain is no filter, so the stream's own bytes, which `lopdf` decodes to none.
-        let decoded = if filters.is_empty() {
+        let decoded = if let Some(bytes) = whole {
+            Ok(bytes)
+        } else if filters.is_empty() {
             if stream.content.len() > remaining {
                 return Err(past_ceiling());
             }

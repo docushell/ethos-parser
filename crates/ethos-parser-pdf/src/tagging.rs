@@ -311,19 +311,35 @@ fn decode_stream_strict(stream: &Stream) -> Result<Vec<u8>, StreamRefusal> {
 /// An empty input is an empty output, as it is in `lopdf`, which does not run the inflater on
 /// zero bytes; there is nothing to decode and nothing to tokenise.
 fn inflate_strict(input: &[u8]) -> Result<Vec<u8>, String> {
+    let (out, consumed) = inflate_to_end(input, usize::MAX)?;
+    let len = input.len() as u64;
+    if consumed != len {
+        return Err(format!(
+            "{} byte(s) follow the end of the deflate data, out of {len}",
+            len - consumed
+        ));
+    }
+    Ok(out)
+}
+
+/// [`inflate_strict`] short of its last check: a zlib stream inflated to its end, its Adler-32
+/// check passing, beside the input bytes that took. Past `max_output` bytes of output it is an
+/// error, and no more than one byte past it is ever held.
+fn inflate_to_end(input: &[u8], max_output: usize) -> Result<(Vec<u8>, u64), String> {
     use flate2::{Decompress, FlushDecompress, Status};
 
     if input.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), 0));
     }
+    let room = max_output.saturating_add(1);
     let mut inflater = Decompress::new(true);
-    let mut out: Vec<u8> = Vec::with_capacity(input.len().saturating_mul(4).max(4096));
+    let mut out: Vec<u8> = Vec::with_capacity(input.len().saturating_mul(4).max(4096).min(room));
     loop {
         let consumed = usize::try_from(inflater.total_in())
             .map_err(|_| "the inflater consumed more than the address space holds".to_string())?;
         let remaining = input.get(consumed..).unwrap_or(&[]);
         if out.len() == out.capacity() {
-            out.reserve(out.capacity().max(4096));
+            out.reserve_exact(out.capacity().max(4096).min(room - out.len()));
         }
         let (before_in, before_out) = (inflater.total_in(), inflater.total_out());
         let flush = if remaining.is_empty() {
@@ -334,6 +350,11 @@ fn inflate_strict(input: &[u8]) -> Result<Vec<u8>, String> {
         let status = inflater
             .decompress_vec(remaining, &mut out, flush)
             .map_err(|e| format!("the deflate data is corrupt or its check fails: {e}"))?;
+        if out.len() > max_output {
+            return Err(format!(
+                "the deflate data inflates past {max_output} byte(s)"
+            ));
+        }
         match status {
             Status::StreamEnd => break,
             Status::Ok | Status::BufError => {
@@ -348,15 +369,29 @@ fn inflate_strict(input: &[u8]) -> Result<Vec<u8>, String> {
             }
         }
     }
-    let consumed = inflater.total_in();
-    let len = input.len() as u64;
-    if consumed != len {
-        return Err(format!(
-            "{} byte(s) follow the end of the deflate data, out of {len}",
-            len - consumed
-        ));
+    Ok((out, inflater.total_in()))
+}
+
+/// A content stream's bytes from one inflate, where that one settles both of the reader's reads
+/// in `extract::content_operations`: a lone `/FlateDecode` with no `/DecodeParms`, whose zlib
+/// data reaches its end, its check passing, within `max_output` bytes.
+///
+/// Then raw deflate from the same data, two header bytes in, reaches the same end within the same
+/// bytes ([`deflate_reaches_its_end`] finds [`Inflation::Ends`]), and `lopdf`, whose zlib reader is
+/// this inflater, returns these bytes: with no `/DecodeParms` it undoes no predictor, and neither
+/// reads past the end. `None` for anything else, which the caller reads both ways as before, so
+/// every refusal, its wording and its order stay theirs.
+pub(crate) fn inflated_once(
+    stream: &Stream,
+    filters: &[&[u8]],
+    max_output: usize,
+) -> Option<Vec<u8>> {
+    if !matches!(filters, [f] if *f == b"FlateDecode") || stream.dict.get(b"DecodeParms").is_ok() {
+        return None;
     }
-    Ok(out)
+    inflate_to_end(&stream.content, max_output)
+        .ok()
+        .map(|(bytes, _)| bytes)
 }
 
 /// What [`deflate_reaches_its_end`] found, short of a loss.
@@ -4236,6 +4271,146 @@ mod tests {
         deflate_reaches_its_end(&trailing, crate::budget::MAX_DECODED_BYTES)
             .expect("bytes after the data lose no content");
         assert_eq!(flate_stream(trailing).decompressed_content().unwrap(), PAGE);
+    }
+
+    /// **One inflate stands for the reader's two only where both agree with it.** Where
+    /// [`inflated_once`] answers, `lopdf`'s bounded decode returns the same bytes and the raw check
+    /// reaches the end; every other shape is `None`, and the caller reads it both ways as before.
+    ///
+    /// The failure this catches: an answer wider than "both reads give these bytes", which would
+    /// move a refusal or change what a page draws.
+    #[test]
+    fn one_inflate_stands_for_both_reads_only_where_both_agree() {
+        let limit = crate::budget::MAX_DECODED_BYTES;
+        let whole = deflated(PAGE);
+        // Past the zlib reader's 32 KiB input buffer and the raw check's 64 KiB scratch.
+        let mut seed = 1u32;
+        let noise: Vec<u8> = (0..200_000)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                (seed >> 16) as u8
+            })
+            .collect();
+        let repeated = PAGE.repeat(20_000);
+        let with = |content: Vec<u8>, key: &str, value: Object| {
+            let mut stream = flate_stream(content);
+            stream.dict.set(key, value);
+            stream
+        };
+        let name = |n: &str| Object::Name(n.as_bytes().to_vec());
+
+        let mut trailing = whole.clone();
+        trailing.extend_from_slice(b"\r\n");
+        let mut wrong_check = whole.clone();
+        let last = wrong_check.len() - 1;
+        wrong_check[last] ^= 0xff;
+        let mut corrupt = whole.clone();
+        corrupt[2] |= 0b110;
+        // FDICT set, FCHECK still a multiple of 31, a dictionary id, then the same deflate data.
+        let mut preset = vec![0x78, 0x20, 0, 0, 0, 1];
+        preset.extend_from_slice(&whole[2..]);
+        let mut predictor = lopdf::Dictionary::new();
+        predictor.set("Predictor", 12);
+        predictor.set("Columns", 4);
+
+        let cases: Vec<(&str, Stream, usize, Option<&[u8]>)> = vec![
+            ("whole", flate_stream(whole.clone()), limit, Some(PAGE)),
+            ("empty", flate_stream(Vec::new()), limit, Some(b"")),
+            ("noise", flate_stream(deflated(&noise)), limit, Some(&noise)),
+            (
+                "repeated",
+                flate_stream(deflated(&repeated)),
+                limit,
+                Some(&repeated),
+            ),
+            (
+                "bytes after the end",
+                flate_stream(trailing),
+                limit,
+                Some(PAGE),
+            ),
+            (
+                "at the limit",
+                flate_stream(whole.clone()),
+                PAGE.len(),
+                Some(PAGE),
+            ),
+            (
+                "a one-name array",
+                with(whole.clone(), "Filter", vec![name("FlateDecode")].into()),
+                limit,
+                Some(PAGE),
+            ),
+            (
+                "one past the limit",
+                flate_stream(whole.clone()),
+                PAGE.len() - 1,
+                None,
+            ),
+            ("a failed check", flate_stream(wrong_check), limit, None),
+            (
+                "cut",
+                flate_stream(whole[..whole.len() - 5].to_vec()),
+                limit,
+                None,
+            ),
+            ("corrupt", flate_stream(corrupt), limit, None),
+            ("a preset dictionary", flate_stream(preset), limit, None),
+            (
+                "a predictor",
+                with(whole.clone(), "DecodeParms", Object::Dictionary(predictor)),
+                limit,
+                None,
+            ),
+            (
+                "a null /DecodeParms",
+                with(whole.clone(), "DecodeParms", Object::Null),
+                limit,
+                None,
+            ),
+            (
+                "a chain",
+                with(
+                    deflated(&whole),
+                    "Filter",
+                    vec![name("FlateDecode"), name("FlateDecode")].into(),
+                ),
+                limit,
+                None,
+            ),
+            (
+                "a filter before it",
+                with(
+                    whole.clone(),
+                    "Filter",
+                    vec![name("ASCII85Decode"), name("FlateDecode")].into(),
+                ),
+                limit,
+                None,
+            ),
+            (
+                "no filter",
+                Stream::new(lopdf::Dictionary::new(), PAGE.to_vec()),
+                limit,
+                None,
+            ),
+        ];
+        for (label, stream, limit, expected) in cases {
+            let filters = stream.filters().unwrap_or_default();
+            let once = inflated_once(&stream, &filters, limit);
+            assert_eq!(once.as_deref(), expected, "{label}");
+            let Some(bytes) = once else { continue };
+            assert_eq!(
+                crate::budget::decoded(&stream, limit).ok(),
+                Some(bytes),
+                "{label}: lopdf reads the same bytes"
+            );
+            assert_eq!(
+                deflate_reaches_its_end(&stream.content, limit),
+                Ok(Inflation::Ends),
+                "{label}: and the raw check reaches the end"
+            );
+        }
     }
 
     /// **The operation limit is checked before each operation is kept** (review 2026-09-25 F08).

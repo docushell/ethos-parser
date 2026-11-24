@@ -28,7 +28,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
-use ethos_parser_core::{EngineError, Profile, Sha256Hex};
+use ethos_parser_core::{EngineError, ImageAttributes, Profile, Sha256Hex};
 
 /// A PDF that has been read, validated as a PDF, and parsed once.
 ///
@@ -71,6 +71,9 @@ pub struct Document {
     font_cache: std::sync::Mutex<BTreeMap<(lopdf::ObjectId, String), Arc<crate::fonts::Font>>>,
     /// Parsed `/ToUnicode` CMaps, one per stream, against one budget for the whole document.
     tounicode: crate::cmap::ToUnicodeCache,
+    /// Each image stream's facts, keyed by object: an image placed on many pages, or on a page
+    /// read twice, is hashed once for the document rather than once a page.
+    image_facts: std::sync::Mutex<BTreeMap<lopdf::ObjectId, Option<ImageAttributes>>>,
     /// The first object the file writes as a stream and `lopdf` read as its bare dictionary, if
     /// any (tracker I19). Only the writers refuse it: a rewrite would copy the dictionary alone.
     lost_stream: Option<lopdf::ObjectId>,
@@ -236,6 +239,7 @@ impl Document {
             opened_under: profile.xref_repair,
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
             tounicode: crate::cmap::ToUnicodeCache::default(),
+            image_facts: std::sync::Mutex::new(BTreeMap::new()),
             lost_stream,
             layers: std::sync::OnceLock::new(),
         })
@@ -274,6 +278,21 @@ impl Document {
         id: &str,
     ) -> Option<Arc<crate::fonts::Font>> {
         self.fonts().get(&(oid, id.to_string())).cloned()
+    }
+
+    /// [`crate::images::image_attributes`] of `id`, worked out once for the document. Two pages
+    /// that miss it together may both work it out: the answer is the same, and the first is kept.
+    pub(crate) fn image_attributes(&self, id: lopdf::ObjectId) -> Option<ImageAttributes> {
+        let facts = || {
+            self.image_facts
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        };
+        if let Some(known) = facts().get(&id) {
+            return known.clone();
+        }
+        let found = crate::images::image_attributes(&self.inner, id);
+        facts().entry(id).or_insert(found).clone()
     }
 
     /// The first object the file writes as a stream and `lopdf` read without its data, if any.
