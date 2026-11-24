@@ -39,8 +39,6 @@ skrifa = "0.39.0"
 unicode-bidi = "0.3.18"
 
 [dev-dependencies]
-lopdf = { version = "0.44.0", default-features = false }
-serde_json.workspace = true
 # v1-S7b. NFC for the table-gate metric's whitespace rule (`accuracy::normalize`).
 #
 # A **dev**-dependency, not a dependency: `accuracy` is `cfg(test)` and no artifact path reaches

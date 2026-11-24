@@ -20,10 +20,8 @@
 
 #![cfg(unix)]
 
-#[allow(dead_code)]
 #[path = "../src/digest.rs"]
 mod digest;
-#[allow(dead_code)]
 #[path = "../src/json.rs"]
 mod json;
 

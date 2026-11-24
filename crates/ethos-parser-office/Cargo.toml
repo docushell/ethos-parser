@@ -22,7 +22,6 @@ flate2 = "1"
 # text is the evidence. `quick-xml` is MIT and its only dependency is `memchr`, which this graph
 # already carries.
 quick-xml = "0.41"
-serde.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
