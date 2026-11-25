@@ -1246,3 +1246,59 @@ streamed seal does by design; the owner kept it on these numbers. opendataloader
 `markdown --unstyled --source` one at a time: p50 32.0 → 32.2 ms, p95 43.8 → 39.9 ms, 1.2% fewer
 instructions in all; one document runs 6.6% more, its content stream inflating just past the
 256 KiB one-inflate cap, so it pays the try and A's two reads.
+
+## 21. Tables that cannot join skip the join, and the payload walk overlaps its writer
+
+**Run 2026-11-26.** A = `main` at `bbb66e8`; B = the 0.66.0 tree with §20's changes, this release's
+decisions and the changes below. Release builds on an Apple M4 Pro, a quiet machine, five
+interleaved rounds, medians, 12 threads unless said. Each change below hashes the same as the tree
+before it on 638 PDFs, every command, at one thread and at twelve, and the text of all 6,545
+benchmark documents is unchanged.
+
+### Why
+
+After §20, `markdown --source` on `53r5` still spent about 1.3 s projecting on one thread. Stage
+timers and instruction counts put the largest piece in table planning's join across pages: about
+0.3 s and 4% of the run's instructions, built for a loop that reads them only for two joinable
+tables in reading order, of which `53r5`, whose 26 tables are all tagged, has none. The seal's
+parallel walk sat idle while its one thread hashed, the census built a normalized string for every
+run, every node id went through `format!`, and the process freed a million nodes one by one just
+before it exited.
+
+### What changed
+
+- Table planning checks first for an adjacent pair of joinable tables in reading order and returns
+  no joins where there is none, before it maps pages, furniture, floors and pictures.
+- The payload walk fills its next window of canonical chunks while the writer hashes or writes the
+  current one: two windows of two chunks a thread, so four in all, as one window of four held.
+- `markdown` forgets the record and its artifact once every byte is written and flushed; a failing
+  run frees them as before.
+- The census asks whether normalizing would shorten a run's text without building the string.
+- Node ids are spelled with the canonical writer's digit loop, at exactly their length.
+
+### Readings
+
+Wall time and peak RSS:
+
+| document | command | A | B |
+| --- | --- | ---: | ---: |
+| nist-sp-800-53r5 | extract | 1,751 ms, 1,443 MiB | 1,553 ms, 1,421 MiB |
+| nist-sp-800-53r5 | extract, one thread | 5,271 ms, 1,897 MiB | 6,584 ms, 1,354 MiB |
+| nist-sp-800-53r5 | markdown --source | 3,489 ms, 1,725 MiB | 2,278 ms, 1,573 MiB |
+| nist-sp-800-53Ar5 | extract | 2,883 ms, 2,168 MiB | 2,588 ms, 2,147 MiB |
+| nist-sp-800-37r2 | extract | 666 ms, 555 MiB | 592 ms, 552 MiB |
+
+`markdown --source` on `53r5` takes 35% less time than A; over §20's tree its instructions fall
+7.5% (71.4 G → 66.1 G). opendataloader-bench's 200, `markdown --unstyled --source` one at a time:
+p50 31.1 → 31.2 ms, p95 37.5 → 37.4 ms, 2.8% fewer instructions in all; 189 documents run more than
+0.5% fewer, 4 more, the most of them §20's document past the one-inflate cap (6.4%).
+
+### Not done
+
+- The emphasis map keyed by borrowed ids rather than a `String` per run: about 0.5 G fewer
+  instructions, but peak RSS of `markdown` on the `53r5` record rose 16 to 24 MiB in every run.
+- Reordering the fields of the largest record types to cut the canonical sort: about 10% fewer
+  instructions, but their `Debug` output and their non-canonical `serde_json` field order would
+  change for library users.
+- Skipping the overprint check's range query on rows no earlier run reaches: 0.26% fewer
+  instructions, within noise.

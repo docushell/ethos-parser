@@ -550,6 +550,26 @@ tenth ParseBench-2 document), at one thread and at twelve.
   opendataloader-bench's 200 (`markdown --unstyled --source`, one at a time): p50 32.0 → 32.2 ms,
   p95 43.8 → 39.9 ms, 1.2% fewer instructions in all, one document 6.6% more (its content stream
   inflates just past the 256 KiB one-inflate cap). `docs/measurements/memory-ceiling/` §20.
+- Table planning looks for two tables in reading order that could join across a page before it maps
+  pages, furniture, floors and pictures for the join, and does none of it where there are none: a
+  document whose tables are all tagged skipped every join and still paid for the maps. `markdown`,
+  `html` and `elements` share it.
+- The parallel walk of a large payload fills its next window of canonical chunks while the writer
+  hashes or writes the current one, holding four chunks a thread in all, as one window held before.
+- `markdown` leaves the record and its artifact to the process's exit once every byte is written
+  and flushed, instead of freeing a million nodes one by one; a failing run frees them as before.
+  On Linux, `--diagnostics`' resident bytes, read after the run, now count them.
+- The census counts the runs whose whitespace collapses without building each normalized string,
+  and node ids are spelled with the canonical writer's digit loop rather than `format!`.
+- Measured with these over `bbb66e8`, the decisions of this release included, the same way:
+  `nist-sp-800-53r5` `markdown --source` 3,489 → 2,278 ms (35% less) and 1,725 → 1,573 MiB;
+  `extract` 1,751 → 1,553 ms and 1,443 → 1,421 MiB; on one thread 5,271 → 6,584 ms and
+  1,897 → 1,354 MiB. `nist-sp-800-53Ar5` `extract` 2,883 → 2,588 ms (2,168 → 2,147 MiB) and
+  `nist-sp-800-37r2` 666 → 592 ms (555 → 552 MiB). opendataloader-bench's 200: p50 31.1 → 31.2 ms,
+  p95 37.5 → 37.4 ms, 2.8% fewer instructions in all (189 documents fewer by more than 0.5%, 4
+  more; the most, 6.4%, is the document past the one-inflate cap). Every output hashes the same as
+  before these five changes on the 638 PDFs at one thread and at twelve, and the text of all 6,545
+  benchmark documents is unchanged. `docs/measurements/memory-ceiling/` §21.
 - `into_representation` takes the extract, so its runs move into the record's nodes rather than
   being copied; `to_representation` borrows as before. The CLI uses the first.
 - The page fold advances the id counter instead of minting and dropping an id per run; a page's
