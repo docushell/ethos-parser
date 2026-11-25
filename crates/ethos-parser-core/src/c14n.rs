@@ -329,8 +329,9 @@ pub(crate) fn walks_in_parallel(len: usize) -> bool {
 
 /// Chunks canonicalized per thread before they are handed on in order: a window holds this many
 /// per thread, and a writer that keeps nothing ([`Sha256Sink`], [`IoSink`]) holds two windows at
-/// once, the one it writes and the next. The bytes do not depend on it.
-const ELEMENT_WINDOW: usize = 4;
+/// once, the one it writes and the next: four chunks per thread in all. The bytes do not depend on
+/// it.
+const ELEMENT_WINDOW: usize = 2;
 
 /// [`CanonicalWriter::elements`]' walk: `items` canonicalized in chunks, comma-separated, each
 /// chunk's bytes given to `emit` in order. The first error in element order is the one returned,
@@ -1259,6 +1260,22 @@ mod tests {
                 assert_eq!(hashed.finish(), sha256_hex_bytes(&whole), "{n} elements");
             }
         }
+    }
+
+    /// **The walk holds four chunk buffers per thread at most**, both windows together: one more
+    /// set held while the next window fills was ~20 MiB of peak memory on a 120k-node record.
+    /// Equal chunks never outgrow a buffer once filled, so each buffer keeps one address.
+    #[test]
+    fn parallel_elements_hold_four_chunks_per_thread() {
+        let threads = rayon::current_num_threads().max(1);
+        let items = vec![0u8; 8 * ELEMENT_CHUNK * threads];
+        let mut buffers = std::collections::BTreeSet::new();
+        par_elements(&items, |out| {
+            buffers.insert(out.as_ptr());
+            true
+        })
+        .unwrap();
+        assert!(buffers.len() <= 4 * threads, "{} buffers", buffers.len());
     }
 
     /// **The first error in element order is the one returned**, whichever chunk fails first.
