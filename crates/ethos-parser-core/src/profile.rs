@@ -825,11 +825,14 @@ pub const TABLE_DETECTION_V13: &str = "ruled-rects-v13";
 /// **And a group's grid read through its merged cells takes an outer line left out beside a row or
 /// two where its rules close every such gap** (decision #175, folded in): a line drawn across one
 /// band at least, the rules above and below each band it leaves out running out to it, is drawn;
-/// a fill's edge closes nothing, so a table shaded in bands is still not read through its shading.
-/// Such a grid of three columns or more stands with one column holding no text, a form's blank
-/// column, but not with two, and not where a row beside a gap holds a cell across columns with text
-/// in each of them: values the rules alone divide, under a divided header or between shaded rows,
-/// are not one cell, while a form's heading or blank row beside its gap stands.
+/// a fill's edge closes nothing. Such a grid of three columns or more stands with one column holding
+/// no text, a form's blank column, but not with two, and not where a cell across columns, in any
+/// row, leaves a column's gutter of white at a column line it spans on one of its baselines, nor
+/// where a cell across rows sits on the baselines of the rows beside it in two of them: values the
+/// rules alone divide — under a divided header, beside a ruled label column, in a band shaded
+/// between rules, under a header a fill or a box draws the sides of — are not one cell, a value
+/// left blank or not, while a form's heading or one-line answer, its words a word space apart, and
+/// its blank rows stand. A run whose width the document does not carry is taken for a gutter.
 pub const TABLE_DETECTION_V14: &str = "ruled-rects-v14";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.

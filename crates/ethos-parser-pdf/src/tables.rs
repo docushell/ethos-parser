@@ -90,8 +90,9 @@
 //!    underline ([`without_decoration`]). Since `ruled-rects-v14` (decision #175) a grid read
 //!    through merged cells takes an outer line drawn across one band at least whose every gap
 //!    rules close, a fill's edge closing none ([`Lattice::merged_cells`]); such a grid of three
-//!    columns or more stands with one column left empty, never two, and not where a row beside a
-//!    gap holds a cell across columns with text in each of them.
+//!    columns or more stands with one column left empty, never two, and not where a cell across
+//!    columns leaves a column's gutter of white at a line it spans, or a cell across rows sits on
+//!    the baselines of the rows beside it in two of them.
 //! 8. **A header set above the top rule is the table's first row** (`ruled-rects-v13`, decision
 //!    #74, [`header_above`]), where the document declares no structure and the grid's own first
 //!    row is no header: the lines just above the rule, a label over two columns or more and each
@@ -379,6 +380,17 @@ pub struct RunOrigin<'a> {
     pub y: i64,
     /// The run's text, already Extracted.
     pub text: &'a str,
+    /// Where its advance ends along x, quantized ([`run_end`]); `None` where the document carries
+    /// no widths. Read only by [`Lattice::merged_cells`]' fifth clause.
+    pub end: Option<i64>,
+}
+
+/// A run's [`RunOrigin::end`]: its origin plus its advance as the run's locator records it, where
+/// that advance is known and positive.
+pub(crate) fn run_end(origin_x: i64, advance: Option<i64>) -> Option<i64> {
+    advance
+        .filter(|a| *a > 0)
+        .and_then(|a| origin_x.checked_add(a))
 }
 
 /// Detect every table on one page: ruled, then stroke-ruled, then unruled (v1-S2, widened v1-S8).
@@ -2208,9 +2220,9 @@ impl Lattice {
     ///    TEDS 1.00 -> 0.81, for no page gained. Since `ruled-rects-v14` (decision #175) an outer
     ///    line drawn across one band at least, its every gap closed by RULES (ink no thicker than a
     ///    lattice line across it), is drawn: a fill's edge closes nothing, and a side drawn across
-    ///    no band is still open. A fill's edge still draws the band it runs along — clause 5 keeps
-    ///    the white row between two shaded cell by cell, its rules closing the sides, from reading
-    ///    as one cell;
+    ///    no band is still open. A fill's edge still draws the band it runs along — clauses 4 and 5
+    ///    keep the rows and columns such a grid's rules alone divide, shaded or white, from
+    ///    reading as one cell;
     /// 2. **every interior line is drawn across one band at least**: a line drawn across none is
     ///    ink from elsewhere on the page that happens to fall inside the grid, not a division of
     ///    it — and since `ruled-rects-v13` (decision #76) [`Self::build`] reads the grid again
@@ -2224,13 +2236,18 @@ impl Lattice {
     ///    whose lines sit on the rows of the columns it did rule, and those are rows left undrawn.
     ///    A wrapped label beside them sits on baselines of its own — and since `ruled-rects-v13`
     ///    (decision #76) a label whose text holds half the rows it spans or fewer is one cell: a
-    ///    column left unruled holds text down most of its rows;
-    /// 5. **no row beside a side's gap its rules closed** (clause 1, `ruled-rects-v14`, decision
-    ///    #175) **holds a cell across columns with text in each of them**: values set column by
-    ///    column in a row only its rules divide — under a divided header, beside a ruled label
-    ///    column, white between shaded rows — are not one cell. A heading across a rate filing's
-    ///    form, beside which it leaves its border out, leaves some of its columns blank, and a
-    ///    blank row stands too. A cell across rows beside the top's or bottom's gap is clause 4's.
+    ///    column left unruled holds text down most of its rows. Not where rules closed a side's
+    ///    gap (clause 1, `ruled-rects-v14`, decision #175): there two rows on those baselines are
+    ///    values set row by row, however many it leaves blank;
+    /// 5. **where rules closed a side's gap** (clause 1, `ruled-rects-v14`, decision #175), **no
+    ///    cell across columns leaves a column's gutter of white at a column line it spans** on one
+    ///    of its baselines — text before the line ending by it, and the next past it
+    ///    [`crate::unruled::COLUMN_GUTTER_MIN`] or more on. Those are values set column by column
+    ///    in a row only the grid's rules divide — under a divided header, beside a ruled label
+    ///    column, a band between rules, a header a fill or a box draws the sides of — in any row,
+    ///    a value left blank or not. A heading across a rate filing's form, its words a word space
+    ///    apart or crossing a line, is one cell, and so is a blank row. A run whose width the
+    ///    document does not carry leaves the white unmeasured, and is taken for a gutter.
     fn merged_cells(
         &self,
         rects: &[QuantRect],
@@ -2271,8 +2288,6 @@ impl Lattice {
         // of the other axis.
         let mut open_v = vec![vec![false; rows]; cols - 1];
         let mut open_h = vec![vec![false; cols]; rows - 1];
-        // `gap_rows[r]`: a side is left out beside row `r`, its gap closed by rules (clause 1).
-        let mut gap_rows = vec![false; rows];
         for (axis, lines, kept, across, open) in [
             (
                 Axis::Vertical,
@@ -2325,11 +2340,6 @@ impl Lattice {
                         .all(|(band, d)| *d || closed_by_rules(rules, axis, *line, *band))
                 {
                     *ruled_gaps = true;
-                    if axis == Axis::Vertical {
-                        for (gap, d) in gap_rows.iter_mut().zip(&drawn) {
-                            *gap |= !d;
-                        }
-                    }
                     continue;
                 }
                 let k = kept.iter().position(|b| b + 1 == i)?;
@@ -2407,39 +2417,49 @@ impl Lattice {
             });
         }
         cells.sort_by_key(|s| (s.row, s.column));
-        // The baselines of the text in a cell's columns within one row band.
-        let lines_in = |s: &Span, (y0, y1): (i64, i64)| -> Vec<i64> {
+        // The text in a cell's columns within rows `(y0, y1)`.
+        let runs_in = |s: &Span, (y0, y1): (i64, i64)| {
             let (x0, x1) = (
                 col_iv[s.column as usize].0,
                 col_iv[(s.column + s.colspan - 1) as usize].1,
             );
-            runs.iter()
-                .filter(|o| {
-                    !o.text.trim().is_empty() && o.x >= x0 && o.x < x1 && o.y >= y0 && o.y < y1
-                })
-                .map(|o| o.y)
-                .collect()
+            runs.iter().filter(move |o| {
+                !o.text.trim().is_empty() && o.x >= x0 && o.x < x1 && o.y >= y0 && o.y < y1
+            })
         };
-        // `ruled-rects-v14` (decision #175): a row beside a side's gap holds no cell across
-        // columns with text in each of them — values the page divides from the next row by its
-        // rules alone, not a heading across a form. A cell across rows is clause 4's.
-        if cells.iter().any(|s| {
-            s.colspan > 1
-                && (s.row..s.row + s.rowspan).any(|r| {
-                    gap_rows[r as usize]
-                        && (s.column..s.column + s.colspan).all(|c| {
-                            !lines_in(
-                                &Span {
-                                    column: c,
-                                    colspan: 1,
-                                    ..*s
-                                },
-                                row_iv[r as usize],
-                            )
-                            .is_empty()
-                        })
+        // The baselines of the text in a cell's columns within one row band.
+        let lines_in =
+            |s: &Span, band: (i64, i64)| -> Vec<i64> { runs_in(s, band).map(|o| o.y).collect() };
+        // Clause 5 (`ruled-rects-v14`, decision #175): a cell's text, line by line, leaves a
+        // column's gutter of white at a column line the cell spans.
+        let set_apart = |s: &Span| {
+            let band = (
+                row_iv[s.row as usize].0,
+                row_iv[(s.row + s.rowspan - 1) as usize].1,
+            );
+            let mut inside: Vec<&RunOrigin<'_>> = runs_in(s, band).collect();
+            inside.sort_by_key(|o| (o.y, o.x));
+            inside
+                .chunk_by(|a, b| b.y - a.y <= crate::blocks::LINE_TOLERANCE)
+                .any(|line| {
+                    (s.column + 1..s.column + s.colspan).any(|c| {
+                        let at = col_iv[c as usize].0;
+                        let (before, after): (Vec<&RunOrigin<'_>>, Vec<&RunOrigin<'_>>) =
+                            line.iter().partition(|o| o.x < at - LATTICE_TOLERANCE);
+                        let Some(start) = after.iter().map(|o| o.x).min() else {
+                            return false;
+                        };
+                        match before.iter().map(|o| o.end).collect::<Option<Vec<i64>>>() {
+                            None => true,
+                            Some(ends) => ends.into_iter().max().is_some_and(|reach| {
+                                reach <= at + LATTICE_TOLERANCE
+                                    && start - reach >= crate::unruled::COLUMN_GUTTER_MIN
+                            }),
+                        }
+                    })
                 })
-        }) {
+        };
+        if *ruled_gaps && cells.iter().any(|s| s.colspan > 1 && set_apart(s)) {
             return None;
         }
         for m in cells.iter().filter(|s| s.rowspan > 1) {
@@ -2460,7 +2480,7 @@ impl Lattice {
             let texted = (m.row..m.row + m.rowspan)
                 .filter(|&r| !lines_in(m, row_iv[r as usize]).is_empty())
                 .count();
-            if aligned > 1 && 2 * texted > m.rowspan as usize {
+            if aligned > 1 && (*ruled_gaps || 2 * texted > m.rowspan as usize) {
                 return None;
             }
         }
@@ -2760,6 +2780,7 @@ mod tests {
                     x: pt(x + 100 * col + 5),
                     y: pt(y + 40 * row + 25),
                     text: text(row, col),
+                    end: None,
                 });
             }
         }
@@ -2890,6 +2911,7 @@ mod tests {
                         x: pt(w[0] + 5),
                         y: pt(y + 40 * row + 25),
                         text: "x",
+                        end: None,
                     });
                 }
             }
@@ -3399,11 +3421,13 @@ mod tests {
                 x: pt(105),
                 y: pt(125),
                 text: "a",
+                end: None,
             },
             RunOrigin {
                 x: pt(105),
                 y: pt(165),
                 text: "b",
+                end: None,
             },
         ];
         let (tables, refused) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
@@ -3427,6 +3451,7 @@ mod tests {
                         x: pt(105 + 100 * col),
                         y: pt(y),
                         text: "x",
+                        end: None,
                     });
                 }
             }
@@ -3450,6 +3475,7 @@ mod tests {
                     x: pt(105 + 100 * col),
                     y: pt(140 + line),
                     text: ["x1", "x2", "x3"][k],
+                    end: None,
                 });
             }
         }
@@ -3469,6 +3495,7 @@ mod tests {
                     x: pt(105 + 100 * col),
                     y: pt(140 + line),
                     text: "wrapped",
+                    end: None,
                 });
             }
         }
@@ -3506,11 +3533,26 @@ mod tests {
 
     /// A run at `(col, row)`'s baseline.
     fn at(row: i64, col: i64, text: &'static str) -> RunOrigin<'static> {
-        RunOrigin {
-            x: pt(105 + 100 * col),
-            y: pt(125 + 40 * row),
-            text,
-        }
+        run_at(105 + 100 * col, 125 + 40 * row, text)
+    }
+
+    /// Runs of `words` set one after another from `x` on row `row`'s baseline, a word space
+    /// (2.5 points) apart: prose whose words cross the column lines.
+    fn prose(row: i64, x: i64, words: &'static str) -> Vec<RunOrigin<'static>> {
+        let mut at = pt(x);
+        words
+            .split(' ')
+            .map(|text| {
+                let run = RunOrigin {
+                    x: at,
+                    y: pt(125 + 40 * row),
+                    text,
+                    end: Some(at + WIDTH * text.chars().count() as i64),
+                };
+                at = run.end.unwrap() + WIDTH / 2;
+                run
+            })
+            .collect()
     }
 
     #[test]
@@ -3770,11 +3812,17 @@ mod tests {
             }
         });
         rects.extend([r(100, 100, 401, 101), r(100, 220, 401, 221)]);
-        let runs: Vec<RunOrigin> = (0..3)
-            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
-            .collect();
-        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
-        assert!(tables.is_empty(), "{tables:?}");
+        // And with the row's last value left blank, one value a heading could be: a side drawn
+        // across no band is open, however its rules run out to it (decision #175).
+        for blank in [None, Some((1, 2))] {
+            let runs: Vec<RunOrigin> = (0..3)
+                .flat_map(|row| (0..3).map(move |c| (row, c)))
+                .filter(|cell| Some(*cell) != blank)
+                .map(|(row, c)| at(row, c, label(row, c)))
+                .collect();
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "{blank:?}: {tables:?}");
+        }
     }
 
     /// A grid of `cols` columns whose row 1 is a heading across them, its right edge left out
@@ -3821,16 +3869,74 @@ mod tests {
             let t = &tables[0];
             assert_eq!((t.rows, t.columns, t.cells.len()), (3, 3, 7));
         }
-        // The top edge left out beside column 1 leaves no side out beside row 1: the heading,
-        // its words set in every column, is one cell still.
-        let rects = segments(3, 3, |v, l, b| {
-            !(v && b == 1 && (1..3).contains(&l)) && (v, l, b) != (false, 0, 1)
-        });
-        let (_, mut runs) = gapped(3, true);
-        runs.extend([at(1, 1, "and"), at(1, 2, "notes")]);
+    }
+
+    #[test]
+    fn a_heading_set_across_the_column_lines_beside_a_gap_is_one_cell() {
+        // `ruled-rects-v14` (decision #175): the heading's words cross every column line a word
+        // space apart, or cross one inside a word and leave a gutter's white short of the next:
+        // set across the lines, not column by column.
+        let (rects, runs) = gapped(3, true);
+        let others: Vec<RunOrigin> = runs.into_iter().filter(|o| o.y != pt(165)).collect();
+        let crossing = vec![
+            run_at(180, 165, "Territory"),
+            run_at(250, 165, "(continued)"),
+        ];
+        for heading in [
+            prose(
+                1,
+                105,
+                "Focus area and notes for each rating territory listed",
+            ),
+            crossing,
+        ] {
+            let text: String = heading.iter().map(|o| o.text).collect();
+            let runs = [others.clone(), heading].concat();
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert_eq!(tables.len(), 1, "{text}: {tables:?}");
+            let cell = tables[0]
+                .cells
+                .iter()
+                .find(|c| c.position.row == 1)
+                .unwrap();
+            assert_eq!((cell.position.colspan, &cell.text), (3, &text));
+        }
+    }
+
+    #[test]
+    fn a_cell_across_a_grid_drawn_whole_is_one_cell_however_its_text_is_set() {
+        // Decision #175's fifth clause asks only of a grid whose side's gaps its rules close: drawn
+        // whole, the heading row is one cell though its words sit a gutter apart in two columns.
+        let (rects, mut runs) = gapped(3, false);
+        runs.push(at(1, 2, "2026"));
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
         assert_eq!(tables.len(), 1, "{tables:?}");
-        assert_eq!(tables[0].cells.len(), 7);
+        let heading = tables[0]
+            .cells
+            .iter()
+            .find(|c| c.position.row == 1)
+            .unwrap();
+        assert_eq!(
+            (heading.position.colspan, heading.text.as_str()),
+            (3, "Focus area2026")
+        );
+    }
+
+    #[test]
+    fn a_run_of_no_known_width_beside_a_gap_is_taken_for_a_gutter() {
+        // Decision #175: the heading that crosses a line above, its first word's width not carried
+        // by the document — the white after it is unmeasured, and the grid not read through it.
+        let (rects, runs) = gapped(3, true);
+        let mut runs: Vec<RunOrigin> = runs.into_iter().filter(|o| o.y != pt(165)).collect();
+        runs.extend([
+            RunOrigin {
+                end: None,
+                ..run_at(180, 165, "Territory")
+            },
+            run_at(250, 165, "(continued)"),
+        ]);
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
     }
 
     #[test]
@@ -3868,18 +3974,34 @@ mod tests {
         // columns down all three: the white row's last two values have no line between them, and
         // the shaded rows' edges are no rules — the grid is not read through it
         // (opendataloader-bench `01030000000064`).
-        let mut rects: Vec<QuantRect> = [0, 2]
+        let shaded =
+            |row: i64, c: i64| r(100 + 100 * c, 100 + 40 * row, 200 + 100 * c, 140 + 40 * row);
+        let mut rows: Vec<QuantRect> = [0, 2]
             .into_iter()
-            .flat_map(|row| {
-                (0..3).map(move |c| r(100 + 100 * c, 100 + 40 * row, 200 + 100 * c, 140 + 40 * row))
-            })
+            .flat_map(|row| (0..3).map(move |c| shaded(row, c)))
             .collect();
-        rects.push(r(200, 100, 201, 220));
-        let runs: Vec<RunOrigin> = (0..3)
-            .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+        rows.push(r(200, 100, 201, 220));
+        // Turned: columns 0 and 2 shaded cell by cell, one rule under the first row, the top and
+        // the bottom left out beside the white column.
+        let mut columns: Vec<QuantRect> = (0..3)
+            .flat_map(|row| [0, 2].map(|c| shaded(row, c)))
             .collect();
-        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
-        assert!(tables.is_empty(), "{tables:?}");
+        columns.push(r(100, 140, 400, 141));
+        // As drawn, and with the white band's merged cell holding one value, which a heading could
+        // be: the fills' edges close the gap beside it on neither axis (decision #175).
+        for (rects, blank) in [
+            (&rows, None),
+            (&rows, Some((1, 2))),
+            (&columns, Some((2, 1))),
+        ] {
+            let runs: Vec<RunOrigin> = (0..3)
+                .flat_map(|row| (0..3).map(move |c| (row, c)))
+                .filter(|cell| Some(*cell) != blank)
+                .map(|(row, c)| at(row, c, label(row, c)))
+                .collect();
+            let (tables, _) = detect_ruled(1, rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "{blank:?}: {tables:?}");
+        }
     }
 
     #[test]
@@ -3934,16 +4056,19 @@ mod tests {
     fn rows_ruled_only_across_under_a_divided_header_are_not_cells_across_the_grid() {
         // A header row divided into three columns, and one row or two under it ruled across only:
         // the right side stops at the header, every row's rules run out to it, and each row sets a
-        // value in every column — rows of values the page did not divide, not one cell each.
-        for rows in [2, 3] {
+        // value in every column, or in all but one — rows of values the page did not divide, not
+        // one cell each.
+        for (rows, blank) in [(2, None), (3, None), (3, Some(1))] {
             let rects = segments(rows, 3, |vertical, line, band| {
                 !vertical || band == 0 || line == 0
             });
             let runs: Vec<RunOrigin> = (0..rows)
-                .flat_map(|row| (0..3).map(move |c| at(row, c, label(row, c))))
+                .flat_map(|row| (0..3).map(move |c| (row, c)))
+                .filter(|&(row, c)| row == 0 || Some(c) != blank)
+                .map(|(row, c)| at(row, c, label(row, c)))
                 .collect();
             let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
-            assert!(tables.is_empty(), "{rows}: {tables:?}");
+            assert!(tables.is_empty(), "{rows} {blank:?}: {tables:?}");
         }
     }
 
@@ -3957,22 +4082,101 @@ mod tests {
         });
         // Rows 0 and 2 shaded cell by cell, row 1 white, thin rules between the rows and one
         // between the first two columns: the shaded rows' edges draw both sides, the rules close
-        // them beside the white row, whose last two values are not one cell either.
-        let mut banded: Vec<QuantRect> = [0, 2]
-            .into_iter()
-            .flat_map(|row| {
-                (0..3).map(move |c| r(100 + 100 * c, 100 + 40 * row, 200 + 100 * c, 140 + 40 * row))
-            })
-            .collect();
-        banded.push(r(200, 100, 201, 220));
-        banded.extend((0..4).map(|k| r(100, 100 + 40 * k, 401, 101 + 40 * k)));
-        for (rects, rows, cols) in [(labelled, 4, 4), (banded, 3, 3)] {
+        // them beside the white row, whose last values are not one cell either.
+        let banded = |cols: i64| {
+            let mut rects: Vec<QuantRect> = [0, 2]
+                .into_iter()
+                .flat_map(|row| {
+                    (0..cols).map(move |c| {
+                        r(100 + 100 * c, 100 + 40 * row, 200 + 100 * c, 140 + 40 * row)
+                    })
+                })
+                .collect();
+            rects.push(r(200, 100, 201, 220));
+            rects.extend((0..4).map(|k| r(100, 100 + 40 * k, 101 + 100 * cols, 101 + 40 * k)));
+            rects
+        };
+        // Every value set, or column 2's left blank below the first row: values set apart either
+        // way.
+        for (rects, rows, cols, blank) in [
+            (labelled.clone(), 4, 4, None),
+            (labelled, 4, 4, Some(2)),
+            (banded(3), 3, 3, None),
+            (banded(4), 3, 4, Some(2)),
+        ] {
             let runs: Vec<RunOrigin> = (0..rows)
-                .flat_map(|row| (0..cols).map(move |c| at(row, c, "9")))
+                .flat_map(|row| (0..cols).map(move |c| (row, c)))
+                .filter(|&(row, c)| row == 0 || Some(c) != blank)
+                .map(|(row, c)| at(row, c, "9"))
                 .collect();
             let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
-            assert!(tables.is_empty(), "{cols}: {tables:?}");
+            assert!(tables.is_empty(), "{cols} {blank:?}: {tables:?}");
         }
+    }
+
+    #[test]
+    fn values_set_apart_in_any_row_of_a_grid_its_rules_close_are_not_one_cell() {
+        // Decision #175: a grid whose side's gaps its rules close is read through its merged cells
+        // in every row, not only beside a gap — and where a fill or a box draws the side, a row's
+        // values set column by column are no cell across the columns either. A header under one
+        // fill, the column lines drawn beside the rows below it alone, a rule across every row and
+        // no side drawn (an invoice's); the same header boxed by rules instead;
+        let rules = |rows: i64| (0..=rows).map(|k| r(100, 100 + 40 * k, 401, 101 + 40 * k));
+        let body = [r(200, 140, 201, 261), r(300, 140, 301, 261)];
+        let filled: Vec<QuantRect> = rules(4)
+            .chain(body)
+            .chain([r(100, 100, 400, 140)])
+            .collect();
+        let boxed: Vec<QuantRect> = rules(4)
+            .chain(body)
+            .chain([r(100, 100, 101, 141), r(400, 100, 401, 141)])
+            .collect();
+        // a table shaded in full-width bands, every other row, with a rule across every row and its
+        // column lines drawn beside the white rows alone — opendataloader-bench `01030000000064`
+        // with hairlines, its shaded rows' values not one cell;
+        let banded: Vec<QuantRect> =
+            rules(5)
+                .chain([0, 2, 4].map(|row| r(100, 100 + 40 * row, 400, 140 + 40 * row)))
+                .chain([1, 3].into_iter().flat_map(|row| {
+                    [200, 300].map(|x| r(x, 100 + 40 * row, x + 1, 141 + 40 * row))
+                }))
+                .collect();
+        // and a body boxed whole, its column lines drawn beside the header alone, under a header
+        // whose right side its rules close.
+        let inverse = segments(4, 3, |vertical, line, band| {
+            !vertical || line == 0 || (line == 3) == (band > 0)
+        });
+        for (why, rects, rows) in [
+            ("filled", filled, 4),
+            ("boxed", boxed, 4),
+            ("banded", banded, 5),
+            ("inverse", inverse, 4),
+        ] {
+            let runs: Vec<RunOrigin> = (0..rows)
+                .flat_map(|row| (0..3).map(move |c| at(row, c, "9")))
+                .collect();
+            let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+            assert!(tables.is_empty(), "{why}: {tables:?}");
+        }
+    }
+
+    #[test]
+    fn values_down_the_rows_of_a_grid_its_rules_close_are_not_one_cell() {
+        // Decision #175: a label column ruled across, the columns after it ruled down only, the
+        // bottom drawn beside the labels alone and its gap closed by the column rules. Each
+        // column's values, set row by row on its labels' baselines, are not one cell down the
+        // rows, though they leave half of them blank.
+        let rects = segments(4, 4, |vertical, line, band| {
+            vertical || line == 0 || band == 0
+        });
+        let mut runs: Vec<RunOrigin> = ["Name", "Age", "City", "Role"]
+            .into_iter()
+            .zip(0..)
+            .map(|(text, row)| at(row, 0, text))
+            .collect();
+        runs.extend((1..4).flat_map(|c| [at(0, c, "Smith"), at(3, c, "Engineer")]));
+        let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
+        assert!(tables.is_empty(), "{tables:?}");
     }
 
     #[test]
@@ -3988,6 +4192,7 @@ mod tests {
                 x: pt(105),
                 y: pt(155),
                 text: "Source",
+                end: None,
             },
         ];
         // Read as ink, the panel's edges close a second row the box's column line stops at.
@@ -4011,6 +4216,7 @@ mod tests {
                 x: pt(5 + 100 * col),
                 y: pt(25 + 100 * row),
                 text,
+                end: None,
             })
             .collect();
         let (whole, refused, _) = ruled_grid(1, &rects, &runs, &mut alloc(), None).unwrap();
@@ -4110,6 +4316,7 @@ mod tests {
                 x: pt(320),
                 y: pt(125 + 40 * row),
                 text: ["9.1", "9.2"][row as usize],
+                end: None,
             });
         }
         let (tables, _) = detect_ruled(1, &rects, &runs, &mut alloc()).unwrap();
@@ -4353,6 +4560,7 @@ mod tests {
                 x: (k as i64 % 3) * 10000 + 500,
                 y: (k as i64 / 3) * 2000 + 1500,
                 text,
+                end: None,
             })
             .collect();
         for (thickness, border) in [(20, false), (50, false), (100, false), (100, true)] {
@@ -4650,11 +4858,13 @@ mod tests {
                 x: pt(10),
                 y: pt(10),
                 text: "TL",
+                end: None,
             },
             RunOrigin {
                 x: pt(110),
                 y: pt(10),
                 text: "TR",
+                end: None,
             },
             // Nothing in the bottom row: those cells must come out EMPTY.
         ];
@@ -4687,11 +4897,13 @@ mod tests {
                 x: pt(10),
                 y: pt(10),
                 text: "a",
+                end: None,
             },
             RunOrigin {
                 x: pt(20),
                 y: pt(20),
                 text: "b",
+                end: None,
             },
         ];
         let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap().0;
@@ -4806,6 +5018,7 @@ mod tests {
             x: q(10.0),
             y: q(140.0),
             text: "a",
+            end: None,
         }];
         let stroked =
             crate::stroke_ruled::detect(1, &rules, &uprights, &word, &[], &[], &mut alloc())
@@ -4824,6 +5037,7 @@ mod tests {
             x: q(x),
             y: q(y),
             text,
+            end: None,
         });
         let leftover: Vec<usize> = (0..runs.len()).collect();
         let inferred = crate::unruled::detect(1, &runs, &leftover, &mut alloc()).expect("detects");
@@ -4875,8 +5089,12 @@ mod tests {
             x: pt(x),
             y: pt(y),
             text,
+            end: Some(pt(x) + WIDTH * text.chars().count() as i64),
         }
     }
+
+    /// A character's advance in the runs these tests set: five points, a 10-point face's.
+    const WIDTH: i64 = 500;
 
     /// A timetable's title band over four stations, `1 timetable (1)` page 6 reduced: `Weekdays`
     /// and `to The Bronx` on two rectangles that abut at x = 200, each over two columns, and a

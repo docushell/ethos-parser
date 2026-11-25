@@ -1440,6 +1440,7 @@ fn extract_page(
                 x: r.locator.origin_x,
                 y: r.locator.origin_y,
                 text: r.text.as_str(),
+                end: crate::tables::run_end(r.locator.origin_x, r.locator.advance),
             })
             .collect();
         // `ruled-rects-v13` (decision #71): the same runs where their first inked character
@@ -1451,6 +1452,7 @@ fn extract_page(
                 x,
                 y: r.locator.origin_y,
                 text: r.text.as_str(),
+                end: crate::tables::run_end(r.locator.origin_x, r.locator.advance),
             })
             .collect();
         // v1-S8. The ruling LINES the page stroked, split by orientation before the rule sees
@@ -4062,7 +4064,8 @@ pub(crate) fn per_page_table_diagnostics(
 
         // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
         // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
-        let mut owned: Vec<(i64, i64, i64, String)> = Vec::with_capacity(interp.shown.len());
+        let mut owned: Vec<(i64, i64, i64, Option<i64>, String)> =
+            Vec::with_capacity(interp.shown.len());
         for shown in &interp.shown {
             if shown.text.is_empty() {
                 continue;
@@ -4070,29 +4073,39 @@ pub(crate) fn per_page_table_diagnostics(
             let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
             let origin_x = quantize(ox_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
             let origin_y = quantize(oy_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
+            let travel = travel_along_x(&geom, shown.displacement);
             let glyph_x = first_glyph_x(
                 origin_x,
-                travel_along_x(&geom, shown.displacement).is_some(),
+                travel.is_some(),
                 &shown.text,
                 shown.code_advances.as_deref(),
                 !shown.synthesized_indices.is_empty(),
             );
-            owned.push((origin_x, origin_y, glyph_x, shown.text.clone()));
+            // The locator's advance, as `extract` reads it.
+            let advance = travel
+                .or(shown.advance)
+                .map(|a| quantize(a, QUANTUM_PER_POINT))
+                .transpose()
+                .map_err(quantize_err)?;
+            let end = crate::tables::run_end(origin_x, advance);
+            owned.push((origin_x, origin_y, glyph_x, end, shown.text.clone()));
         }
         let origins: Vec<crate::tables::RunOrigin<'_>> = owned
             .iter()
-            .map(|(x, y, _, t)| crate::tables::RunOrigin {
+            .map(|(x, y, _, end, t)| crate::tables::RunOrigin {
                 x: *x,
                 y: *y,
                 text: t.as_str(),
+                end: *end,
             })
             .collect();
         let glyphs: Vec<crate::tables::RunOrigin<'_>> = owned
             .iter()
-            .map(|(_, y, x, t)| crate::tables::RunOrigin {
+            .map(|(_, y, x, end, t)| crate::tables::RunOrigin {
                 x: *x,
                 y: *y,
                 text: t.as_str(),
+                end: *end,
             })
             .collect();
 
@@ -5613,7 +5626,12 @@ mod tests {
         // test's opinion of what they should be. That is what the comment claims survives.
         let origins: Vec<RunOrigin<'_>> = PAGE
             .iter()
-            .map(|&(x, y, text)| RunOrigin { x, y, text })
+            .map(|&(x, y, text)| RunOrigin {
+                x,
+                y,
+                text,
+                end: None,
+            })
             .collect();
         let tables = crate::tables::detect_ruled(1, &grid, &origins, &mut alloc)
             .expect("a well-formed grid detects")

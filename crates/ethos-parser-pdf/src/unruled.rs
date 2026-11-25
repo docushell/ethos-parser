@@ -601,6 +601,7 @@ mod tests {
             x: pt(x),
             y: pt(y),
             text,
+            end: None,
         }
     }
 
@@ -701,6 +702,7 @@ mod tests {
                 x: pt(72) + ALIGN_TOLERANCE,
                 y: pt(72),
                 text: "-plate",
+                end: None,
             },
         );
         let t = detect(1, &runs, &all(runs.len()), &mut alloc())
@@ -830,21 +832,25 @@ mod tests {
                 x: pt(72),
                 y: pt(72),
                 text: "a",
+                end: None,
             },
             RunOrigin {
                 x: pt(180),
                 y: pt(72),
                 text: "b",
+                end: None,
             },
             RunOrigin {
                 x: pt(72),
                 y: pt(72) + ROW_GUTTER_MIN - 100,
                 text: "c",
+                end: None,
             },
             RunOrigin {
                 x: pt(180),
                 y: pt(72) + ROW_GUTTER_MIN - 100,
                 text: "d",
+                end: None,
             },
         ];
         let out = detect(1, &runs, &all(4), &mut alloc()).unwrap();
@@ -866,21 +872,25 @@ mod tests {
                     x: pt(72),
                     y: pt(72),
                     text: "a",
+                    end: None,
                 },
                 RunOrigin {
                     x: pt(72) + dx,
                     y: pt(72),
                     text: "b",
+                    end: None,
                 },
                 RunOrigin {
                     x: pt(72),
                     y: pt(96),
                     text: "c",
+                    end: None,
                 },
                 RunOrigin {
                     x: pt(72) + dx,
                     y: pt(96),
                     text: "d",
+                    end: None,
                 },
             ]
         };

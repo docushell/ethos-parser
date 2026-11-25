@@ -48,20 +48,32 @@ so no rule id and no `profile_sha256` moves:
 - **Such a grid stands with one column holding no text**, a form's blank column, where it has three
   columns or more; with two left empty it is a drawing or a form's boxes, and with two columns in
   all a list of labels, and is refused.
-- **Not where a row beside a gap holds a cell across columns with text in each of them**: values
-  set column by column in a row only rules divide — a row ruled across under a divided header, a
-  white row between shaded ones — are not one cell. A heading across a form, which leaves some of
-  the columns it spans blank, and a blank row stand.
+- **Not where a cell across columns leaves a column's gutter of white at a line it spans**: on one
+  of its baselines, text ending by a column line and the next starting 12 pt or more past it are
+  values set column by column in a row only rules divide — under a divided header, beside a ruled
+  label column, in a band shaded cell by cell or across its width between rules, under a header a
+  fill or a box draws the sides of — in any row, a value left blank or not. A form's heading or
+  one-line answer, its words a word space apart, and a blank row stand. A run whose width the
+  document does not carry is taken for a gutter.
+- **Nor where a cell across rows sits on the baselines of the rows beside it in two of them**,
+  however many of its rows it leaves blank: values set row by row down columns ruled only between
+  them, the top or bottom left out beside them.
 
 **Measured**: pending.
 
-Nine new tests on made-up grids — a gap its rules close beside a heading row, and in each other
-side, and the top edge's gap making no row a gap's; a gap only fills close; one empty column with
-and without the gap, and a column of signs alone; two empty columns and none filled; one empty
-column of two; one or two rows ruled across under a divided header; values across a label
-column's neighbours, and across a white row between shaded ones with rules between the rows; a
-heading and a blank row across beside the gap, standing. The test of a table open at its sides
-holds. Each rule's mutations caught.
+Fourteen new tests on made-up grids — a gap its rules close beside a heading row, and in each other
+side; a heading set across the lines a word space apart, or crossing one inside a word, standing;
+a heading a gutter apart in a grid drawn whole, one cell as before; a run of no known width taken
+for a gutter; a gap only fills close, across rows and down columns,
+the white band's cell holding one value; one empty column with and without the gap, and a column
+of signs alone; two empty columns and none filled; one empty column of two; one or two rows ruled
+across under a divided header, every value set or one left blank; values across a label column's
+neighbours and across a white row between shaded ones, every value set or one left blank; values
+set apart in a header under a fill or a box, in bands shaded across their width with rules between
+the rows, and in a boxed body under a header whose side its rules close; values down columns
+beside a bottom's gap; a heading and a blank row across beside the gap, standing. The test of a
+table open at its sides holds, and with the merged cell's second value left blank. Each rule's
+mutations caught.
 
 ### An appendix number and a number in any script's digits open a section (decision #174)
 

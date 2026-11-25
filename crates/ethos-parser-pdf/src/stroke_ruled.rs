@@ -775,6 +775,7 @@ mod tests {
             x: pt(60.0),
             y: pt(300.0),
             text: "Lender name",
+            end: None,
         }]
     }
 
@@ -806,6 +807,7 @@ mod tests {
             x: pt(60.0),
             y: pt(300.0),
             text: " ",
+            end: None,
         }];
         for runs in [&[][..], &space[..]] {
             let out = detect(13, &rules, &uprights, runs, &[], &[], &mut alloc()).expect("detects");
@@ -929,6 +931,7 @@ mod tests {
             x: pt(x),
             y: pt(y),
             text,
+            end: None,
         })
         .to_vec();
         (rules, uprights, runs)
@@ -985,11 +988,13 @@ mod tests {
                 x: pt(110.0),
                 y: pt(y),
                 text: "x",
+                end: None,
             });
             unruled.push(RunOrigin {
                 x: pt(260.0),
                 y: pt(y),
                 text: "y",
+                end: None,
             });
         }
         let out = detect(1, &rules, &uprights, &unruled, &[], &[], &mut alloc()).expect("detects");
@@ -1001,6 +1006,7 @@ mod tests {
             x: pt(x),
             y: pt(195.0),
             text,
+            end: None,
         }));
         let out = detect(1, &rules, &uprights, &on, &[], &[], &mut alloc()).expect("detects");
         assert!(out.tables.is_empty());
@@ -1011,6 +1017,7 @@ mod tests {
             x: pt(110.0 + 40.0 * f64::from(k)),
             y: pt(195.0),
             text: "w",
+            end: None,
         }));
         let out =
             detect(1, &rules, &uprights, &paragraph, &[], &[], &mut alloc()).expect("detects");
@@ -1034,6 +1041,7 @@ mod tests {
                 x: pt(x),
                 y: pt(y),
                 text,
+                end: None,
             }));
             let out = detect(1, &rules, &uprights, &near, &[], &[], &mut alloc()).expect("detects");
             assert_eq!(out.tables.len(), 1, "{why}");
@@ -1054,6 +1062,7 @@ mod tests {
             x: pt(x),
             y: pt(y),
             text,
+            end: None,
         });
         let runs = [label(), below.to_vec()].concat();
         let out = detect(13, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
@@ -1073,6 +1082,7 @@ mod tests {
                 x: pt(x),
                 y: pt(y),
                 text,
+                end: None,
             }));
             detect(1, &rules, &uprights, &all, &[], &[], &mut alloc()).expect("detects")
         };
@@ -1133,6 +1143,7 @@ mod tests {
             x: pt(x),
             y: pt(195.0),
             text,
+            end: None,
         }));
         // A second table further down, ruled to other ends, so it is a band of its own.
         rules.extend([300.0, 340.0, 380.0].map(|y| rule(y, 100.0, 500.0)));
@@ -1141,6 +1152,7 @@ mod tests {
             x: pt(110.0),
             y: pt(325.0),
             text: "D1",
+            end: None,
         });
         let out = detect(1, &rules, &uprights, &runs, &[], &[], &mut alloc()).expect("detects");
         assert_eq!(out.tables.len(), 1);
