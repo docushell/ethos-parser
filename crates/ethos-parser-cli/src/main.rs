@@ -1435,13 +1435,18 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         Err(e) => return fail(&e),
     };
 
-    match artifact.to_canonical_bytes() {
+    let code = match artifact.to_canonical_bytes() {
         Ok(out) => match write_stdout(&out, true) {
             Ok(()) => ExitCode::from(PROJECTED as u8),
             Err(e) => fail(&e),
         },
         Err(e) => fail(&e),
-    }
+    };
+    // The process exits next and the system takes the memory back whole: freeing a large record
+    // node by node first costs a tenth of a second and writes nothing.
+    std::mem::forget(artifact);
+    std::mem::forget(repr);
+    code
 }
 
 /// Read a representation, or a source, and project its elements (decision #137). Thin, as
