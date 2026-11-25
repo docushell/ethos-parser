@@ -63,7 +63,10 @@ the items re-exported at the crate root.
 
 Plus `CRATE_NAME`, which exists so a link test can assert the workspace builds.
 
-**Internal, do not use:** nothing. Every module in this crate is contract.
+**Internal, do not use:** nothing as a module. Every module in this crate is contract; three
+`#[doc(hidden)]` functions inside them are public for the PDF reader alone and no supported API:
+`markdown::opens_with_marker` and `markdown::lone_marker` (its layout units' list markers) and
+`assist::is_digit` (its section numbers' digits, decision #174).
 
 **The `tables` module.** `TableCellPosition` carries `(row, column, rowspan, colspan,
 table_id)` with zero-based indices and span 1 meaning *not merged*, and `CellSlot` enumerates

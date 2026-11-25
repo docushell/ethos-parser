@@ -351,6 +351,13 @@ impl Line {
 /// the depth it states: `type-size-v3` ranks two headings set in one size by it, so `2 Foundations`
 /// stands above `2.1 Databases`, and `type-size-v4` lets a numbered bold line stand with space above
 /// it alone. Digits, roman numerals and full stops only, so it reads no language.
+///
+/// **Since decision #174** (folded into `type-size-v8` before any release carried it) an
+/// appendix's number counts, a capital letter joined to digits, `B.1` or `C.2.3`, its letter one
+/// part like a chapter's digits, so `B.1` is as deep as `2.1`; a letter alone is no number, as
+/// `A. Smith` and `B Prompt` open with none. And the digits are any script's decimal digits, `١.٢`
+/// or `１．２`, joined by a full stop or a full-width one (U+FF0E): never a superscript `²`, a
+/// fraction or a circled `①`, which no section is numbered by.
 pub(crate) fn section_number(text: &str) -> Option<u8> {
     let (number, _) = text.trim_start().split_once(char::is_whitespace)?;
     let roman = |n: &str| {
@@ -361,16 +368,17 @@ pub(crate) fn section_number(text: &str) -> Option<u8> {
     if number.strip_suffix('.').is_some_and(roman) {
         return Some(1);
     }
-    let number = number.strip_suffix('.').unwrap_or(number);
-    let parts = number.split('.');
-    if number.is_empty()
-        || !parts
-            .clone()
-            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
-    {
+    let stop = |c: char| c == '.' || c == '\u{FF0E}';
+    let digits = |p: &str| !p.is_empty() && p.chars().all(ethos_parser_core::assist::is_digit);
+    let number = number.strip_suffix(stop).unwrap_or(number);
+    let mut parts = number.split(stop);
+    let first = parts.next()?;
+    let rest = parts.clone().count();
+    let appendix = rest > 0 && matches!(first.as_bytes(), [b'A'..=b'Z']);
+    if !(appendix || digits(first)) || !parts.all(digits) {
         return None;
     }
-    Some(u8::try_from(parts.count()).unwrap_or(u8::MAX))
+    Some(u8::try_from(rest + 1).unwrap_or(u8::MAX))
 }
 
 /// [`section_number`]'s depth, and 1 where the text opens with no number.
@@ -1004,7 +1012,9 @@ mod tests {
             ("2.1.3. Scope", 3),
             ("Methods", 1),
             ("2.1", 1),
-            ("A.1 Annex", 1),
+            ("A.1 Annex", 2),
+            ("C.2.3 Scope", 3),
+            ("B Prompt", 1),
             (".1 Stray", 1),
             ("1..2 Broken", 1),
             ("3.5 million readers", 2),
@@ -1030,6 +1040,49 @@ mod tests {
         }
     }
 
+    /// **An appendix's number is a capital letter joined to digits** (decision #174): the letter
+    /// is one part, as a chapter's digits are, and a letter alone, a lower-case one, a word or a
+    /// letter after the digits is no number.
+    #[test]
+    fn an_appendix_number_is_a_capital_letter_joined_to_digits() {
+        for (text, depth) in [
+            ("B.3 Prompt Engineering", Some(2)),
+            ("C.2.3 x", Some(3)),
+            ("B.1. Models", Some(2)),
+        ] {
+            assert_eq!(section_number(text), depth, "{text:?}");
+        }
+        for text in [
+            "B Prompt",
+            "A. Smith",
+            "b.1 models",
+            "Fig.1 Overview",
+            "U.S. Army",
+            "1.B Notes",
+            "B.x Notes",
+        ] {
+            assert_eq!(section_number(text), None, "{text:?}");
+        }
+    }
+
+    /// **A section number's digits are any script's decimal digits** (decision #174), joined by a
+    /// full stop or a full-width one; a superscript, a fraction or a circled number is no digit.
+    #[test]
+    fn a_section_number_is_read_in_any_script_s_decimal_digits() {
+        for (text, depth) in [
+            ("١.٢ عنوان", Some(2)),
+            ("１．２ 概要", Some(2)),
+            ("１．２． 概要", Some(2)),
+            ("२.१.३ परिचय", Some(3)),
+            ("۳ مقدمه", Some(1)),
+        ] {
+            assert_eq!(section_number(text), depth, "{text:?}");
+        }
+        for text in ["² See below", "½ cup", "① Steps", "１，２ 概要"] {
+            assert_eq!(section_number(text), None, "{text:?}");
+        }
+    }
+
     /// **Within one size, the numbering ranks**: `2` above `2.1` above `2.1.1`, all below a
     /// larger size and all above a bold heading.
     #[test]
@@ -1040,7 +1093,8 @@ mod tests {
         let deeper = line(&[run(Some(1400), "2.1.1 Keys")], "2.1.1 Keys", false);
         let methods = line(&[run(Some(1400), "Methods")], "Methods", false);
         let label = line(&[bold(1000, "Notes")], "Notes", true);
-        let levels = levels_over(&[deeper, two_one, two, title, methods, label]);
+        let annex = line(&[run(Some(1400), "B.1 Prompts")], "B.1 Prompts", false);
+        let levels = levels_over(&[deeper, two_one, two, title, methods, label, annex]);
         assert_eq!(levels.of(title), Some(1));
         assert_eq!(levels.of(two), Some(2));
         assert_eq!(
@@ -1049,6 +1103,11 @@ mod tests {
             "unnumbered is depth 1, as `2` is"
         );
         assert_eq!(levels.of(two_one), Some(3));
+        assert_eq!(
+            levels.of(annex),
+            Some(3),
+            "an appendix's `B.1` is as deep as `2.1`"
+        );
         assert_eq!(levels.of(deeper), Some(4));
         assert_eq!(levels.of(label), Some(5));
     }

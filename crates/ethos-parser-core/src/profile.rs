@@ -1732,6 +1732,15 @@ pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 /// tells a form's `Total`, an invoice's `Bill To` or a resume's `EXPERIENCE`, each alone over text,
 /// from that title; the review's made-up probes that #140 kept clean gain `#` lines. Measured in
 /// `docs/measurements/headings/README.md` §17.
+///
+/// **And an appendix's number and any script's digits are section numbers** (decision #174,
+/// folded in before any release carried this id): the section number `-v3` ranks by and `-v4`
+/// lets a bold line stand with room above alone may open with a capital letter joined to digits,
+/// `B.1` or `C.2.3`, the letter one part, so `B.1` is as deep as `2.1` — a letter alone, `A. Smith`,
+/// is still no number — and its digits may be any script's decimal digits (general category `Nd`,
+/// `١.٢`, `२.१`, `１．２`), joined by a full stop or a full-width one (U+FF0E). A paper's
+/// `B.3 Prompt Engineering`, bold with room above it, had been a label under its sibling `B.2`,
+/// a heading.
 pub const HEADING_INFERENCE_RULE_V8: &str = "type-size-v8";
 
 /// The layout-unit rule decision #38 ships: **lines joined by their own spacing**.

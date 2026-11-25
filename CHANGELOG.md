@@ -32,6 +32,34 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### An appendix number and a number in any script's digits open a section (decision #174)
+
+`heading_inference_rule` stays `type-size-v8`, unreleased, which takes the change in; the profile
+does not move.
+
+- **An appendix's number is a section number**: a capital letter joined to digits by full stops,
+  `B.1` or `C.2.3`, the letter one part, so `B.1` ranks as deep as `2.1` among headings set in one
+  size, and a bold line opening with one needs only room above it to stand as a heading, as
+  `3.1.` does. A paper's appendix set `B.3 Prompt Engineering` bold over its text, with room
+  above, and it read as a bold label under its sibling `B.2`, a heading.
+- **A section number's digits are any script's decimal digits** (general category `Nd`, the table
+  the assist guard already reads): `١.٢ عنوان`, `२.१ परिचय`, `１．２ 概要`, joined by a full stop or
+  a full-width one (U+FF0E). A superscript `²`, a fraction or a circled `①` is no digit.
+- **Only that.** A letter alone is no number — `A. Smith`, `B Prompt` — nor a lower-case letter, a
+  word (`Fig.1`) or a letter after the digits; a roman numeral still needs its full stop.
+  `core::assist::is_digit` becomes `#[doc(hidden)] pub` for the PDF reader, no supported API.
+- **Expected to change** (`markdown --source` against the build before it, on every
+  opendataloader-bench PDF and every ParseBench page whose Markdown opens a line with such a
+  number or holds a non-ASCII digit): opendataloader-bench, two papers' appendices, the census's
+  gains — `01030000000195` `B.1` and `01030000000196` `B.3` to `B.5`, bold labels written `#`;
+  ParseBench and ParseBench-2, `text_simple__temporal`'s `A.2 Notícias associadas`, a label
+  written `#`; ParseBench-2, a tax form's two pages, `filled__poland--02_PIT-36--p5__typed` and
+  `-p6__typed`, whose headings `H.1.` to `H.6.3.` now rank by their depth, each one level down
+  (`H.1.` under `H.`, as `2.1` under `2`; on p6, where `H.` is not on the page, the wrapped
+  heading's unnumbered second line, depth 1, holds the level above, as a wrapped `2.1` heading's
+  does). No other candidate page changes; no page of digits in another script does.
+- **Measured**: pending.
+
 ### Two columns written down the page, a number in every row, are a table (decision #173)
 
 `table_detection.tracks` stays `whitespace-tracks-v16`, unreleased, which takes the change in; the

@@ -1542,7 +1542,12 @@ const DECIMAL_ZEROS: [u32; 68] = [
 ];
 
 /// Whether `c` is a decimal digit of any script.
-fn is_digit(c: char) -> bool {
+///
+/// Public for the PDF reader's section numbers alone (`type-size-v8`, decision #174), and no
+/// supported API (`docs/PUBLIC-API.md`). **A change here changes both**: it moves that rule id, and
+/// `profile_sha256` with it, as well as `assist-guard-v1`.
+#[doc(hidden)]
+pub fn is_digit(c: char) -> bool {
     let c = u32::from(c);
     let at = DECIMAL_ZEROS.partition_point(|&zero| zero <= c);
     at > 0 && c - DECIMAL_ZEROS[at - 1] < 10

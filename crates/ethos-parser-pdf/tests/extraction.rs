@@ -5704,6 +5704,10 @@ fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
     let (numbered, detail) = headings(&page("3.1. Methods"));
     assert_eq!(numbered, [("3.1. Methods".to_string(), None)]);
     assert!(detail.contains("0 are labels"), "{detail}");
+    // Decision #174: an appendix's number is a section number too.
+    let (appendix, detail) = headings(&page("B.1 Methods"));
+    assert_eq!(appendix, [("B.1 Methods".to_string(), None)]);
+    assert!(detail.contains("0 are labels"), "{detail}");
     let (label, detail) = headings(&page("Methods"));
     assert_eq!(label, [("Methods".to_string(), None)]);
     assert!(detail.contains("1 are labels"), "{detail}");
