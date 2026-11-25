@@ -59,6 +59,13 @@ so no rule id and no `profile_sha256` moves:
   however many of its rows it leaves blank: values set row by row down columns ruled only between
   them, the top or bottom left out beside them.
 
+**A header row a form repeats inside such a grid is not flagged a header**, as the ruled rule
+flags no row inside its grid: a rate filing's `Step`, `Operation`, … row under each section's
+heading is a body row, `<td>` in HTML, where `main` read the sections as tables of their own,
+flagged that row in each and wrote it `<th>` under a column group's head (13 ParseBench-2 pages,
+among them `insurance_filing_tables/51abb0b9601cd8df_p4`); ParseBench's table metric does not tell
+`<th>` from `<td>`, so no score moves.
+
 **Measured** (against `main`, `bbb66e8`; default lane unless said; network denied; ParseBench scorer
 2.1.0): ParseBench-2 55.90 → 55.99 (tables 49.98 → 50.52), with `--ocr` 58.76 → 58.85 (tables 51.71
 → 52.25); ParseBench unchanged in both lanes (one document changes, its score 1.00 both ways);
