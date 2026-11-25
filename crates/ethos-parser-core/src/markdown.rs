@@ -492,6 +492,18 @@ pub(crate) fn continued_tables(
         .collect();
     let mut order: Vec<usize> = (0..tables.len()).filter(|&t| reach[t].is_some()).collect();
     order.sort_by_key(|&t| reach[t]);
+    let joinable = |t: &crate::TableRecord| {
+        JOINABLE_RULES
+            .iter()
+            .any(|rule| t.detection_rule.starts_with(rule))
+    };
+    // No pair the loop below could join: everything else read here serves that loop alone.
+    if !order
+        .windows(2)
+        .any(|p| p[0] < p[1] && joinable(&tables[p[0]]) && joinable(&tables[p[1]]))
+    {
+        return vec![None; tables.len()];
+    }
     let pages: std::collections::BTreeMap<&crate::NodeId, &crate::representation::PageRecord> =
         payload.pages.iter().map(|p| (&p.id, p)).collect();
     let page = |id: &crate::NodeId| pages.get(id).copied();
@@ -655,11 +667,6 @@ pub(crate) fn continued_tables(
             .map(|r| r.y1() - r.y0())
             .max()
             .unwrap_or(0)
-    };
-    let joinable = |t: &crate::TableRecord| {
-        JOINABLE_RULES
-            .iter()
-            .any(|rule| t.detection_rule.starts_with(rule))
     };
     let tagged = |t: &crate::TableRecord| {
         runs(t)
