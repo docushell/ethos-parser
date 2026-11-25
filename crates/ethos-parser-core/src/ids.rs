@@ -58,7 +58,14 @@ impl NodeId {
     /// still belongs to the allocator, and the structural checks that consume these ids reject a
     /// duplicate or a dangling reference regardless of which route produced it.
     pub fn from_parts(kind: IdKind, ordinal: u64) -> Self {
-        Self(format!("{}{}", kind.prefix(), ordinal))
+        // Without `format!`, and at exactly its length: every node holds one.
+        let prefix = kind.prefix();
+        let mut buf = [0; 20];
+        let digits = crate::c14n::u64_digits(ordinal, &mut buf);
+        let mut id = String::with_capacity(prefix.len() + digits.len());
+        id.push_str(prefix);
+        id.extend(digits.iter().copied().map(char::from));
+        Self(id)
     }
 }
 
@@ -174,7 +181,7 @@ impl IdAllocator {
         if *counter > crate::MAX_SAFE_INT as u64 {
             return Err(ordinal_limit());
         }
-        let id = NodeId(format!("{}{}", kind.prefix(), counter));
+        let id = NodeId::from_parts(kind, *counter);
         *counter += 1;
         Ok(id)
     }

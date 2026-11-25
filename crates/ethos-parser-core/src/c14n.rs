@@ -584,8 +584,12 @@ fn ser_err(message: &str) -> SerError {
 }
 
 /// The decimal digits of `u`, without a heap allocation: the bytes `u.to_string()` would give.
-fn write_u64_digits(mut u: u64, out: &mut Vec<u8>) {
-    let mut buf = [0u8; 20];
+fn write_u64_digits(u: u64, out: &mut Vec<u8>) {
+    out.extend_from_slice(u64_digits(u, &mut [0; 20]));
+}
+
+/// The decimal digits of `u`, written at the end of `buf`: the bytes `u.to_string()` would give.
+pub(crate) fn u64_digits(mut u: u64, buf: &mut [u8; 20]) -> &[u8] {
     let mut i = buf.len();
     loop {
         i -= 1;
@@ -595,7 +599,7 @@ fn write_u64_digits(mut u: u64, out: &mut Vec<u8>) {
             break;
         }
     }
-    out.extend_from_slice(&buf[i..]);
+    &buf[i..]
 }
 
 fn write_checked_i64(i: i64, out: &mut Vec<u8>) -> Result<(), SerError> {
