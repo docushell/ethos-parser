@@ -1223,6 +1223,8 @@ for its bytes.
 - A lone `/FlateDecode` content stream with no `/DecodeParms` is inflated once where that inflate
   reaches its end within 256 KiB (`MAX_INFLATED_ONCE`); any other stream is read both ways, as A
   reads it.
+- `check_structure` looks up each node's page through hash maps rather than B-trees, and a page's
+  font limitations gather in a set that joins the list after the page fold.
 - A payload of more than 1,024 nodes streams on a pool of one thread too, walked again for the
   print, so `extract` at one thread canonicalizes it twice: §19's *Not done*.
 
