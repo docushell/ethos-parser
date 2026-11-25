@@ -1704,14 +1704,18 @@ cell at least, every letter of a script with letter case, and no running text (�
 more of its cells opening lower-case) — each row on one line, its every run within a line's
 tolerance of its baseline, and the page draws no horizontal ink an em long or more starting in the
 gutter between the two tracks, from the first row's baseline to the last's (`drawn_between`): its
-stroked rules, the top and bottom of each rectangle it paints, and the top and bottom of each bar
-the chart rules read, a form's, a rounded one's and a wide stroke's included. Nor where the values
-step evenly — four or more, read past their spaces, thousands' commas, per cent and currency signs,
-one step apart that is not nought (`evenly_stepped`) — nor where the first column is a paragraph set
-in capitals, no lower-case letter and half its cells or more `PROSE_LINE_CHARS` long (`capitals`).
-Not on a page of recognized text, whose order says nothing (decision #125) and where two columns
-stand only as a form's fields (§42). Every row of a two-column grid holds both its cells (§2, rule
-4: a sparse row needs two), so "every row's" and "every cell's" are one test here.
+stroked rules, the top and bottom of each rectangle it paints, and the top and bottom of each fill
+the chart rules collect as a bar, painted in a colour that is not white, a form's, a rounded one's
+and a wide stroke's included. Nor where the values step evenly — four or more, one step apart that
+is not nought, each read past its spaces, thousands' marks (`,` or `'`), per cent and currency signs
+and a note's asterisk, an en or em dash its minus and brackets round it its negative, and the column
+read again with `,` as the decimal point and `.` as the thousands' mark (`evenly_stepped`) — nor
+where the first column is a paragraph set in capitals, fewer than one letter in twenty lower-case
+and half its cells or more `PROSE_LINE_CHARS` long (`capitals`), nor on the lines of two such
+columns refused as a chart's or a paragraph's by one of those three guards. Not on a page of
+recognized text, whose order says nothing (decision #125) and where two columns stand only as a
+form's fields (§42). Every row of a two-column grid holds both its cells (§2, rule 4: a sparse row
+needs two), so "every row's" and "every cell's" are one test here.
 
 **Every guard was found by this change's own A/B.** The census's rule — a number in every row's
 second cell, a first column of no running text — also read 27 ParseBench chart pages as tables: on
@@ -1745,6 +1749,22 @@ beside a column of numbers, written as its own flow, opens no line lower-case; h
 of prose long, with no lower-case letter, refuse it. The census's tables keep all three: the
 shareholders' names in capitals stand among names in lower case.
 
+**And the third review's.** A bar chart whose bars past its first few are each shorter than an em —
+a survey's answers on a fixed axis, `62%` and `41%`, then `3%` to `1%` — was refused whole by its
+long bars, and then each run of its lines further down was tried again on its own: the tail of short
+bars drew nothing an em long, stood as two columns written down the page, and took the line above it
+as its header, so `bar-labels-v3` no longer read the chart and its top answers were left apart from
+their values. Now no candidate opening on the lines of labels and values refused by a guard of this
+clause stands by this clause; two columns written row by row there still stand, and a header line,
+whose second cell is no number, refuses nothing below it. Axes that cross nought, or are printed in
+accounting or European form, passed the even-step guard, which read none of `(10%)`, `–10`, `4'000`,
+`100%*`, `0,5` or `2.000.000` as a number; it reads every mark `is_number` admits now, and the
+column a second time with a decimal comma, so an equation's numbers `(1)` to `(5)` step evenly too.
+And one lower-case letter, a clause's `4(a)` or an ordinal's `1st`, kept a paragraph in capitals
+from the capitals guard; fewer than one letter in twenty lower-case is a paragraph in capitals now,
+and a shareholders' list of long names in capitals with one name in lower case, `Norges Bank`, keeps
+its table. The seven pages above change as they did.
+
 **Measured** (Markdown, `markdown --source`, against the build before it): ParseBench's 2,037
 pages, six change — `FBLB-134215544` p43, `SERFF_CA_random_pages 1` p2323, p2324, p2326 and p2526,
 each now a table of its labels and values, and the layout page `fh_2025_004e` p7, a list of major
@@ -1758,9 +1778,14 @@ premiums written down the page — stays text, as a chart's two axes do; so does
 wrap, or are in a script with no letter case, or carry a subscript (`CO₂`, whose lowered run leaves
 its row's line); one whose values step evenly, a fee schedule of `$10` to `$40`; one whose labels
 are long lines in capitals; and a rate sheet that draws a bar, a box or a rule from the gutter
-between its columns at a row, in a form too, is refused as a chart is. A table of contents whose
-page numbers are a chapter's (`1-1`, `2-1`), written down the page, reads as a table, as it already
-did written row by row: §7's contents test reads plain page numbers only. On `fh_2025_004e` p7 the
-section heading over the shareholders' list is stacked into the new table's first header cell (`Name
-●Major shareholders`), and the two bold labels of the box beside it, `Number of shareholders` and
-`Number of shares outstanding`, are written on one Markdown line; no text is lost.
+between its columns at a row, in a form too, is refused as a chart is. A bar chart whose every bar
+is shorter than an em, or whose stacked segments each are, draws nothing the ink guard reads: it
+reads as a table of its labels and values, whole, its title above it rather than in its header. So
+do a log axis's ticks (`10,000` to `1`) and rounded thirds (`133%`, `100%`, `67%`) beside a column
+of labels, which step by no one amount, and a paragraph in capitals set in lines shorter than
+`PROSE_LINE_CHARS`. A table of contents whose page numbers are a chapter's (`1-1`, `2-1`), written
+down the page, reads as a table, as it already did written row by row: §7's contents test reads
+plain page numbers only. On `fh_2025_004e` p7 the section heading over the shareholders' list is
+stacked into the new table's first header cell (`Name ●Major shareholders`), and the two bold labels
+of the box beside it, `Number of shareholders` and `Number of shares outstanding`, are written on
+one Markdown line; no text is lost.

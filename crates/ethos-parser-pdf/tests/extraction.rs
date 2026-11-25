@@ -3039,6 +3039,63 @@ fn a_bar_chart_drawn_as_a_form_is_no_table_of_labels_and_values() {
     );
 }
 
+/// **A bar chart whose last bars are each shorter than an em is read as a chart, whole** (decision
+/// #173, QA round 3): a survey's seven answers on a fixed axis, three bars long and four under a
+/// tenth of an inch, are refused as labels and values by the long bars, and the tail of short bars
+/// no longer stands on its own as two columns written down the page, the row above it its header.
+/// `bar-labels-v3` reads the chart's seven rows under its title.
+#[test]
+fn a_bar_chart_s_tail_of_short_bars_is_read_with_the_chart() {
+    let text =
+        |size: u32, x: f64, y: f64, s: &str| format!("BT /F1 {size} Tf {x} {y} Td ({s}) Tj ET\n");
+    let answers = [
+        ("Online", 62.0),
+        ("In store", 41.0),
+        ("By phone", 18.0),
+        ("By post", 3.0),
+        ("Other", 2.0),
+        ("None", 1.0),
+        ("Don't know", 1.0),
+    ];
+    let y = |k: usize| 492.0 - 20.0 * k as f64;
+    let mut content = text(12, 72.0, 522.0, "How did you order? \\(% of respondents\\)");
+    for (k, (label, _)) in answers.iter().enumerate() {
+        content += &text(10, 72.0, y(k), label);
+    }
+    content += "0.9 0.5 0.1 rg\n";
+    for (k, (_, share)) in answers.iter().enumerate() {
+        content += &format!("160 {} {} 10 re f\n", y(k) - 1.0, share * 3.0);
+    }
+    content += "0 g\n";
+    for (k, (_, share)) in answers.iter().enumerate() {
+        content += &text(10, 164.0 + share * 3.0, y(k), &format!("{share}%"));
+    }
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ];
+    let artifact = extract_bytes(&pdf_from_objects(&objects)).expect("extracts");
+    let tables: Vec<(&str, u32)> = artifact.pages[0]
+        .tables
+        .iter()
+        .map(|t| (t.rule.as_str(), t.rows))
+        .collect();
+    assert_eq!(
+        tables,
+        [(ethos_parser_core::TABLE_DETECTION_CHARTS_V3, 8)],
+        "the chart's table, a header row over its seven answers"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // 12. Which rule fired (v1-S2)
 // -------------------------------------------------------------------------------------------

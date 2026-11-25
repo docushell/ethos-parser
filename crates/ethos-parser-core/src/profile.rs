@@ -1237,10 +1237,12 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// no running text, and not a paragraph set in capitals — each row on one line, where the values
 /// do not step evenly and the page draws no horizontal ink an em long or more, a bar a form or a
 /// rounded fill paints included, starting in the gutter between the two, from the first row's
-/// baseline to the last's. A rate sheet exported cell by cell writes its labels as one block and
-/// its values as another; a chart's two value axes set level are numbers beside numbers, and its
-/// ticks step evenly whatever the other axis prints in place of one; a bar chart draws its bars
-/// between its labels and its values; a label that wraps is a paragraph's line, and in a script
+/// baseline to the last's, nor on the lines of two such columns refused so. A rate sheet exported
+/// cell by cell writes its labels as one block and its values as another; a chart's two value axes
+/// set level are numbers beside numbers, and its ticks step evenly whatever the other axis prints
+/// in place of one, in whatever marks — `(10%)`, `–10`, `4'000`, a decimal comma; a bar chart draws
+/// its bars an em long or more between its labels and its values, and a tail of bars shorter than
+/// an em under them is refused with them; a label that wraps is a paragraph's line, and in a script
 /// with no letter case no line reads as running text. Measured: pending.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 

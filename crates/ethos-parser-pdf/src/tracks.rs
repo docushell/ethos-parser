@@ -225,11 +225,13 @@
 //!    line, where the page draws no ink an em long starting between them: a rate sheet exported
 //!    cell by cell writes its labels as one block and its values as another. Two columns of prose,
 //!    or a page set in two columns, hold words in both; a chart's two axes set level are numbers
-//!    beside numbers, and a bar chart draws its bars, or a chart its gridlines, between its labels
-//!    and its values — its bars in a form, or rounded, too. A label that wraps is a paragraph's line
-//!    beside them, and in a script with no letter case no line reads as running text. Nor where the
-//!    values step evenly, as an axis's ticks do whatever the other axis prints in place of a tick,
-//!    nor beside a paragraph set in capitals. Not on a page of recognized text (below).
+//!    beside numbers, and a bar chart draws its bars an em long or more, or a chart its gridlines,
+//!    between its labels and its values — its bars in a form, or rounded, too. A label that wraps
+//!    is a paragraph's line beside them, and in a script with no letter case no line reads as
+//!    running text. Nor where the values step evenly, as an axis's ticks do whatever the other axis
+//!    prints in place of a tick, nor beside a paragraph set in capitals, nor on lines of two such
+//!    columns refused as a chart's or a paragraph's: a bar chart's tail of bars shorter than an em
+//!    stays the chart's. Not on a page of recognized text (below).
 //!    **Nor is it waived where the columns divide into two groups each written row by row**: a
 //!    table beside a column of text is two flows side by side, whatever the text's letters say —
 //!    **unless the first column alone is the one group and it is the table's labels** (`-v12`,
@@ -394,12 +396,12 @@ struct Group {
 
 /// Every table `whitespace-tracks-v10` finds on one page, in reading-down order. `rules` is the
 /// page's horizontal ink (`-v16`): its stroked rules, and each painted rectangle's top and bottom.
-/// `bars` is the top and bottom of every bar the page paints, a form's and a rounded or stroked
-/// one's included, which only the two-column clause of [`accepted`] reads (decision #173): a chart
-/// is often drawn as a form. `recognized` says the page's runs are text a recognizer read (decision
-/// #125): their stream order is the recognizer's, row by row down the whole page across any
-/// columns, so it is no evidence that a grid was written as a table, and such a grid stands only as
-/// one written in no order does.
+/// `bars` is the top and bottom of every bar the page paints in a colour that is not white, a
+/// form's and a rounded or stroked one's included, which only the two-column clause of
+/// [`accepted`] reads (decision #173): a chart is often drawn as a form. `recognized` says the
+/// page's runs are text a recognizer read (decision #125): their stream order is the recognizer's,
+/// row by row down the whole page across any columns, so it is no evidence that a grid was written
+/// as a table, and such a grid stands only as one written in no order does.
 ///
 /// # Errors
 ///
@@ -433,12 +435,17 @@ fn detect_within(
     let mut i = 0;
     // Lines before this one are an earlier table's, and no header of a later one.
     let mut floor = 0;
+    // Lines before this one were labels and values refused as a chart's or a paragraph's (decision
+    // #173, QA round 3): no candidate opening among them stands by the two-column clause of
+    // `accepted`, so a bar chart's tail of bars shorter than an em stays the chart's.
+    let mut charted = 0;
     while i < lines.len() {
         if let Some((mut rows, mut end, reach)) = grow(&lines, i, runs) {
             let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
+            let by_column = i >= charted;
             let stands = |rows: &[Row], end: usize| {
                 (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
-                    && accepted(rows, runs, rules, bars, within, recognized)
+                    && accepted(rows, runs, rules, bars, within, recognized, by_column)
             };
             let mut stand = stands(&rows, end);
             // `-v9`: a table its reach past the pitch cannot keep stands without it.
@@ -446,6 +453,12 @@ fn detect_within(
                 rows.truncate(kept);
                 end = at;
                 stand = stands(&rows, end);
+            }
+            if !stand
+                && labels_and_values(&rows, runs, recognized)
+                && chart_or_paragraph(&rows, runs, rules, bars)
+            {
+                charted = charted.max(end);
             }
             // Columns of prose are passed over (decision #127): a run of their lines further down
             // may open fewer of them lower-case, and stood as a table. Down to their last row that
@@ -1946,7 +1959,8 @@ fn split_number_pair(
 
 /// Whether the rows are a table: enough of them, a steady pitch, and written row by row — or
 /// `ordered` (`-v16`), one side of rows that stood as a table already. `rules` is the page's
-/// horizontal ink and `bars` its bars' edges, as [`detect`] takes them.
+/// horizontal ink and `bars` its bars' edges, as [`detect`] takes them; `by_column` is false on the
+/// lines of labels and values refused as a chart's or a paragraph's (decision #173).
 fn accepted(
     rows: &[Row],
     runs: &[TrackRun<'_>],
@@ -1954,6 +1968,7 @@ fn accepted(
     bars: &[Rule],
     ordered: bool,
     recognized: bool,
+    by_column: bool,
 ) -> bool {
     let columns = rows[0].cells.len();
     if rows.len() < MIN_ROWS
@@ -2046,26 +2061,12 @@ fn accepted(
     // and in a script with no letter case no line opens lower-case, so none reads as running text.
     // Not on a page of recognized text, where two columns stand only as a form's fields. Nor where
     // the values step evenly, as an axis's ticks do whatever its other axis prints — a unit, `USD
-    // bn`, in place of a tick, or a unit on each — nor beside a paragraph set in capitals.
-    if !recognized
-        && columns == 2
-        && column(1).iter().all(|t| is_number(t.trim()))
-        && !evenly_stepped(&column(1))
-        && first.iter().any(|t| t.chars().any(char::is_alphabetic))
-        && first.iter().all(|t| {
-            t.chars()
-                .all(|c| !c.is_alphabetic() || c.is_uppercase() || c.is_lowercase())
-        })
-        && !running_text(&first)
-        && !capitals(&first)
-        && rows.iter().all(|r| {
-            r.cells
-                .iter()
-                .flat_map(|c| &c.runs)
-                .all(|&i| runs[i].y <= r.y + LINE_TOLERANCE)
-        })
-        && !drawn_between(rows, rules)
-        && !drawn_between(rows, bars)
+    // bn`, in place of a tick, or a unit on each — nor beside a paragraph set in capitals, nor on
+    // the lines of two such columns refused so (QA round 3): a bar chart whose bars past its first
+    // few are each shorter than an em is refused whole, and its tail of short bars with it.
+    if by_column
+        && labels_and_values(rows, runs, recognized)
+        && !chart_or_paragraph(rows, runs, rules, bars)
     {
         return true;
     }
@@ -2086,6 +2087,51 @@ fn accepted(
                     && written_row_by_row(rows, k..columns)
                     && !(k == 1 && label_column(rows, runs))
             }))
+}
+
+/// Whether rows are two columns of labels and values as the two-column clause of [`accepted`] reads
+/// them (decision #173), on a page of no recognized text: every row's second cell a number, beside
+/// a first column that names its rows — a letter in one cell at least, every letter of a script
+/// with letter case, and no running text — each row on one line.
+fn labels_and_values(rows: &[Row], runs: &[TrackRun<'_>], recognized: bool) -> bool {
+    let column = |k: usize| -> Vec<String> {
+        rows.iter()
+            .map(|r| cell_text(&r.cells[k], runs))
+            .filter(|t| !t.trim().is_empty())
+            .collect()
+    };
+    let first = column(0);
+    !recognized
+        && rows[0].cells.len() == 2
+        && column(1).iter().all(|t| is_number(t.trim()))
+        && first.iter().any(|t| t.chars().any(char::is_alphabetic))
+        && first.iter().all(|t| {
+            t.chars()
+                .all(|c| !c.is_alphabetic() || c.is_uppercase() || c.is_lowercase())
+        })
+        && !running_text(&first)
+        && rows.iter().all(|r| {
+            r.cells
+                .iter()
+                .flat_map(|c| &c.runs)
+                .all(|&i| runs[i].y <= r.y + LINE_TOLERANCE)
+        })
+}
+
+/// Whether two columns of [`labels_and_values`] are a chart's or a paragraph's (decision #173):
+/// values that step evenly, as an axis's ticks do; a first column set as a paragraph in capitals;
+/// or ink drawn between the two, a bar's or a gridline's.
+fn chart_or_paragraph(rows: &[Row], runs: &[TrackRun<'_>], rules: &[Rule], bars: &[Rule]) -> bool {
+    let column = |k: usize| -> Vec<String> {
+        rows.iter()
+            .map(|r| cell_text(&r.cells[k], runs))
+            .filter(|t| !t.trim().is_empty())
+            .collect()
+    };
+    evenly_stepped(&column(1))
+        || capitals(&column(0))
+        || drawn_between(rows, rules)
+        || drawn_between(rows, bars)
 }
 
 /// Whether horizontal ink an em long or more starts in the gutter between two columns, between
@@ -2351,40 +2397,57 @@ fn running_text(texts: &[String]) -> bool {
 }
 
 /// Whether a column's non-empty cells, top to bottom, are a paragraph set in capitals (decision
-/// #173): no lower-case letter, and at least half of them [`PROSE_LINE_CHARS`] characters or more.
-/// No line of it opens lower-case, so [`running_text`] never reads it.
+/// #173): fewer than one letter in twenty lower-case — a clause's `4(a)` or an ordinal's `1st`
+/// among capitals (QA round 3) — and at least half of them [`PROSE_LINE_CHARS`] characters or
+/// more. No line of it opens lower-case, so [`running_text`] never reads it.
 fn capitals(texts: &[String]) -> bool {
     let long = texts
         .iter()
         .filter(|t| t.trim().chars().count() >= PROSE_LINE_CHARS)
         .count();
-    texts.iter().all(|t| !t.chars().any(char::is_lowercase)) && 2 * long >= texts.len()
+    let letters = || texts.iter().flat_map(|t| t.chars());
+    let lower = letters().filter(|c| c.is_lowercase()).count();
+    20 * lower < letters().filter(|c| c.is_alphabetic()).count() && 2 * long >= texts.len()
 }
 
 /// Whether a column's non-empty cells, top to bottom, step evenly (decision #173): four or more,
-/// each a number read past its spaces, thousands' commas, per cent and currency signs, each the last
-/// plus one step that is not nought. A chart's axis prints its ticks so.
+/// each a number as [`tick`] reads one, each the last plus one step that is not nought, with `,` as
+/// the thousands' mark and `.` as the decimal point or the other way about (QA round 3). A chart's
+/// axis prints its ticks so.
 fn evenly_stepped(texts: &[String]) -> bool {
-    let values: Option<Vec<f64>> = texts
-        .iter()
-        .map(|t| {
-            t.chars()
-                .filter(|&c| {
-                    !c.is_whitespace() && c != ',' && c != '%' && !CURRENCY_SIGNS.contains(c)
-                })
-                .collect::<String>()
-                .parse()
-                .ok()
+    [(',', '.'), ('.', ',')].into_iter().any(|(group, point)| {
+        let values: Option<Vec<f64>> = texts.iter().map(|t| tick(t, group, point)).collect();
+        let Some(values) = values.filter(|v| v.len() >= MIN_ROWS_OF_TWO_COLUMNS) else {
+            return false;
+        };
+        let step = values[1] - values[0];
+        step != 0.0
+            && values
+                .windows(2)
+                .all(|w| (w[1] - w[0] - step).abs() <= step.abs() * 1e-6)
+    })
+}
+
+/// A number as an axis prints its tick, in the marks [`is_number`] admits (decision #173, QA round
+/// 3): read past its spaces, `group` and `'` as thousands' marks, per cent and currency signs and
+/// a note's asterisk, `point` as its decimal point, an en or em dash as its minus and brackets
+/// round it as its negative — `(10%)`, `–10`, `4'000`, `100%*`, `0,5`, `2.000.000`.
+fn tick(text: &str, group: char, point: char) -> Option<f64> {
+    let digits: String = text
+        .chars()
+        .filter(|&c| {
+            !c.is_whitespace() && c != group && !"'%*".contains(c) && !CURRENCY_SIGNS.contains(c)
+        })
+        .map(|c| match c {
+            '–' | '—' => '-',
+            c if c == point => '.',
+            c => c,
         })
         .collect();
-    let Some(values) = values.filter(|v| v.len() >= MIN_ROWS_OF_TWO_COLUMNS) else {
-        return false;
-    };
-    let step = values[1] - values[0];
-    step != 0.0
-        && values
-            .windows(2)
-            .all(|w| (w[1] - w[0] - step).abs() <= step.abs() * 1e-6)
+    match digits.strip_prefix('(').and_then(|d| d.strip_suffix(')')) {
+        Some(inner) => inner.parse().ok().map(|v: f64| -v),
+        None => digits.parse().ok(),
+    }
 }
 
 /// A cell's text: its runs' text in content order.
@@ -4457,11 +4520,63 @@ mod tests {
         assert!(bars.expect("detects").is_empty(), "a bar's edge");
     }
 
+    /// **A bar chart's tail of bars shorter than an em is no table either** (decision #173, QA
+    /// round 3): the chart's labels and values are refused by its long bars, and no run of their
+    /// lines further down stands as two columns written down the page, where it would draw no bar
+    /// an em long and take the lines above it as its rows. Rows written row by row still stand
+    /// there, and a rule under a header, which is no row of values, refuses no table below it.
+    #[test]
+    fn a_bar_charts_tail_of_short_bars_is_no_table() {
+        let labels = ["Online", "In store", "By phone", "By post", "Other", "None"];
+        let values = ["62%", "41%", "3%", "2%", "1%", "1%"];
+        let y = |k: usize| 100 + 16 * k as i64;
+        let label = |k: usize| run(100, y(k), 60, labels[k]);
+        let value = |k: usize| run(250, y(k), 30, values[k]);
+        let down: Vec<TrackRun<'_>> = (0..6).map(label).chain((0..6).map(value)).collect();
+        // Two bars 70 points long, then four 5 points long, each from the gutter at its row.
+        let bars: Vec<Rule> = (0..6)
+            .map(|k| Rule {
+                y: y(k) * 100,
+                x0: 17000,
+                x1: 17000 + if k < 2 { 7000 } else { 500 },
+            })
+            .collect();
+        let found = |runs: &[TrackRun<'_>], bars: &[Rule]| {
+            detect(1, runs, &[], bars, false, &mut alloc()).expect("detects")
+        };
+        assert_eq!(found(&down, &[]).len(), 1, "the premise: no bars, a table");
+        let tail: Vec<TrackRun<'_>> = (2..6).map(label).chain((2..6).map(value)).collect();
+        assert_eq!(
+            found(&tail, &bars).len(),
+            1,
+            "the premise: the tail alone draws no bar an em long"
+        );
+        assert!(found(&down, &bars).is_empty(), "the chart and its tail");
+        // The first two rows written down the page, the rest row by row.
+        let mut mixed = vec![label(0), label(1), value(0), value(1)];
+        mixed.extend((2..6).flat_map(|k| [label(k), value(k)]));
+        assert_eq!(found(&mixed, &bars).len(), 1, "rows written row by row");
+
+        // A header over labels and rates, a rule under it from the gutter to the rates' end.
+        let mut headed = vec![run(100, 84, 30, "Layer"), run(250, 84, 30, "Rate")];
+        headed.extend(written_down(LAYERS, RATES));
+        let under = Rule {
+            y: 8600,
+            x0: 17000,
+            x1: 28000,
+        };
+        let table = found(&headed, &[under]);
+        assert_eq!(table.len(), 1, "a rule under a header");
+        assert_eq!((table[0].rows, table[0].columns), (5, 2));
+    }
+
     /// **Two columns of a chart's axes, or beside a paragraph set in capitals, are no table**
     /// (decision #173): values that step evenly are an axis's ticks, whatever the other axis prints
-    /// — a unit in place of its top tick, or a unit on each — and a column of capitals half of whose
-    /// lines are a line of prose long is a paragraph. Values that stay level or step unevenly, a
-    /// column of capitals that is short, and a long column with lower-case letters are a table's.
+    /// — a unit in place of its top tick, or a unit on each — and in whatever marks it prints them
+    /// (QA round 3); a column of capitals half of whose lines are a line of prose long is a
+    /// paragraph, an ordinal's two lower-case letters among them too. Values that stay level or
+    /// step unevenly, a column of capitals that is short, and a long column with lower-case
+    /// letters, a name's among names in capitals, are a table's.
     #[test]
     fn two_columns_of_an_axis_or_of_capitals_are_no_table() {
         for (labels, values, why) in [
@@ -4485,6 +4600,42 @@ mod tests {
                 ["$ 3,000", "$ 2,000", "$ 1,000", "$ 0"],
                 "ticks in dollars, by the thousand",
             ),
+            // QA round 3: every mark `is_number` admits, as an axis prints its ticks.
+            (
+                ["USD bn", "20", "10", "0"],
+                ["20%", "10%", "0%", "–10%"],
+                "a negative tick after an en dash",
+            ),
+            (
+                ["USD bn", "20", "10", "0"],
+                ["10%", "0%", "—10%", "—20%"],
+                "negative ticks after an em dash",
+            ),
+            (
+                ["$30M", "$20M", "$10M", "$0M"],
+                ["20%", "10%", "0%", "(10%)"],
+                "a negative tick in brackets",
+            ),
+            (
+                ["CHF m", "30", "20", "10"],
+                ["4'000", "3'000", "2'000", "1'000"],
+                "ticks by the thousand, an apostrophe its mark",
+            ),
+            (
+                ["USD bn", "20", "10", "0"],
+                ["100%*", "75%", "50%", "25%"],
+                "a tick with a note's asterisk",
+            ),
+            (
+                ["Mio. EUR", "10", "5", "0"],
+                ["2", "1,5", "1", "0,5"],
+                "ticks with a decimal comma",
+            ),
+            (
+                ["Units", "30", "20", "10"],
+                ["3.000.000", "2.000.000", "1.000.000", "0"],
+                "ticks by the million, a full stop its mark",
+            ),
             (
                 [
                     "THE INSURER SHALL NOT BE LIABLE FOR ANY",
@@ -4494,6 +4645,16 @@ mod tests {
                 ],
                 ["12", "7", "31", "4"],
                 "a paragraph in capitals",
+            ),
+            (
+                [
+                    "THE INSURER SHALL NOT BE LIABLE FOR ANY",
+                    "LOSS ON OR AFTER THE 1st DAY OF",
+                    "OR CIVIL WAR,",
+                    "REBELLION.",
+                ],
+                ["12", "7", "31", "4"],
+                "a paragraph in capitals with an ordinal's letters",
             ),
         ] {
             assert!(tables(&written_down(labels, values)).is_empty(), "{why}");
@@ -4524,6 +4685,16 @@ mod tests {
                 ],
                 ["18.9%", "6.7%", "2.9%", "1.5%"],
                 "long names, some in lower case",
+            ),
+            (
+                [
+                    "THE MASTER TRUST BANK OF JAPAN, LTD.",
+                    "CUSTODY BANK OF JAPAN, LTD. (TRUST)",
+                    "STATE STREET BANK AND TRUST COMPANY",
+                    "Norges Bank",
+                ],
+                ["18.9%", "6.7%", "2.9%", "1.5%"],
+                "long names in capitals, one in lower case",
             ),
         ] {
             assert_eq!(tables(&written_down(labels, values)).len(), 1, "{why}");
