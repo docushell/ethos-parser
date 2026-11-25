@@ -1230,6 +1230,16 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// beside values that are no running text and hold no word ending in a colon, stand in any order.
 /// A scanned invoice's fields read as its drawn copy's table where they read every label, then
 /// every value. Measured: no ParseBench (`--ocr` too) or opendataloader-bench page moves.
+///
+/// **And two columns written down the page are a table where every row's second cell is a
+/// number** (decision #173, folded in): on a page of no recognized text, beside a first column
+/// that names its rows — a letter in one cell at least, every letter of a script with letter case,
+/// no running text — each row on one line, where the page draws no horizontal ink an em long or
+/// more starting in the gutter between the two, from the first row's baseline to the last's. A
+/// rate sheet exported cell by cell writes its labels as one block and its values as another; a
+/// chart's two value axes set level are numbers beside numbers, and a bar chart draws its bars
+/// between its labels and its values; a label that wraps is a paragraph's line, and in a script
+/// with no letter case no line reads as running text. Measured: pending.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

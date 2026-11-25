@@ -62,7 +62,10 @@ in the position pairing `tagged-tables-v1` relies on.
    columns or more with no column of running text, and no column of numbers is asked — or as a
    form's fields (decision #152, §42). **Nor is it evidence where every column is running text**
    (decision #127, §41) and the first column is no column of labels, each under thirty characters:
-   such a grid is refused, and its lines passed over whole.
+   such a grid is refused, and its lines passed over whole. **Two columns written down the page
+   stand where every row's second cell is a number** beside a first column that names its rows,
+   each row on one line and nothing drawn between them, on a page of no recognized text (decision
+   #173, §43).
 7. **Fabrication 0 by construction.** A cell's text is its runs' text concatenated, in content
    order; no run is in two cells; a run in no track ends the table rather than being dropped.
 
@@ -1685,3 +1688,55 @@ full-width colon `：` and a colon misread as `;` are not read as fields. A valu
 lines joins its lines' words without a space, as every cell's runs join (§2, rule 7). Numbered
 steps or questions (`Step 1:` beside an instruction) read as fields, as they do on a drawn page.
 
+## 43. Two columns written down the page, a number in every row (2026-11-25, decision #173)
+
+**What `whitespace-tracks-v16` missed.** A rate sheet exported cell by cell writes a two-column
+table's labels as one block and then its values — `Layer 1` to `Layer 4`, then `$0.32` to `$0.45` —
+and clause 6 refused it: §7's waiver asks for three columns, since two columns written down the
+page are the very shape of two columns of prose. A census of small levers found four ParseBench-2
+pages read as text where their ground truth holds such a table: `FBLB-134215544` p43,
+`SERFF_CA_random_pages 1` p2324 and p2526, and an insurance filing's p10 (years, a total and a
+credibility beside their counts).
+
+**The change**, folded into `-v16`, which no release carries. Two columns stand in any order where
+every row's second cell is a number, beside a first column that names its rows — a letter in one
+cell at least, every letter of a script with letter case, and no running text (§7's test, a third
+or more of its cells opening lower-case) — each row on one line, its every run within a line's
+tolerance of its baseline, and the page draws no horizontal ink an em long or more starting in the
+gutter between the two tracks, from the first row's baseline to the last's (`drawn_between`). Not
+on a page of recognized text, whose order says nothing (decision #125) and where two columns stand
+only as a form's fields (§42). Every row of a two-column grid holds both its cells (§2, rule 4: a sparse row needs two), so
+"every row's" and "every cell's" are one test here.
+
+**Every guard was found by this change's own A/B.** The census's rule — a number in every row's
+second cell, a first column of no running text — also read 27 ParseBench chart pages as tables: on
+21, two value axes set level, numbers beside numbers (`46 | 58%`, `800 | 4.0`), and on
+6 a bar chart's labels and the values printed past its bars, which `bar-labels-v3`, running after
+this rule, had read as the chart's table under its series' name. On
+`US_Professional_Services_Partner_Compensation_Survey_2024` p21 it took the chart's lower half and
+left the rest to no rule. The first guard refuses the axes; the second the bar charts, each of
+which painted its bars as rectangles starting between the labels and the values (most of the axes'
+charts drew gridlines there too). A table's rules run across it from its first column, and a rule
+drawn down the gutter is no wider than a stroke. With both guards the A/B still read two pages
+wrong. On a Japanese page, `layout_0011_e1j-020` p15, a paragraph's lines beside a chart's axis
+values: a script with no letter case opens no line lower-case, so §7's test never reads it as
+running text, and its one word in Latin letters, `pH`, passed the first guard. On an underlined
+statement, `case-0230-6d97d25a4804`, a section label and the page number joined the rows beside the
+amounts, and the `<u>` marks on the labels were lost. The third guard, one line to a row, refuses
+both, since on each a row took a wrapped line; the fourth, every letter of a script with letter
+case, refuses the first however short its lines. The census's other page,
+`FBLB-134215544` p162, is a column of limits beside their factors, numbers beside numbers, and
+stays text (it scored 0 either way).
+
+**Measured** (Markdown, `markdown --source`, against the build before it): ParseBench's 2,037
+pages, six change — `FBLB-134215544` p43, `SERFF_CA_random_pages 1` p2323, p2324, p2326 and p2526,
+each now a table of its labels and values, and the layout page `fh_2025_004e` p7, a list of major
+shareholders beside their percentages; ParseBench-2's 4,296, seven — the same five, the insurance
+filing `f2195809587e31bc` p10 (two tables of years and a total beside their counts) and the layout
+page again; opendataloader-bench's 200 unchanged. Under `--ocr` these pages change the same way.
+Benchmark scores: pending.
+
+**Known limits.** A table whose first column is numbers only — limits beside factors, ages beside
+premiums written down the page — stays text, as a chart's two axes do; so does one whose labels
+wrap, or are in a script with no letter case; and a rate sheet that draws a bar, a box or a rule
+from the gutter between its columns at a row is refused as a chart is.

@@ -219,6 +219,15 @@
 //!    paragraph do. A rate table exported cell by cell is written down its columns or in no order
 //!    at all; so is a page set in columns — a directory, a schedule, a newspaper in a script with
 //!    no letter case — and the column of numbers is what a table of values has and those do not.
+//!    **And it is waived for two columns whose second holds a number in every row** (`-v16`,
+//!    decision #173, [`drawn_between`]), beside a first that names its rows — a letter in one cell
+//!    at least, every letter of a script with letter case, and no running text — each row on one
+//!    line, where the page draws no ink an em long starting between them: a rate sheet exported
+//!    cell by cell writes its labels as one block and its values as another. Two columns of prose,
+//!    or a page set in two columns, hold words in both; a chart's two axes set level are numbers
+//!    beside numbers, and a bar chart draws its bars, or a chart its gridlines, between its labels
+//!    and its values. A label that wraps is a paragraph's line beside them, and in a script with no
+//!    letter case no line reads as running text. Not on a page of recognized text (below).
 //!    **Nor is it waived where the columns divide into two groups each written row by row**: a
 //!    table beside a column of text is two flows side by side, whatever the text's letters say —
 //!    **unless the first column alone is the one group and it is the table's labels** (`-v12`,
@@ -294,7 +303,8 @@ pub const MIN_ROWS_OF_TWO_COLUMNS: usize = 4;
 pub const MIN_ROWS_UNORDERED: usize = 3;
 
 /// The fewest columns a table the content stream did not write row by row may have: two columns
-/// written down the page are the very shape of two columns of prose.
+/// written down the page are the very shape of two columns of prose — unless the second holds a
+/// number in every row beside labels, with nothing drawn between them (decision #173).
 pub const MIN_COLUMNS_UNORDERED: usize = 3;
 
 /// The fewest rows, each holding a digit, a table must have before a line wider than it re-tracks
@@ -421,7 +431,7 @@ fn detect_within(
             let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
             let stands = |rows: &[Row], end: usize| {
                 (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
-                    && accepted(rows, runs, within, recognized)
+                    && accepted(rows, runs, rules, within, recognized)
             };
             let mut stand = stands(&rows, end);
             // `-v9`: a table its reach past the pitch cannot keep stands without it.
@@ -1926,8 +1936,15 @@ fn split_number_pair(
 }
 
 /// Whether the rows are a table: enough of them, a steady pitch, and written row by row — or
-/// `ordered` (`-v16`), one side of rows that stood as a table already.
-fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool) -> bool {
+/// `ordered` (`-v16`), one side of rows that stood as a table already. `rules` is the page's
+/// horizontal ink, as [`detect`] takes it.
+fn accepted(
+    rows: &[Row],
+    runs: &[TrackRun<'_>],
+    rules: &[Rule],
+    ordered: bool,
+    recognized: bool,
+) -> bool {
     let columns = rows[0].cells.len();
     if rows.len() < MIN_ROWS
         || (columns == 2 && rows.len() < MIN_ROWS_OF_TWO_COLUMNS)
@@ -2009,6 +2026,34 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool
     if is_form(rows, runs, recognized) {
         return true;
     }
+    // `-v16` (decision #173): and two columns stand in any order where every row's second cell is
+    // a number, beside a first column that names its rows — a letter in one cell at least, every
+    // letter of a script with letter case, and no running text — each row on one line, with no
+    // ink drawn between them: a rate sheet exported cell by cell writes its labels as one block
+    // and its values as another. Two columns of prose hold words in both; a chart's two axes set
+    // level are numbers beside numbers, and a bar chart draws its bars, or a chart its gridlines,
+    // between its labels and its values. A label that wraps is a paragraph's line set beside them,
+    // and in a script with no letter case no line opens lower-case, so none reads as running text.
+    // Not on a page of recognized text, where two columns stand only as a form's fields.
+    if !recognized
+        && columns == 2
+        && column(1).iter().all(|t| is_number(t.trim()))
+        && first.iter().any(|t| t.chars().any(char::is_alphabetic))
+        && first.iter().all(|t| {
+            t.chars()
+                .all(|c| !c.is_alphabetic() || c.is_uppercase() || c.is_lowercase())
+        })
+        && !running_text(&first)
+        && rows.iter().all(|r| {
+            r.cells
+                .iter()
+                .flat_map(|c| &c.runs)
+                .all(|&i| runs[i].y <= r.y + LINE_TOLERANCE)
+        })
+        && !drawn_between(rows, rules)
+    {
+        return true;
+    }
     // A grid of three rows and three columns or more with a column of numbers and no column of
     // running text needs no row order: the clause above tells prose from a table, and a table of
     // values exported cell by cell is written down its columns. **Unless its columns divide into
@@ -2026,6 +2071,22 @@ fn accepted(rows: &[Row], runs: &[TrackRun<'_>], ordered: bool, recognized: bool
                     && written_row_by_row(rows, k..columns)
                     && !(k == 1 && label_column(rows, runs))
             }))
+}
+
+/// Whether horizontal ink an em long or more starts in the gutter between two columns, between
+/// their first row's baseline and their last's (decision #173): a bar chart's bars, or a chart's
+/// gridlines, drawn between its labels and its values. A rule across the table starts at or before
+/// its first column, and a rule drawn down the gutter is no wider than a stroke.
+fn drawn_between(rows: &[Row], rules: &[Rule]) -> bool {
+    let tracks = tracks_of(rows);
+    let (top, bottom) = (rows[0].y, rows[rows.len() - 1].y);
+    rules.iter().any(|r| {
+        r.y >= top
+            && r.y <= bottom
+            && r.x0 > tracks[0].1
+            && r.x0 < tracks[1].0
+            && r.x1 - r.x0 >= rows[0].em
+    })
 }
 
 /// The column the second of two flows opens at (`-v14`), where a candidate written neither row by
@@ -4206,6 +4267,130 @@ mod tests {
             "the premise: written row by row, the directory is a grid"
         );
         assert!(tables(&column_major(directory)).is_empty());
+    }
+
+    /// Two columns written down the page, the labels as one block before the values, at a pitch of
+    /// 16 points from 100: a label at 100 points, 60 wide, and a value at 250, 30 wide.
+    fn written_down(
+        labels: [&'static str; 4],
+        values: [&'static str; 4],
+    ) -> Vec<TrackRun<'static>> {
+        let y = |k: usize| 100 + 16 * k as i64;
+        let labels = labels
+            .into_iter()
+            .enumerate()
+            .map(|(k, t)| run(100, y(k), 60, t));
+        let values = values
+            .into_iter()
+            .enumerate()
+            .map(|(k, t)| run(250, y(k), 30, t));
+        labels.chain(values).collect()
+    }
+
+    const LAYERS: [&str; 4] = ["Layer 1", "Layer 2", "Layer 3", "Layer 4"];
+    const RATES: [&str; 4] = ["$0.32", "$0.34", "$0.38", "$0.45"];
+
+    /// **Two columns written down the page are a table where every row's second cell is a number**
+    /// (`-v16`, decision #173), beside a first column that names its rows — a letter in one cell,
+    /// no running text: a rate sheet exported cell by cell writes its labels and then its values.
+    /// Not where a value is a word, the labels are running text, the first column is numbers too —
+    /// a chart's two axes set level — its letters are of a script with no letter case, a label
+    /// wraps, or the page's text was recognized.
+    #[test]
+    fn two_columns_written_down_the_page_are_a_table_of_values() {
+        let found = tables(&written_down(LAYERS, RATES));
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].rows, found[0].columns), (4, 2));
+        assert_eq!(texts(&found[0])[1], ["Layer 2", "$0.34"]);
+        let found = tables(&written_down(
+            ["2021", "2022", "2023", "Total"],
+            ["0", "4", "0", "6"],
+        ));
+        assert_eq!(found.len(), 1, "years and a total beside counts");
+        // Each value a point under its label is still on the label's line.
+        let mut lower = written_down(LAYERS, RATES);
+        for r in &mut lower[4..] {
+            r.y += 100;
+        }
+        assert_eq!(tables(&lower).len(), 1, "a value a point low");
+
+        assert!(
+            tables(&written_down(
+                ["亜鉛の 腐食度", "水の pH", "pH 6.5 ～ 12", "40 ℃"],
+                ["1,100", "1,000", "900", "800"]
+            ))
+            .is_empty(),
+            "a script with no letter case, beside a chart's axis"
+        );
+        let mut wrapped = written_down(LAYERS, RATES);
+        wrapped.insert(2, run(100, 124, 40, "and above"));
+        assert!(tables(&wrapped).is_empty(), "a label that wraps");
+
+        assert!(
+            tables(&written_down(LAYERS, ["$0.32", "$0.34", "Waived", "$0.45"])).is_empty(),
+            "a value that is a word"
+        );
+        assert!(
+            tables(&written_down(
+                ["the first layer", "the second", "Layer 3", "Layer 4"],
+                RATES
+            ))
+            .is_empty(),
+            "labels of running text"
+        );
+        assert!(
+            tables(&written_down(
+                ["30%", "20%", "10%", "0%"],
+                ["60", "40", "20", "0"]
+            ))
+            .is_empty(),
+            "a chart's two axes"
+        );
+        let found =
+            detect(1, &written_down(LAYERS, RATES), &[], true, &mut alloc()).expect("detects");
+        assert!(found.is_empty(), "recognized text");
+    }
+
+    /// **A bar chart's labels and values are no table** (decision #173): the page draws a bar, or a
+    /// gridline, an em long or more starting between the two columns at a row. A rule across the
+    /// table, a rule drawn down the gutter and a rule above the first row are a table's own.
+    #[test]
+    fn two_columns_with_ink_drawn_between_them_are_no_table() {
+        let runs = written_down(LAYERS, RATES);
+        let with = |rules: &[Rule]| detect(1, &runs, rules, false, &mut alloc()).expect("detects");
+        let rule = |y: i64, x0: i64, x1: i64| Rule {
+            y: y * 100,
+            x0: x0 * 100,
+            x1: x1 * 100,
+        };
+        // A bar from the gutter to past its value, at the second row.
+        assert!(with(&[rule(112, 170, 280)]).is_empty(), "a bar");
+        assert!(
+            with(&[rule(100, 170, 180)]).is_empty(),
+            "an em long, at the first row"
+        );
+        assert!(
+            with(&[rule(148, 170, 180)]).is_empty(),
+            "an em long, at the last row"
+        );
+        assert_eq!(with(&[rule(112, 170, 179)]).len(), 1, "under an em");
+        assert_eq!(
+            with(&[rule(112, 90, 290)]).len(),
+            1,
+            "a rule across the table"
+        );
+        assert_eq!(
+            with(&[rule(112, 160, 280)]).len(),
+            1,
+            "from the labels' end"
+        );
+        assert_eq!(
+            with(&[rule(112, 250, 280)]).len(),
+            1,
+            "from the values' start"
+        );
+        assert_eq!(with(&[rule(99, 170, 280)]).len(), 1, "above the first row");
+        assert_eq!(with(&[rule(149, 170, 280)]).len(), 1, "below the last row");
     }
 
     /// A column of prose on the left, a table on the right whose rows fall between the prose's

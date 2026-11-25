@@ -32,6 +32,39 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Two columns written down the page, a number in every row, are a table (decision #173)
+
+`table_detection.tracks` stays `whitespace-tracks-v16`, unreleased, which takes the change in; the
+profile does not move.
+
+- **Two columns the content stream writes down the page — every label, then every value — are a
+  table where every row's second cell is a number**, beside a first column that names its rows: a
+  letter in one cell at least, every letter of a script with letter case, and no running text. A
+  rate sheet exported cell by cell writes its labels as one block and its values as another, and
+  the row-order clause, which waived the order only for three columns or more, refused it:
+  `Layer 1` to `Layer 4` beside their rates read as lines out of order.
+- **Not a chart.** A chart's two value axes set level are numbers beside numbers, and a bar chart
+  draws its bars, or a chart its gridlines, between its labels and its values: two columns stand
+  only where the page draws no horizontal ink an em long or more starting in the gutter between
+  them, from the first row's baseline to the last's. Without those two guards the census's rule
+  read 27 ParseBench chart pages as tables, six of them bar charts that `bar-labels-v3` had read
+  with their series named. A rule across the table, and one drawn down the gutter, keep it.
+- **Not a paragraph.** Each row stands on one line: a label that wraps is a paragraph's line set
+  beside the numbers. And in a script with no letter case no line opens lower-case, so none reads
+  as running text: there two columns written down the page stay text. Without these the A/B read
+  a Japanese page's paragraph beside a chart's axis as a table, and an underlined statement's
+  section labels and page number into the rows beside its amounts.
+- **Only that.** Two columns written row by row read as before; on a page of recognized text two
+  columns still stand only as a form's fields (decision #152); a first column of numbers only, as
+  limits beside factors written down the page, stays text.
+- **Expected to change** (`markdown --source`, against the build before it): ParseBench, six pages
+  — five rate and credibility exhibits (`FBLB-134215544` p43, `SERFF_CA_random_pages 1` p2324 and
+  p2526, the census's gains, and p2323 and p2326), and a layout page's list of major shareholders
+  beside their percentages; ParseBench-2, seven — the same five, the insurance filing
+  `f2195809587e31bc` p10 (the census's fourth gain: years and a total beside their counts) and the
+  layout page again; opendataloader-bench unchanged. Under `--ocr` these pages change the same way.
+- **Measured**: pending. Twenty-nine mutations, each caught.
+
 ### `--ocr` reads a scan stored as a CMYK or indexed JPEG (decision #172)
 
 The recognizer's rule id stays `ppocrv5-mobile-v1`, which no release carries; its identity and
