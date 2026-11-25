@@ -226,8 +226,10 @@
 //!    cell by cell writes its labels as one block and its values as another. Two columns of prose,
 //!    or a page set in two columns, hold words in both; a chart's two axes set level are numbers
 //!    beside numbers, and a bar chart draws its bars, or a chart its gridlines, between its labels
-//!    and its values. A label that wraps is a paragraph's line beside them, and in a script with no
-//!    letter case no line reads as running text. Not on a page of recognized text (below).
+//!    and its values — its bars in a form, or rounded, too. A label that wraps is a paragraph's line
+//!    beside them, and in a script with no letter case no line reads as running text. Nor where the
+//!    values step evenly, as an axis's ticks do whatever the other axis prints in place of a tick,
+//!    nor beside a paragraph set in capitals. Not on a page of recognized text (below).
 //!    **Nor is it waived where the columns divide into two groups each written row by row**: a
 //!    table beside a column of text is two flows side by side, whatever the text's letters say —
 //!    **unless the first column alone is the one group and it is the table's labels** (`-v12`,
@@ -392,9 +394,12 @@ struct Group {
 
 /// Every table `whitespace-tracks-v10` finds on one page, in reading-down order. `rules` is the
 /// page's horizontal ink (`-v16`): its stroked rules, and each painted rectangle's top and bottom.
-/// `recognized` says the page's runs are text a recognizer read (decision #125): their stream order
-/// is the recognizer's, row by row down the whole page across any columns, so it is no evidence that
-/// a grid was written as a table, and such a grid stands only as one written in no order does.
+/// `bars` is the top and bottom of every bar the page paints, a form's and a rounded or stroked
+/// one's included, which only the two-column clause of [`accepted`] reads (decision #173): a chart
+/// is often drawn as a form. `recognized` says the page's runs are text a recognizer read (decision
+/// #125): their stream order is the recognizer's, row by row down the whole page across any
+/// columns, so it is no evidence that a grid was written as a table, and such a grid stands only as
+/// one written in no order does.
 ///
 /// # Errors
 ///
@@ -403,10 +408,11 @@ pub(crate) fn detect(
     page: u32,
     runs: &[TrackRun<'_>],
     rules: &[Rule],
+    bars: &[Rule],
     recognized: bool,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
-    detect_within(page, runs, rules, None, recognized, alloc)
+    detect_within(page, runs, rules, bars, None, recognized, alloc)
 }
 
 /// [`detect`], where `ordered` names the baseline of the first row of a table that stood (`-v16`,
@@ -417,6 +423,7 @@ fn detect_within(
     page: u32,
     runs: &[TrackRun<'_>],
     rules: &[Rule],
+    bars: &[Rule],
     ordered: Option<i64>,
     recognized: bool,
     alloc: &mut IdAllocator,
@@ -431,7 +438,7 @@ fn detect_within(
             let within = ordered.is_some_and(|y0| rows[0].y >= y0 - LINE_TOLERANCE);
             let stands = |rows: &[Row], end: usize| {
                 (rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, rows, runs))
-                    && accepted(rows, runs, rules, within, recognized)
+                    && accepted(rows, runs, rules, bars, within, recognized)
             };
             let mut stand = stands(&rows, end);
             // `-v9`: a table its reach past the pitch cannot keep stands without it.
@@ -491,6 +498,7 @@ fn detect_within(
                         page,
                         &side,
                         rules,
+                        bars,
                         side_ordered,
                         recognized,
                         alloc,
@@ -1235,6 +1243,7 @@ pub(crate) fn detect_in_columns(
     runs: &[TrackRun<'_>],
     columns: &[Vec<usize>],
     rules: &[Rule],
+    bars: &[Rule],
     recognized: bool,
     alloc: &mut IdAllocator,
 ) -> Result<Vec<DetectedTable>, EngineError> {
@@ -1252,7 +1261,7 @@ pub(crate) fn detect_in_columns(
                 ..*run
             })
             .collect();
-        tables.extend(detect(page, &own, rules, recognized, alloc)?);
+        tables.extend(detect(page, &own, rules, bars, recognized, alloc)?);
     }
     Ok(tables)
 }
@@ -1937,11 +1946,12 @@ fn split_number_pair(
 
 /// Whether the rows are a table: enough of them, a steady pitch, and written row by row — or
 /// `ordered` (`-v16`), one side of rows that stood as a table already. `rules` is the page's
-/// horizontal ink, as [`detect`] takes it.
+/// horizontal ink and `bars` its bars' edges, as [`detect`] takes them.
 fn accepted(
     rows: &[Row],
     runs: &[TrackRun<'_>],
     rules: &[Rule],
+    bars: &[Rule],
     ordered: bool,
     recognized: bool,
 ) -> bool {
@@ -2034,16 +2044,20 @@ fn accepted(
     // level are numbers beside numbers, and a bar chart draws its bars, or a chart its gridlines,
     // between its labels and its values. A label that wraps is a paragraph's line set beside them,
     // and in a script with no letter case no line opens lower-case, so none reads as running text.
-    // Not on a page of recognized text, where two columns stand only as a form's fields.
+    // Not on a page of recognized text, where two columns stand only as a form's fields. Nor where
+    // the values step evenly, as an axis's ticks do whatever its other axis prints — a unit, `USD
+    // bn`, in place of a tick, or a unit on each — nor beside a paragraph set in capitals.
     if !recognized
         && columns == 2
         && column(1).iter().all(|t| is_number(t.trim()))
+        && !evenly_stepped(&column(1))
         && first.iter().any(|t| t.chars().any(char::is_alphabetic))
         && first.iter().all(|t| {
             t.chars()
                 .all(|c| !c.is_alphabetic() || c.is_uppercase() || c.is_lowercase())
         })
         && !running_text(&first)
+        && !capitals(&first)
         && rows.iter().all(|r| {
             r.cells
                 .iter()
@@ -2051,6 +2065,7 @@ fn accepted(
                 .all(|&i| runs[i].y <= r.y + LINE_TOLERANCE)
         })
         && !drawn_between(rows, rules)
+        && !drawn_between(rows, bars)
     {
         return true;
     }
@@ -2076,7 +2091,8 @@ fn accepted(
 /// Whether horizontal ink an em long or more starts in the gutter between two columns, between
 /// their first row's baseline and their last's (decision #173): a bar chart's bars, or a chart's
 /// gridlines, drawn between its labels and its values. A rule across the table starts at or before
-/// its first column, and a rule drawn down the gutter is no wider than a stroke.
+/// its first column, and a rule drawn down the gutter is no wider than a stroke. `rules` is either
+/// the page's ink or its bars' edges, a form's bars among them.
 fn drawn_between(rows: &[Row], rules: &[Rule]) -> bool {
     let tracks = tracks_of(rows);
     let (top, bottom) = (rows[0].y, rows[rows.len() - 1].y);
@@ -2334,6 +2350,43 @@ fn running_text(texts: &[String]) -> bool {
     !texts.is_empty() && RUNNING_TEXT_ONE_IN * lower >= texts.len()
 }
 
+/// Whether a column's non-empty cells, top to bottom, are a paragraph set in capitals (decision
+/// #173): no lower-case letter, and at least half of them [`PROSE_LINE_CHARS`] characters or more.
+/// No line of it opens lower-case, so [`running_text`] never reads it.
+fn capitals(texts: &[String]) -> bool {
+    let long = texts
+        .iter()
+        .filter(|t| t.trim().chars().count() >= PROSE_LINE_CHARS)
+        .count();
+    texts.iter().all(|t| !t.chars().any(char::is_lowercase)) && 2 * long >= texts.len()
+}
+
+/// Whether a column's non-empty cells, top to bottom, step evenly (decision #173): four or more,
+/// each a number read past its spaces, thousands' commas, per cent and currency signs, each the last
+/// plus one step that is not nought. A chart's axis prints its ticks so.
+fn evenly_stepped(texts: &[String]) -> bool {
+    let values: Option<Vec<f64>> = texts
+        .iter()
+        .map(|t| {
+            t.chars()
+                .filter(|&c| {
+                    !c.is_whitespace() && c != ',' && c != '%' && !CURRENCY_SIGNS.contains(c)
+                })
+                .collect::<String>()
+                .parse()
+                .ok()
+        })
+        .collect();
+    let Some(values) = values.filter(|v| v.len() >= MIN_ROWS_OF_TWO_COLUMNS) else {
+        return false;
+    };
+    let step = values[1] - values[0];
+    step != 0.0
+        && values
+            .windows(2)
+            .all(|w| (w[1] - w[0] - step).abs() <= step.abs() * 1e-6)
+}
+
 /// A cell's text: its runs' text in content order.
 fn cell_text(cell: &Cell, runs: &[TrackRun<'_>]) -> String {
     let mut order = cell.runs.clone();
@@ -2543,7 +2596,7 @@ mod tests {
     }
 
     fn tables(runs: &[TrackRun<'_>]) -> Vec<DetectedTable> {
-        detect(1, runs, &[], false, &mut alloc()).expect("detects")
+        detect(1, runs, &[], &[], false, &mut alloc()).expect("detects")
     }
 
     fn texts(table: &DetectedTable) -> Vec<Vec<String>> {
@@ -4346,8 +4399,15 @@ mod tests {
             .is_empty(),
             "a chart's two axes"
         );
-        let found =
-            detect(1, &written_down(LAYERS, RATES), &[], true, &mut alloc()).expect("detects");
+        let found = detect(
+            1,
+            &written_down(LAYERS, RATES),
+            &[],
+            &[],
+            true,
+            &mut alloc(),
+        )
+        .expect("detects");
         assert!(found.is_empty(), "recognized text");
     }
 
@@ -4357,7 +4417,8 @@ mod tests {
     #[test]
     fn two_columns_with_ink_drawn_between_them_are_no_table() {
         let runs = written_down(LAYERS, RATES);
-        let with = |rules: &[Rule]| detect(1, &runs, rules, false, &mut alloc()).expect("detects");
+        let with =
+            |rules: &[Rule]| detect(1, &runs, rules, &[], false, &mut alloc()).expect("detects");
         let rule = |y: i64, x0: i64, x1: i64| Rule {
             y: y * 100,
             x0: x0 * 100,
@@ -4391,6 +4452,82 @@ mod tests {
         );
         assert_eq!(with(&[rule(99, 170, 280)]).len(), 1, "above the first row");
         assert_eq!(with(&[rule(149, 170, 280)]).len(), 1, "below the last row");
+        // A bar's edges, a form's bar's among them, refuse as the page's ink does.
+        let bars = detect(1, &runs, &[], &[rule(112, 170, 280)], false, &mut alloc());
+        assert!(bars.expect("detects").is_empty(), "a bar's edge");
+    }
+
+    /// **Two columns of a chart's axes, or beside a paragraph set in capitals, are no table**
+    /// (decision #173): values that step evenly are an axis's ticks, whatever the other axis prints
+    /// — a unit in place of its top tick, or a unit on each — and a column of capitals half of whose
+    /// lines are a line of prose long is a paragraph. Values that stay level or step unevenly, a
+    /// column of capitals that is short, and a long column with lower-case letters are a table's.
+    #[test]
+    fn two_columns_of_an_axis_or_of_capitals_are_no_table() {
+        for (labels, values, why) in [
+            (
+                ["USD bn", "20", "10", "0"],
+                ["75%", "50%", "25%", "0%"],
+                "a unit in place of a tick",
+            ),
+            (
+                ["$40M", "$30M", "$20M", "$10M"],
+                ["20%", "15%", "10%", "5%"],
+                "a unit on each tick",
+            ),
+            (
+                ["USD bn", "2", "1", "0"],
+                ["0.3", "0.2", "0.1", "0"],
+                "ticks a tenth apart",
+            ),
+            (
+                ["Units", "300", "200", "100"],
+                ["$ 3,000", "$ 2,000", "$ 1,000", "$ 0"],
+                "ticks in dollars, by the thousand",
+            ),
+            (
+                [
+                    "THE INSURER SHALL NOT BE LIABLE FOR ANY",
+                    "WHETHER WAR BE DECLARED OR NOT",
+                    "OR CIVIL WAR,",
+                    "REBELLION.",
+                ],
+                ["12", "7", "31", "4"],
+                "a paragraph in capitals",
+            ),
+        ] {
+            assert!(tables(&written_down(labels, values)).is_empty(), "{why}");
+        }
+        for (labels, values, why) in [
+            (LAYERS, ["$25", "$25", "$25", "$25"], "fees that stay level"),
+            (
+                ["2021", "2022", "2023", "Total"],
+                ["13", "9", "5", "0"],
+                "counts that step evenly all but once",
+            ),
+            (
+                [
+                    "GOVERNMENT OF NORWAY",
+                    "GIC PRIVATE LIMITED - C",
+                    "JP MORGAN CHASE BANK 385781",
+                    "THE BANK OF NEW YORK MELLON 140042",
+                ],
+                ["1.5%", "3.0%", "1.3%", "1.2%"],
+                "short names in capitals",
+            ),
+            (
+                [
+                    "The Master Trust Bank of Japan, Ltd.",
+                    "Custody Bank of Japan, Ltd. (Trust)",
+                    "STATE STREET BANK AND TRUST COMPANY",
+                    "GOVERNMENT OF NORWAY",
+                ],
+                ["18.9%", "6.7%", "2.9%", "1.5%"],
+                "long names, some in lower case",
+            ),
+        ] {
+            assert_eq!(tables(&written_down(labels, values)).len(), 1, "{why}");
+        }
     }
 
     /// A column of prose on the left, a table on the right whose rows fall between the prose's
@@ -4431,11 +4568,38 @@ mod tests {
             tables(&runs).is_empty(),
             "the premise: read across, no table"
         );
-        let found =
-            detect_in_columns(1, &runs, &[left, right], &[], false, &mut alloc()).expect("detects");
+        let found = detect_in_columns(1, &runs, &[left, right], &[], &[], false, &mut alloc())
+            .expect("detects");
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
+    }
+
+    /// **A bar chart beside a column of prose is no table inside its column either** (decision
+    /// #173): its labels written down the column, then its values, stand there where nothing is
+    /// drawn between them, and not where a bar is.
+    #[test]
+    fn a_bar_chart_beside_a_column_of_prose_is_no_table_in_its_column() {
+        let (mut runs, left, _) = prose_beside_a_table();
+        runs.truncate(8);
+        for (k, label) in LAYERS.into_iter().enumerate() {
+            runs.push(run(300, 106 + 16 * k as i64, 40, label));
+        }
+        for (k, rate) in RATES.into_iter().enumerate() {
+            runs.push(run(420, 106 + 16 * k as i64, 30, rate));
+        }
+        let right: Vec<usize> = (8..runs.len()).collect();
+        let columns = [left, right];
+        let bars = |bars: &[Rule]| {
+            detect_in_columns(1, &runs, &columns, &[], bars, false, &mut alloc()).expect("detects")
+        };
+        assert_eq!(bars(&[]).len(), 1, "the premise: nothing drawn, a table");
+        let bar = Rule {
+            y: 12200,
+            x0: 35000,
+            x1: 45000,
+        };
+        assert!(bars(&[bar]).is_empty(), "a bar");
     }
 
     /// **No prose column, no split**: a table cut at the gutter between its labels and its values
@@ -4453,7 +4617,7 @@ mod tests {
             .copied()
             .filter(|&i| runs[i].x != 30000)
             .collect();
-        let found = detect_in_columns(1, &runs, &[labels, values], &[], false, &mut alloc())
+        let found = detect_in_columns(1, &runs, &[labels, values], &[], &[], false, &mut alloc())
             .expect("detects");
         assert!(found.is_empty());
     }
@@ -4795,7 +4959,7 @@ mod tests {
     }
 
     fn drawn(runs: &[TrackRun<'_>], rules: &[Rule]) -> Vec<DetectedTable> {
-        detect(1, runs, rules, false, &mut alloc()).expect("detects")
+        detect(1, runs, rules, &[], false, &mut alloc()).expect("detects")
     }
 
     /// **Two tables drawn side by side are two tables, though they stood as one** (`-v16`, decision
@@ -5705,7 +5869,7 @@ mod tests {
             tables(&runs).is_empty(),
             "every column is running text (#127)"
         );
-        assert!(detect(1, &runs, &[], true, &mut alloc())
+        assert!(detect(1, &runs, &[], &[], true, &mut alloc())
             .expect("detects")
             .is_empty());
         let mut beside = newsletter();
@@ -5722,7 +5886,7 @@ mod tests {
             1,
             "a drawn page's row order still says table"
         );
-        assert!(detect(1, &beside, &[], true, &mut alloc())
+        assert!(detect(1, &beside, &[], &[], true, &mut alloc())
             .expect("detects")
             .is_empty());
     }
@@ -5895,7 +6059,8 @@ mod tests {
     /// a first label with no value, or a line with no colon, stands above the table.
     #[test]
     fn a_recognized_form_of_labels_and_values_is_a_table() {
-        let found = detect(1, &recognized_form(&FORM), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&FORM), &[], &[], true, &mut alloc()).expect("detects");
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (5, 2));
         assert_eq!(texts(&found[0])[3], ["Ship To:", "Harbour Depot (4)"]);
@@ -5906,28 +6071,33 @@ mod tests {
             (&["Total:"], &["40"]),
         ];
         let found =
-            detect(1, &recognized_form(&numbers), &[], true, &mut alloc()).expect("detects");
+            detect(1, &recognized_form(&numbers), &[], &[], true, &mut alloc()).expect("detects");
         assert_eq!(found.len(), 1, "values rising like page numbers");
         assert_eq!((found[0].rows, found[0].columns), (4, 2));
 
         let mut bare = FORM;
         bare[2].0 = &["Account"];
-        let found = detect(1, &recognized_form(&bare), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&bare), &[], &[], true, &mut alloc()).expect("detects");
         assert!(found.is_empty(), "a label without its colon");
         let mut empty = FORM;
         empty[2].1 = &[];
-        let found = detect(1, &recognized_form(&empty), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&empty), &[], &[], true, &mut alloc()).expect("detects");
         assert!(found.is_empty(), "a row without its value");
         let mut mid = FORM;
         mid[1].0 = &["Re: ", "Order:"];
-        let found = detect(1, &recognized_form(&mid), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&mid), &[], &[], true, &mut alloc()).expect("detects");
         assert!(found.is_empty(), "a colon inside a label");
         mid[1].0 = &["Re: ", "Order"];
-        let found = detect(1, &recognized_form(&mid), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&mid), &[], &[], true, &mut alloc()).expect("detects");
         assert!(found.is_empty(), "a label whose one colon does not end it");
         let mut first = FORM;
         first[0].1 = &[];
-        let found = detect(1, &recognized_form(&first), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&first), &[], &[], true, &mut alloc()).expect("detects");
         assert_eq!(
             found.len(),
             1,
@@ -5948,7 +6118,7 @@ mod tests {
         {
             three.push(run(380, 100 + 16 * r as i64, 6 * note.len() as i64, note));
         }
-        let found = detect(1, &three, &[], true, &mut alloc()).expect("detects");
+        let found = detect(1, &three, &[], &[], true, &mut alloc()).expect("detects");
         assert!(found.is_empty(), "three columns, one of running text");
         // A blank form's two columns of labels; labels beside a column of prose; a transcript's
         // speakers, named again (review).
@@ -5977,7 +6147,8 @@ mod tests {
         // are rows as they stood.
         let mut above = vec![(&["Supplier"][..], &["Harbour ", "Co"][..])];
         above.extend(FORM);
-        let found = detect(1, &recognized_form(&above), &[], true, &mut alloc()).expect("detects");
+        let found =
+            detect(1, &recognized_form(&above), &[], &[], true, &mut alloc()).expect("detects");
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (5, 2));
         assert_eq!(texts(&found[0])[0], ["Order No:", "AB-1042"]);
@@ -5987,7 +6158,7 @@ mod tests {
             (&transcript, "a label named again"),
         ] {
             let found =
-                detect(1, &recognized_form(fields), &[], true, &mut alloc()).expect("detects");
+                detect(1, &recognized_form(fields), &[], &[], true, &mut alloc()).expect("detects");
             assert!(found.is_empty(), "{why}");
         }
         assert!(
@@ -6023,7 +6194,7 @@ mod tests {
                     })
             })
             .collect();
-        let found = detect(1, &runs, &[], true, &mut alloc()).expect("detects");
+        let found = detect(1, &runs, &[], &[], true, &mut alloc()).expect("detects");
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 4));
     }

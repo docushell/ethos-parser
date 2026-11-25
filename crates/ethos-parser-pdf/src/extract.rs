@@ -1546,6 +1546,28 @@ fn extract_page(
             }
         }
 
+        // The bars the page paints, a form's and a rounded or stroked one's included: the chart
+        // rules' bars, and since decision #173 the whitespace rule's evidence that two columns are
+        // a chart's labels and values.
+        let mut bars = Vec::with_capacity(
+            interp.filled.len() + interp.filled_repeated.len() + interp.filled_rounded.len(),
+        );
+        let square = interp.filled.iter().chain(&interp.filled_repeated);
+        for (f, rounded) in square
+            .map(|f| (f, false))
+            .chain(interp.filled_rounded.iter().map(|f| (f, true)))
+            // Decision #105: a straight line stroked wide, rounded where its cap is round.
+            .chain(interp.stroked.iter().map(|(f, round)| (f, *round)))
+        {
+            let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
+            let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
+            bars.push(crate::charts::Bar {
+                rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
+                fill: f.fill,
+                rounded,
+            });
+        }
+
         // Decision #38. Last, on the runs no table above holds: grids inferred from the whitespace
         // across a table's rows (`docs/31-TABLE-TRACKS-SCOPE.md`). Here, before reading order,
         // because the rule reads the order the content stream wrote the rows in. **Only where the
@@ -1572,9 +1594,27 @@ fn extract_page(
                     });
                 }
             }
-            for table in
-                crate::tracks::detect(page_number, &track_runs, &ink, recognized, &mut alloc)?
-            {
+            // Decision #173: and the top and bottom of each bar not painted white, for the
+            // two-column clause alone.
+            let bar_edges: Vec<crate::stroke_ruled::Rule> = bars
+                .iter()
+                .filter(|b| !b.fill.is_white())
+                .flat_map(|b| {
+                    [b.rect.y0, b.rect.y1].map(|y| crate::stroke_ruled::Rule {
+                        y,
+                        x0: b.rect.x0,
+                        x1: b.rect.x1,
+                    })
+                })
+                .collect();
+            for table in crate::tracks::detect(
+                page_number,
+                &track_runs,
+                &ink,
+                &bar_edges,
+                recognized,
+                &mut alloc,
+            )? {
                 if !tables.iter().any(|t| t.rect.overlaps(table.rect)) {
                     tables.push(table);
                 }
@@ -1617,6 +1657,7 @@ fn extract_page(
                     &unheld,
                     &columns,
                     &ink,
+                    &bar_edges,
                     recognized,
                     &mut alloc,
                 )? {
@@ -1630,24 +1671,6 @@ fn extract_page(
         // Decision #42. Then a bar chart's printed labels, as its table
         // (`docs/32-CHART-LABELS-SCOPE.md`): on the runs no table above holds, under the tracks
         // rule's gate, and kept only where it overlaps no table already found.
-        let mut bars = Vec::with_capacity(
-            interp.filled.len() + interp.filled_repeated.len() + interp.filled_rounded.len(),
-        );
-        let square = interp.filled.iter().chain(&interp.filled_repeated);
-        for (f, rounded) in square
-            .map(|f| (f, false))
-            .chain(interp.filled_rounded.iter().map(|f| (f, true)))
-            // Decision #105: a straight line stroked wide, rounded where its cap is round.
-            .chain(interp.stroked.iter().map(|(f, round)| (f, *round)))
-        {
-            let (ax, ay) = geom.to_top_left(f.rect.x0, f.rect.y0);
-            let (bx, by) = geom.to_top_left(f.rect.x1, f.rect.y1);
-            bars.push(crate::charts::Bar {
-                rect: crate::tables::quantize_rect(ax, ay, bx, by)?,
-                fill: f.fill,
-                rounded,
-            });
-        }
         let q = f64::from(QUANTUM_PER_POINT);
         let page_area = (geom.display_width * q) as i128 * (geom.display_height * q) as i128;
         if profile.table_detection.charts == ethos_parser_core::TABLE_DETECTION_CHARTS_V3

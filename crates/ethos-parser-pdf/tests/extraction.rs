@@ -2941,6 +2941,104 @@ fn two_schedules_drawn_side_by_side_are_two_tables() {
     );
 }
 
+/// **A bar chart drawn as a form is no table of labels and values** (decision #173), through the
+/// whole extraction: five labels written down the page, then their values, stand as two columns
+/// where nothing is drawn between them, and not where a form paints a bar from the gutter at a row —
+/// the ruled rule drops a form's ink, and the chart's bars are the evidence — at the first of four
+/// rows or the last, or beside a column of prose, where the chart under its title is read inside
+/// its own column. A form's bars painted white draw nothing a reader sees.
+#[test]
+fn a_bar_chart_drawn_as_a_form_is_no_table_of_labels_and_values() {
+    let text =
+        |size: u32, x: f64, y: f64, s: &str| format!("BT /F1 {size} Tf {x} {y} Td ({s}) Tj ET\n");
+    let (labels, values) = (
+        ["North", "South", "East", "West", "Central"],
+        ["12.5", "30.1", "22.0", "8.4", "17.9"],
+    );
+    let y = |k: usize| 250.0 - 15.0 * k as f64;
+    let tracks = |fill: &str, bars: &[usize], prose: bool, rows: usize| -> Vec<(u32, u32)> {
+        // The labels', the bars' and the values' left edges.
+        let (lx, bx, vx) = if prose {
+            (300.0, 340.0, 400.0)
+        } else {
+            (20.0, 80.0, 200.0)
+        };
+        let mut content = String::new();
+        if prose {
+            for k in 0..10 {
+                let line = "the paragraph runs on down this column";
+                content += &text(8, 20.0, 258.0 - 10.0 * k as f64, line);
+            }
+            content += &text(10, lx, 272.0, "Sales by region, in units");
+        }
+        for (k, label) in labels[..rows].iter().enumerate() {
+            content += &text(10, lx, y(k), label);
+        }
+        if !fill.is_empty() {
+            content += "q /Fm1 Do Q\n";
+        }
+        for (k, value) in values[..rows].iter().enumerate() {
+            content += &text(10, vx, y(k), value);
+        }
+        let form: String = bars
+            .iter()
+            .map(|&k| format!("{bx} {} {} 10 re f\n", y(k) - 1.0, 20 + 5 * k))
+            .collect();
+        let stream = |dict: &str, data: &str| -> Vec<u8> {
+            format!(
+                "<< {dict} /Length {} >>\nstream\n{data}\nendstream",
+                data.len()
+            )
+            .into_bytes()
+        };
+        let objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 300] /Resources << /Font << /F1 5 0 R \
+               >> /XObject << /Fm1 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream("", &content),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            stream(
+                "/Type /XObject /Subtype /Form /BBox [0 0 612 300]",
+                &format!("{fill} rg\n{form}"),
+            ),
+        ];
+        extract_bytes(&pdf_from_objects(&objects))
+            .expect("extracts")
+            .pages[0]
+            .tables
+            .iter()
+            .filter(|t| t.rule == ethos_parser_core::TABLE_DETECTION_TRACKS_V16)
+            .map(|t| (t.rows, t.columns))
+            .collect()
+    };
+    let (blue, every) = ("0.2 0.4 0.8", [0, 1, 2, 3, 4]);
+    let premise = "the premise: nothing drawn, a table";
+    assert_eq!(tracks("", &[], false, 5), [(5, 2)], "{premise}");
+    assert!(tracks(blue, &every, false, 5).is_empty(), "a form's bars");
+    assert_eq!(tracks("", &[], false, 4), [(4, 2)], "{premise}, four rows");
+    assert!(
+        tracks(blue, &[0], false, 4).is_empty(),
+        "the first row's bar"
+    );
+    assert!(
+        tracks(blue, &[3], false, 4).is_empty(),
+        "the last row's bar"
+    );
+    let white = tracks("1 1 1", &every, false, 5);
+    assert_eq!(white, [(5, 2)], "a form's bars painted white");
+    assert_eq!(
+        tracks("", &[], true, 5),
+        [(5, 2)],
+        "{premise}, beside prose"
+    );
+    assert!(
+        tracks(blue, &every, true, 5).is_empty(),
+        "a form's bars beside prose"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // 12. Which rule fired (v1-S2)
 // -------------------------------------------------------------------------------------------

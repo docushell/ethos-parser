@@ -1234,10 +1234,12 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// **And two columns written down the page are a table where every row's second cell is a
 /// number** (decision #173, folded in): on a page of no recognized text, beside a first column
 /// that names its rows — a letter in one cell at least, every letter of a script with letter case,
-/// no running text — each row on one line, where the page draws no horizontal ink an em long or
-/// more starting in the gutter between the two, from the first row's baseline to the last's. A
-/// rate sheet exported cell by cell writes its labels as one block and its values as another; a
-/// chart's two value axes set level are numbers beside numbers, and a bar chart draws its bars
+/// no running text, and not a paragraph set in capitals — each row on one line, where the values
+/// do not step evenly and the page draws no horizontal ink an em long or more, a bar a form or a
+/// rounded fill paints included, starting in the gutter between the two, from the first row's
+/// baseline to the last's. A rate sheet exported cell by cell writes its labels as one block and
+/// its values as another; a chart's two value axes set level are numbers beside numbers, and its
+/// ticks step evenly whatever the other axis prints in place of one; a bar chart draws its bars
 /// between its labels and its values; a label that wraps is a paragraph's line, and in a script
 /// with no letter case no line reads as running text. Measured: pending.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";

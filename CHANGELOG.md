@@ -46,24 +46,29 @@ profile does not move.
 - **Not a chart.** A chart's two value axes set level are numbers beside numbers, and a bar chart
   draws its bars, or a chart its gridlines, between its labels and its values: two columns stand
   only where the page draws no horizontal ink an em long or more starting in the gutter between
-  them, from the first row's baseline to the last's. Without those two guards the census's rule
-  read 27 ParseBench chart pages as tables, six of them bar charts that `bar-labels-v3` had read
-  with their series named. A rule across the table, and one drawn down the gutter, keep it.
+  them, from the first row's baseline to the last's — a bar drawn in a form, or rounded, included —
+  and where the values do not step evenly, as an axis's ticks do whatever its other axis prints in
+  place of a tick (`USD bn` over `30` to `0`) or on each (`$40M`). Without the guards the census's
+  rule read 27 ParseBench chart pages as tables, six of them bar charts that `bar-labels-v3` had
+  read with their series named. A rule across the table, and one drawn down the gutter, keep it.
 - **Not a paragraph.** Each row stands on one line: a label that wraps is a paragraph's line set
   beside the numbers. And in a script with no letter case no line opens lower-case, so none reads
   as running text: there two columns written down the page stay text. Without these the A/B read
   a Japanese page's paragraph beside a chart's axis as a table, and an underlined statement's
-  section labels and page number into the rows beside its amounts.
+  section labels and page number into the rows beside its amounts. Nor beside a paragraph set in
+  capitals: no lower-case letter, half its lines a line of prose long.
 - **Only that.** Two columns written row by row read as before; on a page of recognized text two
   columns still stand only as a form's fields (decision #152); a first column of numbers only, as
-  limits beside factors written down the page, stays text.
+  limits beside factors written down the page, stays text, and so do values that step evenly, as a
+  fee schedule's `$10` to `$40`.
 - **Expected to change** (`markdown --source`, against the build before it): ParseBench, six pages
   — five rate and credibility exhibits (`FBLB-134215544` p43, `SERFF_CA_random_pages 1` p2324 and
   p2526, the census's gains, and p2323 and p2326), and a layout page's list of major shareholders
   beside their percentages; ParseBench-2, seven — the same five, the insurance filing
   `f2195809587e31bc` p10 (the census's fourth gain: years and a total beside their counts) and the
   layout page again; opendataloader-bench unchanged. Under `--ocr` these pages change the same way.
-- **Measured**: pending. Twenty-nine mutations, each caught.
+- **Measured**: pending. Twenty-nine mutations, and twenty-three more of the review's guards, each
+  caught.
 
 ### `--ocr` reads a scan stored as a CMYK or indexed JPEG (decision #172)
 

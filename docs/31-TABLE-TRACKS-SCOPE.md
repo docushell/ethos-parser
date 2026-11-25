@@ -1700,13 +1700,18 @@ credibility beside their counts).
 
 **The change**, folded into `-v16`, which no release carries. Two columns stand in any order where
 every row's second cell is a number, beside a first column that names its rows — a letter in one
-cell at least, every letter of a script with letter case, and no running text (§7's test, a third
-or more of its cells opening lower-case) — each row on one line, its every run within a line's
+cell at least, every letter of a script with letter case, and no running text (§7's test, a third or
+more of its cells opening lower-case) — each row on one line, its every run within a line's
 tolerance of its baseline, and the page draws no horizontal ink an em long or more starting in the
-gutter between the two tracks, from the first row's baseline to the last's (`drawn_between`). Not
-on a page of recognized text, whose order says nothing (decision #125) and where two columns stand
-only as a form's fields (§42). Every row of a two-column grid holds both its cells (§2, rule 4: a sparse row needs two), so
-"every row's" and "every cell's" are one test here.
+gutter between the two tracks, from the first row's baseline to the last's (`drawn_between`): its
+stroked rules, the top and bottom of each rectangle it paints, and the top and bottom of each bar
+the chart rules read, a form's, a rounded one's and a wide stroke's included. Nor where the values
+step evenly — four or more, read past their spaces, thousands' commas, per cent and currency signs,
+one step apart that is not nought (`evenly_stepped`) — nor where the first column is a paragraph set
+in capitals, no lower-case letter and half its cells or more `PROSE_LINE_CHARS` long (`capitals`).
+Not on a page of recognized text, whose order says nothing (decision #125) and where two columns
+stand only as a form's fields (§42). Every row of a two-column grid holds both its cells (§2, rule
+4: a sparse row needs two), so "every row's" and "every cell's" are one test here.
 
 **Every guard was found by this change's own A/B.** The census's rule — a number in every row's
 second cell, a first column of no running text — also read 27 ParseBench chart pages as tables: on
@@ -1728,6 +1733,18 @@ case, refuses the first however short its lines. The census's other page,
 `FBLB-134215544` p162, is a column of limits beside their factors, numbers beside numbers, and
 stays text (it scored 0 either way).
 
+**And the review's crafted pages found three more.** A chart's two value axes with no gridlines pass
+the letter guard where the axis prints a unit in place of its top tick (`USD bn`, then `30` to `0`,
+beside `100%` to `0%`) or a unit on each tick (`$40M` beside `20%`); an axis's ticks step evenly
+whatever its other axis prints, and none of the census's tables' values do (`$0.32` to `$0.45`,
+`30.2%` to `23.5%`, years' counts), so values that step evenly refuse both. A bar chart drawn as a
+form, or with rounded bars, painted nothing the page's ink holds, since the ruled rule drops a
+form's ink and reads no rounded fill; the chart rules' bars are the evidence now, read for this
+clause alone, so no other clause of the rule sees anything new. And a paragraph set in capitals
+beside a column of numbers, written as its own flow, opens no line lower-case; half its lines a line
+of prose long, with no lower-case letter, refuse it. The census's tables keep all three: the
+shareholders' names in capitals stand among names in lower case.
+
 **Measured** (Markdown, `markdown --source`, against the build before it): ParseBench's 2,037
 pages, six change — `FBLB-134215544` p43, `SERFF_CA_random_pages 1` p2323, p2324, p2326 and p2526,
 each now a table of its labels and values, and the layout page `fh_2025_004e` p7, a list of major
@@ -1738,5 +1755,12 @@ Benchmark scores: pending.
 
 **Known limits.** A table whose first column is numbers only — limits beside factors, ages beside
 premiums written down the page — stays text, as a chart's two axes do; so does one whose labels
-wrap, or are in a script with no letter case; and a rate sheet that draws a bar, a box or a rule
-from the gutter between its columns at a row is refused as a chart is.
+wrap, or are in a script with no letter case, or carry a subscript (`CO₂`, whose lowered run leaves
+its row's line); one whose values step evenly, a fee schedule of `$10` to `$40`; one whose labels
+are long lines in capitals; and a rate sheet that draws a bar, a box or a rule from the gutter
+between its columns at a row, in a form too, is refused as a chart is. A table of contents whose
+page numbers are a chapter's (`1-1`, `2-1`), written down the page, reads as a table, as it already
+did written row by row: §7's contents test reads plain page numbers only. On `fh_2025_004e` p7 the
+section heading over the shareholders' list is stacked into the new table's first header cell (`Name
+●Major shareholders`), and the two bold labels of the box beside it, `Number of shareholders` and
+`Number of shares outstanding`, are written on one Markdown line; no text is lost.
