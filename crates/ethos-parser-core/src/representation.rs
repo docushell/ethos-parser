@@ -3100,7 +3100,8 @@ impl DocumentRepresentation {
         }
 
         // A B-tree, not a hash set: on nist-sp-800-53r5 a hash set's one table of 1.15 M ids ran
-        // about 2 G fewer instructions and peaked about 20 MiB higher, at one thread and on load.
+        // about 2 G fewer instructions but peaked 13-19 MiB higher on load, and in one-thread
+        // extract anywhere from 55 MiB lower to 215 MiB higher across six runs.
         let mut seen_nodes = std::collections::BTreeSet::new();
         let mut ordinal_by_parent: std::collections::HashMap<&str, u32> = Default::default();
 

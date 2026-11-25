@@ -2317,10 +2317,18 @@ fn extract_page(
                 .and_then(|s| s.dict.get(b"OC").ok())
                 .and_then(|oc| doc.layers().layer(doc.inner(), oc))
         };
-        // One stream's facts per object, however often the document draws it: hashing the stored
+        // One stream's facts per object, however often the page draws it: hashing the stored
         // bytes again at every `Do` is the same answer at the stream's cost each time.
+        let mut image_facts: std::collections::HashMap<
+            lopdf::ObjectId,
+            Option<ethos_parser_core::ImageAttributes>,
+        > = std::collections::HashMap::new();
         for placement in &interp.images {
-            let Some(attributes) = doc.image_attributes(placement.object) else {
+            let Some(attributes) = image_facts
+                .entry(placement.object)
+                .or_insert_with(|| crate::images::image_attributes(doc.inner(), placement.object))
+                .clone()
+            else {
                 // v2.2-S2. **Counted, not merely skipped.** `image_attributes` returns `None` for
                 // a `/Form` and for a stream with no readable `/Subtype`, and until now this
                 // `continue` was the end of it: the placement was discarded and the artifact said

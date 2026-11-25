@@ -54,10 +54,12 @@
 //!
 //! **The reader's share of both, 2026-09-17.** [`deflate_reaches_its_end`] is the check `extract`
 //! runs over every `FlateDecode` content stream before it interprets a page — looser than the
-//! strict decoder by exactly what `lopdf` reads whole — and `extract` runs [`tokenise`] and
-//! [`agrees_with_lopdf`] over the buffer it is about to interpret. A page `lopdf` would read in
-//! part, or panic on, is therefore refused by name on the read path as well; the call site is
-//! `extract.rs::page_operations`.
+//! strict decoder by a failed Adler-32 check and bytes after the deflate data, and settled instead
+//! by [`inflated_once`] where its one inflate reads a lone `FlateDecode` to its end — and `extract`
+//! runs [`tokenise`] and [`agrees_with_lopdf`] over the buffer it is about to interpret. A page
+//! `lopdf` would read in part, or panic on, is therefore refused by name on the read path as well,
+//! save one whose failed check cuts it between two operations ([`deflate_reaches_its_end`]); the
+//! call site is `extract.rs::page_operations`.
 //!
 //! # Measured, 2026-09-17
 //!
@@ -372,9 +374,29 @@ fn inflate_to_end(input: &[u8], max_output: usize) -> Result<(Vec<u8>, u64), Str
     Ok((out, inflater.total_in()))
 }
 
+/// The most output [`inflated_once`] returns; it holds at most one byte more. A stream that
+/// inflates past it is read both ways, as before, and a bomb is refused from
+/// [`deflate_reaches_its_end`]'s 64 KiB scratch.
+///
+/// Small, because a bomb's try is never charged: its page is refused, and the document's budget
+/// counts only the pages it keeps. Tried up to the page's 64 MiB budget, 48 pages sharing one bomb
+/// peaked at 3 GB on one thread, a buffer grown that far by doubling staying in macOS's footprint
+/// once freed. With 12 pages read at once, a 4 MiB cap still peaked about 60 MiB above reading
+/// both ways, a 1 MiB one about 20 MiB, and this one 2-3 MiB. Every such stream of
+/// nist-sp-800-53r5 fits (the largest inflates to 117,500 bytes), as do 5,786 of the 5,802 that
+/// reach their end in 638 benchmark PDFs; the other 16 are read both ways, as before.
+///
+/// A stream the try does not settle costs more than reading both ways alone: the try, up to this
+/// much inflated, is thrown away. For a stream that reaches its end, past the cap or failing only
+/// its check, that is at most half again the two reads: a benchmark page of eight streams of about
+/// 510 KiB runs about 6% more instructions, and 200 pages sharing one 255 KiB stream with a failed
+/// check about 15% more. A cut or corrupt stream, which the raw check refuses after one read,
+/// costs up to twice that read: 200 pages sharing a cut 255 KiB stream run 64-66% more.
+const MAX_INFLATED_ONCE: usize = 256 << 10;
+
 /// A content stream's bytes from one inflate, where that one settles both of the reader's reads
 /// in `extract::content_operations`: a lone `/FlateDecode` with no `/DecodeParms`, whose zlib
-/// data reaches its end, its check passing, within `max_output` bytes.
+/// data reaches its end, its check passing, within `max_output` bytes and [`MAX_INFLATED_ONCE`].
 ///
 /// Then raw deflate from the same data, two header bytes in, reaches the same end within the same
 /// bytes ([`deflate_reaches_its_end`] finds [`Inflation::Ends`]), and `lopdf`, whose zlib reader is
@@ -389,7 +411,7 @@ pub(crate) fn inflated_once(
     if !matches!(filters, [f] if *f == b"FlateDecode") || stream.dict.get(b"DecodeParms").is_ok() {
         return None;
     }
-    inflate_to_end(&stream.content, max_output)
+    inflate_to_end(&stream.content, max_output.min(MAX_INFLATED_ONCE))
         .ok()
         .map(|(bytes, _)| bytes)
 }
@@ -404,19 +426,32 @@ pub(crate) enum Inflation {
 }
 
 /// Whether a `FlateDecode` stream's deflate data reaches its end: the reader's check, looser
-/// than [`inflate_strict`] by exactly what `lopdf` reads correctly anyway.
+/// than [`inflate_strict`] by a failed Adler-32 check and bytes after the deflate data.
 ///
 /// `lopdf` inflates with a zlib reader and, when that yields nothing, retries raw deflate past
 /// the two header bytes. Either way a truncated stream, or one corrupt part way, decodes to what
 /// came before the damage and is returned as a success; raw deflate from the same offset reaches
-/// its end exactly when no such loss happened. A failed Adler-32 check or bytes after the deflate
-/// data lose nothing — `lopdf` returns the whole content — so neither is refused here, where the
-/// writer, which re-serialises the stream, refuses both. The output is discarded, not collected:
-/// the bytes the reader interprets stay `lopdf`'s.
+/// its end exactly when no such loss happened. Bytes after the deflate data lose nothing — `lopdf`
+/// returns the whole content — and are not refused here, where the writer, which re-serialises
+/// the stream, refuses them and a failed check.
+///
+/// A failed check is not refused here either, though it can lose content: the zlib reader drops
+/// the output of the read that fails it, and the retry runs only when no read before it returned
+/// bytes. Failed on its first read, a stream is returned whole; on a later one, cut short as a
+/// success. The tokeniser or the operator check refuses the cut by name when it lands inside an
+/// operation they cannot read; between two operations nothing does, and the page loses its tail
+/// silently (one 70,054-byte stream lost its last 123 of 1,900 text operations). Refusing that
+/// would change output, so the reader keeps `lopdf`'s bytes here.
+///
+/// The output is discarded, not collected. The bytes the reader interprets are `lopdf`'s, except
+/// where [`inflated_once`] read a lone `/FlateDecode` to its end: that one inflate's bytes, which
+/// `lopdf` returns the same, then stand for both reads, and this check is not run.
 ///
 /// **Bounded by `max_output`** (review 2026-09-25 F08): inflating stops once the output passes it,
 /// with [`Inflation::PastLimit`], an answer about size and not about the end. Discarded output
-/// costs no memory, but inflating 64 MiB of source to 64 GiB costs a minute.
+/// costs no memory past the scratch, but inflating 64 MiB of source to 64 GiB costs a minute.
+/// Before this check refuses a bomb, [`inflated_once`] may have tried it, holding no more than one
+/// byte past [`MAX_INFLATED_ONCE`] of it.
 pub(crate) fn deflate_reaches_its_end(
     input: &[u8],
     max_output: usize,
@@ -4291,7 +4326,8 @@ mod tests {
                 (seed >> 16) as u8
             })
             .collect();
-        let repeated = PAGE.repeat(20_000);
+        // 212,000 bytes: past the scratch several times over, within `MAX_INFLATED_ONCE`.
+        let repeated = PAGE.repeat(4_000);
         let with = |content: Vec<u8>, key: &str, value: Object| {
             let mut stream = flate_stream(content);
             stream.dict.set(key, value);
@@ -4411,6 +4447,32 @@ mod tests {
                 "{label}: and the raw check reaches the end"
             );
         }
+    }
+
+    /// **One inflate returns no more than 256 KiB**, however much of the page's budget is left: a
+    /// stream past it is read both ways, as before. The figure is written out, not read from
+    /// [`MAX_INFLATED_ONCE`], so raising the cap fails here first; its doc gives the measurements.
+    ///
+    /// The failure this catches: a try as large as the budget, which holds up to 64 MiB for every
+    /// page refused for a bomb, a page the document's budget never charges, or a cap that still
+    /// costs a bomb tens of MiB with a dozen pages read at once.
+    #[test]
+    fn one_inflate_holds_no_more_than_its_cap() {
+        const CAP: usize = 256 << 10;
+        let limit = crate::budget::MAX_DECODED_BYTES;
+        let filters = [b"FlateDecode".as_slice()];
+        let at = flate_stream(deflated(&vec![0; CAP]));
+        let once = inflated_once(&at, &filters, limit).map(|bytes| bytes.len());
+        assert_eq!(once, Some(CAP));
+        let past = flate_stream(deflated(&vec![0; CAP + 1]));
+        assert_eq!(inflated_once(&past, &filters, limit), None);
+        // Read both ways instead, it decodes whole, as it did before one inflate stood for both.
+        assert_eq!(
+            deflate_reaches_its_end(&past.content, limit),
+            Ok(Inflation::Ends)
+        );
+        let read = crate::budget::decoded(&past, limit).map(|bytes| bytes.len());
+        assert_eq!(read.ok(), Some(CAP + 1));
     }
 
     /// **The operation limit is checked before each operation is kept** (review 2026-09-25 F08).
