@@ -133,7 +133,7 @@ fn every_sdk_version_is_the_workspace_version() {
 /// Two links in the chain, because the command lives in a script: `ci.yml` must invoke
 /// `ci/sdk-suites.sh`, and that script must run both suites. Asserting only the first would pass
 /// against a script that had been emptied.
-/// **Both SDKs read exactly the representation shape the engine writes** (review 2026-09-26 N60).
+/// **Both SDKs read exactly the representation shape the engine writes** (review 2026-09-26).
 ///
 /// `nodeGet` and `node_get` check `artifact_type` and `schema_version` themselves, without the CLI.
 /// A constant left behind when the representation's version moves would refuse every artifact this

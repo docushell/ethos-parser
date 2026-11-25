@@ -246,7 +246,7 @@ impl Operator {
     /// The interpreter reads operands from the front and a renderer pops them from the back, so
     /// the two agree only when the count is right: `1 2 1 0 0 1 72 72 Tm` sets a matrix
     /// translated to (7, 2) here and to (72, 72) in Ghostscript and CoreGraphics (review
-    /// 2026-09-26 N48). An operator this reader ignores cannot place text wherever its operands
+    /// 2026-09-26). An operator this reader ignores cannot place text wherever its operands
     /// fall, so its count decides nothing.
     pub(crate) fn operands_read(self) -> Option<usize> {
         use Operator::*;

@@ -306,7 +306,7 @@ fn a_truncated_package_is_refused() {
     }
 }
 
-/// **Two entries of one name are refused, not read as the first** (review 2026-09-26 N26).
+/// **Two entries of one name are refused, not read as the first** (review 2026-09-26).
 ///
 /// ZIP permits duplicate names and consumers disagree about which wins: this reader took the
 /// first, exit 0 and nothing declared, where Python's `zipfile` and macOS's `textutil` read the

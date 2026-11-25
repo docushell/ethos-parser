@@ -157,7 +157,7 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// move together because both projections call `ink_sequenced`.
 ///
 /// `-v11` at 0.63.0: U+0000 is not written, by the writer the Markdown projection shares and under
-/// the same count (review 2026-09-26 N40); an HTML parser drops it from text and reads `&#0;` as
+/// the same count (review 2026-09-26); an HTML parser drops it from text and reads `&#0;` as
 /// U+FFFD. See `crate::markdown::MARKDOWN_RULE_BLOCKS_V14`, whose decision #38 folds — emphasis,
 /// heading levels, a layout unit's lines as one element — decision #40's `<sup>` and `<sub>`, and
 /// decision #65's label lines in one `<p>` and heading number joined to its title, decision #68's
@@ -1974,7 +1974,7 @@ mod tests {
         assert_tiles(&a);
     }
 
-    /// **U+0000 is not written, and it is counted**, beside an entity (review 2026-09-26 N40).
+    /// **U+0000 is not written, and it is counted**, beside an entity (review 2026-09-26).
     ///
     /// An HTML parser drops it from text, so `<p>a\0b</p>` reads `ab`. The census counts the
     /// document's characters: four in, three written, one removed — not the entity's bytes.

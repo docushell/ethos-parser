@@ -369,7 +369,7 @@ fn check_state(doc: &lopdf::Document, widget: &Dictionary) -> CheckState {
 /// that the document does not currently assert.
 ///
 /// A string [`decode_content_strict`] refuses, or a name that is not UTF-8, makes the value
-/// `Unsupported` and is counted in `undecodable` (review 2026-09-26 N39): decoded as Latin-1 and
+/// `Unsupported` and is counted in `undecodable` (review 2026-09-26): decoded as Latin-1 and
 /// lossily they were, a byte `0xA0` read as a no-break space where the document means `€`.
 fn field_value(
     doc: &lopdf::Document,
@@ -594,8 +594,8 @@ pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
     strict(bytes, b"")
 }
 
-/// [`decode_text_strict`] for a field's value or an annotation's `/Contents` (review 2026-09-26
-/// N39), which also admits the three line controls PDFDocEncoding shares with ASCII — tab, line
+/// [`decode_text_strict`] for a field's value or an annotation's `/Contents` (review 2026-09-26),
+/// which also admits the three line controls PDFDocEncoding shares with ASCII — tab, line
 /// feed, carriage return — because a multi-line field or comment writes them, and they are text.
 pub(crate) fn decode_content_strict(bytes: &[u8]) -> Option<String> {
     strict(bytes, b"\t\n\r")
@@ -717,9 +717,9 @@ mod tests {
         assert_eq!(decode_text(&bytes), "héllo");
     }
 
-    /// **The strict decoder refuses what it used to guess** (review 2026-09-26 N17): a code the
+    /// **The strict decoder refuses what it used to guess** (review 2026-09-26): a code the
     /// derived PDFDocEncoding table's sources part over, a control character, half a UTF-16 code
-    /// unit and a language escape, and (tracker I17) a UTF-16LE byte-order mark; and it reads a
+    /// unit and a language escape, and a UTF-16LE byte-order mark; and it reads a
     /// UTF-8 title (ISO 32000-2 §7.9.2.2.1) as UTF-8. `0xA0`, refused here until
     /// `docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`, reads as the euro sign it is.
     #[test]

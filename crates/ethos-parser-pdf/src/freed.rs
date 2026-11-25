@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Objects a later revision deleted, which `lopdf` loads anyway (review 2026-09-26 N06).
+//! Objects a later revision deleted, which `lopdf` loads anyway (review 2026-09-26).
 //!
 //! An incremental update deletes an object by writing a free entry for its number in the newer
 //! cross-reference section. `lopdf` 0.44 records no free entry — its table parser skips `f` rows

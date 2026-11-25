@@ -155,7 +155,7 @@ def test_a_thing_that_is_not_a_representation_is_refused_rather_than_coerced(
 def test_a_representation_of_a_shape_this_build_does_not_read_is_refused(
     representation, minted_id, key, value
 ):
-    """Review 2026-09-26 N60: the CLI and MCP refuse both, so ``node_get`` must not read on.
+    """Review 2026-09-26: the CLI and MCP refuse both, so ``node_get`` must not read on.
 
     A prefix test passed the first.
     """

@@ -40,7 +40,7 @@
 //! are not decoded approximately — `docs/01-CONTRACT.md` §8, because approximate text is worse
 //! than no text here: a citation can be verified against it and appear to hold. A document drawing
 //! text with a font that names a predefined CMap is genuinely **refused**, at the first string
-//! shown with that font; one a page lists and never draws with refuses nothing (tracker I8). An
+//! shown with that font; one a page lists and never draws with refuses nothing. An
 //! `/Identity-H` font with no `/ToUnicode` is the exception since 2026-10-03: its codes split and
 //! advance as the document says, so each run shown with it is dropped and counted instead — and
 //! since decision #78, where its collection is one of Adobe's, read through Adobe's mapping. A
@@ -912,7 +912,7 @@ mod tests {
         assert_eq!(e.decode(0x02).unwrap(), "Z");
     }
 
-    /// **A digit is not a glyph name** (review 2026-09-26 N38). The Adobe Glyph List names the
+    /// **A digit is not a glyph name** (review 2026-09-26). The Adobe Glyph List names the
     /// digit one `/one`; `/1` names nothing this profile knows, and is refused like any unknown
     /// name rather than read as `1`.
     #[test]

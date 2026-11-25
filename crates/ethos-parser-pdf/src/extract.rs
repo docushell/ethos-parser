@@ -169,7 +169,7 @@ fn declare(count: u32, more: u32) -> u32 {
 
 /// What `fonts` lack, declared once each: a composite font counted, absent widths, an assumed
 /// encoding. A font whose encoding this profile does not read refuses the page where it is drawn
-/// with (tracker I8), so until then it is described by nothing here.
+/// with, so until then it is described by nothing here.
 fn describe_fonts<'f>(
     fonts: impl Iterator<Item = &'f std::sync::Arc<crate::fonts::Font>>,
     composite_fonts: &mut u32,
@@ -2408,7 +2408,7 @@ fn extract_page(
                 // An image that did not load as a stream is no form: it is a resource this reader
                 // could not resolve. `lopdf` loads a stream whose direct `/Length` misses its data
                 // as the bare dictionary, so an image drawn by every renderer that finds
-                // `endstream` was declared a form not descended (tracker I17). A form lost the same
+                // `endstream` was declared a form not descended. A form lost the same
                 // way stays counted as one: its text is absent from the page either way, and the
                 // page-scoped count is what tells a search over that page so.
                 let lost_image = match doc.inner().get_object(placement.object) {
@@ -3068,7 +3068,7 @@ fn extract_counted(
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
     let mut field_states_not_determinable: u32 = 0;
-    // Field values and annotation `/Contents` this engine will not decode (review 2026-09-26 N39).
+    // Field values and annotation `/Contents` this engine will not decode (review 2026-09-26).
     let mut undecodable_object_texts: u32 = 0;
     // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
     let mut inline_images: u32 = 0;
@@ -3176,7 +3176,7 @@ fn extract_counted(
     };
     // A page denser than `HEAVY_PAGE_OPERATIONS` is left by the parallel read and read below, alone
     // and in page order, so dense pages cost one at a time whatever the core count (review
-    // 2026-09-25 F08). The output does not depend on which pass read a page.
+    // 2026-09-25). The output does not depend on which pass read a page.
     let outcomes: Vec<(u32, Option<Result<PageYield, EngineError>>)> = doc
         .pages()
         .par_iter()
@@ -3212,7 +3212,7 @@ fn extract_counted(
 
     // Ahead of every page's own error: the pages ran in parallel, so which of them crossed the
     // document's `ToUnicode` budget is not a property of the document, and an earlier page's
-    // error would otherwise win or lose by timing (review 2026-09-26 N11). The content budget
+    // error would otherwise win or lose by timing (review 2026-09-26). The content budget
     // is the same kind of refusal, for the same reason.
     doc.tounicode().refusal()?;
     content.refusal()?;
@@ -3771,7 +3771,7 @@ fn extract_counted(
     // is already in hand, so a document that draws no right-to-left scalar says nothing — which
     // is what makes the declaration worth reading when it does appear.
     //
-    // A `U+FFFD` in a run is counted over the same runs (review 2026-09-26 N21). This engine never
+    // A `U+FFFD` in a run is counted over the same runs (review 2026-09-26). This engine never
     // puts one there, so each is a character a font of the document maps a code to: read as
     // written, and declared, because nothing downstream can otherwise tell it from a substitution.
     {
@@ -3799,7 +3799,7 @@ fn extract_counted(
     if props_by_name > 0 {
         limitations.push(lim::mcid_property_list_by_name(props_by_name));
     }
-    // Review 2026-09-26 N22: the document's own text for what it marks, in a marked-content
+    // Review 2026-09-26: the document's own text for what it marks, in a marked-content
     // property list or on a structure element, none of it read.
     let alternate_elements = structure.as_ref().map_or(0, |t| t.alternate_texts);
     if alternate_texts > 0 || alternate_elements > 0 {
@@ -4377,7 +4377,7 @@ fn run_findings(
 /// - [`EngineError::ResourceLimit`]: the page's content streams decode to more than
 ///   [`crate::budget::MAX_DECODED_BYTES`] between them, naming the page; or `budget` is spent.
 ///
-/// # What a page may cost (review 2026-09-25 F08)
+/// # What a page may cost (review 2026-09-25)
 ///
 /// `Ok(None)` when the page holds more than `limit` operations, counted as they are tokenised, so
 /// no more than `limit` ever exist. A caller reading pages in parallel passes
@@ -4986,7 +4986,7 @@ pub(crate) const INHERITANCE_MAX_DEPTH: usize = 32;
 /// A `/Resources` that does not resolve to a dictionary — null, or a reference to no object — is
 /// read as absent, as §7.3.7 reads a null entry, and the walk goes on up. Every reader of a page's
 /// resources asks this, so fonts, images, marked-content property lists and the tag writer find
-/// the same dictionary: until review 2026-09-26 N43 only the property lists and the writer
+/// the same dictionary: until review 2026-09-26 only the property lists and the writer
 /// inherited, and a page taking its fonts from `/Pages` was refused for a missing font.
 pub(crate) fn page_resources(
     doc: &lopdf::Document,
@@ -6082,7 +6082,7 @@ mod tests {
     }
 
     /// **A spent content budget is the document's refusal, ahead of any page's own error**
-    /// (review 2026-09-25 F08).
+    /// (review 2026-09-25).
     ///
     /// Pages run in parallel, so which page crossed the budget is timing, and the refusal must
     /// not be. Page 1 here fails on its own `/Rotate 45` before it reads its content, and the

@@ -925,7 +925,7 @@ mod tests {
     /// carry the sentence it always carried — otherwise every golden in the corpus moves for a
     /// case this slice did not change. A document with one must not say "Two reasons" above
     /// three clauses, which is the v2-S13.3 defect: a statement that stopped being true.
-    /// **No declaration calls a box glyph ink** (review 2026-09-26 N50). Contract §5.3: the box
+    /// **No declaration calls a box glyph ink** (review 2026-09-26). Contract §5.3: the box
     /// this engine emits for a text run is the pen's advance over the font's envelope, not glyph
     /// ink, and `text_box_rule` names that construction. Two sentences on 145 of 312 census
     /// artifacts said the grounding projection's bbox "means MEASURED INK".

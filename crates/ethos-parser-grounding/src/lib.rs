@@ -326,7 +326,7 @@ pub struct Span {
 /// `deny_unknown_fields` here is the same rule read from the other side.
 ///
 /// **Parsing does not refuse another `artifact_type` or `schema_version`, deliberately** (review
-/// 2026-09-26 N60). This type's reader is [`grounding_check`], which mirrors Ethos — parse, then
+/// 2026-09-26). This type's reader is [`grounding_check`], which mirrors Ethos — parse, then
 /// validate — and the validation refuses both as `unsupported_version` at `/artifact_type`, as the
 /// oracle does. A refusal in the parse would answer `invalid_field` at `/` instead.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -596,7 +596,7 @@ fn locked_versions(lock: &str, name: &str) -> Vec<String> {
 }
 
 /// **Every crate a profile names beside its backend is the version the lock file resolves**
-/// (review 2026-09-26 N14, decision #35).
+/// (decision #35).
 ///
 /// `BackendIdentity::components` names, per profile, the third-party crates whose versions decide
 /// its output: `skrifa` and `read-fonts` under every PDF text box, `flate2` under every inflated
@@ -931,7 +931,7 @@ fn no_public_type_emits_a_decimal_number() {
 /// `profile.draft.json`'s example is the **real** canonical profile.
 ///
 /// Every artifact, profiles included, is walked against its draft by `ethos-parser-cli`'s
-/// `draft_schemas.rs` (review 2026-09-26 N33). That walk says a profile *fits* the draft; it cannot
+/// `draft_schemas.rs` (review 2026-09-26). That walk says a profile *fits* the draft; it cannot
 /// say the example *is* the profile, and the README claims it is: by M4 it was not — it still
 /// carried `"unbound-until-m3"` placeholders two milestones after the backend landed. A claim that
 /// specific either holds or should not be made, and `serde_json` equality is enough to keep it

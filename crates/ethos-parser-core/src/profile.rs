@@ -221,7 +221,7 @@ pub const READING_ORDER_RULE_V5: &str = "gutter-columns-v5";
 /// claim about whether text was legible — see `codes::LOW_CONTRAST_NOT_DETECTED`.
 ///
 /// v2 (0.63.0): an image drawn from `/Resources` a page inherits from `/Pages` is a node, where v1
-/// counted it an unresolved `Do` (review 2026-09-26 N43). What the rule observes is v1's.
+/// counted it an unresolved `Do` (review 2026-09-26). What the rule observes is v1's.
 ///
 /// v3 (0.64.0, decision #37): a `Do` naming a `/Form` runs the form's content stream where it
 /// stands, under its `/Matrix` and its own resources, to a depth of eight and never into itself
@@ -333,9 +333,9 @@ pub const OBSERVATION_RULE_V5: &str = "page-observations-v5";
 /// 2026-09-26). A `/ToUnicode` CMap's `%` comment runs to its end of line and maps nothing; a
 /// `/BaseEncoding` this profile does not carry is refused, as the same name under `/Encoding` is,
 /// rather than read as StandardEncoding; a one-character glyph name resolves only when it is a
-/// letter, so `/1` in `/Differences` is not `1` (N38); and a composite font whose `/Encoding` is an
-/// embedded CMap and which carries no `/ToUnicode` is refused rather than read one byte at a time
-/// (N16). The id moves because the text it names moves.
+/// letter, so `/1` in `/Differences` is not `1`; and a composite font whose `/Encoding` is an
+/// embedded CMap and which carries no `/ToUnicode` is refused rather than read one byte at a time.
+/// The id moves because the text it names moves.
 pub const TEXT_CODE_RULE_V2: &str = "declared-font-codes-v2";
 
 /// [`TEXT_CODE_RULE_V2`] **with the font a string is shown in restored by `Q`, and codes the
@@ -1521,8 +1521,8 @@ pub const STRUCT_TREE_RULE_V3: &str = "struct-tree-v3";
 /// byte string through `/Names`→`/Dests` or the catalog's older `/Dests`, and `/A` with `/GoTo`.
 /// Any of those changing moves this id and the profile hash with it.
 ///
-/// v2 (0.62.0): a title is decoded by the strict rule throughout (review 2026-09-26 N17, tracker
-/// I17). `0xA0`, `0xAD`, half a UTF-16 code unit, a language escape and a UTF-16LE byte-order mark
+/// v2 (0.62.0): a title is decoded by the strict rule throughout (review 2026-09-26).
+/// `0xA0`, `0xAD`, half a UTF-16 code unit, a language escape and a UTF-16LE byte-order mark
 /// leave the title absent and counted rather than guessed; a UTF-8 title behind its byte-order mark
 /// (ISO 32000-2 §7.9.2.2.1) reads as UTF-8; and a `/Title` held in an indirect object is read where
 /// it points. The walk, the depth and the destinations are v1's.
@@ -1994,7 +1994,7 @@ pub const RIGHT_TO_LEFT_RULE_V1: &str = "right-to-left-lines-v1";
 /// holding `"ruled-rects-v3"`.
 ///
 /// v2 (0.63.0): a field's value and an annotation's `/Contents` are decoded strictly (review
-/// 2026-09-26 N39): a byte the decoder will not read makes the value `unsupported` and the text
+/// 2026-09-26): a byte the decoder will not read makes the value `unsupported` and the text
 /// empty, each node kept and counted as `form-annotation-text-undecodable`, where v1 read Latin-1
 /// and a name lossily; UTF-8 behind its byte-order mark reads as UTF-8. And PDFDocEncoding is read
 /// through the derived table (`S-ENC`), in the labels too, where a code the table cannot read is
@@ -2089,7 +2089,7 @@ pub struct BackendIdentity {
     /// Exact version string.
     pub version: String,
     /// The resolved version of each third-party crate, besides the backend itself, that turns a
-    /// document's bytes into this profile's output (review 2026-09-26 N14, decision #35).
+    /// document's bytes into this profile's output (decision #35).
     ///
     /// The profile named `lopdf` alone, so a bump of the crates under it moved output with
     /// `profile_sha256` unchanged: Dependabot #40, skrifa 0.39 -> 0.47, passed all 32 checks,
@@ -2495,7 +2495,7 @@ pub const NOT_RUN: &str = "not-run-for-this-format";
 ///
 /// v2 (0.62.0): a self-closing `<w:p/>` or `<w:r/>` is counted as its long form is, so a
 /// paragraph's or a run's ordinal no longer depends on how the file was serialized (review
-/// 2026-09-25 F19). The order is v1's; the addresses it hands out move.
+/// 2026-09-25). The order is v1's; the addresses it hands out move.
 ///
 /// v3 (decision #130): a run after a text box is counted in the paragraph that anchors the box.
 /// The box's `<w:p>` sits inside a run of that paragraph, and one counter gave every run after it
@@ -2526,10 +2526,10 @@ pub const DOCX_READING_ORDER_RULE_V3: &str = "docx-document-order-v3";
 /// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
 /// the behaviour it names moves: a document this rule refused at v1 now reads.
 /// v3 (0.62.0): a run's stated `<w:tab/>`, `<w:br/>`, `<w:cr/>` and `<w:noBreakHyphen/>` are the
-/// tab, line feed and U+2011 they state (review 2026-09-26 N04); a self-closing `<mc:Choice/>` is
-/// taken as a long one is (N36); line ends are normalised as XML 1.0 §2.11 requires (N37); a CDATA
-/// section in `<w:t>` is read (tracker I17); and the text of a `<w:moveFrom>` region is passed over
-/// and counted, read once where its `<w:moveTo>` puts it (N18).
+/// tab, line feed and U+2011 they state (review 2026-09-26); a self-closing `<mc:Choice/>` is
+/// taken as a long one is; line ends are normalised as XML 1.0 §2.11 requires; a CDATA
+/// section in `<w:t>` is read; and the text of a `<w:moveFrom>` region is passed over
+/// and counted, read once where its `<w:moveTo>` puts it.
 /// v4 (decision #130): a run whose only characters are ones it states as elements — a tab, a line
 /// break, a no-break hyphen; `<w:r><w:tab/></w:r>`, as Word writes a label's tab — is a node
 /// holding them, where v3 left it out, so `Company Name` and `: Acme Ltd` had nothing between them.
@@ -2567,8 +2567,8 @@ pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1"
 /// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
 /// the behaviour it names moves: a document this rule refused at v1 now reads.
 /// v3 (0.62.0): a SpreadsheetML `_xHHHH_` escape (ECMA-376 `ST_Xstring`) is the character it
-/// names, decoded once (review 2026-09-26 N15), and line ends are normalised as XML 1.0 §2.11
-/// requires (N37).
+/// names, decoded once (review 2026-09-26), and line ends are normalised as XML 1.0 §2.11
+/// requires.
 pub const XLSX_TEXT_CODE_RULE_V3: &str = "xlsx-stored-value-verbatim-v3";
 
 /// Decision #135's XLSX text rule: v3, and a number cell shows the value its number format
@@ -2626,7 +2626,7 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 /// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
 /// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
 /// the behaviour it names moves: a document this rule refused at v1 now reads.
-/// v3 (0.62.0): line ends are normalised as XML 1.0 §2.11 requires (review 2026-09-26 N37).
+/// v3 (0.62.0): line ends are normalised as XML 1.0 §2.11 requires (review 2026-09-26).
 pub const PPTX_TEXT_CODE_RULE_V3: &str = "pptx-at-verbatim-v3";
 
 /// v2-S5's ODT reading order: paragraphs in the order `content.xml` lists them.
@@ -2715,7 +2715,7 @@ pub const RTF_READING_ORDER_RULE_V1: &str = "rtf-stream-document-order-v1";
 /// Four sources, all of them things the file writes down: plain 7-bit characters, `\uN` as the
 /// Unicode scalar it names, the small closed set of special-character control words (`\tab`,
 /// `\emdash`, `\lquote`, …) that stand for exactly one character each, and — since review
-/// 2026-09-26 N03 — `\'hh` above 0x7F in a font of the ANSI character set under a declared
+/// 2026-09-26 — `\'hh` above 0x7F in a font of the ANSI character set under a declared
 /// `\ansicpg1252`, as the Windows-1252 character it names.
 ///
 /// **Any other `\'hh` above 0x7F is declared, never guessed.** Its meaning depends on a code page
@@ -2724,8 +2724,8 @@ pub const RTF_READING_ORDER_RULE_V1: &str = "rtf-stream-document-order-v1";
 /// failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value.
 ///
 /// v2 (0.62.0): a backslash before a line break is `\par`, which is how Cocoa ends every paragraph
-/// (review 2026-09-26 N01); a carriage return or line feed is not one of the fallback characters a
-/// `\ucN` skips (N45); and a `\'hh` under a declared `\ansicpg1252` is read as above (N03).
+/// (review 2026-09-26); a carriage return or line feed is not one of the fallback characters a
+/// `\ucN` skips; and a `\'hh` under a declared `\ansicpg1252` is read as above.
 pub const RTF_TEXT_CODE_RULE_V2: &str = "rtf-stated-characters-v2";
 
 /// v2-S9's EPUB reading order: **the spine**, then each document's own order.
@@ -2762,7 +2762,7 @@ pub const EPUB_READING_ORDER_RULE_V1: &str = "epub-spine-then-document-order-v1"
 /// because the element states one.
 ///
 /// v2 (0.62.0): line ends are normalised as XML 1.0 §2.11 requires before the whitespace rule runs,
-/// so a `<pre>` written with CRLF reads LF (review 2026-09-26 N37).
+/// so a `<pre>` written with CRLF reads LF (review 2026-09-26).
 pub const EPUB_TEXT_CODE_RULE_V2: &str = "epub-xhtml-blocks-verbatim-v2";
 
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
@@ -3105,8 +3105,8 @@ pub struct Profile {
     pub cmap_data_version: String,
     /// Identity of the vendored font-metric data. See [`FONT_METRICS_DATA_VERSION`].
     pub font_metrics_data_version: String,
-    /// The Unicode tables this build's `std` carries, as `std-unicode-16.0.0` (review 2026-09-26
-    /// N13, decision #35).
+    /// The Unicode tables this build's `std` carries, as `std-unicode-16.0.0`
+    /// (decision #35).
     ///
     /// `char::is_alphabetic` decides a line-end hyphen join in both projections, and
     /// `char::is_whitespace` their whitespace rule and the ToUnicode tokenizer; both read tables
@@ -4001,7 +4001,7 @@ mod tests {
     /// **Every field of the profile, and of each struct and struct variant inside it, is a key
     /// in the bytes the profile is hashed from.**
     ///
-    /// Review 2026-09-26 N29. A `#[serde(skip)]` field is absent from serde's output, and every
+    /// Review 2026-09-26. A `#[serde(skip)]` field is absent from serde's output, and every
     /// identity check reads serde's output — the pin, the round trip, the schema example — so a
     /// skipped knob gating heading inference moved representation fingerprints with
     /// `profile_sha256` unchanged, and every guard passed. [`every_profile_field_is_hash_sensitive`]
@@ -4543,12 +4543,12 @@ mod tests {
                 Box::new(|p: &mut Profile| p.font_metrics_data_version = "core14-afm-9".into()),
             ),
             (
-                // Decision #35 (review 2026-09-26 N13): the Unicode tables `std` carries.
+                // Decision #35 (review 2026-09-26): the Unicode tables `std` carries.
                 "unicode_data_version",
                 Box::new(|p: &mut Profile| p.unicode_data_version = "std-unicode-99.0.0".into()),
             ),
             (
-                // Decision #35 (review 2026-09-26 N14): a crate beside the backend, bumped.
+                // Decision #35 (review 2026-09-26): a crate beside the backend, bumped.
                 "backend.components",
                 Box::new(|p: &mut Profile| {
                     p.backend

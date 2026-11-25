@@ -1127,7 +1127,7 @@ jobs:
           exit "$fail"
 
   dependency-bytes:
-    # Decision #35 (review 2026-09-26 N14). A bump of a crate the profile names in
+    # Decision #35 (review 2026-09-26). A bump of a crate the profile names in
     # `backend.components` moves `profile_sha256` by design, and `contract_invariants.rs` stays red
     # until the profile moves with it. What neither says is whether any byte of CONTENT moved, and
     # Dependabot #40 (skrifa 0.39 -> 0.47) was green on every check while that question was open.

@@ -90,7 +90,7 @@
 //! it arrives and never held here. The reason is memory the system allocator keeps: a call's live
 //! heap went back to 5 MiB and the server's resident memory did not, so sixteen `locate` calls on
 //! `nist-sp-800-161r1` took one server from 448 MiB to 4,480 in one run and 5,080 in another,
-//! about 320 MiB a call (review 2026-09-26 N35). A process that ends returns all of it: the same
+//! about 320 MiB a call (review 2026-09-26). A process that ends returns all of it: the same
 //! sixteen calls peak at about 735 MiB each, and between calls the server holds 2.4 MiB. Every
 //! reply is byte-identical.
 //! A call that aborts takes only its own process down: its line is answered with JSON-RPC's
@@ -661,7 +661,7 @@ fn call_tool(mut params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, 
         .ok_or_else(|| Failure::new(INVALID_PARAMS, "`name` is required"))?;
 
     // **A key the tool's schema does not declare is refused**, as `additionalProperties: false`
-    // says (review 2026-09-26 N61). `max_pages: 1` handed to `extract` was dropped, and a host that
+    // says (review 2026-09-26). `max_pages: 1` handed to `extract` was dropped, and a host that
     // believed it had bounded the call had not.
     let declared = tools()
         .as_array()

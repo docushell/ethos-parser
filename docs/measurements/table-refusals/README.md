@@ -237,8 +237,8 @@ guarantees the first guarantees the second, and no constant in it can be moved t
 blocker 1 is a contradiction between two constants, blocker 3 is an absence of signal in the
 underlying quantity. Text alignment does not distinguish a table from prose on this corpus.
 
-**So §5.3 of the plan is answered negatively.** There is nothing useful for a refused candidate to
-emit, because the candidate carries no information about whether a table is there. Emitting cell
+**So the scoping question is answered negatively.** There is nothing useful for a refused candidate
+to emit, because the candidate carries no information about whether a table is there. Emitting cell
 rectangles from a 54%-occupied word-lattice would be emitting the shape of the prose.
 
 **This corroborates [`table-gate-v1.md`](../../table-gate-v1.md) v2-S22 with a mechanism.** That

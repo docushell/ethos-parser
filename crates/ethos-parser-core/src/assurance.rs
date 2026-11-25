@@ -360,7 +360,7 @@ pub mod codes {
     /// matches this text, and a quote typed in logical order does not.**
     pub const RIGHT_TO_LEFT_NOT_REORDERED: &str = "right-to-left-not-reordered";
     /// Text runs holding `U+FFFD` because a font of the document maps a code to it (review
-    /// 2026-09-26 N21).
+    /// 2026-09-26).
     ///
     /// **Document-scoped and conditional**, as [`RIGHT_TO_LEFT_NOT_REORDERED`] is: the reader has
     /// the text in hand. This engine never puts `U+FFFD` in a run itself — a code no mapping names
@@ -368,7 +368,7 @@ pub mod codes {
     /// statement, read as written, and counted because nothing downstream can otherwise tell it
     /// from a substitution.
     pub const REPLACEMENT_CHARACTER_IN_TEXT: &str = "replacement-character-in-text";
-    /// `/ActualText`, `/Alt` and `/E` are not read (review 2026-09-26 N22).
+    /// `/ActualText`, `/Alt` and `/E` are not read (review 2026-09-26).
     ///
     /// **Document-scoped and conditional**: declared where a marked-content property list or a
     /// structure element carries one. Each is the document's own text for what it marks —
@@ -398,7 +398,7 @@ pub mod codes {
     /// Outline titles holding a byte this engine will not decode, counted.
     pub const OUTLINE_TITLE_UNDECODABLE: &str = "outline-title-undecodable";
     /// Runs whose string ends part-way through a character code, read as Ghostscript renders it
-    /// and counted (review 2026-09-26 N46).
+    /// and counted (review 2026-09-26).
     pub const STRING_ENDS_MID_CODE: &str = "string-ends-mid-code";
     /// Outline destinations that named no page of this document, counted.
     pub const OUTLINE_DESTINATION_UNRESOLVED: &str = "outline-destination-unresolved";
@@ -469,7 +469,7 @@ pub mod codes {
     pub const FORM_FIELD_PARENT_UNRESOLVED: &str = "form-field-parent-unresolved";
 
     /// Form field values and annotation `/Contents` holding bytes this engine will not decode,
-    /// counted (review 2026-09-26 N39).
+    /// counted (review 2026-09-26).
     ///
     /// Document-scoped and conditional, as [`OUTLINE_TITLE_UNDECODABLE`] is for a title: such a
     /// field carries the value `unsupported`, and such an annotation no text.

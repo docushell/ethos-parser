@@ -159,7 +159,7 @@ pub struct StructureTree {
     pub items_without_page: usize,
     /// How many structure elements were reached.
     pub elements: usize,
-    /// How many of them carry `/ActualText`, `/Alt` or `/E` (review 2026-09-26 N22), none of
+    /// How many of them carry `/ActualText`, `/Alt` or `/E` (review 2026-09-26), none of
     /// which this profile reads.
     pub alternate_texts: usize,
     /// What the tree said about elements carrying this engine's own attribute (auto-tagging S1).
@@ -1159,7 +1159,7 @@ fn as_text(o: &Object) -> Option<String> {
 
 /// An element's `/S` or `/ID`, which the role path and the structural locator carry as text.
 ///
-/// Refused when it is not UTF-8. Both were decoded lossily until review 2026-09-26 N47, so two
+/// Refused when it is not UTF-8. Both were decoded lossily until review 2026-09-26, so two
 /// elements with `/ID <FF>` and `/ID <FE>` shared one `element_id`, `"\u{FFFD}"`, and `/Foo#FF`
 /// read as `Foo\u{FFFD}`: a role and an id the document does not state, where two collide. No
 /// corpus element carries one (0 of 178,239).

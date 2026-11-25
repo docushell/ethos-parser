@@ -575,7 +575,7 @@ fn a_truncated_workbook_is_refused() {
 }
 
 // -------------------------------------------------------------------------------------------
-// What a workbook's cells may carry (review 2026-09-25 F09)
+// What a workbook's cells may carry (review 2026-09-25)
 // -------------------------------------------------------------------------------------------
 
 const MAIN: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -713,7 +713,7 @@ fn two_sheets_naming_one_part_are_refused_by_name() {
     }
 }
 
-/// **Two entries of one name are refused, not read as the first** (review 2026-09-26 N26).
+/// **Two entries of one name are refused, not read as the first** (review 2026-09-26).
 ///
 /// A second `xl/sharedStrings.xml` would repoint every shared cell for a consumer that reads the
 /// last. The single table reads, so the refusal is the duplicate's.

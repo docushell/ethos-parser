@@ -72,7 +72,7 @@ fn from_embedded_program(doc: &lopdf::Document, descriptor: &lopdf::Dictionary) 
 
     // A filter that does not decode leaves the raw bytes, which are not the program: the
     // descriptor answers instead, as it does for a program `skrifa` cannot parse — and for one
-    // decoding past the ceiling, which no real program does (review 2026-09-25 F08).
+    // decoding past the ceiling, which no real program does (review 2026-09-25).
     let bytes = crate::budget::decoded(&stream, crate::budget::MAX_DECODED_BYTES).ok()?;
 
     // `skrifa`, not `ttf-parser`: RUSTSEC-2026-0192 records that ttf-parser's author has
@@ -299,7 +299,7 @@ mod tests {
     }
 
     /// **A font program whose filter does not decode is not read from its raw bytes** (review
-    /// 2026-09-26 N05). By the stream's own declaration they are not the program, so the
+    /// 2026-09-26). By the stream's own declaration they are not the program, so the
     /// descriptor answers, as it does for a program `skrifa` cannot parse.
     #[test]
     fn a_font_program_whose_filter_does_not_decode_falls_through_to_the_descriptor() {

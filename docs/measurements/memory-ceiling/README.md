@@ -6,8 +6,9 @@ arm64 (48 GiB, 12 cores, no swap in use). Peak RSS is read from outside the proc
 Instruments: [`model.py`](model.py), [`within.py`](within.py), [`intercept.py`](intercept.py).
 Raw readings: [`bench-97fa562.tsv`](bench-97fa562.tsv), [`pages.json`](pages.json).
 
-Plan item 6.2 says **"verify the figure first"**. The figure does not survive, and neither does
-its replacement. What does survive is a two-term model and a floor nobody had measured.
+The local plan's memory-ceiling item says **"verify the figure first"**. The figure does not
+survive, and neither does its replacement. What does survive is a two-term model and a floor nobody
+had measured.
 
 ---
 
@@ -992,7 +993,7 @@ graph.
 
 **Run 2026-09-28.** A = `main` at `5937665` (0.63.0-dev.1), B = the same tree with each line of an
 MCP session answered by a process of its own (`crates/ethos-parser-cli/src/mcp.rs`, *One process
-per line*), both release builds. Review 2026-09-26 N35. Instruments: [`mcptree.py`](mcptree.py),
+per line*), both release builds. Review 2026-09-26. Instruments: [`mcptree.py`](mcptree.py),
 which samples the resident memory of the server and of every process it started every 20 ms —
 `/usr/bin/time -l` sees one process, and a B session is several — [`mcplatency.py`](mcplatency.py)
 and [`mcpab.py`](mcpab.py).
@@ -1049,7 +1050,7 @@ whose memory grew with its length, and now a session's peak is its largest call'
 ## 17. What a page may cost: ceilings, and dense pages read alone
 
 **Run 2026-09-28.** A = `main` at `16f64d7`, B = the same tree with `crates/ethos-parser-pdf/src/budget.rs`
-(review 2026-09-25 F08, decision #34), both release builds. Every figure below is `/usr/bin/time -l`,
+(decision #34), both release builds. Every figure below is `/usr/bin/time -l`,
 one run.
 
 ### Why

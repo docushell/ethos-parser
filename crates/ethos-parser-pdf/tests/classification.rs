@@ -439,7 +439,7 @@ fn page_indices_survive_the_wire() {
     assert_eq!(back, c);
 }
 
-/// **The classification reader refuses a shape it does not read** (review 2026-09-26 N60).
+/// **The classification reader refuses a shape it does not read** (review 2026-09-26).
 #[test]
 fn the_classification_reader_refuses_a_shape_it_does_not_read() {
     let good =
@@ -775,7 +775,7 @@ fn both_refused(bytes: &[u8]) -> (EngineError, EngineError) {
     (classified.expect_err("classify refuses"), extracted)
 }
 
-/// **A page `extract` refuses, classify refuses the same way** (review 2026-09-26 N42).
+/// **A page `extract` refuses, classify refuses the same way** (review 2026-09-26).
 /// `tally_page` read a content stream that did not decode as zero tallies, so a page whose filter
 /// nothing can decode was classified `no-text`, exit 1 — an observation nobody made. Contract §8
 /// refuses such a page, and the v0 exit-code table gives classify 2 for it.
@@ -791,11 +791,11 @@ fn a_page_extract_refuses_is_refused_by_classify_too() {
     assert!(classified.to_string().contains("page 1"), "{classified}");
 }
 
-/// **An operator Table A.1 does not list is refused by classify as by extract** (review 2026-09-26
-/// N41). Counting interprets nothing, so classify never looked: the review's `w8.pdf`, whose page
-/// ends `1 2 foo`, was refused by extract and classified exit 0 with an artifact identical to the
-/// clean document's but for its digest. Contract §8 makes the operator a hard error, and the v0
-/// exit-code table names it as classify's example of exit 2.
+/// **An operator Table A.1 does not list is refused by classify as by extract** (review
+/// 2026-09-26). Counting interprets nothing, so classify never looked: the review's `w8.pdf`,
+/// whose page ends `1 2 foo`, was refused by extract and classified exit 0 with an artifact
+/// identical to the clean document's but for its digest. Contract §8 makes the operator a hard
+/// error, and the v0 exit-code table names it as classify's example of exit 2.
 #[test]
 fn an_operator_table_a1_does_not_list_is_refused_by_classify_too() {
     let bytes = with_page_content(|stream| {

@@ -133,7 +133,7 @@ consumers, so a published package must pull nothing on a default install.
 **5.7 — Open the next version on `main`.** Right after the tag, move the workspace to the next
 MINOR's pre-release, `X.(Y+1).0-dev.1`, in the same places 5.1 names, with the `profile_sha256`
 re-pinned. A build of `main` then never claims the version just released
-(decision #33, review 2026-09-26 N02).
+(decision #33).
 
 ## 6. There is no publish automation, deliberately
 

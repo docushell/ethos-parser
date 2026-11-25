@@ -48,7 +48,7 @@ pub struct Document {
     /// unrepaired one would be exactly the silent repair `docs/01-CONTRACT.md` §12 forbids.
     xref_entries_padded: Option<u32>,
     /// The `xref_repair` this document was opened under, which decided whether the repair could
-    /// run. `extract` refuses a profile naming another (review 2026-09-26 N55).
+    /// run. `extract` refuses a profile naming another (review 2026-09-26).
     opened_under: ethos_parser_core::XrefRepair,
     /// Whether the backend decrypted this document with the empty user password at load.
     ///
@@ -72,7 +72,7 @@ pub struct Document {
     /// Parsed `/ToUnicode` CMaps, one per stream, against one budget for the whole document.
     tounicode: crate::cmap::ToUnicodeCache,
     /// The first object the file writes as a stream and `lopdf` read as its bare dictionary, if
-    /// any (tracker I19). Only the writers refuse it: a rewrite would copy the dictionary alone.
+    /// any. Only the writers refuse it: a rewrite would copy the dictionary alone.
     lost_stream: Option<lopdf::ObjectId>,
     /// The catalog's default optional-content configuration (decision #139), read the first time
     /// a page asks and once for the document.
@@ -132,7 +132,7 @@ impl Document {
         // Before `lopdf` reads a byte. It allocates a cross-reference stream's `/W` field widths
         // before reading the stream, and a failed allocation aborts the process: no `Result` and
         // no `catch_unwind` survives it, so one 454-byte file ended an MCP session (review
-        // 2026-09-26 N10).
+        // 2026-09-26).
         if let Some((at, entry)) = wide_w_entry(bytes) {
             return Err(EngineError::ResourceLimit {
                 limit: format!("/W entry {entry} at byte {at}"),
@@ -183,7 +183,7 @@ impl Document {
             }
             // An object `lopdf` did not decrypt keeps its ciphertext, which every later stage reads
             // as text: one annotation's `/Contents` a byte short was read as its text, `extracted`,
-            // exit 0 (review 2026-09-26 N19).
+            // exit 0 (review 2026-09-26).
             decrypt_again(bytes, &mut inner)?;
         }
 
@@ -199,7 +199,7 @@ impl Document {
         }
 
         // The other half: an object a later revision deleted, which `lopdf` loaded from an older
-        // section because it records no free entry (review 2026-09-26 N06). Read as live, a
+        // section because it records no free entry (review 2026-09-26). Read as live, a
         // deleted comment or redacted text is evidence, and a writer puts it back on the page.
         let resurrected = crate::freed::resurrected(bytes, &inner);
         if let Some(id) = resurrected
@@ -380,7 +380,7 @@ impl Document {
 /// invalid-header, corrupt-header **and** a missing file, identically to "this document is
 /// complex" (parity checklist L16) — failing closed with an indistinguishable signal.
 /// `lopdf`'s load, each object and cross-reference stream it decodes held to
-/// [`crate::budget::MAX_DECODED_BYTES`] (review 2026-09-25 F08). An object stream past it is
+/// [`crate::budget::MAX_DECODED_BYTES`] (review 2026-09-25). An object stream past it is
 /// dropped rather than refused, and [`unloaded_in_use`] refuses every object it held.
 fn load(bytes: &[u8]) -> Result<lopdf::Document, lopdf::Error> {
     let options = lopdf::LoadOptions::with_max_decompressed_size(crate::budget::MAX_DECODED_BYTES);
@@ -910,7 +910,7 @@ mod tests {
     use crate::test_support::{bench_fixture, conformance_fixture};
 
     /// **Whether an object is written as a stream is read past its dictionary's strings,
-    /// hex strings and comments** (tracker I19), so a `>>` or a `stream` inside one decides
+    /// hex strings and comments**, so a `>>` or a `stream` inside one decides
     /// nothing.
     #[test]
     fn a_stream_is_told_from_a_dictionary_past_what_its_dictionary_holds() {

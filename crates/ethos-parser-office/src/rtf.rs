@@ -63,8 +63,8 @@
 //!
 //! Read under a declaration: **`\'hh` above 0x7F in a font of the ANSI character set, where the
 //! stream declares `\ansicpg1252`**, is the Windows-1252 character it names ([`cp1252`]). The byte
-//! means what a code page says it means, and here the document says which one (review 2026-09-26
-//! N03: TextEdit writes every non-ASCII character so, and dropping the byte spliced `Café` into
+//! means what a code page says it means, and here the document says which one (review 2026-09-26:
+//! TextEdit writes every non-ASCII character so, and dropping the byte spliced `Café` into
 //! `Caf`). Declared, never guessed: any other byte above 0x7F — under another code page or none,
 //! in a font whose `\fcharset` names another character set (a Symbol font's `\'b7` is a bullet),
 //! or one of the five bytes Windows-1252 leaves undefined. Below 0x80 the byte is the same
@@ -1122,7 +1122,7 @@ mod tests {
     }
 
     /// **Under a declared `\ansicpg1252`, a `\'hh` above 0x7F in an ANSI-charset font is the
-    /// Windows-1252 character it names** (review 2026-09-26 N03). TextEdit writes every non-ASCII
+    /// Windows-1252 character it names** (review 2026-09-26). TextEdit writes every non-ASCII
     /// character so, and dropping the byte spliced `Café naïve Müller — €5` into
     /// `Caf nave Mller  5`, which `locate` then matched. A Symbol font's byte and a byte the code
     /// page leaves undefined stay counted, as does every byte of a stream that declares none.

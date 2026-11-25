@@ -447,7 +447,7 @@ pub(crate) enum Inflation {
 /// where [`inflated_once`] read a lone `/FlateDecode` to its end: that one inflate's bytes, which
 /// `lopdf` returns the same, then stand for both reads, and this check is not run.
 ///
-/// **Bounded by `max_output`** (review 2026-09-25 F08): inflating stops once the output passes it,
+/// **Bounded by `max_output`** (review 2026-09-25): inflating stops once the output passes it,
 /// with [`Inflation::PastLimit`], an answer about size and not about the end. Discarded output
 /// costs no memory past the scratch, but inflating 64 MiB of source to 64 GiB costs a minute.
 /// Before this check refuses a bomb, [`inflated_once`] may have tried it, holding no more than one
@@ -554,7 +554,7 @@ pub(crate) fn tokenise(bytes: &[u8]) -> Result<Tokenised, EngineError> {
 }
 
 /// [`tokenise`], or `Ok(None)` once the buffer holds more than `limit` operations: counted before
-/// each one is kept, so no more than `limit` ever are (review 2026-09-25 F08).
+/// each one is kept, so no more than `limit` ever are (review 2026-09-25).
 ///
 /// # Errors
 ///
@@ -647,7 +647,7 @@ pub(crate) fn agrees_with_lopdf(
     Ok(())
 }
 
-/// Refuse a page this reader would read otherwise than a renderer (review 2026-09-26 N07).
+/// Refuse a page this reader would read otherwise than a renderer (review 2026-09-26).
 ///
 /// Two shapes. A string or an inline image cut by the end of a `/Contents` stream: the streams are
 /// joined with `\n`, which reads `<416D6F756E74` then `20647565>` as one hex string, while a
@@ -729,7 +729,7 @@ pub(crate) fn read_as_rendered(bytes: &[u8], t: &Tokenised, ends: &[usize]) -> R
                 match deflate_reaches_its_end(raw, crate::budget::MAX_DECODED_BYTES) {
                     Ok(Inflation::Ends) => true,
                     // Past the ceiling the end is not shown, and a window not shown to be the
-                    // data's end is not read (review 2026-09-25 F08).
+                    // data's end is not read (review 2026-09-25).
                     Ok(Inflation::PastLimit) => {
                         return Err(format!(
                             "the inline image at byte {} is /{} data inflating past {} bytes, \
@@ -2757,7 +2757,7 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
         }
         // Spliced now, so the page's bytes and tokens are gone before the next page is read.
         // Kept for every page, they took the peak from 0.8 GB to 2.4 GB on a 32 KB file whose
-        // 200 pages share one 400 KB stream (review 2026-09-26 N31).
+        // 200 pages share one 400 KB stream (review 2026-09-26).
         let stream = if plan.sequences.is_empty() {
             Vec::new()
         } else {
@@ -2802,7 +2802,7 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
             ),
         });
     }
-    // A stream `lopdf` read without its data (tracker I19): the writer would copy the dictionary
+    // A stream `lopdf` read without its data: the writer would copy the dictionary
     // alone, and a renderer draws what the source's data holds.
     if let Some((number, generation)) = doc.lost_stream() {
         return Err(EngineError::Unsupported {
@@ -2818,7 +2818,7 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
     // `lopdf`'s writer walks every object number below the document's highest, which a single
     // object can set anywhere up to 2^32: five objects, one of them numbered 1,000,000,000, kept
     // `overlay` busy 2.2 s, and a number four times larger would take four times as long
-    // (review 2026-09-26 N28). Real numbering is dense: the highest number is at most 1.17 times
+    // (review 2026-09-26). Real numbering is dense: the highest number is at most 1.17 times
     // the object count on 939 corpus documents.
     let inner = doc.inner();
     let ceiling = inner.objects.len().saturating_mul(16).saturating_add(1024);
@@ -2834,7 +2834,7 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
     }
     // The writer prints a real with `Display`, which writes no exponent, so a real from 2^63 up
     // is an integer token past the 64-bit range qpdf and `lopdf` read one into: qpdf reads the
-    // object holding it as null, and `lopdf` does not load it (tracker I17).
+    // object holding it as null, and `lopdf` does not load it.
     let integral = -(2f32.powi(63))..2f32.powi(63);
     // Every object, then the trailer's values: the writer prints both.
     let objects = inner.objects.iter().map(|(&id, o)| (Some(id), o));
@@ -4475,7 +4475,7 @@ mod tests {
         assert_eq!(read.ok(), Some(CAP + 1));
     }
 
-    /// **The operation limit is checked before each operation is kept** (review 2026-09-25 F08).
+    /// **The operation limit is checked before each operation is kept** (review 2026-09-25).
     ///
     /// The failure this catches: a count taken after the whole page is tokenised, which keeps every
     /// operation of a hostile page before refusing it, or a limit off by one.
@@ -4498,7 +4498,7 @@ mod tests {
     }
 
     /// **Inflating stops once the output passes its limit**, an answer about size rather than
-    /// about the end (review 2026-09-25 F08).
+    /// about the end (review 2026-09-25).
     ///
     /// The failure this catches: an unbounded inflate spending a minute on 64 MiB of source, or a
     /// limit that reports a stream as cut when it is only large.

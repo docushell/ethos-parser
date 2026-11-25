@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! **Every artifact the engine emits is described by its draft schema** (review 2026-09-26 N33).
+//! **Every artifact the engine emits is described by its draft schema** (review 2026-09-26).
 //!
 //! `docs/draft-schemas/README.md` says the drafts document a shape that already compiles, and by
 //! 0.61.0 four of them rejected every artifact the engine emitted: 90 of 90 representations, 75 of

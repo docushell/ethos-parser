@@ -16,7 +16,7 @@
 #
 # 6.3 asks for GitHub Releases on three platforms. When this was written, GitHub Actions would not
 # allocate a runner on this account, so a `release.yml` would have been a file that had never
-# executed — and the plan's own note about 6.1 applies: a job that never ran proves nothing about
+# executed — and the plan's note on byte identity applies: a job that never ran proves nothing about
 # the artifact it claims to produce. So the machinery is a script that runs, here, now. Runners
 # run since the repository went public, and `.github/workflows/release-artifacts.yml` calls this
 # script unchanged: every runner with `--native`, so it builds and EXECUTES only the target it is,

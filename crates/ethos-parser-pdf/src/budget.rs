@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! What reading one document may cost, as ceilings that depend only on the document (review
-//! 2026-09-25 F08).
+//! 2026-09-25).
 //!
 //! Deflate expands up to about 1,032:1, and a content operation costs about 620 bytes once decoded
 //! — the reader's own token and `lopdf`'s operation, both alive while a page is read. So 4.7 KB of

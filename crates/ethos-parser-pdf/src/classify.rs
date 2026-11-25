@@ -339,7 +339,7 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
 /// The refusal [`crate::extract::page_operations`] gives the page, which is `extract`'s own. A
 /// page whose content does not decode used to yield zero tallies here, so a page `extract` refuses
 /// for an undecodable filter was classified `no-text`, exit 1: an observation this reader never
-/// made (review 2026-09-26 N42). `docs/01-CONTRACT.md` §8 makes such a page a refusal, and
+/// made (review 2026-09-26). `docs/01-CONTRACT.md` §8 makes such a page a refusal, and
 /// `docs/history/03-V0-SCOPE.md` §3.1 gives classify exit 2 for it.
 fn tally_page(
     doc: &Document,
@@ -385,7 +385,7 @@ fn tally_page(
 
 /// Count one stream's operations into `t`.
 ///
-/// Counting interprets nothing, and still refuses what extract refuses (review 2026-09-26 N41):
+/// Counting interprets nothing, and still refuses what extract refuses (review 2026-09-26):
 /// an operator Table A.1 does not list is contract §8's hard error, and the v0 scope names it as
 /// classify's exit-2 example.
 fn tally_operations(

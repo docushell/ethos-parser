@@ -1143,7 +1143,7 @@ fn an_object_cited_by_the_tree_carries_its_elements_class() {
     }
 }
 
-/// **A structure element whose `/S` or `/ID` is not UTF-8 is refused** (review 2026-09-26 N47).
+/// **A structure element whose `/S` or `/ID` is not UTF-8 is refused** (review 2026-09-26).
 /// Both were decoded lossily, so the review's `t01` gave two elements with `/ID <FF>` and
 /// `/ID <FE>` one `element_id`, `"\u{FFFD}"` — a structural locator the document does not state,
 /// shared by two elements — and read `/Foo#FF` as `Foo\u{FFFD}`. The control is the same edit in

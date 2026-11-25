@@ -564,8 +564,9 @@ nothing, on purpose.
 - **Not exposed over MCP or the SDKs.** Six of the nine subcommands are not, `overlay` among them,
   and the writer is the one whose output is a document rather than an artifact. An MCP tool is
   model-controlled, and a tool that emits a mutated copy of a document on a model's say-so is a
-  different hazard class from one that reads. Plan §8's rule that every knob needs an MCP and SDK
-  line is met by this line: not exposed, on purpose, until an owner decision says otherwise.
+  different hazard class from one that reads. The local plan's rule that every knob needs an MCP
+  and SDK line is met by this line: not exposed, on purpose, until an owner decision says
+  otherwise.
   **Amended 2026-09-18:** `locate` is an eleventh subcommand and a fourth MCP tool (decision #30),
   so the population this counted has moved. The count is left as it stood when this was written
   rather than restated, on `verify_relay.rs`'s rule about ordinals — a recount asserted in passing
@@ -704,7 +705,7 @@ Stated on the artifact where an artifact exists, and here where the output is a 
    and they are the same bytes an escaped `\r` gives, so no reader of its parse can tell the two
    apart: `(line one⏎line two)` reads as `line one\r\nline two`, and the writer escapes the CR,
    which qpdf then reads as CR LF where the source meant LF. Declared rather than repaired until
-   the parser keeps the distinction (review 2026-09-26 N49); no corpus string carries one.
+   the parser keeps the distinction (review 2026-09-26); no corpus string carries one.
 
 ## 10. Slices
 
@@ -734,7 +735,7 @@ and the milestones stand under the assumption that they are taken as written her
 | --- | --- |
 | **#25** | This scope: owner `/EthosParser`, the attribute of §3.3 read under `/A` and `/C`, `/Div` under `/Document`, the block as the unit, the placement rule of §3.4, strictly decoded and spliced bytes with one serialisation, `pdf_tagged.derivation` plus `structure-tree-engine-written` on the wire, `struct-tree-v2`, the projections reading a written sequence as no declaration, and the parse break of §8 |
 | **#26** | The writer is not exposed over MCP or the SDKs until an owner decision says otherwise (§5) |
-| **#27** | The local plan's three v2.2 "done" conditions, reconciled with the roadmap's two clauses: (1) *a refused table candidate emits something a retrieval pipeline can use* is retired on the plan's own §5.3 T2 finding that there is nothing useful for a refused candidate to emit; (2) *TEDS re-measured and published as a band* is an instrument under decision #18, run at 0.58.0 (`docs/measurements/opendataloader-bench/`), not a gate; (3) *the block cut has a consumer* is met by this scope (§3.1). The roadmap's two clauses are the whole gate, and clause two is met when §3.7 holds on the fixtures and §7's numbers are published — or the plan's definition is retired, which comes to the same |
+| **#27** | The local plan's three v2.2 "done" conditions, reconciled with the roadmap's two clauses: (1) *a refused table candidate emits something a retrieval pipeline can use* is retired on the plan's own finding that there is nothing useful for a refused candidate to emit; (2) *TEDS re-measured and published as a band* is an instrument under decision #18, run at 0.58.0 (`docs/measurements/opendataloader-bench/`), not a gate; (3) *the block cut has a consumer* is met by this scope (§3.1). The roadmap's two clauses are the whole gate, and clause two is met when §3.7 holds on the fixtures and §7's numbers are published — or the plan's definition is retired, which comes to the same |
 
 D1 stays where [`OPEN-WORK.md`](OPEN-WORK.md) §4 holds it, as its own pending decision; §3.2 says
 what moves if it is taken. One question this document leaves open on purpose, because a

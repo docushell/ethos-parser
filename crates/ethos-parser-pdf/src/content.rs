@@ -780,13 +780,13 @@ pub struct Interpreter<'a> {
     /// untagged when it is not. Counted rather than assumed away.
     pub props_by_name: u32,
     /// How many `BDC` sequences carry `/ActualText`, `/Alt` or `/E` in an inline property list
-    /// (review 2026-09-26 N22).
+    /// (review 2026-09-26).
     ///
     /// Each is the document's own text for what it marks, which this profile does not read: a run
     /// is the glyphs the page draws. Counted so the artifact can say so.
     pub alternate_texts: u32,
     /// Runs whose string ends part-way through a character code, the lone last byte read as a
-    /// code of its own (review 2026-09-26 N46; [`crate::fonts::Font::split_codes`]).
+    /// code of its own (review 2026-09-26; [`crate::fonts::Font::split_codes`]).
     pub partial_code_runs: u32,
     /// Image XObjects this page painted, in the order it painted them (v1-S6).
     pub images: Vec<ImagePlacement>,
@@ -1196,7 +1196,7 @@ impl<'a> Interpreter<'a> {
         let token = op.operator.as_str();
         let operator = Operator::of(token)?;
         // Too few is refused where an operand is read; too many only here, because reading
-        // the first of them is where this reader and a renderer part (review 2026-09-26 N48).
+        // the first of them is where this reader and a renderer part (review 2026-09-26).
         if let Some(n) = operator.operands_read().filter(|&n| op.operands.len() > n) {
             return Err(EngineError::Malformed {
                 what: "content stream".into(),
@@ -1999,7 +1999,7 @@ impl<'a> Interpreter<'a> {
         };
 
         // A font whose encoding this profile does not read refuses here, at the first string shown
-        // with it, and not where the page lists it (tracker I8).
+        // with it, and not where the page lists it.
         if let Some(refusal) = font.refusal() {
             return Err(refusal);
         }
@@ -2009,7 +2009,7 @@ impl<'a> Interpreter<'a> {
         }
         // A string that ends part-way through a code: its lone last byte is read as a code, as
         // Ghostscript renders it, and the run is counted so the artifact says so (review
-        // 2026-09-26 N46). Dropping such runs instead lost 27 that renderers draw — arrows among
+        // 2026-09-26). Dropping such runs instead lost 27 that renderers draw — arrows among
         // them — across three real documents, and moved later runs off where they are drawn.
         if partial > 0 {
             self.partial_code_runs = self.partial_code_runs.saturating_add(1);

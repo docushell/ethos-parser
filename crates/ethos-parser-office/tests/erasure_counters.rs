@@ -132,16 +132,16 @@ const PDF_COUNTERS: [&str; 25] = [
     // way a fourth time — the author had read `readers()` and concluded this file scanned only
     // `ethos-parser-office/src`, missing the PDF half forty lines below it.
     "rtl_runs",
-    // Review 2026-09-26 N21. The runs holding a `U+FFFD` a font maps a code to, the count
+    // Review 2026-09-26. The runs holding a `U+FFFD` a font maps a code to, the count
     // `replacement-character-in-text` names.
     "replacement_runs",
-    // Review 2026-09-26 N22. The marked-content sequences carrying `/ActualText`, `/Alt` or `/E`,
+    // Review 2026-09-26. The marked-content sequences carrying `/ActualText`, `/Alt` or `/E`,
     // one half of the count `actual-text-not-read` names; the structure walk counts the other.
     "alternate_texts",
-    // Review 2026-09-26 N46. The runs whose string ends part-way through a code, the count
+    // Review 2026-09-26. The runs whose string ends part-way through a code, the count
     // `string-ends-mid-code` names.
     "partial_code_runs",
-    // Review 2026-09-26 N39. The field values and annotation `/Contents` that will not decode, the
+    // Review 2026-09-26. The field values and annotation `/Contents` that will not decode, the
     // count `form-annotation-text-undecodable` names.
     "undecodable_object_texts",
     // Decision #37 (`docs/30-FORM-XOBJECTS-SCOPE.md`). The `/MCID`s forms open, the count

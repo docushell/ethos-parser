@@ -208,8 +208,8 @@ impl ValidationReport {
     }
 }
 
-/// A report's `artifact_type` or `schema_version`, refused unless it is `only` (review 2026-09-26
-/// N60): the check [`ethos_parser_core::ArtifactIdentity::deserialize_pinned`] makes, for a report
+/// A report's `artifact_type` or `schema_version`, refused unless it is `only` (review 2026-09-26):
+/// the check [`ethos_parser_core::ArtifactIdentity::deserialize_pinned`] makes, for a report
 /// that carries the two as fields of its own.
 fn pinned<'de, D: serde::Deserializer<'de>>(d: D, only: &str) -> Result<String, D::Error> {
     let found = String::deserialize(d)?;
@@ -1718,7 +1718,7 @@ mod tests {
         assert_eq!(r.source_binding, SourceBinding::NotChecked);
     }
 
-    /// **The report reader refuses a shape it does not read** (review 2026-09-26 N60).
+    /// **The report reader refuses a shape it does not read** (review 2026-09-26).
     #[test]
     fn the_report_reader_refuses_a_shape_it_does_not_read() {
         let good = serde_json::to_value(grounding_check(&valid_bytes(), None).unwrap()).unwrap();

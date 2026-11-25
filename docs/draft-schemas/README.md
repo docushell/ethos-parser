@@ -41,7 +41,7 @@ files, the seven components through the `$ref`s of the eight artifacts, and ever
 attribute variant the representation draft declares must meet a real node. It is a subset of JSON
 Schema, not a validator — no minimum, pattern or length is checked — and it needs no dependency. It
 exists because four of these files rejected every artifact the engine emitted, through 0.62.0, while
-the five tests below passed (review 2026-09-26 N33).
+the five tests below passed (review 2026-09-26).
 
 Beside it, a small test per draft pins the one or two fields a reader would actually branch on:
 

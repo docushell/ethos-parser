@@ -506,7 +506,7 @@ fn synthesized_flags_survive_canonicalization() {
     assert_eq!(back, a);
 }
 
-/// **The extract reader refuses a shape it does not read** (review 2026-09-26 N60) — and still
+/// **The extract reader refuses a shape it does not read** (review 2026-09-26) — and still
 /// reads `0.4.0`, the shape before the outline slice, which `outlines` defaults for.
 #[test]
 fn the_extract_reader_refuses_a_shape_it_does_not_read() {
@@ -1314,7 +1314,7 @@ fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
     );
 }
 
-/// **One profile from the open to the representation** (review 2026-09-26 N55). The open decides
+/// **One profile from the open to the representation** (review 2026-09-26). The open decides
 /// whether the repair runs, so the hostile document opened under it and extracted under a profile
 /// that refuses it named the refusing profile while carrying `xref-entry-padded`. And
 /// `to_representation` took the record's identity from the extract and its backend from its own
@@ -2302,7 +2302,7 @@ fn a_table_ruled_in_outlined_rules_is_a_ruled_table() {
 }
 
 // -------------------------------------------------------------------------------------------
-// What a page may cost (review 2026-09-25 F08)
+// What a page may cost (review 2026-09-25)
 // -------------------------------------------------------------------------------------------
 
 /// A PDF whose pages each draw one deflated content stream, with Helvetica as `/F1`.
@@ -2369,7 +2369,7 @@ fn resource_limit(e: ethos_parser_core::EngineError) -> (String, String) {
 }
 
 /// **A page denser than the parallel read admits is read alone afterwards, and nothing of it is
-/// lost** (review 2026-09-25 F08).
+/// lost** (review 2026-09-25).
 ///
 /// Pages past 65,536 operations leave the parallel read, so dense pages cost one at a time whatever
 /// the core count. The failure this catches: a deferred page never read again, read as empty, or
@@ -2449,7 +2449,7 @@ fn a_page_whose_ascii85_content_decodes_past_the_ceiling_is_refused_by_name() {
 }
 
 /// **An inline image inflating past 64 MiB is refused for its size, not read as though it ended**
-/// (review 2026-09-25 F08).
+/// (review 2026-09-25).
 ///
 /// Whether a filtered inline image's data ends at its `EI` window is checked by inflating it, and
 /// past the ceiling that check stops. The failure this catches: an unbounded inflate of a few
@@ -2471,8 +2471,8 @@ fn an_inline_image_inflating_past_the_ceiling_is_refused_for_its_size() {
     );
 }
 
-/// **An object stream decoding past 64 MiB is refused at open, naming it** (review 2026-09-25
-/// F08).
+/// **An object stream decoding past 64 MiB is refused at open, naming it** (review
+/// 2026-09-25).
 ///
 /// `lopdf` decodes object streams while it loads, before any check here runs. With its limit it
 /// drops such a stream rather than refusing it, and the open refuses every object the stream held.
@@ -4317,7 +4317,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
 // -------------------------------------------------------------------------------------------
 
 /// **A page's `/Resources` inherited from `/Pages` is read as its own would be** (review
-/// 2026-09-26 N43). The key is inheritable (PDF 32000-1 Table 30); the tag writer inherited it,
+/// 2026-09-26). The key is inheritable (PDF 32000-1 Table 30); the tag writer inherited it,
 /// and the fonts, the images and classify's image count read the page's own alone — so
 /// `image-xobject-drawn` with its dictionary moved up one level was refused for a missing font,
 /// where Ghostscript draws it.
@@ -4365,8 +4365,8 @@ fn resources_inherited_from_the_page_tree_are_read_as_the_pages_own() {
     );
 }
 
-/// **An operator given more operands than Table A.1 gives it is refused** (review 2026-09-26
-/// N48). The interpreter reads operands from the front and a renderer pops them from the back:
+/// **An operator given more operands than Table A.1 gives it is refused** (review 2026-09-26).
+/// The interpreter reads operands from the front and a renderer pops them from the back:
 /// with eight before `Tm`, the review's `j2_number_split.pdf` placed its text at (7, 2), where
 /// neither Ghostscript nor CoreGraphics draws it. Every operator whose operands are read is held
 /// to its count: read at exactly it, refused one past it.
@@ -4417,7 +4417,7 @@ fn an_operator_given_more_operands_than_table_a1_gives_it_is_refused() {
 }
 
 /// **A string ending part-way through a two-byte code is read as Ghostscript renders it, and
-/// declared** (review 2026-09-26 N46). Its lone last byte is read as a code of its own: under
+/// declared** (review 2026-09-26). Its lone last byte is read as a code of its own: under
 /// `composite-font-cid-widths`' Identity-H font `<000102>` reads as `AB`, codes `[1, 2]`, and the
 /// pen travels over both. pdf.js reads the byte as a code's first and PDF 32000-1 §9.7.6.3 maps it
 /// to `.notdef`, so the reading is counted under `string-ends-mid-code`. The review's sketch,
@@ -4459,7 +4459,7 @@ fn a_string_ending_part_way_through_a_code_is_read_as_rendered_and_declared() {
 }
 
 /// **A field's value and an annotation's text are decoded strictly, and what will not decode is
-/// counted** (review 2026-09-26 N39). Both were read as Latin-1, a name lossily: UTF-8 behind its
+/// counted** (review 2026-09-26). Both were read as Latin-1, a name lossily: UTF-8 behind its
 /// byte-order mark came out as mojibake, and `0xA0`, the euro sign in PDFDocEncoding, as a
 /// no-break space. The line controls a multi-line value writes stay text. Since
 /// `docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`, `0xA0` and `0x85` read through the derived table, and
@@ -6204,8 +6204,8 @@ fn classify_counts_the_text_a_page_draws_through_a_form() {
     );
 }
 
-/// **An image that did not load as a stream is counted unresolved, not called a form** (tracker
-/// I17). A direct `/Length` that misses the data makes `lopdf` load the object as its bare
+/// **An image that did not load as a stream is counted unresolved, not called a form**.
+/// A direct `/Length` that misses the data makes `lopdf` load the object as its bare
 /// dictionary, and a renderer that finds `endstream` still draws the image; it was declared a
 /// form this profile did not descend into, on a page that draws no form. A form lost the same way
 /// is still one, and still counted on its page.
@@ -8214,7 +8214,7 @@ fn extracted(bytes: &[u8]) -> Result<ExtractArtifact, ethos_parser_core::EngineE
 /// names neither `/CS` nor `/IM true` panics inside `Content::decode`, and the release profile's
 /// `panic = "abort"` would end the process — an MCP server with it. The tokeniser refuses the
 /// shape before `lopdf` sees it. Classify read the refused page as zero tallies until review
-/// 2026-09-26 N42; it gives extract's refusal now.
+/// 2026-09-26; it gives extract's refusal now.
 #[test]
 fn an_inline_image_lopdf_panics_on_is_refused_by_name() {
     let mut content = MEASURED.to_vec();
@@ -8267,7 +8267,7 @@ fn a_tail_lopdf_would_drop_is_refused_by_name() {
 /// object whose bytes do not parse, and the page loop skipped the reference that no longer
 /// resolved: one stray `)` in the stream's dictionary read as a blank page, `complete`. A
 /// reference the cross-reference table never listed is null (§7.3.10), and still draws nothing.
-/// Since review 2026-09-26 N08 the open refuses the lost object, before the page loop reads it.
+/// Since review 2026-09-26 the open refuses the lost object, before the page loop reads it.
 #[test]
 fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
     let page = |contents: &str, stream_dict: &str| {
@@ -8301,7 +8301,7 @@ fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
 }
 
 /// **A `/Contents` entry the table does not list at that generation, or an explicit `null`, draws
-/// nothing** (review 2026-09-26 N63). PDF 32000-1 §7.3.10 reads both as null, and v0.61.0 read
+/// nothing** (review 2026-09-26). PDF 32000-1 §7.3.10 reads both as null, and v0.61.0 read
 /// both; the check above compared object numbers alone and did not take a loaded `null` for one,
 /// so it refused each page as unreadable.
 #[test]
@@ -8374,7 +8374,7 @@ fn a_row_in_use_at_offset_zero_is_null() {
 }
 
 /// **An object `lopdf` did not load is refused at open, whatever would read it** (review
-/// 2026-09-26 N08). The check above guarded `/Contents` alone: an annotation or a `/ToUnicode` lost
+/// 2026-09-26). The check above guarded `/Contents` alone: an annotation or a `/ToUnicode` lost
 /// to one stray `)` vanished without a word, and an image whose `/Length` names no object loaded
 /// with no data — each in an artifact marked `complete`, and in what `tag` and `overlay` wrote.
 #[test]
@@ -8431,7 +8431,7 @@ fn an_object_lopdf_did_not_load_is_refused_at_open() {
 }
 
 /// **A `/W` entry `lopdf` would allocate is refused before `lopdf` reads the file** (review
-/// 2026-09-26 N10). `lopdf` zero-allocates a cross-reference stream's field widths before reading
+/// 2026-09-26). `lopdf` zero-allocates a cross-reference stream's field widths before reading
 /// the stream, so `/W [70368744177664 4 2]` asked for 64 TiB, the failed allocation aborted the
 /// process, and `extract`, `classify` and an MCP session died with exit 134.
 #[test]
@@ -8453,7 +8453,7 @@ fn a_w_entry_lopdf_would_allocate_is_refused_before_it_reads_the_file() {
 }
 
 /// **A document's `ToUnicode` CMaps share one ceiling, and crossing it refuses the document ahead
-/// of any page's own error** (review 2026-09-26 N11). Page 2's CMap sits at the ceiling and page
+/// of any page's own error** (review 2026-09-26). Page 2's CMap sits at the ceiling and page
 /// 3's holds one mapping more, in another stream, so together they cross it whichever runs first;
 /// page 1 names a font that does not resolve. Pages run in parallel, so without the precedence the
 /// error reported would depend on which of pages 2 and 3 got there second.
@@ -8504,7 +8504,7 @@ fn a_documents_tounicode_ceiling_refuses_it_ahead_of_any_page_error() {
     );
 }
 
-/// **An object a later revision deleted is refused, not read as live** (review 2026-09-26 N06).
+/// **An object a later revision deleted is refused, not read as live** (review 2026-09-26).
 /// An update deletes an object with a free entry in its newer cross-reference section, and `lopdf`
 /// records no free entry, so the older section's entry loaded the deleted annotation: its text
 /// reached the artifact, and `tag` and `overlay` drew it again. The update deletes it here as a
@@ -8609,8 +8609,8 @@ fn an_object_a_later_revision_deleted_is_refused_not_read_as_live() {
     }
 }
 
-/// **A page this reader would read otherwise than a renderer is refused** (review 2026-09-26
-/// N07). Renderers end a token with its `/Contents` stream and read a filtered inline image's data
+/// **A page this reader would read otherwise than a renderer is refused** (review 2026-09-26).
+/// Renderers end a token with its `/Contents` stream and read a filtered inline image's data
 /// to its filter's end. This reader joined the streams with `\n` and ended the data at the first
 /// `EI` window, so a hex string split across two streams, or text after a false `EI` inside
 /// ASCII85 data, was extracted where Ghostscript draws nothing, and `tag` then made it drawn.
@@ -8944,7 +8944,7 @@ fn ascii85(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-/// **`FlateDecode` after another filter is checked as a first one is** (review 2026-09-26 N23).
+/// **`FlateDecode` after another filter is checked as a first one is** (review 2026-09-26).
 /// `lopdf` returns a truncated inflate's partial output as a success wherever the filter sits, and
 /// only a first filter's deflate data was checked: a page under `[/ASCII85Decode /FlateDecode]`
 /// whose deflate data stops at a flush point read as the text before it, `complete`. The same
@@ -8973,7 +8973,7 @@ fn a_flate_stream_after_another_filter_that_does_not_reach_its_end_is_refused() 
     );
 }
 
-/// **An empty filter array is no filter** (review 2026-09-26 N09): the stream's own bytes are the
+/// **An empty filter array is no filter** (review 2026-09-26): the stream's own bytes are the
 /// page, as Ghostscript and qpdf read them. `lopdf` decodes an empty chain to no bytes at all, and
 /// the page read as blank and `complete`.
 #[test]
@@ -9028,7 +9028,7 @@ fn a_page_tree_that_is_not_a_tree_is_refused() {
     }
 }
 
-/// **A `/Pages` tree reads as deep as `get_pages` reads it** (review 2026-09-26 N64). The walk
+/// **A `/Pages` tree reads as deep as `get_pages` reads it** (review 2026-09-26). The walk
 /// bounded levels where `get_pages` bounds pending sibling lists, so a legal 300-level chain, which
 /// v0.61.0, Ghostscript and qpdf each read as one page, was refused. The bound now sits where
 /// `get_pages` skips a node without a word, and nowhere else.
@@ -9263,7 +9263,7 @@ fn annotation_6(doc: &mut lopdf::Document) -> &mut lopdf::Dictionary {
         .expect("annotation 6 0 R")
 }
 
-/// **An encrypted open where an object does not decrypt is refused** (review 2026-09-26 N19).
+/// **An encrypted open where an object does not decrypt is refused** (review 2026-09-26).
 /// `lopdf` 0.44.0 discards a decryption error at load and keeps the object as the file writes it,
 /// so with one annotation's `/Contents` a byte short of whole 16-byte blocks, that annotation read
 /// its ciphertext as its text, `extracted`, exit 0.
@@ -9304,7 +9304,7 @@ fn an_encrypted_open_where_an_object_does_not_decrypt_is_refused() {
 }
 
 /// **A signature's `/Contents` is read as written, and what follows it decrypted** (review
-/// 2026-09-26 N19). A signer stores it unencrypted, and `lopdf` decrypts it anyway: the error it
+/// 2026-09-26). A signer stores it unencrypted, and `lopdf` decrypts it anyway: the error it
 /// discards left the rest of the signature, and of any dictionary holding it, as ciphertext.
 /// Three real forms signed for usage rights, encrypted AES, failed so. A
 /// signature is a dictionary of `/Type /Sig` carrying `/ByteRange`, as qpdf reads one: with either
@@ -9770,7 +9770,7 @@ fn a_document_without_right_to_left_text_declares_nothing_about_it() {
     );
 }
 
-/// **An astral right-to-left scalar is declared too** (review 2026-09-26 N44). The block test read
+/// **An astral right-to-left scalar is declared too** (review 2026-09-26). The block test read
 /// three BMP ranges, so Adlam, Hanifi Rohingya, Imperial Aramaic or the Arabic mathematical
 /// alphabet declared nothing, where the declaration's absence reads as *no right-to-left text*.
 ///
@@ -9818,7 +9818,7 @@ fn an_astral_right_to_left_scalar_is_declared() {
 }
 
 /// **A `U+FFFD` the document's own `/ToUnicode` maps a code to is read and counted** (review
-/// 2026-09-26 N21). It entered the evidence with nothing declared, where nothing downstream can
+/// 2026-09-26). It entered the evidence with nothing declared, where nothing downstream can
 /// tell it from a substitution — which this engine never makes.
 #[test]
 fn a_replacement_character_a_font_maps_a_code_to_is_read_and_counted() {
@@ -9953,7 +9953,7 @@ fn a_tree_that_tags_no_heading_leaves_headings_to_the_rule() {
     );
 }
 
-/// **`/ActualText`, `/Alt` and `/E` are declared unread** (review 2026-09-26 N22). The page's
+/// **`/ActualText`, `/Alt` and `/E` are declared unread** (review 2026-09-26). The page's
 /// `/Span << /ActualText (Example) >>` reads `Ex-`, the glyphs drawn, where a viewer copies
 /// `Example`; and a structure element's `/Alt` is in no node. Neither was declared.
 #[test]
@@ -10017,7 +10017,7 @@ fn actual_text_alt_and_e_are_declared_unread() {
 }
 
 /// **A font this profile cannot decode refuses where it is drawn with, not where a page lists
-/// it** (tracker I8). A page listing a `/GBK-EUC-H` font and drawing nothing with it was refused
+/// it**. A page listing a `/GBK-EUC-H` font and drawing nothing with it was refused
 /// whole; one corpus document was, over a font none of its text uses.
 #[test]
 fn a_font_this_profile_cannot_decode_refuses_only_where_it_is_drawn_with() {
@@ -10122,8 +10122,8 @@ fn an_identity_font_without_tounicode_drops_its_runs_and_keeps_the_page() {
 // Outline titles
 // -------------------------------------------------------------------------------------------
 
-/// **An outline `/Title` held in an indirect object is read where it points** (review 2026-09-26
-/// N17). PDF 32000-1 §7.3.10 lets any value be indirect, and the reader counted such a title as one
+/// **An outline `/Title` held in an indirect object is read where it points** (review 2026-09-26).
+/// PDF 32000-1 §7.3.10 lets any value be indirect, and the reader counted such a title as one
 /// holding a byte it would not decode.
 #[test]
 fn an_indirect_outline_title_is_read() {

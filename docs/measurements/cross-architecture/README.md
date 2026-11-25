@@ -10,10 +10,10 @@ Rosetta 2. Instrument: [`crossarch.py`](crossarch.py).
 
 ## 1. Why this was run, and what it is a substitute for
 
-When this was run, plan item 6.1 — three-OS byte-identity — was `BLOCKED`, and not on a decision.
-GitHub Actions could not allocate a runner on this account, and this host has no cross toolchain
-for Linux or Windows: no zig, no Docker, no mingw-w64, no musl-gcc. Cross-compiling one anyway
-would produce a binary nobody has ever executed, which for an engine whose product is
+When this was run, the local plan's three-OS byte-identity item was `BLOCKED`, and not on a
+decision. GitHub Actions could not allocate a runner on this account, and this host has no cross
+toolchain for Linux or Windows: no zig, no Docker, no mingw-w64, no musl-gcc. Cross-compiling one
+anyway would produce a binary nobody has ever executed, which for an engine whose product is
 byte-identical reruns is an untested claim wearing an artifact's clothes.
 
 **The runner half no longer holds.** Since the repository went public (around 2026-09-13),

@@ -39,7 +39,7 @@
 //! PDF 32000-1 §7.3.4.2 reads an end-of-line written raw inside a literal string as one LF.
 //! `lopdf` keeps the raw bytes, which are the bytes an escaped `\r` gives, so its writer escapes the
 //! CR and qpdf reads the copy's string as CR LF where the source meant LF. Declared, not repaired,
-//! until the parser keeps the distinction (review 2026-09-26 N49; `docs/23-AUTO-TAGGING-SCOPE.md`
+//! until the parser keeps the distinction (review 2026-09-26; `docs/23-AUTO-TAGGING-SCOPE.md`
 //! §9 item 8 for the tag writer, which shares it).
 //!
 //! # Determinism, and the one trap

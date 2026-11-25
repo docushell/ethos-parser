@@ -524,7 +524,7 @@ fn a_truncated_deck_is_refused() {
     }
 }
 
-/// **Two entries of one name are refused, not read as the first** (review 2026-09-26 N26).
+/// **Two entries of one name are refused, not read as the first** (review 2026-09-26).
 ///
 /// The deck's second slide renamed to its first in both headers — the same length, so every offset
 /// holds — leaves two `ppt/slides/slide1.xml`, the second of which a consumer preferring the last

@@ -742,7 +742,7 @@ pub fn form_field_state_not_determinable(widgets: u32) -> Limitation {
     )
 }
 
-/// Runs whose string ends part-way through a character code (review 2026-09-26 N46).
+/// Runs whose string ends part-way through a character code (review 2026-09-26).
 pub fn string_ends_mid_code(runs: u32) -> Limitation {
     Limitation::document(
         ethos_parser_core::codes::STRING_ENDS_MID_CODE,
@@ -760,7 +760,7 @@ pub fn string_ends_mid_code(runs: u32) -> Limitation {
 }
 
 /// Form field values and annotation `/Contents` holding bytes this engine will not decode (review
-/// 2026-09-26 N39), on `outline-title-undecodable`'s precedent.
+/// 2026-09-26), on `outline-title-undecodable`'s precedent.
 pub fn form_annotation_text_undecodable(count: u32) -> Limitation {
     Limitation::document(
         ethos_parser_core::codes::FORM_ANNOTATION_TEXT_UNDECODABLE,
@@ -901,8 +901,8 @@ pub fn form_xobject_mcids_not_bound(sequences: u32) -> Limitation {
     )
 }
 
-/// The same gap as [`form_xobjects_not_descended`], stated on the page it cost (review 2026-09-26
-/// N20). Without the page, a page whose only drawing is an undescended form reads `processed` with
+/// The same gap as [`form_xobjects_not_descended`], stated on the page it cost (review 2026-09-26).
+/// Without the page, a page whose only drawing is an undescended form reads `processed` with
 /// no runs, and `page_binding_status` called a negative search over it a real observation.
 pub fn form_xobjects_not_descended_on_page(page: u32, count: u32) -> Limitation {
     Limitation::page(
@@ -1073,7 +1073,7 @@ pub fn right_to_left_not_reordered(count: u32) -> Limitation {
     )
 }
 
-/// Text runs holding `U+FFFD` a font of the document maps a code to (review 2026-09-26 N21).
+/// Text runs holding `U+FFFD` a font of the document maps a code to (review 2026-09-26).
 ///
 /// The count is runs, as [`right_to_left_not_reordered`]'s is, because the run is the unit a
 /// citation quotes.
@@ -1092,7 +1092,7 @@ pub fn replacement_character_in_text(count: u32) -> Limitation {
     )
 }
 
-/// `/ActualText`, `/Alt` and `/E`, counted and not read (review 2026-09-26 N22).
+/// `/ActualText`, `/Alt` and `/E`, counted and not read (review 2026-09-26).
 pub fn actual_text_not_read(sequences: u32, elements: u32) -> Limitation {
     Limitation::document(
         ethos_parser_core::codes::ACTUAL_TEXT_NOT_READ,

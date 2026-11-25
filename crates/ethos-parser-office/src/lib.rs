@@ -159,7 +159,7 @@ pub(crate) const MAX_ADDRESS_BYTES: usize = 64 * 1024 * 1024;
 
 /// What one spreadsheet's cells may carry between them, across the whole document: at most
 /// [`ods::MAX_CELLS`] cells, [`odt::MAX_TEXT_BYTES`] of cell text and [`MAX_ADDRESS_BYTES`] of
-/// address (review 2026-09-25 F09).
+/// address (review 2026-09-25).
 ///
 /// **Per document, and charged per cell before the cell exists.** The bytes a cell carries are
 /// not the bytes the file spends on it: an XLSX cell citing a shared string clones it, an ODS
@@ -853,7 +853,7 @@ fn docx_related(rels: &[opc::Relationship], kind: &str, names: &[String]) -> Opt
 }
 
 fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
-    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
+    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26): two
     // entries of one name were read as the first, with nothing declared.
     zip::refuse_duplicate_names(names, "ooxml package", "package")?;
     let mut main = docx::read_runs(&zip::read_entry(bytes, docx::MAIN_PART)?)?;
@@ -1134,7 +1134,7 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 /// sequence. v2-S3 added no invariant to `ethos-parser-core`; it is the first artifact to use the shape
 /// v2-S2 built.
 fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
-    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
+    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26): two
     // entries of one name were read as the first, with nothing declared.
     zip::refuse_duplicate_names(names, "ooxml package", "package")?;
     let workbook = zip::read_entry(bytes, xlsx::WORKBOOK_PART)?;
@@ -2335,7 +2335,7 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 /// `pptx.rs` for why a slide's size
 /// and its position in the deck are both things this engine will not turn into a `PageRecord`.
 fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
-    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
+    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26): two
     // entries of one name were read as the first, with nothing declared.
     zip::refuse_duplicate_names(names, "ooxml package", "package")?;
     let presentation = zip::read_entry(bytes, pptx::PRESENTATION_PART)?;

@@ -532,7 +532,7 @@ pub fn read_part(part: &[u8], part_name: &str) -> Result<MainPart, EngineError> 
                     }
                     // A tracked move's old place, ECMA-376's move source: passed over as an
                     // alternative is, and counted apart, so the moved text is read once, where
-                    // `<w:moveTo>` puts it (review 2026-09-26 N18).
+                    // `<w:moveTo>` puts it (review 2026-09-26).
                     b"moveFrom" if skip_from.is_none() => {
                         skip_from = Some(depth);
                         skipped_text = false;
@@ -1062,7 +1062,7 @@ fn has_preserve(
 mod tests {
     use super::*;
 
-    /// **A tracked move's text is read once, where it now stands** (review 2026-09-26 N18).
+    /// **A tracked move's text is read once, where it now stands** (review 2026-09-26).
     /// `<w:moveFrom>` holds the old place, which Word hides and accepting the changes deletes; read
     /// as current text, `Moved sentence.` stood twice. The passed-over region is counted.
     #[test]

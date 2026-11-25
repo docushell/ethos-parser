@@ -244,7 +244,7 @@ fn the_artifact_through_mcp_is_the_artifact_the_cli_prints() {
     }
 }
 
-/// **An argument a tool's schema does not declare is refused** (review 2026-09-26 N61). Every tool
+/// **An argument a tool's schema does not declare is refused** (review 2026-09-26). Every tool
 /// advertises `additionalProperties: false`, and the server read the keys it knew and dropped the
 /// rest: `extract` with `max_pages: 1` processed every page, so a host that believed it had
 /// bounded the call had not.

@@ -1,11 +1,12 @@
 # 25 — Five knobs: password, page sets, `continue_on_page_error`, batch, colour — measured
 
-**Scope authority for the local plan's item 6.9.** Five knobs were named in one row and never
+**Scope authority for one item of the local plan.** Five knobs were named in one row and never
 scoped. This document measures each, says what the tree already does, and puts a recommendation and
 its reopening condition beside each, so the owner decides from numbers rather than from the row.
 
-**No roadmap row is created here.** The plan files 6.9 under "v2.3", which is not a roadmap version:
-creating one is decision D4 in [`OPEN-WORK.md`](OPEN-WORK.md) §4, and it has not been taken.
+**No roadmap row is created here.** The plan files the item under "v2.3", which is not a roadmap
+version: creating one is decision D4 in [`OPEN-WORK.md`](OPEN-WORK.md) §4, and it has not been
+taken.
 [`02-ROADMAP.md`](02-ROADMAP.md) says no new version numbers get invented, and nothing below needs
 one. Every recommendation holds whichever way D4 goes.
 
@@ -230,7 +231,7 @@ Proposal 5.
 Nothing named batch. The CLI takes one path per invocation; MCP serves one document per call; each
 SDK call spawns one process ([`__init__.py:423`](../packages/python/src/ethos_parser/__init__.py),
 [`engine.js:279`](../packages/node/src/engine.js)). Inside one document the pages already run in
-parallel under rayon (`extract.rs:1090`). The plan's §4 V3 verified that the competitor's
+parallel under rayon (`extract.rs:1090`). The local plan verified that the competitor's
 `batch-parse` is a sequential `for` loop with no pool and no per-file timeout; this document did
 not repeat that reading.
 
@@ -254,7 +255,7 @@ multi-page ones rayon already holds the cores.
 **Refuse a batch mode.** Its value is a number, and it is 2x on this machine for a loop the shell
 provides in one line. A mode inside the binary would own a pool, a per-file timeout and an error
 policy — three things the SDKs already own (`ETHOS_PARSER_TIMEOUT`, one process per call) — and it
-would be the "supervisor" the plan's earlier draft imagined and its own V3 refuted. No MCP or SDK
+would be the "supervisor" the plan's earlier draft imagined and its own check refuted. No MCP or SDK
 line: the caller's loop *is* the batch layer. Reopens on a measured workload where process
 start-up dominates the parse — documents smaller than the 18 ms ones here — and even then the first
 candidate is a list of paths on stdin, not a pool.
@@ -328,7 +329,7 @@ Numbered as proposals; none is decided here.
    is filed in [`OPEN-WORK.md`](OPEN-WORK.md) §6 as a known gap.
 6. **Batch: refuse** as a mode of the binary (§6.3).
 7. **Colour: refuse** as an emitted field, P14 named beside the cost (§7.3).
-8. **Retire 6.9 as one row.** After 1–7 its five items have five dispositions; `OPEN-WORK.md` §3
+8. **Retire the one row.** After 1–7 its five items have five dispositions; `OPEN-WORK.md` §3
    should carry them separately, or drop the refused ones, in the commit that records the decisions.
 
 ## 9. Standing rules this document keeps

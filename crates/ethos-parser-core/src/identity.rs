@@ -202,7 +202,7 @@ pub struct ArtifactIdentity {
 
 impl ArtifactIdentity {
     /// Read an identity, refusing it unless it names `artifact_type` at one of `schema_versions`
-    /// (review 2026-09-26 N60).
+    /// (review 2026-09-26).
     ///
     /// §8: a reader that does not recognise a shape refuses it. [`crate::DocumentRepresentation`]
     /// always has; the other artifacts read their identity through this, as
@@ -382,7 +382,7 @@ mod tests {
         assert_eq!(back, id);
     }
 
-    /// **Each artifact reader here refuses a shape it does not read** (review 2026-09-26 N60).
+    /// **Each artifact reader here refuses a shape it does not read** (review 2026-09-26).
     ///
     /// The review's probe, on an artifact that otherwise reads: two versions no build wrote, and
     /// another type altogether.

@@ -65,7 +65,7 @@
         },
         "components": {
           "type": "object",
-          "description": "Crate name to the version Cargo.lock resolves (decision #35, review 2026-09-26 N14): flate2, read-fonts, skrifa and (decision #54) unicode-bidi on the PDF profile; flate2 and quick-xml on the seven package profiles; empty on RTF. A bump of any of them moves profile_sha256.",
+          "description": "Crate name to the version Cargo.lock resolves (decision #35): flate2, read-fonts, skrifa and (decision #54) unicode-bidi on the PDF profile; flate2 and quick-xml on the seven package profiles; empty on RTF. A bump of any of them moves profile_sha256.",
           "additionalProperties": {
             "type": "string",
             "minLength": 1

@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ethos_parser_core::EngineError;
 
-/// The most mappings one `ToUnicode` CMap may hold, and since review 2026-09-26 N11 the most
+/// The most mappings one `ToUnicode` CMap may hold, and since review 2026-09-26 the most
 /// every CMap of one document may hold between them. The largest real CMap measured uses 248.
 const MAX_MAPPINGS: u64 = 1 << 20;
 
@@ -222,7 +222,7 @@ impl ToUnicode {
 
 /// One document's `ToUnicode` CMaps, parsed once per stream and shared by every font naming it.
 ///
-/// Review 2026-09-26 N11. [`ToUnicode::parse`]'s ceiling bounds one CMap, and a document
+/// Review 2026-09-26. [`ToUnicode::parse`]'s ceiling bounds one CMap, and a document
 /// multiplied it: 32 font dictionaries naming one stream parsed it 32 times and kept every copy,
 /// so a 9,179-byte file held 2.4 GB. Here the stream parses once, and the mappings of every
 /// distinct stream count against [`MAX_MAPPINGS`] again, for the whole document.
@@ -486,7 +486,7 @@ end";
         assert_eq!(m.get(0x1c), Some("fi"));
     }
 
-    /// **A comment is not a mapping** (review 2026-09-26 N38). PostScript's `%` runs to the end of
+    /// **A comment is not a mapping** (review 2026-09-26). PostScript's `%` runs to the end of
     /// its line. Read as program text, a comment after an entry failed a legal CMap, and a
     /// commented-out block remapped `<01>` to `X` where Ghostscript draws `A`.
     #[test]
@@ -518,7 +518,7 @@ end";
     }
 
     /// **A stream parses once per document, and a document holds one ceiling of mappings**
-    /// (review 2026-09-26 N11). The ceiling bounded one parse, and 32 fonts naming one stream
+    /// (review 2026-09-26). The ceiling bounded one parse, and 32 fonts naming one stream
     /// parsed it 32 times: a 9,179-byte file held 2.4 GB. The CMap is that file's: sixteen rows
     /// of 65,536 distinct codes, 2^20 mappings, exactly at the ceiling.
     #[test]

@@ -124,12 +124,12 @@ pub enum WidthSource {
 pub enum Decoder {
     /// The document's own `ToUnicode` CMap. Authoritative, save the `€` decision #170 reads where
     /// the program names the glyph `Euro` ([`Font::euro`]), and shared by every font naming its
-    /// stream (review 2026-09-26 N11).
+    /// stream (review 2026-09-26).
     ToUnicode(Arc<ToUnicode>),
     /// A simple encoding plus `/Differences`.
     Simple(SimpleEncoding),
     /// An encoding this profile does not read, and why. The refusal is raised where a string is
-    /// first shown with the font, not where a page lists it (tracker I8): a font a page never
+    /// first shown with the font, not where a page lists it: a font a page never
     /// draws with decides nothing about the document.
     Refused(String),
     /// `/Identity-H` or `/Identity-V` with no `/ToUnicode` and no mapping this profile reads for
@@ -216,7 +216,7 @@ pub struct Font {
     /// Codes this font's `/ToUnicode` declares `¤` that read `€`, because the glyph each selects
     /// the embedded program names the euro sign (decision #170, [`euro_named`]). Kept beside the
     /// map, never written into it: the map stays the one parse every font naming its stream
-    /// shares (review 2026-09-26 N11).
+    /// shares (review 2026-09-26).
     pub euro: Vec<u32>,
 }
 
@@ -267,7 +267,7 @@ impl Font {
     /// length under a two-byte codespace — which the last code is read from as it stands:
     /// `<004142>` reads as codes `[0x41, 0x42]`, as Ghostscript renders it, where pdf.js reads the
     /// lone byte as a code's first and PDF 32000-1 §9.7.6.3 maps it to `.notdef`. The caller counts
-    /// such a run so the artifact can say which reading it holds (review 2026-09-26 N46).
+    /// such a run so the artifact can say which reading it holds (review 2026-09-26).
     pub fn split_codes(&self, bytes: &[u8]) -> (Vec<u32>, usize) {
         let width = match self.kind {
             FontKind::Simple => 1,
@@ -2493,7 +2493,7 @@ mod tests {
         assert_eq!(font.builtin_encoding_assumed, None);
     }
 
-    /// **A `/BaseEncoding` this profile does not carry is refused** (review 2026-09-26 N38), as the
+    /// **A `/BaseEncoding` this profile does not carry is refused** (review 2026-09-26), as the
     /// same name under `/Encoding` is. Read as StandardEncoding, MacExpert's `ff fi fl` came out as
     /// `V W X`.
     #[test]
@@ -2536,7 +2536,7 @@ mod tests {
         assert_eq!(font.builtin_encoding_assumed, None);
     }
 
-    /// The refusal a font's encoding carries to the first string shown with it (tracker I8): the
+    /// The refusal a font's encoding carries to the first string shown with it: the
     /// font itself loads, so a page that lists it and never draws with it is not refused.
     fn refusal_of(font: Result<Font, EngineError>) -> EngineError {
         font.expect("a font this profile cannot decode still loads")
@@ -2649,7 +2649,7 @@ mod tests {
     }
 
     /// **A composite font whose `/Encoding` is an embedded CMap, and which has no `/ToUnicode`, is
-    /// refused** (review 2026-09-26 N16), as its `/Identity-H` sibling is. Read one byte at a time
+    /// refused** (review 2026-09-26), as its `/Identity-H` sibling is. Read one byte at a time
     /// through StandardEncoding, CIDs 0x3441 0x245E 0x2447 came out as `4A$^$G`, `extracted`.
     #[test]
     fn a_composite_font_with_an_embedded_cmap_and_no_tounicode_is_refused() {
@@ -2671,7 +2671,7 @@ mod tests {
     }
 
     /// **A `/ToUnicode` whose filter does not decode is refused, not parsed from its raw bytes**
-    /// (review 2026-09-26 N05). By the stream's own declaration those bytes are not the CMap. These
+    /// (review 2026-09-26). By the stream's own declaration those bytes are not the CMap. These
     /// map `A B C` to `Z Y X`, which a page read as until this, where Ghostscript draws `ABC`.
     #[test]
     fn a_tounicode_whose_filter_does_not_decode_is_refused() {
@@ -2881,7 +2881,7 @@ mod tests {
     }
 
     /// A font reading the euro sign keeps the `/ToUnicode` every font naming its stream shares:
-    /// one parse, charged once (review 2026-09-26 N11). QA round 1 on decision #170 found each
+    /// one parse, charged once (review 2026-09-26). QA round 1 on decision #170 found each
     /// font name costing a copy of a million-mapping map.
     #[test]
     fn a_font_reading_the_euro_sign_shares_its_tounicode() {

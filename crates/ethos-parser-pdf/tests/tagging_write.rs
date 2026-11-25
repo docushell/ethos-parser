@@ -1602,8 +1602,8 @@ fn a_real_outside_f32s_range_is_refused_by_both_writers() {
     }
 }
 
-/// **A real the writer would print past the 64-bit integers is refused by both writers** (tracker
-/// I17). `lopdf` prints a real with `Display`, which writes no exponent, so `1e25` is a 26-digit
+/// **A real the writer would print past the 64-bit integers is refused by both writers**.
+/// `lopdf` prints a real with `Display`, which writes no exponent, so `1e25` is a 26-digit
 /// integer token: qpdf read the object holding one as null, and `overlay` had written it, exit 0.
 /// A real inside the range prints as an integer qpdf and `lopdf` read, and is written.
 #[test]
@@ -1671,7 +1671,7 @@ fn a_real_printed_past_the_64_bit_integers_is_refused_by_both_writers() {
     }
 }
 
-/// **A stream `lopdf` read without its data is refused by both writers** (tracker I19). Data that
+/// **A stream `lopdf` read without its data is refused by both writers**. Data that
 /// does not end at `endstream` where `/Length` says it does makes `lopdf` load the object as its
 /// bare dictionary, and both writers copied that dictionary alone: Ghostscript's bounding box of
 /// `d2_image_length_short.pdf` reaches y = 300 on the source and y = 697 on `tag`'s output.
@@ -1732,8 +1732,8 @@ fn a_stream_read_without_its_data_is_refused_by_both_writers() {
     }
 }
 
-/// **Object numbers far past the object count are refused by both writers** (review 2026-09-26
-/// N28). `lopdf`'s writer walks every number below the highest, which one object sets: five
+/// **Object numbers far past the object count are refused by both writers** (review
+/// 2026-09-26). `lopdf`'s writer walks every number below the highest, which one object sets: five
 /// objects, one numbered 1,000,000,000, kept `overlay` busy 2.2 s. One object numbered 100,000
 /// here is past the ceiling and still quick to write without it.
 #[test]

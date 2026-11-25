@@ -196,7 +196,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// comparing two artifacts in the wild cannot meet both. Anyone who built `main` in that window
 /// and kept the output should re-run it.
 ///
-/// `-v11` at 0.63.0 (review 2026-09-26 N40): U+0000 is not written. CommonMark replaces it with
+/// `-v11` at 0.63.0 (review 2026-09-26): U+0000 is not written. CommonMark replaces it with
 /// U+FFFD and an HTML parser drops it, so a `source` segment holding one rendered as a string its
 /// node does not hold; the writers drop it and the census counts it, as
 /// `null-characters-not-projected-v1`. A document whose text holds no U+0000 projects byte for
@@ -3943,7 +3943,7 @@ pub(crate) fn office_furniture(
         .collect()
 }
 
-/// U+0000 in node text, which neither projection writes (review 2026-09-26 N40).
+/// U+0000 in node text, which neither projection writes (review 2026-09-26).
 ///
 /// **Neither format can carry it.** CommonMark replaces it with U+FFFD, and an HTML parser drops
 /// it from text and reads `&#0;` as U+FFFD — so a `source` segment holding one renders as a string
@@ -8014,7 +8014,7 @@ pub(crate) mod tests {
         assert_eq!(b.chars, 2);
     }
 
-    /// **U+0000 is not written, and it is counted** (review 2026-09-26 N40).
+    /// **U+0000 is not written, and it is counted** (review 2026-09-26).
     ///
     /// CommonMark renders it as U+FFFD, so `A\0A` in a `source` segment reads as a string the node
     /// does not hold. Each writer that takes node text is reached: a block's own run, a run joined
