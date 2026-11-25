@@ -1859,9 +1859,10 @@ with nine of its eleven columns blank — is still refused. A page of prose rule
 band whose fill draws its sides — a newsletter's title over two ruled columns — is read as a table
 where the band's text is set in one column, as `ruled-rects-v10` reads it boxed at its sides. A
 banded table boxed at its sides, `ruled-rects-v10`, is a decision of its own. A header row a form
-repeats inside such a grid is not flagged a header, as the ruled rule flags no row inside its grid
-(only decision #74's row above it): a rate filing's `Step`, `Operation`, … row under each section's
+repeats inside such a grid is not flagged a header by the ruled rule, which flags no row inside its
+grid (only decision #74's row above it; a cell a tagged PDF's tree marks `/TH`, where tree and grid
+agree, still is: decision #167): a rate filing's `Step`, `Operation`, … row under each section's
 heading is a body row, `<td>` in HTML, where `main` read the sections as tables of their own,
-flagged that row in each and wrote it `<th>` under a column group's head (13 ParseBench-2 pages,
-among them `insurance_filing_tables/51abb0b9601cd8df_p4`); ParseBench's table metric does not tell
-`<th>` from `<td>`, so no score moves.
+flagged that row in each and wrote it `<th>` where it sat under a column group's head (four of the
+six on `insurance_filing_tables/51abb0b9601cd8df_p4`, one of 13 ParseBench-2 pages); ParseBench's
+table metric does not tell `<th>` from `<td>`, so no score moves.

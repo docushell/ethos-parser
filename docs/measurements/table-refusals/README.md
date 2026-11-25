@@ -152,8 +152,8 @@ word-position index.
 x-origin on a whole page — header, footer, body and all — cannot produce a table candidate. 180
 column lines at a 150-centipoint tolerance is a histogram of where words start.
 
-**A table candidate has to be built inside a bounded region.** That is what the block cut (plan
-5.5) produces, and it makes the block cut a **prerequisite** for the table work rather than a
+**A table candidate has to be built inside a bounded region.** That is what the block cut
+produces, and it makes the block cut a **prerequisite** for the table work rather than a
 sibling of it. It is also the strongest argument yet for deciding D1: without blocks there is no
 region to build a candidate in, and the unruled rule has nowhere to stand.
 
@@ -344,9 +344,9 @@ designed. T3 adds that even reworked it addresses 29% of the population at 17% p
 it is now better supported than reworking it — but that is the owner's call, and it is no longer the
 question that matters.
 
-## 4e. T4 — 5.7 was the wrong fix. The lattice invents rows the page did not draw
+## 4e. T4 — grouping rectangles was the wrong fix. The lattice invents rows the page did not draw
 
-5.7 was scoped as *"group rectangles into spatially connected candidate grids"*, on the reasoning
+It was scoped as *"group rectangles into spatially connected candidate grids"*, on the reasoning
 that the page-wide lattice extent is what defeats tracing. Designing it against real pages —
 rectangles are not on the wire, so this needed a throwaway dump, since removed — showed the premise
 is wrong.
@@ -386,7 +386,7 @@ where cells are, so its union has gaps of 2 635 and 1 656 centipoints, far past
 
 **The rule is refusing a perfectly drawn grid because it inserted rows the page never drew.**
 
-### So 5.7 is a different change
+### So the fix is a different change
 
 Not clustering. **A band no rectangle occupies is not a row of the grid** — it is the space between
 cells — and dropping such bands turns this page's 15 implied faces into 9 implied faces, all
@@ -405,7 +405,7 @@ around it and moves their geometry. The lattice has to carry explicit bands — 
 `cols: Vec<(i64,i64)>` — which touches 28 references and the five methods `rows`, `columns`,
 `bounds`, `face` and `span_of`.
 
-That is the honest scope of 5.7, and it is a structural change to the type rather than a precondition
+That is the fix's honest scope, and it is a structural change to the type rather than a precondition
 tweak. **Emitting a 5 × 3 grid with six empty slots instead is the shortcut and it is refused**: the
 document drew a 3 × 3, and a table claiming five rows where two are whitespace is a grid this engine
 invented.

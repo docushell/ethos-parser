@@ -1622,7 +1622,7 @@ mod tests {
     }
 
     /// **A run holding a text box goes on in its cell, and the box's runs in theirs** (review of
-    /// decision #136 after C3): the anchoring run is put before the box's, which moved every run
+    /// decision #136): the anchoring run is put before the box's, which moved every run
     /// recorded by its place, so a cell named the wrong runs.
     #[test]
     fn a_cell_names_its_own_runs_around_a_text_box() {

@@ -86,19 +86,19 @@ Jobs by how they are written: Heading2 + dates below 10/10, right-tab dates 0/15
 tabs 0/10, label rows joined by an in-run `<w:br/>` 0/9, and label rows with `<w:br/>` in its own
 run 6/6.
 
-## 4. What fails today, and which plan item should move it
+## 4. What fails today
 
-- **Q3, DOCX paragraphs.** Every run projects as its own paragraph. So a tab-only run separates a
+- **DOCX paragraphs.** Every run projects as its own paragraph. So a tab-only run separates a
   label from its value (`tab-run` 0/60), a bold phrase cuts its sentence into three paragraphs
   (`one_line` 0/20), and a right-tab job line breaks apart (`job-tab-dates` 0/15). A `<w:br/>`
   inside a run turns into a space, which joins the lines it should separate (`br-in-run` 0/67).
 - **`br-run` passes only by accident.** A break in its own run ends a paragraph today, so its lines
-  come out whole (58/58). If a Q3 fix joins runs into paragraphs, it must turn `<w:br/>` into a
+  come out whole (58/58). If a fix joins runs into paragraphs, it must turn `<w:br/>` into a
   line break, or this column falls to zero.
 - **The strict tab form cannot pass at present.** `normalize` in `markdown.rs` collapses every
   whitespace run, tabs included. Whether the Markdown should keep a tab is a question for the
-  contract; the normalised column is the one Q3 should move.
-- **M2, DOCX structure.** Heading styles project as plain lines (`headings_level` 0/150). Lists
+  contract; the normalised column is the one a paragraph fix should move.
+- **DOCX structure.** Heading styles project as plain lines (`headings_level` 0/150). Lists
   lose their numbers and bullets (`list_items_marked` 0/190). The education table comes out as one
   paragraph per cell (`table_rows` 0/60, although all 240 cells are present). The page header,
   footer and footnote are not projected at all (0/20 each). Losing the header also loses the name

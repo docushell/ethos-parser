@@ -144,9 +144,9 @@ header row at the top of each, citing it by the same `/TH` elements as the first
 - Its own checks, the same at c9b364c and after the join: `table_rows` and `table_rows_exact`
   91/95 (the summary's four pairs fail, as on every statement), `amounts` 183/183, `dates` 13/13.
 
-## 4. What fails today, and which plan item should move it
+## 4. What fails today
 
-- **M3, XLSX tables and dates.**
+- **XLSX tables and dates.**
   - Each cell projects as its own paragraph (`table_rows` 0/74, `totals` 0/15).
   - Numbers come out as their stored values, `493098.50` where Excel shows `4,93,098.50`
     (`amounts` 3/82; the three that pass are under 1,000).
@@ -159,12 +159,12 @@ header row at the top of each, citing it by the same `/TH` elements as the first
   - PDF: one of the three `₹` set in a separate font span splits from its amount.
   - The two-column totals tables also put every label and amount on separate lines (`totals`
     0/56).
-- **Q3 and M2, DOCX.**
+- **DOCX.**
   - A tab-only run splits label from value (0/13).
   - An in-run `<w:br/>` joins the address lines (0/15).
   - `w:tbl` line items are one paragraph per cell (0/69).
   - Heading styles, the page header and the footer are lost.
-- **Not in the plan items, found here.**
+- **Not in the local plan, found here.**
   - **Unruled PDF tables lose column identity.** On the two unruled statements, all 23 transaction
     rows put their amounts in the wrong column: a debit row's balance lands under Credit, and a
     credit lands under Debit, because empty cells collapse leftwards. The in-order check passes

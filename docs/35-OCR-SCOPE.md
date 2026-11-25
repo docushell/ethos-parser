@@ -490,7 +490,7 @@ the page's body size, so a drawn run beside them can read differently — on one
 is now written as a superscript; the run itself is unchanged. A born-digital page set on a
 page-size background image, with under 200 characters, is taken too: its image is read, and
 whatever text the picture holds is written beside the drawn text. A scan whose own text layer is
-long but wrong is not taken (the census's F3, which would replace extracted text). A clip of any
+long but wrong is not taken (the census's fix for it would replace extracted text). A clip of any
 shape other than a rectangle does not narrow an image's share. A turned line split beside drawn
 text is read in the page's order, so one read upward comes out last part first. JPEG 2000,
 CCITT, JBIG2 and the colour spaces the recognizer does not read are refused by name, as on any

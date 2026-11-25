@@ -1684,7 +1684,7 @@ mod tests {
         assert_eq!(order(&runs, &[]), want, "left column, then right");
     }
 
-    /// **A narrow band whose cells fill their blocks stays a column** (review, synth G5a/G5b): one
+    /// **A narrow band whose cells fill their blocks stays a column** (review): one
     /// value beside every line of three four-line paragraphs, so no cell ends before its
     /// paragraph does — a column of values, not notes at the paragraphs' heads. The second time a
     /// footnote mark is set 3.5pt above a line of the second paragraph, a line of its own that no
@@ -1764,7 +1764,7 @@ mod tests {
         assert_eq!(regions.len(), 2, "the sidebar, and the body with its dates");
     }
 
-    /// **A band of columns a strip hides is not one column to sit beside** (review, synth F2): two
+    /// **A band of columns a strip hides is not one column to sit beside** (review): two
     /// 150pt columns on one grid, a strip across both below them, and a narrow band whose lines
     /// head the columns' entries. The first cut sees one wide band and the narrow one; run on its
     /// own, the wide band splits into its columns, so nothing is joined. The stream draws the narrow
@@ -1796,7 +1796,7 @@ mod tests {
         );
     }
 
-    /// **A sidebar on the body's own grid keeps its column** (review, synth A): every line of it
+    /// **A sidebar on the body's own grid keeps its column** (review): every line of it
     /// sits on a row of the body, which sets four paragraphs a line apart, and the stream draws the
     /// body first. Its boxes, one shape at a time:
     /// - the first runs on past the paragraph beside it, the second starts a row below a head;
@@ -1855,7 +1855,7 @@ mod tests {
         assert!(page.regions.is_empty(), "the date column joined the body");
     }
 
-    /// **A join inside a column reads the joined band by its blocks** (review, synth E): a sidebar,
+    /// **A join inside a column reads the joined band by its blocks** (review): a sidebar,
     /// then two sections of two entries each with their dates. The section break is the body's
     /// widest gap, so each section reaches the vertical cut with its dates; joined there, the
     /// section is read entry by entry, each date after its entry, rather than every date after

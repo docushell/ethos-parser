@@ -59,12 +59,13 @@ so no rule id and no `profile_sha256` moves:
   however many of its rows it leaves blank: values set row by row down columns ruled only between
   them, the top or bottom left out beside them.
 
-**A header row a form repeats inside such a grid is not flagged a header**, as the ruled rule
-flags no row inside its grid: a rate filing's `Step`, `Operation`, … row under each section's
+**A header row a form repeats inside such a grid is not flagged a header** by the ruled rule,
+which flags no row inside its grid (a cell a tagged PDF's tree marks `/TH`, where tree and grid
+agree, still is: decision #167): a rate filing's `Step`, `Operation`, … row under each section's
 heading is a body row, `<td>` in HTML, where `main` read the sections as tables of their own,
-flagged that row in each and wrote it `<th>` under a column group's head (13 ParseBench-2 pages,
-among them `insurance_filing_tables/51abb0b9601cd8df_p4`); ParseBench's table metric does not tell
-`<th>` from `<td>`, so no score moves.
+flagged that row in each and wrote it `<th>` where it sat under a column group's head (four of the
+six on `insurance_filing_tables/51abb0b9601cd8df_p4`, one of 13 ParseBench-2 pages); ParseBench's
+table metric does not tell `<th>` from `<td>`, so no score moves.
 
 **Measured** (against `main`, `bbb66e8`; default lane unless said; network denied; ParseBench scorer
 2.1.0): ParseBench-2 55.90 → 55.99 (tables 49.98 → 50.52), with `--ocr` 58.76 → 58.85 (tables 51.71
@@ -1812,8 +1813,8 @@ Rule id `gutter-columns-v5`; `profile_sha256` moves.
   résumé's sections joins and is read in draw order or interleaved by slab. A page undivided by
   the join keeps the draw order inside each slab, so a date or label at the left drawn after its
   text is read after it, right before the next entry.
-- Not caught: a label column as wide as its values, one label per value (the OCR probe i03), and
-  page numbers beside a contents list set at one leading.
+- Not caught: a label column as wide as its values, one label per value, and page numbers beside
+  a contents list set at one leading.
 - ParseBench: 5 of its 2,037 documents read differently (Ford p16, Marico p46, orbia p15, SERFF TX 838 and att10k: side heads, labels and figures now read with their rows) and every score is unchanged, with and without `--ocr`; opendataloader-bench byte for byte; the made-up resumes with a date column, dates flush right and right-hand dates read each date with its entry.
 
 ### A scan read without `--ocr` says so, and an image file's size is checked (decision #132)
