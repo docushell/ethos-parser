@@ -328,17 +328,20 @@ pub(crate) fn walks_in_parallel(len: usize) -> bool {
 }
 
 /// Chunks canonicalized per thread before they are handed on in order: a window holds this many
-/// per thread, the most a writer that keeps nothing ([`Sha256Sink`], [`IoSink`]) holds at once.
-/// The bytes do not depend on it.
+/// per thread, and a writer that keeps nothing ([`Sha256Sink`], [`IoSink`]) holds two windows at
+/// once, the one it writes and the next. The bytes do not depend on it.
 const ELEMENT_WINDOW: usize = 4;
 
 /// [`CanonicalWriter::elements`]' walk: `items` canonicalized in chunks, comma-separated, each
 /// chunk's bytes given to `emit` in order. The first error in element order is the one returned,
-/// whichever chunk finished first. A window's chunks are written into buffers this walk keeps and
-/// reuses: freed on the threads that filled them, they would not serve the caller's next
-/// allocation, and memory is spent by allocating (`docs/measurements/memory-ceiling/` §9).
+/// whichever chunk finished first. The pool fills the next window while this thread gives the one
+/// before it to `emit`, so a serial hash or write overlaps the parallel fill. Each window's chunks
+/// are written into one of two sets of buffers this walk keeps and reuses in turn: freed on the
+/// threads that filled them, they would not serve the caller's next allocation, and memory is spent
+/// by allocating (`docs/measurements/memory-ceiling/` §9).
 ///
-/// `emit` returns whether to go on: a writer that has failed stops the walk at the next window.
+/// `emit` returns whether to go on: a writer that has failed stops the walk, and the window filled
+/// meanwhile is never written.
 fn par_elements<T: serde::Serialize + Sync>(
     items: &[T],
     mut emit: impl FnMut(&[u8]) -> bool,
@@ -362,23 +365,51 @@ fn par_elements<T: serde::Serialize + Sync>(
     }
     let chunks = ELEMENT_WINDOW * rayon::current_num_threads().max(1);
     let span = ELEMENT_CHUNK * chunks;
-    let mut buffers: Vec<(Vec<u8>, Work)> = (0..chunks).map(|_| Default::default()).collect();
-    for (w, window) in items.chunks(span).enumerate() {
+    let fill_window = |w: usize, window: &[T], buffers: &mut Vec<(Vec<u8>, Work)>| {
         let base = w * span;
-        let filled: Vec<Result<(), C14nError>> = window
+        window
             .par_chunks(ELEMENT_CHUNK)
             .zip(buffers.par_iter_mut())
             .enumerate()
             .map(|(c, (chunk, buffer))| fill(base + c * ELEMENT_CHUNK, chunk, buffer))
-            .collect();
-        for (done, (out, _)) in filled.into_iter().zip(&buffers) {
-            done?;
-            if !emit(out) {
-                return Ok(());
+            .collect::<Vec<Result<(), C14nError>>>()
+    };
+    let mut ready: Vec<(Vec<u8>, Work)> = (0..chunks).map(|_| Default::default()).collect();
+    let mut next: Vec<(Vec<u8>, Work)> = (0..chunks).map(|_| Default::default()).collect();
+    let mut windows = items.chunks(span).enumerate();
+    let Some((w0, first)) = windows.next() else {
+        return Ok(());
+    };
+    let mut filled = fill_window(w0, first, &mut ready);
+    loop {
+        let upcoming = windows.next();
+        let mut next_filled = None;
+        let emitted = rayon::in_place_scope(|scope| {
+            if let Some((w, window)) = upcoming {
+                let next = &mut next;
+                let slot = &mut next_filled;
+                let fill_window = &fill_window;
+                scope.spawn(move |_| *slot = Some(fill_window(w, window, next)));
             }
+            for (done, (out, _)) in filled.drain(..).zip(&ready) {
+                done?;
+                if !emit(out) {
+                    return Ok(false);
+                }
+            }
+            Ok::<bool, C14nError>(true)
+        });
+        if !emitted? {
+            return Ok(());
+        }
+        match next_filled {
+            Some(f) => {
+                filled = f;
+                std::mem::swap(&mut ready, &mut next);
+            }
+            None => return Ok(()),
         }
     }
-    Ok(())
 }
 
 /// A writer that streams canonical bytes to `w` a block at a time and keeps none of them: the
