@@ -59,7 +59,14 @@ so no rule id and no `profile_sha256` moves:
   however many of its rows it leaves blank: values set row by row down columns ruled only between
   them, the top or bottom left out beside them.
 
-**Measured**: pending.
+**Measured** (against `main`, `bbb66e8`; default lane unless said; network denied; ParseBench scorer
+2.1.0): ParseBench-2 55.90 → 55.99 (tables 49.98 → 50.52), with `--ocr` 58.76 → 58.85 (tables 51.71
+→ 52.25); ParseBench unchanged in both lanes (one document changes, its score 1.00 both ways);
+opendataloader-bench unchanged. 25 documents change (ParseBench 1, ParseBench-2 24), none
+fabricated. The 878 tables `extract` reports on the 18 gate documents and on 12 tree-stripped copies
+of them are unchanged. The private real-document set: no refusal, crash or timeout, Markdown and the
+record's bytes unchanged on all 250 runs; its resumes unchanged. Peak memory on `nist-sp-800-53r5`
+unchanged (+0.4% at 12 threads, 0.0% at one).
 
 Fourteen new tests on made-up grids — a gap its rules close beside a heading row, and in each other
 side; a heading set across the lines a word space apart, or crossing one inside a word, standing;
@@ -120,7 +127,11 @@ does not move.
   `B.5`, bold labels written `#`; ParseBench and ParseBench-2, `text_simple__temporal`'s
   `A.2 Notícias associadas`, a label written `#`. No other candidate page changes: no page of
   digits in another script, no right-to-left page and no roman-numbered one does.
-- **Measured**: pending.
+- **Measured** (over decision #173; default lane unless said; network denied; ParseBench scorer
+  2.1.0): opendataloader-bench 0.8349 → 0.8373 (headings +0.0088), default mode 0.8287 → 0.8310,
+  `--ocr` 0.8306 → 0.8329; ParseBench-2 `--ocr` 58.90 → 58.91; ParseBench unchanged. Four documents
+  change (two opendataloader-bench pages, one page in each ParseBench set), none down; the private
+  real-document set and its resumes unchanged.
 
 ### Two columns written down the page, a number in every row, are a table (decision #173)
 
@@ -164,8 +175,15 @@ profile does not move.
   beside their percentages; ParseBench-2, seven — the same five, the insurance filing
   `f2195809587e31bc` p10 (the census's fourth gain: years and a total beside their counts) and the
   layout page again; opendataloader-bench unchanged. Under `--ocr` these pages change the same way.
-- **Measured**: pending. Twenty-nine mutations, twenty-three more of the review's guards and
-  seventeen of the third review's, each caught.
+- **Measured** (over decision #172; default lane unless said; network denied; ParseBench scorer
+  2.1.0): ParseBench 52.24 → 52.33 (tables 64.53 → 65.00), ParseBench-2 55.93 → 55.98 (tables 49.98
+  → 50.25); with `--ocr` 55.67 → 55.77 and 58.86 → 58.90 (tables 51.71 → 51.98). Thirteen documents
+  change (ParseBench 6, ParseBench-2 7), none fabricated: two rate-filing pages go from 0 to about
+  1.0, every record matched. One page down, a heading stacked into its header cell (localisation
+  0.75 → 0.69). opendataloader-bench unchanged; the private real-document set unchanged; its resumes
+  unchanged. QA round 3's narrowing changes no benchmark document in the default lane. Twenty-nine
+  mutations, twenty-three more of the review's guards and seventeen of the third review's, each
+  caught.
 
 ### `--ocr` reads a scan stored as a CMYK or indexed JPEG (decision #172)
 
@@ -204,7 +222,11 @@ the profile do not move. Without `--ocr` nothing moves.
   stored as an Adobe YCCK JPEG, and a page that is one CMYK emblem, read to no useful word. One
   opendataloader-bench page's CMYK image is now read and holds no word: its Markdown is unchanged
   and its record no longer counts the page under `scanned-page-not-recognized`.
-- **Measured**: pending. Twenty-eight mutations, each caught.
+- **Measured** (over decision #171; default lane unless said; network denied; ParseBench scorer
+  2.1.0), with `--ocr`: ParseBench 55.62 → 55.67 (content 79.13 → 79.38), ParseBench-2 58.79 → 58.86
+  (text 63.90 → 64.06, formatting 81.16 → 81.43); opendataloader-bench `--ocr` unchanged; the
+  default lane changes on none of the 6,545 documents; the private real-document set unchanged.
+  Twenty-eight mutations, each caught.
 
 ### A whole bold, underlined line is written `**<u>X</u>**` (decision #171)
 
@@ -222,7 +244,12 @@ does not move.
   line whose text holds a `*`, which would pair with the outer `**` and leave no bold, or closes
   with `\`, which would escape `</u>`.
   HTML keeps `<u><strong>`, and `--unstyled` writes no mark either way.
-- **Measured**: pending. Nineteen mutations, each caught.
+- **Measured** (over decision #170; default lane unless said; network denied; ParseBench scorer
+  2.1.0): ParseBench 52.20 → 52.24 (formatting 51.53 → 51.72), with `--ocr` 55.58 → 55.62
+  (formatting 53.65 → 53.84); ParseBench-2 and opendataloader-bench scores unchanged. 250 documents'
+  Markdown changes (ParseBench 64, ParseBench-2 185, opendataloader-bench 1), every change this
+  reordering; 12 documents of the private real-document set, the reordering alone; its resumes
+  unchanged. Nineteen mutations, each caught.
 
 ### A TrueType glyph its program names `Euro` reads as `€` (decision #170)
 
@@ -247,7 +274,12 @@ moves.
   has the shape and the same font without a `/ToUnicode` reads `¤` through the `MacRomanEncoding`
   table, which is unchanged: 0xDB with no `/ToUnicode` still reads `¤`, as Annex D.2 gives it. The
   run is not declared apart; the profile's rule id names the reading.
-- **Measured**: pending. Thirteen mutations, each caught.
+- **Measured** (against `main`, `bbb66e8`; default lane unless said; network denied; ParseBench
+  scorer 2.1.0): ParseBench 52.18 → 52.20 (formatting 51.43 → 51.53), ParseBench-2 55.90 → 55.93
+  (text 57.58 → 57.78); with `--ocr` 55.56 → 55.58 and 58.76 → 58.79; no dimension down. Five
+  documents in each ParseBench set change, each by `¤` → `€` alone; opendataloader-bench unchanged.
+  The private real-document set's Markdown unchanged on all 250 runs (the record's bytes move on
+  244, by the profile's rule id); its resumes unchanged. Thirteen mutations, each caught.
 
 ### HTML writes `<th>` where the record states a header cell (decision #169)
 
@@ -279,7 +311,12 @@ left both projections as they were. HTML now reads it, and so does one Markdown 
 `html-blocks-v14`, `markdown-blocks-v14` and `tagged-tables-v2`, unreleased, fold it in;
 `profile_sha256` does not move.
 
-**Measured**: pending.
+**Measured** (against `main`, `bbb66e8`; default lane unless said; network denied; ParseBench scorer
+2.1.0): ParseBench and ParseBench-2 unchanged on every dimension in both lanes; opendataloader-bench
+unchanged. Markdown changes on none of the 6,545 benchmark documents; HTML on 1,055 (ParseBench 263,
+ParseBench-2 785, opendataloader-bench 7), the header cells this decision writes. The private
+real-document set: no refusal, crash or timeout; Markdown unchanged on all 250 runs; the record's
+bytes change on 216 (the limitation's new text); its resumes unchanged.
 
 Tested on a header row, a row header, a row flagged in part, every row flagged, a row holding no
 cell, a hole in a header row, a merge a header would cut, merges carried from row to row, a header
@@ -496,6 +533,15 @@ tenth ParseBench-2 document), at one thread and at twelve.
   for the print, as before. A larger one streams on every pool, one thread included: on one thread
   `nist-sp-800-53r5` peaks about 500 MiB lower, and `extract` pays for the second walk with a
   quarter to a third more time there.
+- Measured again over `bbb66e8`, with this streaming, one inflate of a content stream up to 256 KiB,
+  a picture's text read by unit and a table's ids mapped once: Apple M4 Pro, a quiet machine, five
+  interleaved rounds, medians, 12 threads unless said. `nist-sp-800-53r5` `extract` 1,752 → 1,731 ms
+  and 1,434 → 1,421 MiB peak RSS; on one thread 5,367 → 6,815 ms and 1,899 → 1,363 MiB;
+  `markdown --source` 3,446 → 3,011 ms and 1,738 → 1,597 MiB. `nist-sp-800-53Ar5` `extract` 2,923 →
+  2,944 ms (2,168 → 2,172 MiB) and `nist-sp-800-37r2` 683 → 676 ms (556 → 547 MiB), within noise.
+  opendataloader-bench's 200 (`markdown --unstyled --source`, one at a time): p50 32.0 → 32.2 ms,
+  p95 43.8 → 39.9 ms, 1.2% fewer instructions in all, one document 6.6% more (its content stream
+  inflates just past the 256 KiB one-inflate cap). `docs/measurements/memory-ceiling/` §20.
 - `into_representation` takes the extract, so its runs move into the record's nodes rather than
   being copied; `to_representation` borrows as before. The CLI uses the first.
 - The page fold advances the id counter instead of minting and dropping an id per run; a page's

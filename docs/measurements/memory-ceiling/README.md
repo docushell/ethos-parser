@@ -1198,3 +1198,48 @@ large documents only.
 
 **Not done.** On a pool of one thread `seal` keeps its bytes in a buffer grown by doubling
 (`Minted::Kept`); `53r5` at one thread peaks at 1,883 MiB.
+
+## 20. One inflate per content stream, ids mapped once, and a one-thread seal that streams
+
+**Run 2026-11-25.** A = `main` at `bbb66e8`; B = A with the changes below. Release builds on an
+Apple M4 Pro, a quiet machine, five interleaved rounds, medians, 12 threads unless said. Each change
+hashes the same as A on 638 PDFs, every command, at one thread and at twelve.
+
+### Why
+
+§18 named table planning and string-keyed id lookups in the projection, `markdown --source`'s
+largest serial stage on `53r5`, and §19 left `seal` keeping its bytes on a pool of one thread.
+`elements` found a picture's text by walking every unit and run for each picture, and a lone
+`/FlateDecode` content stream was inflated twice: once to check that its data reaches its end, once
+for its bytes.
+
+### What changed
+
+- `elements` maps each run to its unit once and reads a picture's text from the units its runs map
+  to; its sort computes each key once.
+- Table planning maps only the ids a table's cells name, once; the map of the table that owns each
+  run is a `HashMap`; the pitch map borrows the record's font id; an artifact's anchor map is
+  checked in place.
+- A lone `/FlateDecode` content stream with no `/DecodeParms` is inflated once where that inflate
+  reaches its end within 256 KiB (`MAX_INFLATED_ONCE`); any other stream is read both ways, as A
+  reads it.
+- A payload of more than 1,024 nodes streams on a pool of one thread too, walked again for the
+  print, so `extract` at one thread canonicalizes it twice: §19's *Not done*.
+
+### Readings
+
+Wall time and peak RSS:
+
+| document | command | A | B |
+| --- | --- | ---: | ---: |
+| nist-sp-800-53r5 | extract | 1,752 ms, 1,434 MiB | 1,731 ms, 1,421 MiB |
+| nist-sp-800-53r5 | extract, one thread | 5,367 ms, 1,899 MiB | 6,815 ms, 1,363 MiB |
+| nist-sp-800-53r5 | markdown --source | 3,446 ms, 1,738 MiB | 3,011 ms, 1,597 MiB |
+| nist-sp-800-53Ar5 | extract | 2,923 ms, 2,168 MiB | 2,944 ms, 2,172 MiB |
+| nist-sp-800-37r2 | extract | 683 ms, 556 MiB | 676 ms, 547 MiB |
+
+`53Ar5` and `37r2` move within noise. At one thread `extract` trades time for memory, as the
+streamed seal does by design; the owner kept it on these numbers. opendataloader-bench's 200,
+`markdown --unstyled --source` one at a time: p50 32.0 → 32.2 ms, p95 43.8 → 39.9 ms, 1.2% fewer
+instructions in all; one document runs 6.6% more, its content stream inflating just past the
+256 KiB one-inflate cap, so it pays the try and A's two reads.
