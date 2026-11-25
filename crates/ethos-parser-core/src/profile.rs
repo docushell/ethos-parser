@@ -1735,12 +1735,13 @@ pub const HEADING_INFERENCE_RULE_V7: &str = "type-size-v7";
 ///
 /// **And an appendix's number and any script's digits are section numbers** (decision #174,
 /// folded in before any release carried this id): the section number `-v3` ranks by and `-v4`
-/// lets a bold line stand with room above alone may open with a capital letter or an upper-case
-/// roman numeral joined to digits, `B.1`, `C.2.3` or a chapter's `II.1`, which stands a bold line
-/// with room above alone but states depth 1, since its letter as often opens a name (`H.264`,
-/// `M.2`) — a letter alone, `A. Smith`, is still no appendix number — and its digits may be any
-/// script's decimal digits (general category `Nd`, `١.٢`, `२.१`, `１．２`), joined by a full stop or a
-/// full-width one (U+FF0E), a line read right to left read in its reading (decision #54). A
+/// lets a bold line stand with room above alone may open with a capital letter or a roman chapter
+/// numeral of `I`, `V` and `X` joined to digits, `B.1`, `C.2.3` or a chapter's `II.1`, which stands
+/// a bold line with room above alone but states depth 1, since its letter as often opens a name
+/// (`H.264`, `M.2`) — a letter alone, `A. Smith`, or a code of other capitals, `CM.2.061`, is still
+/// no appendix number — and its digits may be any script's decimal digits (general category `Nd`,
+/// `١.٢`, `२.१`, `１．２`), a full-width form read as its ASCII one (U+FF01-U+FF5E), a line read right
+/// to left read in its reading (decision #54). A
 /// paper's `B.3 Prompt Engineering`, bold with room above it, had been a label under its sibling
 /// `B.2`, a heading.
 pub const HEADING_INFERENCE_RULE_V8: &str = "type-size-v8";

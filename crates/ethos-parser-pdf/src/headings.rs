@@ -278,7 +278,7 @@ pub(crate) struct Line {
     /// The one fact of position `type-size-v3` reads, measured by its caller (decision #38).
     isolated: bool,
     /// How deep the line's own section number goes: 2 for `2.1 Methods`, and 1 for a line with
-    /// no number or a number of one part. [`section_depth`].
+    /// no number, a number of one part, or an appendix's (`B.1`, decision #174). [`section_depth`].
     depth: u8,
     /// The line's text, lower-cased with its whitespace folded, hashed: two lines that read the same
     /// share it, which is how the label tier tells a running label from a heading
@@ -355,38 +355,43 @@ impl Line {
 ///
 /// **Since decision #174** (folded into `type-size-v8` before any release carried it):
 ///
-/// - **An appendix's number opens a section**: one capital letter, `A`-`Z` or full-width `Ａ`-`Ｚ`,
-///   or an upper-case roman numeral, joined to digits — `B.1`, `C.2.3`, `Ａ．１`, a chapter's `II.1`
-///   — so a bold line opening with one stands with room above it alone. **It states depth 1**, an
-///   unnumbered heading's: its letter as often opens a name, `H.264`, `X.509`, `M.2` or `P.1`, set
-///   beside headings it is no deeper than. A letter alone is no appendix number (`A. Smith`,
-///   `B Prompt`), nor is a lower-case letter, a word (`Fig.1`) or a letter after the digits; a
-///   roman numeral closed by a full stop is still a number, so an initial `M.` reads as one.
-/// - **The digits are any script's decimal digits** (general category `Nd`), `١.٢` or `１．２`,
-///   joined by a full stop or a full-width one (U+FF0E): never a superscript `²`, a fraction or a
-///   circled `①`, which no section is numbered by. The caller reads a line read right to left in
-///   its reading (decision #54), so an Arabic line's number is the one it opens with.
+/// - **An appendix's number opens a section**: one capital letter `A`-`Z`, or a roman chapter
+///   numeral of `I`, `V` and `X` (`I` to `XXXIX`), joined to digits — `B.1`, `C.2.3`, a chapter's
+///   `II.1` — so a bold line opening with one stands with room above it alone. **It states depth
+///   1**, an unnumbered heading's: its letter as often opens a name, `H.264`, `X.509`, `M.2` or
+///   `P.1`, set beside headings it is no deeper than. A letter alone is no appendix number
+///   (`A. Smith`, `B Prompt`), nor is a lower-case letter, a word (`Fig.1`), a code of other
+///   capitals (`CM.2.061`, `LCD.2`) or a letter after the digits; a roman numeral closed by a full
+///   stop is still a number, so an initial `M.` reads as one.
+/// - **The digits are any script's decimal digits** (general category `Nd`), `١.٢` or `１．２`:
+///   never a superscript `²`, a fraction or a circled `①`, which no section is numbered by. The
+///   caller reads a line read right to left in its reading (decision #54), so an Arabic line's
+///   number is the one it opens with.
+/// - **A full-width form reads as its ASCII one** (U+FF01-U+FF5E): `ＩＩ．１` as `II.1`, `Ｉ．` as
+///   `I.`, `Ａ．１` as `A.1`.
 /// - Known: [`Line::of`]'s sentence ends at `.` only, so a bold paragraph numbered `２` and closed
 ///   by `。`, standing with room above it, is a heading, as one numbered `2` already was.
 pub(crate) fn section_number(text: &str) -> Option<u8> {
     let (number, _) = text.trim_start().split_once(char::is_whitespace)?;
-    let upper = |n: &str| !n.is_empty() && n.chars().all(|c| "IVXLCDM".contains(c));
-    let roman = |n: &str| upper(n) || !n.is_empty() && n.chars().all(|c| "ivxlcdm".contains(c));
+    let number: String = number
+        .chars()
+        .map(|c| match c {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(u32::from(c) - 0xFEE0).unwrap_or(c),
+            _ => c,
+        })
+        .collect();
+    let of = |set: &str, n: &str| !n.is_empty() && n.chars().all(|c| set.contains(c));
+    let roman = |n: &str| of("IVXLCDM", n) || of("ivxlcdm", n);
     if number.strip_suffix('.').is_some_and(roman) {
         return Some(1);
     }
-    let stop = |c: char| c == '.' || c == '\u{FF0E}';
     let digits = |p: &str| !p.is_empty() && p.chars().all(ethos_parser_core::assist::is_digit);
-    let number = number.strip_suffix(stop).unwrap_or(number);
-    let mut parts = number.split(stop);
+    let number = number.strip_suffix('.').unwrap_or(&number);
+    let mut parts = number.split('.');
     let first = parts.next()?;
     let rest = parts.clone().count();
-    let mut letters = first.chars();
-    let letter = matches!(
-        (letters.next(), letters.next()),
-        (Some('A'..='Z' | 'Ａ'..='Ｚ'), None)
-    );
-    let appendix = rest > 0 && (letter || upper(first));
+    let letter = first.len() == 1 && first.bytes().all(|b| b.is_ascii_uppercase());
+    let appendix = rest > 0 && (letter || of("IVX", first));
     if !(appendix || digits(first)) || !parts.all(digits) {
         return None;
     }
@@ -1050,6 +1055,8 @@ mod tests {
             ("IV. Results", Some(1)),
             ("iv. results", Some(1)),
             ("7 Theory", Some(1)),
+            ("I． 概要", Some(1)),
+            ("ＩＩ． 方法", Some(1)),
         ] {
             assert_eq!(section_number(text), depth, "{text:?}");
         }
@@ -1058,10 +1065,10 @@ mod tests {
         }
     }
 
-    /// **An appendix's number is a capital letter or an upper-case roman numeral joined to
-    /// digits** (decision #174), and it states depth 1: `I.1` and `II.1` alike, a full-width `Ａ`
-    /// as a full-width stop is. A letter alone, a lower-case one, a word or a letter after the
-    /// digits is no number.
+    /// **An appendix's number is a capital letter or a roman chapter numeral joined to digits**
+    /// (decision #174), and it states depth 1: `I.1` and `II.1` alike, and a full-width form as its
+    /// ASCII one. A letter alone, a lower-case one, a word, a code of other capitals or a letter
+    /// after the digits is no number.
     #[test]
     fn an_appendix_number_is_a_capital_letter_joined_to_digits() {
         for text in [
@@ -1072,6 +1079,10 @@ mod tests {
             "II.1 Data",
             "IV.2.1 x",
             "Ａ．１ 概要",
+            "Ｉ．１ 背景",
+            "ＩＩ．１ データ",
+            "ＩＶ．２ x",
+            "XXXIX.1 x",
             "H.264 Advanced Video Coding",
         ] {
             assert_eq!(section_number(text), Some(1), "{text:?}");
@@ -1087,6 +1098,12 @@ mod tests {
             "B.x Notes",
             "AB.1 Notes",
             "ＡＢ．１ 概要",
+            "CM.2.061 Establish baselines",
+            "DC.1 Power Input",
+            "LCD.2 Display Panel",
+            "MIDI.1 Ports",
+            "XXL.1 Sizes",
+            "ＣＭ．２ x",
             ".1 Stray",
             ". Note",
         ] {

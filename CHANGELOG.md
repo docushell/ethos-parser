@@ -37,18 +37,21 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 `heading_inference_rule` stays `type-size-v8`, unreleased, which takes the change in; the profile
 does not move.
 
-- **An appendix's number opens a section**: one capital letter (`A`-`Z`, or full-width `Ａ`-`Ｚ`)
-  or an upper-case roman numeral joined to digits by full stops — `B.1`, `C.2.3`, `Ａ．１`, a
-  chapter's `II.1` — so a bold line opening with one needs only room above it to stand as a
+- **An appendix's number opens a section**: one capital letter `A`-`Z`, or a roman chapter
+  numeral of `I`, `V` and `X` (`I` to `XXXIX`), joined to digits by full stops — `B.1`, `C.2.3`,
+  a chapter's `II.1` — so a bold line opening with one needs only room above it to stand as a
   heading, as `3.1.` does. A paper's appendix set `B.3 Prompt Engineering` bold over its text,
   with room above, and it read as a bold label under its sibling `B.2`, a heading. **It ranks as
   an unnumbered heading does** (depth 1): its letter as often opens a name — `H.264`, `X.509`,
   `M.2`, `P.1` — set beside sibling headings it is no deeper than, so the number states no depth.
-  `I.1` and `II.1` read alike, every roman numeral the letter.
+  `I.1` and `II.1` read alike. A code of other capitals is no number, so practice codes
+  `CM.2.061` and `AC.1.001` read alike, as `LCD.2` and `AV.1` do.
 - **A section number's digits are any script's decimal digits** (general category `Nd`, the table
-  the assist guard already reads): `١.٢ عنوان`, `२.१ परिचय`, `１．２ 概要`, joined by a full stop or
-  a full-width one (U+FF0E), each stating its depth as `2.1` does. A superscript `²`, a fraction
-  or a circled `①` is no digit.
+  the assist guard already reads): `١.٢ عنوان`, `२.१ परिचय`, `１．２ 概要`, each stating its depth as
+  `2.1` does. A superscript `²`, a fraction or a circled `①` is no digit.
+- **A full-width form reads as its ASCII one** (U+FF01-U+FF5E): `１．２`, `Ａ．１`, `ＩＩ．１` and a
+  chapter's `Ｉ．` read as `1.2`, `A.1`, `II.1` and `I.`, and a line mixing the two widths
+  (`I．１`) as well, so a chapter and its subsections number alike in either width.
 - **A line read right to left is read in its reading** (decision #54): the heading rule takes a
   line's text from each run as read, so an Arabic line drawn left to right as its glyphs sit opens
   with the number its reader starts it with — `١.٢ عنوان` ranks under `١ مقدمة` — and a year at
@@ -63,7 +66,10 @@ does not move.
   promoted to headings (decision #159); one appendix-numbered heading now ranks, so they stay
   labels, as one numbered `2.1` already made them. A bold paragraph numbered in full-width digits
   and closed by `。` with room above reads as a heading, as one numbered `2` did: the sentence test
-  knows `.` only.
+  knows `.` only. A number set a tab apart from its title reaches the rule joined to it
+  (`2.1Prompt`), so it opens no section there, and the projection's number-and-title join
+  (decisions #65 and #98) reads ASCII digits alone: `B.1` or `１．２` so set writes as two blocks
+  where `2.1` writes as one, as before.
 - **Expected to change** (`markdown --source`, default and `--ocr`, against the build before it,
   on every opendataloader-bench PDF and every ParseBench page whose Markdown opens a line with
   such a number, holds a non-ASCII digit or holds right-to-left text): opendataloader-bench, two

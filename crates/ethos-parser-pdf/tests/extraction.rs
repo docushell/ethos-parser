@@ -5711,6 +5711,10 @@ fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
     let (chapter, detail) = headings(&page("II.1 Methods"));
     assert_eq!(chapter, [("II.1 Methods".to_string(), None)]);
     assert!(detail.contains("0 are labels"), "{detail}");
+    // A code of capitals no chapter is numbered with is no number: a label, as `Methods` is.
+    let (code, detail) = headings(&page("CM.2.061 Methods"));
+    assert_eq!(code, [("CM.2.061 Methods".to_string(), None)]);
+    assert!(detail.contains("1 are labels"), "{detail}");
     let (label, detail) = headings(&page("Methods"));
     assert_eq!(label, [("Methods".to_string(), None)]);
     assert!(detail.contains("1 are labels"), "{detail}");
