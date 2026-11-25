@@ -226,7 +226,7 @@ the profile do not move. Without `--ocr` nothing moves.
   2.1.0), with `--ocr`: ParseBench 55.62 → 55.67 (content 79.13 → 79.38), ParseBench-2 58.79 → 58.86
   (text 63.90 → 64.06, formatting 81.16 → 81.43); opendataloader-bench `--ocr` unchanged; the
   default lane changes on none of the 6,545 documents; the private real-document set unchanged.
-  Twenty-eight mutations, each caught.
+  Forty-one mutations, each caught.
 
 ### A whole bold, underlined line is written `**<u>X</u>**` (decision #171)
 

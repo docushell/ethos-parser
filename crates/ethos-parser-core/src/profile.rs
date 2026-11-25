@@ -1255,7 +1255,9 @@ pub const TABLE_DETECTION_TRACKS_V15: &str = "whitespace-tracks-v15";
 /// in place of one, in whatever marks — `(10%)`, `–10`, `4'000`, a decimal comma; a bar chart draws
 /// its bars an em long or more between its labels and its values, and a tail of bars shorter than
 /// an em under them is refused with them; a label that wraps is a paragraph's line, and in a script
-/// with no letter case no line reads as running text. Measured: pending.
+/// with no letter case no line reads as running text. Measured over decision #172: ParseBench
+/// 52.24 → 52.33 (tables 64.53 → 65.00), ParseBench-2 55.93 → 55.98 (tables 49.98 → 50.25); with
+/// `--ocr` 55.67 → 55.77 and 58.86 → 58.90.
 pub const TABLE_DETECTION_TRACKS_V16: &str = "whitespace-tracks-v16";
 
 /// The rule that reads a **bar chart's printed labels back as its table** (decision #42,

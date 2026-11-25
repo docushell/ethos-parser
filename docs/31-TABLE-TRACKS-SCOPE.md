@@ -1771,7 +1771,8 @@ each now a table of its labels and values, and the layout page `fh_2025_004e` p7
 shareholders beside their percentages; ParseBench-2's 4,296, seven — the same five, the insurance
 filing `f2195809587e31bc` p10 (two tables of years and a total beside their counts) and the layout
 page again; opendataloader-bench's 200 unchanged. Under `--ocr` these pages change the same way.
-Benchmark scores: pending.
+Benchmark scores, over decision #172: ParseBench 52.24 → 52.33 (tables 64.53 → 65.00), ParseBench-2
+55.93 → 55.98 (tables 49.98 → 50.25); with `--ocr` 55.67 → 55.77 and 58.86 → 58.90.
 
 **Known limits.** A table whose first column is numbers only — limits beside factors, ages beside
 premiums written down the page — stays text, as a chart's two axes do; so does one whose labels
@@ -1828,7 +1829,8 @@ refused, and its values read as prose or fragments.
   its rows or fewer): values set row by row down columns ruled only between them, the top or bottom
   left out beside them, are not one cell however many rows they leave blank.
 
-**Measured**: pending.
+**Measured** (against `main`, `bbb66e8`): ParseBench-2 55.90 → 55.99 (tables 49.98 → 50.52), with
+`--ocr` 58.76 → 58.85 (tables 51.71 → 52.25); ParseBench and opendataloader-bench unchanged.
 
 **Measured and not used**, on the prototypes: the clause with neither guard changed 38 benchmark
 documents, 12 of them for the worse — 8 empty grids where the page sets no table (a report's
