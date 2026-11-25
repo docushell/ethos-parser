@@ -37,27 +37,40 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 `heading_inference_rule` stays `type-size-v8`, unreleased, which takes the change in; the profile
 does not move.
 
-- **An appendix's number is a section number**: a capital letter joined to digits by full stops,
-  `B.1` or `C.2.3`, the letter one part, so `B.1` ranks as deep as `2.1` among headings set in one
-  size, and a bold line opening with one needs only room above it to stand as a heading, as
-  `3.1.` does. A paper's appendix set `B.3 Prompt Engineering` bold over its text, with room
-  above, and it read as a bold label under its sibling `B.2`, a heading.
+- **An appendix's number opens a section**: one capital letter (`A`-`Z`, or full-width `Ａ`-`Ｚ`)
+  or an upper-case roman numeral joined to digits by full stops — `B.1`, `C.2.3`, `Ａ．１`, a
+  chapter's `II.1` — so a bold line opening with one needs only room above it to stand as a
+  heading, as `3.1.` does. A paper's appendix set `B.3 Prompt Engineering` bold over its text,
+  with room above, and it read as a bold label under its sibling `B.2`, a heading. **It ranks as
+  an unnumbered heading does** (depth 1): its letter as often opens a name — `H.264`, `X.509`,
+  `M.2`, `P.1` — set beside sibling headings it is no deeper than, so the number states no depth.
+  `I.1` and `II.1` read alike, every roman numeral the letter.
 - **A section number's digits are any script's decimal digits** (general category `Nd`, the table
   the assist guard already reads): `١.٢ عنوان`, `२.१ परिचय`, `１．２ 概要`, joined by a full stop or
-  a full-width one (U+FF0E). A superscript `²`, a fraction or a circled `①` is no digit.
-- **Only that.** A letter alone is no number — `A. Smith`, `B Prompt` — nor a lower-case letter, a
-  word (`Fig.1`) or a letter after the digits; a roman numeral still needs its full stop.
-  `core::assist::is_digit` becomes `#[doc(hidden)] pub` for the PDF reader, no supported API.
-- **Expected to change** (`markdown --source` against the build before it, on every
-  opendataloader-bench PDF and every ParseBench page whose Markdown opens a line with such a
-  number or holds a non-ASCII digit): opendataloader-bench, two papers' appendices, the census's
-  gains — `01030000000195` `B.1` and `01030000000196` `B.3` to `B.5`, bold labels written `#`;
-  ParseBench and ParseBench-2, `text_simple__temporal`'s `A.2 Notícias associadas`, a label
-  written `#`; ParseBench-2, a tax form's two pages, `filled__poland--02_PIT-36--p5__typed` and
-  `-p6__typed`, whose headings `H.1.` to `H.6.3.` now rank by their depth, each one level down
-  (`H.1.` under `H.`, as `2.1` under `2`; on p6, where `H.` is not on the page, the wrapped
-  heading's unnumbered second line, depth 1, holds the level above, as a wrapped `2.1` heading's
-  does). No other candidate page changes; no page of digits in another script does.
+  a full-width one (U+FF0E), each stating its depth as `2.1` does. A superscript `²`, a fraction
+  or a circled `①` is no digit.
+- **A line read right to left is read in its reading** (decision #54): the heading rule takes a
+  line's text from each run as read, so an Arabic line drawn left to right as its glyphs sit opens
+  with the number its reader starts it with — `١.٢ عنوان` ranks under `١ مقدمة` — and a year at
+  its end, drawn first, opens no section; its closing full stop makes it a sentence. Built from
+  the drawn order, the line had opened with its last word.
+- **Only that.** A letter alone is no appendix number — `A. Smith`, `B Prompt` — nor a lower-case
+  letter, a word (`Fig.1`) or a letter after the digits; a roman numeral closed by a full stop is
+  still a number, as it was, so an initial `M.` reads as one. `core::assist::is_digit` becomes
+  `#[doc(hidden)] pub` for the PDF reader, no supported API.
+- **Known**: a name set bold with room above, `X.509 Certificates`, now stands as a heading, as
+  `802.11 Wireless` already did. Where no line of a document ranked, its bold labels were
+  promoted to headings (decision #159); one appendix-numbered heading now ranks, so they stay
+  labels, as one numbered `2.1` already made them. A bold paragraph numbered in full-width digits
+  and closed by `。` with room above reads as a heading, as one numbered `2` did: the sentence test
+  knows `.` only.
+- **Expected to change** (`markdown --source`, default and `--ocr`, against the build before it,
+  on every opendataloader-bench PDF and every ParseBench page whose Markdown opens a line with
+  such a number, holds a non-ASCII digit or holds right-to-left text): opendataloader-bench, two
+  papers' appendices, the census's gains — `01030000000195` `B.1` and `01030000000196` `B.3` to
+  `B.5`, bold labels written `#`; ParseBench and ParseBench-2, `text_simple__temporal`'s
+  `A.2 Notícias associadas`, a label written `#`. No other candidate page changes: no page of
+  digits in another script, no right-to-left page and no roman-numbered one does.
 - **Measured**: pending.
 
 ### Two columns written down the page, a number in every row, are a table (decision #173)

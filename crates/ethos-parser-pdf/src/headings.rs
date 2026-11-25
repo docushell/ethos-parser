@@ -345,26 +345,33 @@ impl Line {
     }
 }
 
-/// The depth of the section number opening `text`, or `None` where it opens with none: the parts
-/// of a leading `2.1.3` or `2.1.` — digits joined by full stops — or 1 for a roman numeral closed
-/// by a full stop, `IV.` or `iv.`, each followed by whitespace. The author's own numbering, read as
-/// the depth it states: `type-size-v3` ranks two headings set in one size by it, so `2 Foundations`
-/// stands above `2.1 Databases`, and `type-size-v4` lets a numbered bold line stand with space above
-/// it alone. Digits, roman numerals and full stops only, so it reads no language.
+/// The depth of the section number opening `text`, or `None` where it opens with none, each number
+/// followed by whitespace: the parts of a leading `2.1.3` or `2.1.` — decimal digits joined by full
+/// stops — or 1 for a roman numeral closed by a full stop, `IV.` or `iv.`, and for an appendix's
+/// number, `B.1` (below). The author's own numbering, read as the depth it states: `type-size-v3`
+/// ranks two headings set in one size by it, so `2 Foundations` stands above `2.1 Databases`, and
+/// `type-size-v4` lets a numbered bold line stand with space above it alone. It reads no word, so
+/// no language.
 ///
-/// **Since decision #174** (folded into `type-size-v8` before any release carried it) an
-/// appendix's number counts, a capital letter joined to digits, `B.1` or `C.2.3`, its letter one
-/// part like a chapter's digits, so `B.1` is as deep as `2.1`; a letter alone is no number, as
-/// `A. Smith` and `B Prompt` open with none. And the digits are any script's decimal digits, `١.٢`
-/// or `１．２`, joined by a full stop or a full-width one (U+FF0E): never a superscript `²`, a
-/// fraction or a circled `①`, which no section is numbered by.
+/// **Since decision #174** (folded into `type-size-v8` before any release carried it):
+///
+/// - **An appendix's number opens a section**: one capital letter, `A`-`Z` or full-width `Ａ`-`Ｚ`,
+///   or an upper-case roman numeral, joined to digits — `B.1`, `C.2.3`, `Ａ．１`, a chapter's `II.1`
+///   — so a bold line opening with one stands with room above it alone. **It states depth 1**, an
+///   unnumbered heading's: its letter as often opens a name, `H.264`, `X.509`, `M.2` or `P.1`, set
+///   beside headings it is no deeper than. A letter alone is no appendix number (`A. Smith`,
+///   `B Prompt`), nor is a lower-case letter, a word (`Fig.1`) or a letter after the digits; a
+///   roman numeral closed by a full stop is still a number, so an initial `M.` reads as one.
+/// - **The digits are any script's decimal digits** (general category `Nd`), `١.٢` or `１．２`,
+///   joined by a full stop or a full-width one (U+FF0E): never a superscript `²`, a fraction or a
+///   circled `①`, which no section is numbered by. The caller reads a line read right to left in
+///   its reading (decision #54), so an Arabic line's number is the one it opens with.
+/// - Known: [`Line::of`]'s sentence ends at `.` only, so a bold paragraph numbered `２` and closed
+///   by `。`, standing with room above it, is a heading, as one numbered `2` already was.
 pub(crate) fn section_number(text: &str) -> Option<u8> {
     let (number, _) = text.trim_start().split_once(char::is_whitespace)?;
-    let roman = |n: &str| {
-        !n.is_empty()
-            && (n.chars().all(|c| "IVXLCDM".contains(c))
-                || n.chars().all(|c| "ivxlcdm".contains(c)))
-    };
+    let upper = |n: &str| !n.is_empty() && n.chars().all(|c| "IVXLCDM".contains(c));
+    let roman = |n: &str| upper(n) || !n.is_empty() && n.chars().all(|c| "ivxlcdm".contains(c));
     if number.strip_suffix('.').is_some_and(roman) {
         return Some(1);
     }
@@ -374,11 +381,20 @@ pub(crate) fn section_number(text: &str) -> Option<u8> {
     let mut parts = number.split(stop);
     let first = parts.next()?;
     let rest = parts.clone().count();
-    let appendix = rest > 0 && matches!(first.as_bytes(), [b'A'..=b'Z']);
+    let mut letters = first.chars();
+    let letter = matches!(
+        (letters.next(), letters.next()),
+        (Some('A'..='Z' | 'Ａ'..='Ｚ'), None)
+    );
+    let appendix = rest > 0 && (letter || upper(first));
     if !(appendix || digits(first)) || !parts.all(digits) {
         return None;
     }
-    Some(u8::try_from(rest + 1).unwrap_or(u8::MAX))
+    Some(if appendix {
+        1
+    } else {
+        u8::try_from(rest + 1).unwrap_or(u8::MAX)
+    })
 }
 
 /// [`section_number`]'s depth, and 1 where the text opens with no number.
@@ -1003,7 +1019,8 @@ mod tests {
     }
 
     /// **The depth a section number states**: its parts, digits joined by full stops and followed
-    /// by whitespace. Anything else is depth 1, an unnumbered heading's.
+    /// by whitespace. Anything else is depth 1, an unnumbered heading's — an appendix's `A.1` too
+    /// (decision #174), whose letter as often opens a name.
     #[test]
     fn a_section_number_states_its_depth() {
         for (text, depth) in [
@@ -1012,8 +1029,8 @@ mod tests {
             ("2.1.3. Scope", 3),
             ("Methods", 1),
             ("2.1", 1),
-            ("A.1 Annex", 2),
-            ("C.2.3 Scope", 3),
+            ("A.1 Annex", 1),
+            ("C.2.3 Scope", 1),
             ("B Prompt", 1),
             (".1 Stray", 1),
             ("1..2 Broken", 1),
@@ -1024,7 +1041,8 @@ mod tests {
     }
 
     /// **A section number is digits joined by full stops, or a roman numeral closed by one**, then
-    /// whitespace; anything else is no number, and a number is never read inside a word.
+    /// whitespace — or, since decision #174, an appendix's letter joined to digits (the test
+    /// below); anything else is no number, and a number is never read inside a word.
     #[test]
     fn a_section_number_is_digits_or_a_closed_roman_numeral() {
         for (text, depth) in [
@@ -1040,26 +1058,37 @@ mod tests {
         }
     }
 
-    /// **An appendix's number is a capital letter joined to digits** (decision #174): the letter
-    /// is one part, as a chapter's digits are, and a letter alone, a lower-case one, a word or a
-    /// letter after the digits is no number.
+    /// **An appendix's number is a capital letter or an upper-case roman numeral joined to
+    /// digits** (decision #174), and it states depth 1: `I.1` and `II.1` alike, a full-width `Ａ`
+    /// as a full-width stop is. A letter alone, a lower-case one, a word or a letter after the
+    /// digits is no number.
     #[test]
     fn an_appendix_number_is_a_capital_letter_joined_to_digits() {
-        for (text, depth) in [
-            ("B.3 Prompt Engineering", Some(2)),
-            ("C.2.3 x", Some(3)),
-            ("B.1. Models", Some(2)),
+        for text in [
+            "B.3 Prompt Engineering",
+            "C.2.3 x",
+            "B.1. Models",
+            "I.1 Context",
+            "II.1 Data",
+            "IV.2.1 x",
+            "Ａ．１ 概要",
+            "H.264 Advanced Video Coding",
         ] {
-            assert_eq!(section_number(text), depth, "{text:?}");
+            assert_eq!(section_number(text), Some(1), "{text:?}");
         }
         for text in [
             "B Prompt",
             "A. Smith",
             "b.1 models",
+            "ii.1 data",
             "Fig.1 Overview",
             "U.S. Army",
             "1.B Notes",
             "B.x Notes",
+            "AB.1 Notes",
+            "ＡＢ．１ 概要",
+            ".1 Stray",
+            ". Note",
         ] {
             assert_eq!(section_number(text), None, "{text:?}");
         }
@@ -1094,7 +1123,8 @@ mod tests {
         let methods = line(&[run(Some(1400), "Methods")], "Methods", false);
         let label = line(&[bold(1000, "Notes")], "Notes", true);
         let annex = line(&[run(Some(1400), "B.1 Prompts")], "B.1 Prompts", false);
-        let levels = levels_over(&[deeper, two_one, two, title, methods, label, annex]);
+        let codec = line(&[run(Some(1400), "H.264 Coding")], "H.264 Coding", false);
+        let levels = levels_over(&[deeper, two_one, two, title, methods, label, annex, codec]);
         assert_eq!(levels.of(title), Some(1));
         assert_eq!(levels.of(two), Some(2));
         assert_eq!(
@@ -1102,12 +1132,17 @@ mod tests {
             Some(2),
             "unnumbered is depth 1, as `2` is"
         );
-        assert_eq!(levels.of(two_one), Some(3));
         assert_eq!(
             levels.of(annex),
-            Some(3),
-            "an appendix's `B.1` is as deep as `2.1`"
+            Some(2),
+            "an appendix's `B.1` states no depth (decision #174)"
         );
+        assert_eq!(
+            levels.of(codec),
+            Some(2),
+            "nor does a name, `H.264`, beside its siblings"
+        );
+        assert_eq!(levels.of(two_one), Some(3));
         assert_eq!(levels.of(deeper), Some(4));
         assert_eq!(levels.of(label), Some(5));
     }

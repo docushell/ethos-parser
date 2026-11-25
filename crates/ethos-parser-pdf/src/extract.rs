@@ -702,7 +702,9 @@ fn page_heading_lines(
     let mut lines = Vec::new();
     for (n, indices) in ordered.iter().enumerate() {
         tally.add_line(&members[n]);
-        let text: String = indices.iter().map(|&i| runs[i].text.as_str()).collect();
+        // Each run as read (decision #54), so a line read right to left opens where its reader
+        // starts it: its section number is the one it opens with, its full stop the one it ends at.
+        let text: String = indices.iter().map(|&i| runs[i].reading_text()).collect();
         let alone_in_block = {
             let block_of = |k: usize| ordered[k].first().and_then(|&i| runs[i].block);
             let opens = n == 0 || block_of(n - 1) != block_of(n);

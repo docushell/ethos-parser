@@ -5704,12 +5704,93 @@ fn a_numbered_bold_line_set_tight_over_its_text_is_a_heading() {
     let (numbered, detail) = headings(&page("3.1. Methods"));
     assert_eq!(numbered, [("3.1. Methods".to_string(), None)]);
     assert!(detail.contains("0 are labels"), "{detail}");
-    // Decision #174: an appendix's number is a section number too.
+    // Decision #174: an appendix's number is a section number too, and a roman chapter's.
     let (appendix, detail) = headings(&page("B.1 Methods"));
     assert_eq!(appendix, [("B.1 Methods".to_string(), None)]);
     assert!(detail.contains("0 are labels"), "{detail}");
+    let (chapter, detail) = headings(&page("II.1 Methods"));
+    assert_eq!(chapter, [("II.1 Methods".to_string(), None)]);
+    assert!(detail.contains("0 are labels"), "{detail}");
     let (label, detail) = headings(&page("Methods"));
     assert_eq!(label, [("Methods".to_string(), None)]);
+    assert!(detail.contains("1 are labels"), "{detail}");
+}
+
+/// **A line read right to left opens with the number its reader starts it with** (decision #174,
+/// through decision #54's reading). The page above, its bold line now Arabic, drawn as a
+/// bidi-resolving producer draws it: its glyphs where they sit, left to right. `١.٢ عنوان` is
+/// drawn `ناونع ١.٢`; read, it opens with its number and stands with the room above it alone.
+/// `تقرير عام ٢٠٢٤` is drawn opening with its year; read, it opens with none and is a label.
+#[test]
+fn a_line_read_right_to_left_opens_with_the_number_its_reader_starts_it_with() {
+    let page = |drawn: &str| {
+        let mut content = String::new();
+        for (i, y) in (0..8).map(|i| (i, 380 - 12 * i)) {
+            content.push_str(&format!(
+                "BT /F1 10 Tf 20 {y} Td (Plain body text that runs across the page, line {i}) Tj \
+                 ET\n"
+            ));
+        }
+        content.push_str(&format!("BT /F2 10 Tf 20 266 Td ({drawn}) Tj ET\n"));
+        for (i, y) in (0..8).map(|i| (i, 254 - 12 * i)) {
+            content.push_str(&format!(
+                "BT /F1 10 Tf 20 {y} Td (More plain body text across the page, line {i}) Tj ET\n"
+            ));
+        }
+        let stream = |data: &[u8]| {
+            [
+                format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+                data,
+                b"\nendstream",
+            ]
+            .concat()
+        };
+        let widths = vec!["556"; 91].join(" ");
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Resources << /Font << /F1 5 0 R \
+               /F2 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(content.as_bytes()),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            format!(
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /FirstChar 32 \
+                 /LastChar 122 /Widths [{widths}] /ToUnicode 7 0 R >>"
+            )
+            .into_bytes(),
+            // `a` to `j` are Arabic letters, `0` to `4` Arabic-Indic digits.
+            stream(
+                b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 15 beginbfchar \
+                  <20> <0020> <2E> <002E> <30> <0660> <31> <0661> <32> <0662> <34> <0664> \
+                  <61> <0639> <62> <0646> <63> <0648> <64> <0627> <66> <062A> <67> <0642> \
+                  <68> <0631> <69> <064A> <6A> <0645> endbfchar endcmap",
+            ),
+        ])
+    };
+    let read = |drawn: &str| {
+        let a = extracted(&page(drawn)).expect("reads");
+        let detail = a
+            .assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE)
+            .expect("the inference is declared")
+            .detail
+            .clone();
+        let reading = runs(&a)
+            .iter()
+            .find_map(|r| r.reading.as_ref())
+            .expect("the Arabic line is read right to left")
+            .text
+            .clone();
+        (reading, detail)
+    };
+    let (reading, detail) = read("bdcba 1.2");
+    assert_eq!(reading, "١.٢ عنوان");
+    assert!(detail.contains("0 are labels"), "{detail}");
+    let (reading, detail) = read("2024 jda hihgf");
+    assert_eq!(reading, "تقرير عام ٢٠٢٤");
     assert!(detail.contains("1 are labels"), "{detail}");
 }
 
