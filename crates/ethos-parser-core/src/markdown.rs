@@ -1345,6 +1345,17 @@ pub fn normalize(s: &str) -> String {
     out
 }
 
+/// Whether [`normalize`] gives fewer characters than `s` holds, asked without building it: it trims
+/// whitespace and makes each run of it one space, so it removes a character exactly where `s`
+/// starts or ends with whitespace or holds two whitespace characters together.
+fn normalize_shortens(s: &str) -> bool {
+    s.starts_with(char::is_whitespace)
+        || s.ends_with(char::is_whitespace)
+        || s.chars()
+            .zip(s.chars().skip(1))
+            .any(|(a, b)| a.is_whitespace() && b.is_whitespace())
+}
+
 /// Heading level from what the **document declared**, or from what the reader **measured of its
 /// type** where the document declared nothing — or `None` for anything that is not a heading.
 ///
@@ -5746,9 +5757,7 @@ pub(crate) fn census(
         let nodes = payload
             .nodes
             .iter()
-            .filter(|n| {
-                projected(n) && normalize(&n.text).chars().count() != n.text.chars().count()
-            })
+            .filter(|n| projected(n) && normalize_shortens(&n.text))
             .count();
         buckets.insert("whitespace-collapsed-v1", (collapsed, nodes));
     }
@@ -6248,6 +6257,31 @@ pub(crate) mod tests {
         Capabilities, CoordinateSystem, DerivationClass, IdAllocator, IdKind, NodeId, Profile,
         QRect,
     };
+
+    /// The census asks [`normalize_shortens`] where it counted `normalize`'s characters: every
+    /// string of up to five characters over a space, a tab, a no-break space, an ideographic space,
+    /// a zero-width space (which is no whitespace) and a letter gets the same answer.
+    #[test]
+    fn normalize_shortens_where_normalize_drops_a_character() {
+        let alphabet = [' ', '\t', '\u{a0}', '\u{3000}', '\u{200b}', 'a'];
+        let mut level = vec![String::new()];
+        let mut strings = level.clone();
+        for _ in 0..5 {
+            level = level
+                .iter()
+                .flat_map(|s| alphabet.iter().map(move |c| format!("{s}{c}")))
+                .collect();
+            strings.extend(level.iter().cloned());
+        }
+        assert_eq!(strings.len(), 1 + 6 + 36 + 216 + 1296 + 7776);
+        for s in &strings {
+            assert_eq!(
+                normalize_shortens(s),
+                normalize(s).chars().count() != s.chars().count(),
+                "{s:?}"
+            );
+        }
+    }
 
     fn seg(kind: SegmentKind, start: usize, end: usize, ids: &[&str]) -> Segment {
         Segment {
