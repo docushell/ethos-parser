@@ -1,8 +1,8 @@
 # 37 — The assist lane's transport: the system `curl`, run by `ethos-parser-assist`
 
-**Status: DRAFT, decision #144.** Written 2026-11-15. The owner chose the transport on 2026-11-15
-(Phase 4b question Q1): "the system `curl`, run as a subprocess of `ethos-parser-assist`". This is
-the ADR that [`deny.toml`](../deny.toml) requires for an exception to the dependency posture. As
+**Status: DRAFT, decision #144.** Written 2026-11-15. The owner chose the transport on 2026-11-15:
+"the system `curl`, run as a subprocess of `ethos-parser-assist`". This is the ADR that
+[`deny.toml`](../deny.toml) requires for an exception to the dependency posture. As
 [`20`](20-STANDARD-14-METRICS-SCOPE.md) explains, this repository records a decision as a numbered
 document plus a numbered row in [`00-NORTH-STAR.md`](00-NORTH-STAR.md). It has no `docs/adr/`, so
 this document is that ADR.
@@ -164,7 +164,7 @@ Nothing leaves loopback.
 
 - How `ethos-parser extract --assist` spawns the binary and names its exits: decision #149
   (section 7).
-- Shipping the binary in releases (Q2, step D8).
+- Shipping the binary in releases (decision #148).
 - A streaming request, concurrent pages, or retries within one run. A failed page is retried by
   running `ask` again.
 

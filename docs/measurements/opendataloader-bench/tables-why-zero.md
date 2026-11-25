@@ -9,7 +9,7 @@ record does not carry: which of them lost a *grid* and which of them lost *text*
 | | |
 | --- | --- |
 | engine | the build at `fceaf98`, `--version` **ethos-parser 0.58.0**, sha256 `bf782a81ccfe2f5046589ec1a554bc15f3df34e937c7a4c2e3d6e133295e2672` |
-| | **not a released build.** Workspace 0.58.0 plus this session's B1–B9 fixes. It is not the `0.58.0` tarball the README's run used, and `--version` cannot tell the two apart |
+| | **not a released build.** Workspace 0.58.0 plus this session's fixes. It is not the `0.58.0` tarball the README's run used, and `--version` cannot tell the two apart |
 | profile | `profile_sha256` `sha256:da38cc2564…70b7d9`, schema `0.6.0`, `reading_order_rule` `gutter-columns-v3`, table rules `ruled-rects-v6` / `unruled-align-v1` / `stroke-ruled-v1` |
 | harness | `~/ethos-external-benchmarks/opendataloader-bench` at commit `7af1d8f4d0c09f51ea1a5c6ba5f66e993286d109` — the same commit the README records |
 | evaluator | the harness's own `evaluator_table.evaluate_table`, unmodified, under its own virtualenv (Python 3.13.14, rapidfuzz 3.14.3) |

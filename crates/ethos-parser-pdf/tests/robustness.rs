@@ -433,7 +433,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// place around, each the leading-gap page with one thing changed — join the same way and make
 /// it **81**: a marked-content frame, a shared stream or an inline image in the content changes
 /// nothing about how the damage is refused either (85 fixtures, 487 mutants).
-/// `rtl-hebrew-visual-order` (B9), the three `heading-display-line` pages (C1 S1) and
+/// `rtl-hebrew-visual-order`, the three `heading-display-line` pages (decision #29's S1) and
 /// `scalar-units-non-bmp` (OPEN-WORK §5) joined the same way and made it **86**.
 /// `figure-paths-drawn` (decision #46), `units-contents-list` (`line-units-v3`), and
 /// `font-program-bold` and `synthetic-bold-fill-stroke` (`page-observations-v4`) join the same way
@@ -924,15 +924,15 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
          lists could reach. Its one run is 3 scalars, 4 UTF-16 units and 7 UTF-8 bytes, so a \
          reader counting the wrong unit reports a `scalar_code_mismatch` here and a reader \
          counting scalars does not; and its `e` plus COMBINING ACUTE is canonically equivalent to \
-         one scalar, so any reader applying NFC turns three scalars into two. C1 S1 moved this \
-         from 86 by \
-         adding the three pages decision #29's heading rule is proved on — \
+         one scalar, so any reader applying NFC turns three scalars into two. Decision #29's S1 \
+         moved this from 86 by \
+         adding the three pages its heading rule is proved on — \
          `heading-display-line`, one display line at twice the body type above five body lines \
          and no tree; `heading-display-line-tagged`, the same stream under a /StructTreeRoot that \
          cites nothing; and `heading-display-line-tf-one`, the same page with its type carried in \
          the text matrix under `/F1 1 Tf` — so the gate and the rendered-em reading are each \
-         held by a file, and each survives only the mutant every engine fixture survives. B9 \
-         moved this from 85 by \
+         held by a file, and each survives only the mutant every engine fixture survives. An \
+         earlier fix moved this from 85 by \
          adding `rtl-hebrew-visual-order`: right-to-left text was in neither owned corpus, so \
          nothing said what this engine does with a producer's visual-order Hebrew, and the \
          answer — the codes in the page's order, the text the logical word reversed — is a \

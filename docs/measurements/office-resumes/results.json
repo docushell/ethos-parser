@@ -1,6 +1,6 @@
 {
  "binary": {
-  "path": "target/proto/measure/bin/c9b364c/ethos-parser",
+  "path": "target/release/ethos-parser",
   "sha256": "7e819094cf441dcf4aab3f759858b9e2819b497a41dae8eef1e1a6f0ecf012c4",
   "version": "ethos-parser 0.66.0-dev.1"
  },

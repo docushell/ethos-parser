@@ -139,7 +139,7 @@ pub fn unchosen(status: u16, ids: &[String]) -> String {
 }
 
 /// Decision #123's request: one PNG data URL and the prompt `grounding`, temperature 0, 12,288
-/// tokens at most, not streamed (Phase 4a REPORT, "Request body").
+/// tokens at most, not streamed.
 pub fn request_body(model: &str, png: &[u8]) -> Vec<u8> {
     format!(
         "{{\"model\":{},\"max_tokens\":{MAX_TOKENS},\"temperature\":0.0,\"stream\":false,\

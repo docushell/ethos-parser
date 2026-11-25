@@ -1,4 +1,4 @@
-# C1 S3 — the heading rule's false positives, where the author's tree can say
+# Decision #29, S3 — the heading rule's false positives, where the author's tree can say
 
 **Run 2026-09-18** with the release build of `b06b2fc`+`bf44152` (`type-size-v1`, S1 and S2
 landed, not pushed), on macOS 26.6.2, Mac16,8 arm64. Instrument: [`falsepos.py`](falsepos.py).
@@ -187,7 +187,7 @@ also removing real headings.
 
 ---
 
-## 6. C1 S4 — what the repaired rule scores on the bench
+## 6. Decision #29, S4 — what the repaired rule scores on the bench
 
 `type-size-v2` over opendataloader-bench's 200 documents, through the bench's own evaluators —
 the appendix of [`../opendataloader-bench/README.md`](../opendataloader-bench/README.md) has the

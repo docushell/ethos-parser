@@ -114,8 +114,8 @@ const PDF_COUNTERS: [&str; 25] = [
     // `structure-tree-engine-written` names. Caught the same way, by the first full gate after it
     // landed.
     "computed_bound",
-    // Decision #29, C1 S1 (`b06b2fc`). The lines read as headings from their type, the count
-    // `headings-inferred-from-type` names. Caught the same way again: C1's targeted runs did not
+    // Decision #29, S1 (`b06b2fc`). The lines read as headings from their type, the count
+    // `headings-inferred-from-type` names. Caught the same way again: its targeted runs did not
     // include this file, and the first run that did found it.
     "fired",
     // Decision #38 (`type-size-v3`). Of those, the lines read from a bold face standing apart,

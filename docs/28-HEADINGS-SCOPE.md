@@ -655,7 +655,7 @@ outside it.**
    reachable; it does not say the rule meets it.
 2. **MHS under the rule.** Unmeasured. Needs S2 and a bench run. It will rise above 0.0000 on
    arithmetic alone — any heading at all leaves the evaluator's `(0.0, 0.0)` early exit — so
-   **"MHS above 0.0000" is not an acceptance bar** and §7.5 does not use it as one. C1's success
+   **"MHS above 0.0000" is not an acceptance bar** and §7.5 does not use it as one. The success
    criterion the owner's task list carries reads that way, and §11 settles that §7.5's four bars
    govern instead.
 3. **Six of the eleven documents §7.1.1 names.** `nist-sp-800-207`, `nist-sp-800-161r1` and

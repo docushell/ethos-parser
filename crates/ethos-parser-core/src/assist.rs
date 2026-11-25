@@ -857,7 +857,7 @@ fn legible(node: &crate::Node) -> bool {
 
 /// A page's visible box, `[left, top, width, height]` in centipoints: the frame a block's grid is
 /// drawn on. The renderer draws exactly that box, turned, and the record's sizes are after the
-/// turn, so no rotation enters (design §4.3).
+/// turn, so no rotation enters.
 pub(crate) fn frame_of(page: &crate::representation::PageRecord) -> [i64; 4] {
     match page.visible {
         Some(v) => [v.x0(), v.y0(), v.x1() - v.x0(), v.y1() - v.y0()],
@@ -1759,7 +1759,7 @@ fn loops(text: &str) -> bool {
 const TRIGGER_WORDS: usize = 20;
 
 /// The pages, by number, `extract --assist` asks a model to read under `--assist-pages trigger`
-/// (design §6, decision #150): each page of the sealed record where one of six signals fires.
+/// (decision #150): each page of the sealed record where one of six signals fires.
 ///
 /// - **S1, a scan:** the page's `scanned-page-not-recognized`, or a recognized run on it.
 /// - **S2, few words:** under 20 distinct words (decision #123's) in its runs, joined in order,
@@ -4228,7 +4228,7 @@ mod tests {
     }
 
     /// **The trigger asks for a page where one of its six signals fires, and for no other**
-    /// (design §6, decision #150). Page 1 is twenty made-up words and nothing else; pages 2 to 10
+    /// (decision #150). Page 1 is twenty made-up words and nothing else; pages 2 to 10
     /// are page 1 with one change each: a recognized run, its `scanned-page-not-recognized`, a
     /// figure, a table, a picture painted over a quarter of the page, U+FFFD in a run, a word
     /// fewer; a picture as large, half of it off the page, which asks nothing; a picture over a

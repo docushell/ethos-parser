@@ -9546,7 +9546,7 @@ fn the_empty_destination_offsets_a_ligature() {
 }
 
 // -------------------------------------------------------------------------------------------
-// Right-to-left text: what this engine does with it, measured (B9)
+// Right-to-left text: what this engine does with it, measured
 // -------------------------------------------------------------------------------------------
 
 /// **Right-to-left text keeps the order the page draws it, and is read right to left beside it**

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""C1 S3 — how often the shipped heading rule fires where the author's tree says "not a heading".
+"""Decision #29, S3 — how often the shipped heading rule fires where the author's tree says
+"not a heading".
 
     python3 docs/measurements/headings/falsepos.py [WORKDIR]
 

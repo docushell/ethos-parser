@@ -18,7 +18,7 @@ benchmark's own published row for `liteparse`, 0.576.
 Identical to [`tables-why-zero.md`](tables-why-zero.md): engine
 the build at `fceaf98`, `--version` **ethos-parser 0.58.0**, sha256
 `bf782a81ccfe2f5046589ec1a554bc15f3df34e937c7a4c2e3d6e133295e2672` — **workspace 0.58.0 plus this
-session's B1–B9 fixes, not the released tarball, and `--version` cannot tell them apart**.
+session's fixes, not the released tarball, and `--version` cannot tell them apart**.
 `profile_sha256` `sha256:da38cc2564…70b7d9`, `reading_order_rule` `gutter-columns-v3` on **200 of
 200** documents. Harness at `7af1d8f4d0c09f51ea1a5c6ba5f66e993286d109`, its own
 `evaluator_reading_order.evaluate_reading_order` unmodified under its own virtualenv. Repository

@@ -142,7 +142,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
 /// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
 /// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
-/// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
+/// | decision #29 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
 /// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared, and one that cannot is counted |
 /// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 /// | 0.64.0 | `markdown-blocks-v12` | four joins that broke a word mid-line: declared pairs, the reach cap, fonts with no lone space, cells and list items |

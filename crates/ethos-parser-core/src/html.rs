@@ -137,7 +137,7 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `<h1>` now projects `<h1>` where `-v2` projected `<p>`. Both projection ids move together here
 /// and that is not a contradiction of them being separate — separate means they *can* move
 /// independently, and this change went through `heading_level`, which both of them call.
-/// `-v8` at C1 S2 (decision #29): a line the reader read as a heading from the type the page draws
+/// `-v8` at decision #29's S2: a line the reader read as a heading from the type the page draws
 /// projects as `<h1>` where `-v7` projected `<p>`. Both ids move together a fourth time, for the
 /// reason `-v3` gives: the change went through `heading_level`, which both projections call.
 /// `-v5` at v2.2-S5: two runs the document declared nothing about, drawn as the next ink along

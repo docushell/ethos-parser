@@ -150,7 +150,7 @@ fn json_of(out: &Output) -> Value {
 
 /// **The replies attach as `Proposed` blocks beside the engine's record, and nothing else moves**:
 /// the record differs from the engine-only one in its profile hash, its `assist` key and its
-/// fingerprint, and its `ground` is the engine-only one but for those two hashes (design §8.4); its
+/// fingerprint, and its `ground` is the engine-only one but for those two hashes; its
 /// Markdown and HTML are too, but for their `proposed` census, as these replies hold no table or
 /// chart to add and swap no page (decision #147).
 /// Pages 1 and 3 were asked, so page 2 is absent; page 3 is cropped and turned, and the size it was
@@ -475,8 +475,8 @@ fn under_ocr_the_pin_stacks_on_the_ocr_profile() {
     );
 }
 
-/// **The guard drops exactly the planted wrong lines, on a page built here** (decision #146,
-/// design §8.3): a table read with four wrong values (a digit in an amount, an id and a date, and a
+/// **The guard drops exactly the planted wrong lines, on a page built here** (decision #146):
+/// a table read with four wrong values (a digit in an amount, an id and a date, and a
 /// comma for the page's point) loses those four cells and binds the rest, the amount the engine
 /// split by a space among them; a chart's bar values the page does not print are kept as
 /// estimates; an invented line is unsupported; a region the engine read nothing in, or only text
@@ -704,7 +704,7 @@ fn the_record_names_what_the_assist_binary_writes() {
     }
 }
 
-/// **No model file in the repository** (the owner, 2026-11-15; Phase 4b design, test 8.6): the
+/// **No model file in the repository** (the owner, 2026-11-15): the
 /// assist lane's model runs in a server the user starts. The recognizer's models in `ocr/models/`,
 /// built into its binary (decision #120), are the one exception. `ci/release-artifacts.sh` holds
 /// each release archive to its three binaries, LICENSE, NOTICE and README.md.

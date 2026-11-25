@@ -1003,7 +1003,7 @@ row, as it keeps both tables.
 
 `extract --assist` asks for a page only where the engine's own record says a model could help. The
 signals are read from the sealed engine-only record before anything is asked, by
-`ethos_parser_core::assist_trigger`, new and public (design §6):
+`ethos_parser_core::assist_trigger`, new and public:
 - **S1, a scan:** the page's `scanned-page-not-recognized`, or a recognized run on it.
 - **S2, few words:** under 20 distinct words in its runs, joined in order, since the engine splits
   a word it kerns across runs; a run on another baseline opens a new line after a space, so the
