@@ -233,8 +233,10 @@ tenth ParseBench-2 document), at one thread and at twelve.
 
 - `seal` canonicalizes a large payload's nodes in parallel chunks and hashes them in order, beside
   its structure check, and keeps none of the bytes: `extract` streams the artifact, walking the
-  payload again the same way. A payload of 1,024 nodes or fewer, or any payload on a pool of one
-  thread, is walked once and its bytes kept for the print, as before.
+  payload again the same way. A payload of 1,024 nodes or fewer is walked once and its bytes kept
+  for the print, as before. A larger one streams on every pool, one thread included: on one thread
+  `nist-sp-800-53r5` peaks about 500 MiB lower, and `extract` pays for the second walk with a
+  quarter to a third more time there.
 - `into_representation` takes the extract, so its runs move into the record's nodes rather than
   being copied; `to_representation` borrows as before. The CLI uses the first.
 - The page fold advances the id counter instead of minting and dropping an id per run; a page's
@@ -248,12 +250,11 @@ tenth ParseBench-2 document), at one thread and at twelve.
   more bytes a node raised it 250 MiB on `nist-sp-800-53r5`.
 - Measured on this release's tree, median of 3, Apple M4 Pro, a quiet machine, 12 threads
   (`67dae19` → after): `nist-sp-800-53r5` `extract` 4,014 → 1,786 ms and 2,383 → 1,414 MiB peak
-  RSS; on one thread 5,596 → 5,358 ms and 2,281 → 1,883 MiB; `markdown --source` 5,662 → 3,465 ms
-  and 2,379 → 1,701 MiB. `nist-sp-800-53Ar5` `extract` 6.69 → 2.96 s, peak footprint 3,356 → 1,982
-  MiB; `nist-sp-800-37r2` 1.49 → 0.67 s, 830 → 552 MiB. Small documents do not change:
-  opendataloader-bench's 200 one at a time, interleaved, read in the same time before and after
-  (`markdown --unstyled --source` p50 31.5 ms, p95 39 ms; `extract` p50 30–31 ms, p95 37 ms).
-  `docs/measurements/memory-ceiling/` §18 and §19.
+  RSS; `markdown --source` 5,662 → 3,465 ms and 2,379 → 1,701 MiB. `nist-sp-800-53Ar5` `extract`
+  6.69 → 2.96 s, peak footprint 3,356 → 1,982 MiB; `nist-sp-800-37r2` 1.49 → 0.67 s, 830 → 552
+  MiB. Small documents do not change: opendataloader-bench's 200 one at a time, interleaved, read
+  in the same time before and after (`markdown --unstyled --source` p50 31.5 ms, p95 39 ms;
+  `extract` p50 30–31 ms, p95 37 ms). `docs/measurements/memory-ceiling/` §18 and §19.
 - `ethos-parser-core` depends on `rayon`, already in the lockfile through the PDF reader.
 
 ### A scan carrying a few drawn words is read beside them with `--ocr` (decision #161)

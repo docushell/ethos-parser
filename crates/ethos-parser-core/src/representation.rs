@@ -2768,12 +2768,12 @@ enum Minted {
     /// Parsed, not minted: printed by canonicalizing it whole.
     #[default]
     No,
-    /// A payload one thread canonicalizes, kept as the bytes `seal` hashed and spliced into the
-    /// print, so a small record is walked once.
+    /// A payload of one chunk of nodes or fewer, kept as the bytes `seal` hashed and spliced into
+    /// the print, so a small record is walked once.
     Kept(Vec<u8>),
-    /// A payload canonicalized in parallel chunks: no byte is kept, and the print walks it again
-    /// the same way. The payload is most of a large artifact, and holding it from `seal` to the
-    /// print was a run's largest allocation.
+    /// A larger payload, canonicalized in chunks on the pool, however many threads it has: no byte
+    /// is kept, and the print walks it again the same way. The payload is most of a large
+    /// artifact, and holding it from `seal` to the print was a run's largest allocation.
     Streams,
 }
 
@@ -2868,12 +2868,9 @@ impl DocumentRepresentation {
             geometry,
             minted: Minted::No,
         };
-        // A payload one thread canonicalizes — a small one, or any on a pool of one thread — is
-        // canonicalized once: its bytes are hashed and kept for the print. Walked twice on one
-        // thread, `nist-sp-800-53r5` took 24% longer.
-        if rayon::current_num_threads() < 2
-            || !crate::c14n::walks_in_parallel(d.representation.nodes.len())
-        {
+        // A payload of one chunk of nodes or fewer is canonicalized once, on this thread: its bytes
+        // are hashed and kept for the print.
+        if !crate::c14n::walks_in_parallel(d.representation.nodes.len()) {
             // Through the walk a streamed payload takes, so the first refusal named is the same
             // whatever the pool.
             let mut bytes = Vec::new();
@@ -2885,10 +2882,12 @@ impl DocumentRepresentation {
             d.minted = Minted::Kept(bytes);
             return Ok(d);
         }
-        // A larger one is hashed as a stream, its nodes canonicalized in parallel chunks, and no
-        // byte of it is kept: the print walks it again the same way. The hash and the structure
-        // check read the same record and neither writes it, so they run side by side; a payload
-        // that will not canonicalize is still the error reported first.
+        // A larger one is hashed as a stream, its nodes canonicalized in chunks on the pool, and no
+        // byte of it is kept: the print walks it again the same way. A pool of one thread streams
+        // it too: on `nist-sp-800-53r5` the second walk costs a quarter to a third more extract
+        // time, and keeping its 526 MiB of bytes cost about 500 MiB of peak. The hash and the
+        // structure check read the same record and neither writes it, so they run side by side; a
+        // payload that will not canonicalize is still the error reported first.
         let fingerprint = |p: &RepresentationPayload| {
             let mut sink = crate::c14n::Sha256Sink::parallel();
             p.write_canonical(&mut sink)?;
@@ -4126,14 +4125,16 @@ mod tests {
         );
     }
 
-    /// **A payload canonicalized in parallel streams the same bytes**: past one chunk of nodes the
-    /// record keeps no bytes from `seal`, and its print, its fingerprint and the full serialization
-    /// still agree, as they do on a record small enough to keep them.
+    /// **A payload canonicalized in chunks streams the same bytes**, on a pool of one thread as on
+    /// two: past one chunk of nodes the record keeps no bytes from `seal`, and its print, its
+    /// fingerprint and the full serialization still agree, as they do on a record small enough to
+    /// keep them.
     #[test]
     fn a_streamed_payload_prints_the_full_serialization() {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let p = page(&mut alloc, 1);
-        let count = 2 * 1024 + 3;
+        // Past two windows of four 1,024-node chunks on the one-thread pool, and one on two.
+        let count = 2 * 4 * 1024 + 3;
         let nodes: Vec<Node> = (1..=count)
             .map(|i| node(&mut alloc, &p.id, i as u32, 1))
             .collect();
@@ -4146,22 +4147,33 @@ mod tests {
                 )
             })
             .collect();
-        // On a pool of two, whatever the host: one thread keeps the bytes instead.
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(2)
-            .build()
-            .unwrap();
-        let minted = pool.install(|| seal(nodes, vec![p], geometry)).unwrap();
-        assert!(matches!(minted.minted, Minted::Streams));
-        let printed = minted.to_canonical_bytes().unwrap();
-        assert_eq!(printed, crate::c14n::canonical_bytes_of(&minted).unwrap());
-        assert_eq!(
-            minted.fingerprint(),
-            &Sha256Hex::of_bytes(&minted.payload().canonical_bytes().unwrap())
-        );
-        let parsed: DocumentRepresentation = serde_json::from_slice(&printed).unwrap();
-        parsed.verify_fingerprint().unwrap();
-        assert_eq!(parsed, minted);
+        let mut prints = Vec::new();
+        // Sealed and printed on pools of one and two, whatever the host's.
+        for threads in [1, 2] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let (minted, printed) = pool.install(|| {
+                let minted = seal(nodes.clone(), vec![p.clone()], geometry.clone()).unwrap();
+                let printed = minted.to_canonical_bytes().unwrap();
+                (minted, printed)
+            });
+            assert!(
+                matches!(minted.minted, Minted::Streams),
+                "{threads} thread(s)"
+            );
+            assert_eq!(printed, crate::c14n::canonical_bytes_of(&minted).unwrap());
+            assert_eq!(
+                minted.fingerprint(),
+                &Sha256Hex::of_bytes(&minted.payload().canonical_bytes().unwrap())
+            );
+            let parsed: DocumentRepresentation = serde_json::from_slice(&printed).unwrap();
+            parsed.verify_fingerprint().unwrap();
+            assert_eq!(parsed, minted);
+            prints.push(printed);
+        }
+        assert_eq!(prints[0], prints[1]);
         assert!(matches!(simple().minted, Minted::Kept(_)));
     }
 
