@@ -550,8 +550,8 @@ tenth ParseBench-2 document), at one thread and at twelve.
   2,944 ms (2,168 → 2,172 MiB) and `nist-sp-800-37r2` 683 → 676 ms (556 → 547 MiB), within noise.
   opendataloader-bench's 200 (`markdown --unstyled --source`, one at a time): p50 32.0 → 32.2 ms,
   p95 43.8 → 39.9 ms, 1.2% fewer instructions in all, one document 6.6% more (its content stream
-  inflates just past the 256 KiB one-inflate cap). The measurement below, on a quiet machine (load
-  2.4 to 3.2), supersedes these numbers. `docs/measurements/memory-ceiling/` §20.
+  inflates just past the 256 KiB one-inflate cap). The measurement below, on a quieter machine
+  (load 3.2 to 2.4), supersedes these numbers. `docs/measurements/memory-ceiling/` §20.
 - Table planning looks for two tables in reading order that could join across a page before it maps
   pages, furniture, floors and pictures for the join, and does none of it where there are none: a
   document whose tables are all tagged skipped every join and still paid for the maps. `markdown`,
@@ -564,7 +564,7 @@ tenth ParseBench-2 document), at one thread and at twelve.
 - The census counts the runs whose whitespace collapses without building each normalized string,
   and node ids are spelled with the canonical writer's digit loop rather than `format!`.
 - Measured with these over `bbb66e8`, the decisions of this release included, the same way but on
-  a quiet machine (one-minute load average 3.2 as the run began, 2.4 as it ended):
+  a quieter machine (one-minute load average 3.2 as the run began, 2.4 as it ended):
   `nist-sp-800-53r5` `markdown --source` 3,489 → 2,278 ms (35% less) and 1,725 → 1,573 MiB;
   `extract` 1,751 → 1,553 ms and 1,443 → 1,421 MiB; on one thread 5,271 → 6,584 ms and
   1,897 → 1,354 MiB. `nist-sp-800-53Ar5` `extract` 2,883 → 2,588 ms (2,168 → 2,147 MiB) and
@@ -899,11 +899,11 @@ found every one permissively licensed, but nothing kept it so.
 - The README leads with what the parser is for, the one-line install and three commands on the
   sample, then one install line per kind of user, tested: the CLI, Claude Code's MCP, Python 3.10+
   from a git subdirectory, and Node 18+ from a shallow clone.
-- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `0ee4b4c` and placed on
+- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `797eed8` and placed on
   the leaderboards as they are scored today: ParseBench, re-scored by its maintainers on 15–17
-  November, 52.18 for the engine (113th of 158), 55.17 with `--ocr` (107th), 65.34 with the assist
-  model as written (on `0f6c8a3`); ParseBench-2, new here, 55.90 for the engine (54th of 57) and
-  58.19 with `--ocr` (53rd); opendataloader-bench 0.835 (7th of 13). The long install notes move to
+  November, 52.33 for the engine (113th of 158), 55.77 with `--ocr` (106th), 65.34 with the assist
+  model as written (on `0f6c8a3`); ParseBench-2, new here, 56.07 for the engine (54th of 57) and
+  59.00 with `--ocr` (53rd); opendataloader-bench 0.837 (6th of 13). The long install notes move to
   `docs/INSTALL.md`.
 
 ### A page drawn turned is read upright (decision #155)

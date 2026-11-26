@@ -1206,7 +1206,7 @@ large documents only.
 Apple M4 Pro, five interleaved rounds, medians, 12 threads unless said. Not a quiet machine: the
 one-minute load average was 3.7 as the run began and 5.6 as it ended. Each change hashes the same
 as A on 638 PDFs, every command, at one thread and at twelve. **§21 supersedes these numbers**: it
-times A again, on a quiet machine (load 2.4 to 3.2), beside the finished tree.
+times A again, on a quieter machine (load 3.2 to 2.4), beside the finished tree.
 
 ### Why
 
@@ -1252,10 +1252,11 @@ instructions in all; one document runs 6.6% more, its content stream inflating j
 ## 21. Tables that cannot join skip the join, and the payload walk overlaps its writer
 
 **Run 2026-11-26.** A = `main` at `bbb66e8`; B = the 0.66.0 tree with §20's changes, this release's
-decisions and the changes below. Release builds on an Apple M4 Pro, a quiet machine, five
-interleaved rounds, medians, 12 threads unless said. Each change below hashes the same as the tree
-before it on 638 PDFs, every command, at one thread and at twelve, and the text of all 6,545
-benchmark documents is unchanged.
+decisions and the changes below. Release builds on an Apple M4 Pro, quieter than §20's: the
+one-minute load average was 3.2 as the run began and 2.4 as it ended. Five interleaved rounds,
+medians, 12 threads unless said. Each change below hashes the same as the tree before it on 638
+PDFs, every command, at one thread and at twelve, and the text of all 6,545 benchmark documents is
+unchanged.
 
 ### Why
 
