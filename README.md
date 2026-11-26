@@ -136,14 +136,13 @@ and counts its 36 characters.
 ## Benchmarks
 
 Scored on three public benchmarks, each with its own scorer, as its leaderboard is scored today.
-Measured on `0ee4b4c`, the `--ocr` column on `dc625f6` (the assist column on `0f6c8a3`). Higher is
-better.
+Measured on `797eed8` (the assist column on `0f6c8a3`). Higher is better.
 
 | Benchmark | ethos-parser | + `--ocr` | + assist model |
 | --- | ---: | ---: | ---: |
-| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.18 | 55.56 | 65.34 |
-| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 55.90 | 58.76 | — |
-| [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.835 | — | — |
+| [ParseBench](https://github.com/run-llama/ParseBench), ~2,000 pages, overall | 52.33 | 55.77 | 65.34 |
+| [ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2), ~4,300 pages, overall | 56.07 | 59.00 | — |
+| [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench), 200 PDFs, overall | 0.837 | — | — |
 
 - **ethos-parser** is the engine alone: no OCR, no model, no GPU.
 - **+ `--ocr`** adds the bundled recognizer for scanned pages: neural networks that run on your
@@ -158,7 +157,7 @@ ethos-parser with the same scorer; placed among them:
 
 | Parser | Overall | Tables | Charts | Content | Formatting | Grounding |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| **ethos-parser** | **52.18** | **64.53** | **17.30** | 67.65 | 51.43 | 59.99 |
+| **ethos-parser** | **52.33** | **65.00** | **17.30** | 67.65 | 51.72 | 60.00 |
 | PyMuPDF4LLM | 50.47 | 56.93 | 1.63 | **75.25** | **56.66** | **61.89** |
 | Warp Ingest | 39.33 | 57.50 | 2.45 | 72.24 | 42.94 | 21.50 |
 | LiteParse (no OCR) † | 36.90 | 42.40 | 1.80 | 70.00 | 38.50 | 31.80 |
@@ -181,20 +180,20 @@ scores 86.69. Placed among them:
 
 | Lane | ParseBench overall | Scores above |
 | --- | ---: | ---: |
-| ethos-parser, no model | 52.18 | 36 of 148 |
-| + `--ocr` | 55.56 | 42 of 148 |
+| ethos-parser, no model | 52.33 | 36 of 148 |
+| + `--ocr` | 55.77 | 43 of 148 |
 | + assist model | 65.34 | 80 of 148 |
 
 - **With a model you run**, the assist lane keeps the model's text apart from the document's own.
   Why its score stays below the model's own 74.56 is in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 - **ParseBench-2** lists only hosted services and AI models. With `--ocr`, ethos-parser scores
-  58.76 there on a CPU: above Falcon-OCR (57.78), jina-ocr-v1 (48.59), Qwen3.5-4B (42.86) and
+  59.00 there on a CPU: above Falcon-OCR (57.78), jina-ocr-v1 (48.59), Qwen3.5-4B (42.86) and
   gemma-4-E4B-it (42.74). The other 52 rows score higher, up to 90.82.
 
 ### opendataloader-bench
 
-200 real-world PDFs, scored on reading order, tables and headings. ethos-parser scores 0.835. Placed
-among the 12 engines in the benchmark's table it is 7th of 13, within 0.006 of the two above it, at
+200 real-world PDFs, scored on reading order, tables and headings. ethos-parser scores 0.837. Placed
+among the 12 engines in the benchmark's table it is 6th of 13, within 0.004 of the one above it, at
 0.036 s a page ‡.
 
 <details>
@@ -209,8 +208,8 @@ among the 12 engines in the benchmark's table it is 7th of 13, within 0.006 of t
 | docling | 0.882 | 0.898 | 0.887 | 0.824 | 0.762 |
 | marker | 0.861 | 0.890 | 0.808 | 0.796 | 53.932 |
 | unstructured [hi_res] | 0.841 | 0.904 | 0.588 | 0.749 | 3.008 |
+| **ethos-parser** | **0.837** | 0.899 | 0.667 | 0.715 | 0.036 ‡ |
 | edgeparse | 0.837 | 0.894 | 0.717 | 0.706 | 0.036 |
-| **ethos-parser** | **0.835** | 0.899 | 0.667 | 0.706 | 0.036 ‡ |
 | opendataloader | 0.831 | 0.902 | 0.489 | 0.739 | 0.015 |
 | mineru | 0.831 | 0.857 | 0.873 | 0.743 | 5.962 |
 | pymupdf4llm | 0.732 | 0.885 | 0.401 | 0.412 | 0.091 |
@@ -220,6 +219,7 @@ among the 12 engines in the benchmark's table it is 7th of 13, within 0.006 of t
 
 - The other rows are the 12 engines in the benchmark's README table. Two hybrid variants its
   repository carries but its README does not list also score above ethos-parser: 0.877 and 0.845.
+- ethos-parser's 0.8373 and edgeparse's 0.8370 both round to 0.837.
 - The liteparse row is the version the benchmark measured. LiteParse's own README reports 0.886
   for its current version; the benchmark has not re-measured it.
 - ethos-parser's adapter asks for `markdown --unstyled`, since this benchmark's reading order

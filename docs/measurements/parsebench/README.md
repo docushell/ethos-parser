@@ -5,7 +5,7 @@
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
 grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**. Re-scored
 2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14**; on `31e4f4d` (2026-11-22): **52.15**; on
-`0ee4b4c` (2026-11-23): **52.18** (below, with ParseBench-2).
+`0ee4b4c` (2026-11-23): **52.18**; on `797eed8` (2026-11-26): **52.33** (below, with ParseBench-2).
 
 **Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
 It was also run to find defects, and it found them: every engine change it led to is in
@@ -1811,6 +1811,41 @@ Against `0ee4b4c`: ParseBench content 77.52 -> 79.12 and formatting 53.19 -> 53.
 text 62.51 -> 63.71 and formatting 78.97 -> 81.16; no other dimension moved. One page falls, an
 Arabic scan the recognizer cannot read (content −0.018). parse-bench 2.1.1's harness (`d7efdbc`) was
 not at hand to score these rows under it.
+
+## Re-measured on `797eed8` (2026-11-26)
+
+The README's rows after decisions #169 to #175: HTML's `<th>` where the record flags a header cell,
+a TrueType glyph its program names `Euro` read as `€`, a whole bold, underlined line written
+`**<u>X</u>**`, a scan stored as a CMYK or indexed JPEG read with `--ocr`, two columns written down
+the page with a number in every row read as a table, an appendix's number and any script's digits
+opening a section, and a drawn table's outer line its rules close beside merged cells; with the
+performance and cleanup changes made alongside. Without `--ocr`, the build measured writes the same
+bytes as `797eed8`'s: the Markdown, HTML and scanned-page notes of all 6,545 benchmark PDFs, and
+`extract`, `markdown`, `html`, `elements`, `ground` and `markdown --source` on 638 of them, at one
+thread and at twelve. Both sets run at parse-bench 2.1.0 (`c61ff10`), the board's scorer, through
+the adapter, network denied; the places are on the leaderboards at `d7efdbc`, as above. The assist
+lanes were not run again; their rows stay those of `0f6c8a3`.
+
+| ParseBench lane | Tables | Charts | Content | Formatting | Grounding | Overall | Place of 158 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 65.00 | 17.30 | 67.65 | 51.72 | 60.00 | 52.33 | 113th |
+| `--ocr` | 65.02 | 17.30 | 79.38 | 53.84 | 63.32 | 55.77 | 106th |
+
+| ParseBench-2 lane | Text | Formatting | Tables | Charts | Grounding | Forms | Overall | Place of 57 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine | 57.78 | 71.39 | 50.79 | 17.94 | 67.25 | 71.25 | 56.07 | 54th |
+| `--ocr` | 64.06 | 81.43 | 52.52 | 17.94 | 66.76 | 71.25 | 59.00 | 53rd |
+
+Against `bbb66e8`, run again beside it and reproducing the rows of `0ee4b4c` and `dc625f6` above:
+ParseBench tables 64.53 -> 65.00, formatting 51.43 -> 51.72 and grounding 59.99 -> 60.00, with
+`--ocr` tables 64.54 -> 65.02, content 79.12 -> 79.38, formatting 53.55 -> 53.84 and grounding
+63.30 -> 63.32; ParseBench-2 text 57.58 -> 57.78 and tables 49.98 -> 50.79, with `--ocr` text
+63.71 -> 64.06, formatting 81.16 -> 81.43 and tables 51.71 -> 52.52. No other dimension moved by
+0.01, and the only one to fall is ParseBench-2 grounding, by 0.0004 (0.0005 with `--ocr`): one
+layout page, `fh_2025_004e` p7, 0.632 -> 0.630 in both lanes, where decision #173 reads a list of
+major shareholders as a table. No other page falls on a scored metric. With `--ocr`, ParseBench now
+places above Extend (55.75): 106th of 158, and above 43 of the 148 hosted and model rows.
+parse-bench 2.1.1's harness (`d7efdbc`) was not at hand to score these rows under it.
 
 ## What it found that is not fixed
 

@@ -20,7 +20,15 @@ else. Measured over `b3030f8` with decision #159: NID 0.8912 -> 0.8988, overall 
 **Re-measured on `0ee4b4c` (2026-11-23)**, after decisions #160 to #168, with `score.py` and the
 adapter as committed, the harness at `7af1d8f`: NID 0.8987, TEDS 0.6666, MHS 0.7058, and 0.8349
 overall by the harness's own per-document mean. The 0.0002 below 0.8351 is decision #160's closed
-hyphens, which the ground truth mostly keeps. This is the row `docs/BENCHMARKS.md` prints as 0.835.
+hyphens, which the ground truth mostly keeps. This is the row `docs/BENCHMARKS.md` printed as 0.835.
+
+**Re-measured on `797eed8` (2026-11-26)**, after decisions #169 to #175, on the build
+[`../parsebench/README.md`](../parsebench/README.md) describes, with the harness's own evaluators at
+`7af1d8f`, network denied, on `markdown --source --unstyled`; `bbb66e8`, scored the same way beside
+it, reproduces 0.8349. NID 0.8987, TEDS 0.6666, MHS 0.7058 -> 0.7146, and 0.8349 -> 0.8373
+overall; without `--unstyled` 0.8287 -> 0.8310, and with `--ocr` 0.8306 -> 0.8329. The headings
+gain is decision #174's appendix numbers; no other decision moved this benchmark. This is the row
+`docs/BENCHMARKS.md` prints as 0.837, 6th of 13, above edgeparse's 0.8370.
 
 **The units do not travel.** TEDS is a tree edit distance over an HTML DOM; `table-gate-v1.md`
 reports macro cell-slot F1. A TEDS number from here **cannot** be placed beside 69‰ — the same
