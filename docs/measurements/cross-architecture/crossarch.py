@@ -10,12 +10,12 @@ So: PDF-taking subcommands get the PDF; representation-taking subcommands get a 
 produced once by the native binary and handed to BOTH arms, so this measures the projection rather
 than re-measuring `extract`.
 
-6.1 asks for three-OS byte-identity and is blocked on runners with no cross toolchain here. This is
-the axis that needs neither: an arm64 Mac with Rosetta 2 can build and EXECUTE an x86_64 binary.
-Different instruction set, different codegen, same pinned 1.88.0. It is the axis the design claims
-to have settled by construction — integer centipoints exist so geometry cannot vary with a
-machine's floating-point unit — so a disagreement here would be worse news than one across
-operating systems.
+`docs/OPEN-WORK.md` item 6.1 asks for three-OS byte-identity and is blocked on runners with no
+cross toolchain here. This is the axis that needs neither: an arm64 Mac with Rosetta 2 can build
+and EXECUTE an x86_64 binary. Different instruction set, different codegen, same pinned 1.88.0. It
+is the axis the design claims to have settled by construction — integer centipoints exist so
+geometry cannot vary with a machine's floating-point unit — so a disagreement here would be worse
+news than one across operating systems.
 """
 import hashlib, pathlib, subprocess, sys, tempfile
 

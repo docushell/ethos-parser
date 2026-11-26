@@ -39,7 +39,8 @@ gap said nothing about tables.
 
 The lattice does not have that problem. If table pages carry more gutters ABOVE the floor than
 prose pages do, the signal exists and the engine is discarding it by reporting one fault. If they
-do not, no disclosure change will help and 5.3 needs a different lever entirely.
+do not, no disclosure change will help, and finding unruled tables needs a different lever
+entirely.
 
     ETHOS_BENCH_CORPUS=~/ethos-external-benchmarks/opendataloader-bench \\
       docs/measurements/table-refusals/lattice.py

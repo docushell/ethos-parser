@@ -209,13 +209,14 @@ provisioning should err. *Restated in §15 with the process floor separated.*
 
 ## 8. What this still does not settle
 
-- **There is no ceiling a caller can set.** This is the part 6.2's title asked for and it remains
-  open. `--max-pages` bounds the dominant term but not the floor, and `MAX_SOURCE_BYTES` permits a
-  2 GiB input that nothing maps onto a memory figure. Two shapes are unmeasured: a named
-  `ResourceLimit` refusal when `total_pages x coefficient` exceeds a caller-supplied ceiling, and a
-  decompression ceiling on the PDF load path to match `zip::MAX_INFLATED_BYTES`, which the office
-  path has had since v2-S13. Whether a byte-denominated ceiling is wanted at all is a design call:
-  `profile.rs:975` records the position that pages are the knob.
+- **There is no ceiling a caller can set.** This is the part `docs/OPEN-WORK.md` item 6.2's title
+  asked for and it remains open. `--max-pages` bounds the dominant term but not the floor, and
+  `MAX_SOURCE_BYTES` permits a 2 GiB input that nothing maps onto a memory figure. Two shapes are
+  unmeasured: a named `ResourceLimit` refusal when `total_pages x coefficient` exceeds a
+  caller-supplied ceiling, and a decompression ceiling on the PDF load path to match
+  `zip::MAX_INFLATED_BYTES`, which the office path has had since v2-S13. Whether a byte-denominated
+  ceiling is wanted at all is a design call: `profile.rs:975` records the position that pages are
+  the knob.
 - **The 838 MiB disagreement is settled in §9**, and neither side was right about today's engine:
   freeing the lopdf object graph earlier RAISES peak footprint, by 668 MiB on `53Ar5`. Refused.
 - **Whether the floor's structure-tree share can be bounded by the page budget.** One audit lens
@@ -395,9 +396,10 @@ the auditor's own caveat, and the reason a sibling proposal to trim the represen
 capacity measured 0 to −22 MiB. It is the same lesson as §9 from the other side.
 
 **Adopting is shipped.** `nist-sp-800-53Ar5` goes from 4669.8 to 3716.2 MiB, tight across runs
-(3712–3718). The corpus's worst case is now **3.65 GiB, down from 6.49 GiB when 6.2 started — 44%**,
-in three byte-identical changes: role-path sharing, and this, with MCP brought down to the CLI's
-level in between. The cost is one in-place shift of the adopted buffer, 0.4–2.1% of wall time.
+(3712–3718). The corpus's worst case is now **3.65 GiB, down from 6.49 GiB when `docs/OPEN-WORK.md`
+item 6.2 started — 44%**, in three byte-identical changes: role-path sharing, and this, with MCP
+brought down to the CLI's level in between. The cost is one in-place shift of the adopted buffer,
+0.4–2.1% of wall time.
 
 One result is not explained, so it is recorded rather than smoothed over: on `nist-sp-800-37r2`
 adopting leaves peak RSS unchanged while footprint falls 79 MiB. The likeliest reading is that

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Which quantity predicts peak RSS: input bytes, artifact bytes, or page count?
 
-6.2's row says "verify the figure first". The tree carries two figures that cannot both be
-ceilings: `ci/bench.py` says peak RSS is "roughly 300x the *input*", and `extract.rs` says
-"~4.7 MiB per page, and independent of file size". A caller choosing a bound needs to know
-which one is a law and which is a coincidence of this corpus.
+The local plan's memory-ceiling item says "verify the figure first". The tree carries two
+figures that cannot both be ceilings: `ci/bench.py` says peak RSS is "roughly 300x the *input*",
+and `extract.rs` says "~4.7 MiB per page, and independent of file size". A caller choosing a
+bound needs to know which one is a law and which is a coincidence of this corpus.
 
 The test is not "what is the average ratio" — any of the three produces one. It is whether the
 ratio HOLDS: a predictor whose coefficient varies 4x across the corpus cannot bound anything.

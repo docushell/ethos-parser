@@ -21,10 +21,10 @@ push-triggered jobs run. `.github/workflows/ci.yml` now carries the operating-sy
 jobs, `cross-os-digests` and `cross-os-identity`: Linux, macOS and Windows, compared byte for byte.
 They have not run yet, so §4's "not licensed" stands until they have.
 
-But the claim 6.1 exists to prove is that **output does not depend on the machine**, and that
-splits into two independent axes: the operating system, and the instruction set. The second needs
-no runner. An arm64 Mac with Rosetta 2 can build *and run* an x86_64 binary — different register
-width, different codegen, different vector unit, same compiler.
+But the claim `docs/OPEN-WORK.md` item 6.1 exists to prove is that **output does not depend on the
+machine**, and that splits into two independent axes: the operating system, and the instruction
+set. The second needs no runner. An arm64 Mac with Rosetta 2 can build *and run* an x86_64 binary
+— different register width, different codegen, different vector unit, same compiler.
 
 This is also the axis the design claims to have settled by construction. `docs/01-CONTRACT.md`'s
 integer centipoints exist so that geometry cannot vary with a machine's floating-point unit; a
@@ -70,10 +70,10 @@ zero mismatches — exactly as it gets weaker.
 subcommand that emits canonical bytes, including which documents it refuses.
 
 **Not licensed:** anything about Linux or Windows. Both remain unbuilt and unexecuted here. This
-closes the instruction-set axis of 6.1 and leaves the operating-system axis exactly where it was —
-a filesystem, a path separator, a line ending and a locale are all OS-level and none of them are
-touched by this run. So is the platform's libm: since 2026-11-14 no chart, pie or stroke length
-calls `f64::hypot`, but the pie reader's angles still call `atan2`.
+closes the instruction-set axis of `docs/OPEN-WORK.md` item 6.1 and leaves the operating-system axis
+exactly where it was — a filesystem, a path separator, a line ending and a locale are all OS-level
+and none of them are touched by this run. So is the platform's libm: since 2026-11-14 no chart, pie
+or stroke length calls `f64::hypot`, but the pie reader's angles still call `atan2`.
 
 `ci/release-artifacts.sh` encodes the distinction: a target is `verified` only when it was executed
 on the build host and matched, and `compiled` otherwise.

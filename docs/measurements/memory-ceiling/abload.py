@@ -4,12 +4,13 @@
 Usage: abload.py REPRS_DIR REPS label=binary ... -- sub:doc sub:doc ...
   e.g. ground:nist-sp-800-53Ar5 markdown:nist-sp-800-161r1
 
-6.2 measured `extract` and MCP `extract` and nothing that loads an artifact back in. Those commands
-read the whole file into one buffer, parse it into the typed representation, rebuild the canonical
-payload to verify the fingerprint, then project and emit. The first arm is the baseline; every
-delta is against it. Arms alternate inside each repetition. Output is hashed as it streams and every
-run of every arm must produce the same digest — a measurement arm that skips verification still has
-to produce identical output on a valid input, or it is measuring a different program.
+`docs/OPEN-WORK.md` item 6.2 measured `extract` and MCP `extract` and nothing that loads an artifact
+back in. Those commands read the whole file into one buffer, parse it into the typed representation,
+rebuild the canonical payload to verify the fingerprint, then project and emit. The first arm is the
+baseline; every delta is against it. Arms alternate inside each repetition. Output is hashed as it
+streams and every run of every arm must produce the same digest — a measurement arm that skips
+verification still has to produce identical output on a valid input, or it is measuring a different
+program.
 """
 import hashlib, pathlib, statistics, subprocess, sys, time
 
