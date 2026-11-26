@@ -59,12 +59,11 @@ ethos-parser markdown --source report.pdf --drop-hidden | jq .coverage.dropped
 # A copy of the PDF with what was found drawn on it
 ethos-parser overlay report.pdf > overlay.pdf
 
-# A scan or a photo of a page: read by the bundled recognizer, on your machine
+# A scanned page: read by the bundled recognizer, on your machine
 ethos-parser markdown --source scan.pdf --ocr | jq -r .markdown
 ```
 
-`--drop-hidden` and `--ocr` need 0.66.0 or later. The 0.65.0 release does not have them; until the
-next release, [build from source](docs/INSTALL.md).
+`--drop-hidden` and `--ocr` need 0.66.0 or later.
 
 <details>
 <summary><b>No document at hand? Try the sample page</b></summary>
@@ -331,7 +330,7 @@ model ships; setup is in [`assist/README.md`](assist/README.md).
 
 ## Where things stand
 
-Version 0.66.0-dev.1. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
+Version 0.66.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 The full inventory of what this build can and cannot do is [`docs/CAPABILITY.md`](docs/CAPABILITY.md).
 
 ## Tests and contributing

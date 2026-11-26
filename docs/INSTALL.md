@@ -6,8 +6,8 @@ from source.
 
 ## What a release carries
 
-Every GitHub Release from 0.61.0 on — 0.61.0, 0.64.0 and 0.65.0 so far; 0.62.0 and 0.63.0 are tags
-with no Release — has a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel), plus
+Every GitHub Release from 0.61.0 on — 0.61.0, 0.64.0, 0.65.0 and 0.66.0 so far; 0.62.0 and 0.63.0
+are tags with no Release — has a prebuilt binary for Linux, Windows and macOS (Apple silicon and Intel), plus
 a `SHA256SUMS.txt`; the [CHANGELOG](../CHANGELOG.md) says what earlier releases carry.
 A release is assembled only when all four binaries print byte-identical artifacts over the gate
 documents: eight public PDFs kept in [`fixtures/gate/`](../fixtures/gate/).

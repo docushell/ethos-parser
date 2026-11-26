@@ -28,8 +28,9 @@ commit**: the fixes from the two adversarial reviews of 0.61.0, `gutter-columns-
 #33's pre-release `main` ship in it, with the eight rule ids those fixes owed. **Revised again
 2026-09-30, at the 0.63.0 release commit**: the rest of review 2026-09-26, the two cost findings of
 2026-09-25, the PDFDocEncoding table and decision #35's two profile fields ship in it, with the six
-rule ids those changes owed. **The latest published release is now 0.65.0** (2026-11-06);
-`CHANGELOG.md`'s header says which versions carry a GitHub Release.
+rule ids those changes owed. **Revised again 2026-11-26, at the 0.66.0 release commit.** The
+latest published release is still 0.65.0 (2026-11-06) until 0.66.0's is published; `CHANGELOG.md`'s
+header says which versions carry a GitHub Release.
 
 **How to read the status column.**
 - **ready** means nothing but effort stands in the way.
@@ -44,7 +45,10 @@ by effort would be invented.
 
 ## 1. In progress
 
-No release is in progress. Every version from 0.58.0 to 0.65.0 is tagged and pushed;
+**0.66.0 is cut at this commit.** The tag, the release workflow's four builds and the GitHub
+Release follow it ([`RELEASING.md`](RELEASING.md) §5.2 and §8), and `main` then reopens at
+`0.67.0-dev.1` (§5.7).
+Every version from 0.58.0 to 0.65.0 is tagged and pushed;
 `CHANGELOG.md`'s header says which of them carry a GitHub Release, and each version's entry there
 says what it changed.
 
