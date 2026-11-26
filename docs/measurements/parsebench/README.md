@@ -5,7 +5,7 @@
 dimensions over 2,078 pages: tables, charts, content faithfulness, semantic formatting and visual
 grounding. Re-scored 2026-11-01 at `1f5b37a`, the dataset unchanged: overall **50.67**. Re-scored
 2026-11-19 at `d7efdbc` on `0f6c8a3`: overall **52.14**; on `31e4f4d` (2026-11-22): **52.15**; on
-`0ee4b4c` (2026-11-23): **52.18**. On `797eed8` (2026-11-26), scored at the board's 2.1.0
+`0ee4b4c` (2026-11-23): **52.18**. On `caf1b7c` (2026-11-26), scored at the board's 2.1.0
 (`c61ff10`): **52.33** (below, with ParseBench-2).
 
 **Its latest numbers are this engine's row in the README's Benchmarks section** (decision #108).
@@ -1814,7 +1814,7 @@ text 62.51 -> 63.71 and formatting 78.97 -> 81.16; no other dimension moved. One
 Arabic scan the recognizer cannot read (content −0.018). parse-bench 2.1.1's harness (`d7efdbc`) was
 not at hand to score these rows under it.
 
-## Re-measured on `797eed8` (2026-11-26)
+## Re-measured on `caf1b7c` (2026-11-26)
 
 The README's rows after decisions #169 to #175: HTML's `<th>` where the record flags a header cell,
 a TrueType glyph its program names `Euro` read as `€`, a whole bold, underlined line written
@@ -1822,7 +1822,7 @@ a TrueType glyph its program names `Euro` read as `€`, a whole bold, underline
 the page with a number in every row read as a table, an appendix's number and any script's digits
 opening a section, and a drawn table's outer line its rules close beside merged cells; with the
 performance and cleanup changes made alongside. Without `--ocr`, the build measured writes the same
-bytes as `797eed8`'s: the Markdown, HTML and scanned-page notes of all 6,545 benchmark PDFs, and
+bytes as `caf1b7c`'s: the Markdown, HTML and scanned-page notes of all 6,545 benchmark PDFs, and
 `extract`, `markdown`, `html`, `elements`, `ground` and `markdown --source` on 630 of them (the 200
 opendataloader-bench PDFs and every tenth ParseBench-2 PDF) and the eight gate documents, at one
 thread and at twelve. Both sets run at parse-bench 2.1.0 (`c61ff10`), the board's scorer, through

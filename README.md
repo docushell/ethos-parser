@@ -136,7 +136,7 @@ and counts its 36 characters.
 ## Benchmarks
 
 Scored on three public benchmarks, each with its own scorer, as its leaderboard is scored today.
-Measured on `797eed8` (the assist column on `0f6c8a3`). Higher is better.
+Measured on `caf1b7c` (the assist column on `0f6c8a3`). Higher is better.
 
 | Benchmark | ethos-parser | + `--ocr` | + assist model |
 | --- | ---: | ---: | ---: |

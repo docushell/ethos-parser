@@ -22,7 +22,7 @@ adapter as committed, the harness at `7af1d8f`: NID 0.8987, TEDS 0.6666, MHS 0.7
 overall by the harness's own per-document mean. The 0.0002 below 0.8351 is decision #160's closed
 hyphens, which the ground truth mostly keeps. This is the row `docs/BENCHMARKS.md` printed as 0.835.
 
-**Re-measured on `797eed8` (2026-11-26)**, after decisions #169 to #175, on the build
+**Re-measured on `caf1b7c` (2026-11-26)**, after decisions #169 to #175, on the build
 [`../parsebench/README.md`](../parsebench/README.md) describes, with the harness's own evaluators at
 `7af1d8f`, network denied, on `markdown --source --unstyled`; `bbb66e8`, scored the same way beside
 it, reproduces 0.8349. NID 0.8987, TEDS 0.6666, MHS 0.7058 -> 0.7146, and 0.8349 -> 0.8373

@@ -1,7 +1,7 @@
 # Benchmarks
 
 ethos-parser is scored on three public benchmarks, each with its own evaluator. Every ethos-parser
-number here was measured by this project on `797eed8` — the assist lane's on `0f6c8a3`, not run
+number here was measured by this project on `caf1b7c` — the assist lane's on `0f6c8a3`, not run
 again — and scored as the benchmark's current leaderboard is scored. Every other row is copied from
 that leaderboard. Higher is better.
 
@@ -24,7 +24,7 @@ How each number is produced, run by run, is in
 [ParseBench](https://github.com/run-llama/ParseBench): about 2,000 human-verified pages from
 enterprise documents, scored on five dimensions. Its leaderboard was re-scored on 15–17 November
 2026 by its harness at `c61ff10` (parse-bench 2.1.0), the dataset unchanged at `2805a1d`; the other
-rows are its `leaderboard.csv` at `d7efdbc`, 157 rows. ethos-parser's rows on `797eed8` are scored
+rows are its `leaderboard.csv` at `d7efdbc`, 157 rows. ethos-parser's rows on `caf1b7c` are scored
 at `c61ff10`, the board's own; on `0ee4b4c` it scored the same under parse-bench 2.1.1 (`d7efdbc`)
 as under the earlier `1f5b37a`, dimension by dimension, in every lane.
 
@@ -56,7 +56,7 @@ Every lane, placed on the whole leaderboard (158 rows with ethos-parser):
 | + assist model, as written | 65.34 | 60.53 | 64.81 | 83.70 | 54.41 | 63.28 | 69th |
 | + assist model, quote markers removed before scoring | 71.93 | 85.75 | 66.67 | 84.18 | 59.75 | 63.28 | 31st |
 
-- The two assist rows were measured on `0f6c8a3` and have not been run again on `797eed8`.
+- The two assist rows were measured on `0f6c8a3` and have not been run again on `caf1b7c`.
 - **As written** is what the product writes: the model's blocks inside a block quote under their
   *Proposed* label. ParseBench's converter reads no table or title inside a quote, so the last row
   shows what the model's reading scores once the benchmark's adapter removes the quote markers. The
@@ -95,7 +95,7 @@ Around ethos-parser, with the highest overall row and the assist model for scale
   `--ocr`.
 - The assist model has not been run through the product on ParseBench-2.
 - parse-bench 2.1.1 (`d7efdbc`) changed how forms are scored after the leaderboard was: under it,
-  ethos-parser's forms read 71.51 on `0ee4b4c` and its overall 55.94; neither row on `797eed8` was
+  ethos-parser's forms read 71.51 on `0ee4b4c` and its overall 55.94; neither row on `caf1b7c` was
   scored under 2.1.1.
 - Overall is the mean of the six unrounded dimensions, so it can differ by 0.01 from the mean of the
   columns as printed.

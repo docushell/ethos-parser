@@ -343,7 +343,7 @@ with the wrong grid; twenty-eight mutations, each caught by a failing test.
 - The quick start runs on the reader's own document and says `--drop-hidden` and `--ocr` need
   0.66.0. The sample page stays as an optional try, with the Markdown it prints. The overlay
   picture is gone, and `docs/images/overlay.png` with it.
-- The benchmark numbers are re-measured on `797eed8`, after decisions #160 to #175 (the assist
+- The benchmark numbers are re-measured on `caf1b7c`, after decisions #160 to #175 (the assist
   column on `0f6c8a3`): ParseBench 52.33 for the engine and 55.77 with `--ocr`, ParseBench-2 56.07
   and 59.00, opendataloader-bench 0.837 (0.8373, 6th of 13). ParseBench is shown beside the nine
   open-source local parsers on its leaderboard, and as the count of its 148 hosted-service and
@@ -899,7 +899,7 @@ found every one permissively licensed, but nothing kept it so.
 - The README leads with what the parser is for, the one-line install and three commands on the
   sample, then one install line per kind of user, tested: the CLI, Claude Code's MCP, Python 3.10+
   from a git subdirectory, and Node 18+ from a shallow clone.
-- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `797eed8` and placed on
+- The ranked benchmark tables move to `docs/BENCHMARKS.md`, re-measured on `caf1b7c` and placed on
   the leaderboards as they are scored today: ParseBench, re-scored by its maintainers on 15–17
   November, 52.33 for the engine (113th of 158), 55.77 with `--ocr` (106th), 65.34 with the assist
   model as written (on `0f6c8a3`); ParseBench-2, new here, 56.07 for the engine (54th of 57) and
