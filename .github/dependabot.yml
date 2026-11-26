@@ -24,6 +24,8 @@
 # reads to prove the profile's declared backend is the one that ran. A cargo bump is therefore an
 # identity event, reviewed as one — monthly keeps that deliberate rather than routine.
 version: 2
+# `labels: []` on every entry turns labels off. A named label the repository lacks only draws a
+# warning on each pull request, and leaving the key out makes Dependabot create its own defaults.
 updates:
   # The actions the pins above froze.
   - package-ecosystem: "github-actions"
@@ -32,8 +34,7 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "build(ci)"
-    labels:
-      - "dependencies"
+    labels: []
 
   # The workspace. A bump here moves `Cargo.lock`, and may move `profile_sha256` with it if it
   # moves `lopdf` — see `crates/ethos-parser-core/src/profile.rs`'s `BackendIdentity`.
@@ -43,8 +44,7 @@ updates:
       interval: "monthly"
     commit-message:
       prefix: "build(deps)"
-    labels:
-      - "dependencies"
+    labels: []
 
   # The two SDKs. Neither ships a lock file to a registry yet and neither is published, so these
   # are dev-surface updates: they keep the suites `ci/sdk-suites.sh` runs from drifting out of
@@ -55,8 +55,7 @@ updates:
       interval: "monthly"
     commit-message:
       prefix: "build(deps)"
-    labels:
-      - "dependencies"
+    labels: []
 
   - package-ecosystem: "pip"
     directory: "/packages/python"
@@ -64,5 +63,4 @@ updates:
       interval: "monthly"
     commit-message:
       prefix: "build(deps)"
-    labels:
-      - "dependencies"
+    labels: []
