@@ -330,7 +330,7 @@ model ships; setup is in [`assist/README.md`](assist/README.md).
 
 ## Where things stand
 
-Version 0.66.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
+Version 0.67.0-dev.1. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 The full inventory of what this build can and cannot do is [`docs/CAPABILITY.md`](docs/CAPABILITY.md).
 
 ## Tests and contributing
