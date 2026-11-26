@@ -3,19 +3,21 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Eleven versions are tagged, 0.55.0 through 0.65.0, and seven of them carry binaries.** 0.55.0,
+**Twelve versions are tagged, 0.55.0 through 0.66.0, and eight of them carry binaries.** 0.55.0,
 0.56.0 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub
 Release ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it
 ships:** Linux, Windows and both macOS architectures, one fingerprint across four runners —
 delivered, unfortunately, as the single `release-bundle.zip` its own notes tell a reader to unzip.
 **0.61.0 is the first to ship those four as five separate assets** — the four archives and
 `SHA256SUMS.txt`, published 2026-09-25 — so a consumer downloads one platform and the manifest
-instead of all four; §8's amendment records why 0.60.0's shape could not be repaired, and 0.64.0
-and 0.65.0 ship the same five. **0.62.0 and 0.63.0 have no release object**: each tag push built the four
-archives and the manifest, neither was published, and 0.64.0 descends from both. **0.58.0 and 0.59.0 are tags with no release
-object**, and little is lost by that: 0.60.0 descends from both, so their work is in the binaries
-above, and a reader who needs one of those two exactly builds it from its tag under the pinned
-toolchain. Every earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
+instead of all four; §8's amendment records why 0.60.0's shape could not be repaired, and 0.64.0,
+0.65.0 and 0.66.0 ship the same five. From 0.66.0 each archive carries the recognizer and the assist
+binary beside the engine. **0.62.0 and 0.63.0 have no release object**: each tag push built the four
+archives and the manifest, neither was published, and 0.64.0 descends from both. **0.58.0 and 0.59.0
+are tags with no release object**, and little is lost by that: 0.60.0 descends from both, so their
+work is in the binaries above, and a reader who needs one of those two exactly builds it from its
+tag under the pinned toolchain. Every earlier number is in-tree only. Nothing is on crates.io, npm
+or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
@@ -30,7 +32,88 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased]
+## [0.66.0] — scans read with `--ocr`, forms and tables read as drawn, and large documents read faster
+
+**A MINOR, because readers and both projections changed.** 173 commits since the `v0.65.0` tag
+`26fe3ee` before this one, six of them merges, decisions #112 to #175. What it adds, by entry below:
+
+- **Scans, read on your machine.** `extract --ocr` and `markdown --source --ocr` read a scanned
+  page, or a PNG or JPEG image of a page, with `ethos-parser-ocr`, the recognizer every release
+  archive now carries (#120): a page stored as several images (#156), a scan under a few drawn words
+  (#161), a page scanned on its side or upside down (#153), a CMYK or indexed JPEG (#172), and a
+  scanned form's fields as a table (#152). Photos are not read yet. Without the flag, a page the OCR
+  trigger takes is counted under `scanned-page-not-recognized` (#132).
+- **An assist lane, outside the engine.** `ethos-parser-assist`, also in every archive, renders
+  pages and asks a model server you run, through the system `curl`; `extract --assist` and
+  `--assist-answers` attach the model's replies as `Proposed` blocks, checked against the engine's
+  own runs, and Markdown and HTML label them so (#143 to #150). No model ships, and engine-only
+  output does not move.
+- **Tables:** a header cell over several columns (#112), grids drawn in part, in pieces or with
+  fills (#113, #114, #117), tables side by side (#115), currency signs and signed amounts (#116,
+  #119), headers over labels (#118), a table the next page goes on with as one table (#142) without
+  the header it repeats (#151), two columns written down the page (#173), and a border its rules
+  close beside merged cells (#175); prose columns are no table, and a header set flush left heads
+  figures set flush right (#127). A cell says when it is a header (#167), and HTML writes it `<th>`
+  (#169).
+- **Forms:** a check box's state and a field's label (#162), a form field as an element (#163), a
+  filler's values beside their captions (#157, #164), and empty boxes written `☐` (#168).
+- **Reading:** a page drawn turned is read upright (#155); strikeout and underline from the lines a
+  page draws (#154, #171); headings from an appendix number or any script's digits (#174), from
+  labels heading recurring sections (#140) and from one label heading a document (#159), and a
+  heading a marked-content sequence sets word by word is one line (#141); marks and small pieces
+  stay on their lines (#129, #131); tagged paragraphs keep their line breaks and list items stay
+  items (#126, #128); dates beside a job read with it (#133); a line's last hyphen drawn alone
+  closes its word up (#160); and a TrueType glyph its program names `Euro` reads `€` (#170).
+- **Office files:** a DOCX paragraph is one block with its tabs and breaks (#130), and its headings,
+  lists, tables, headers, footers and footnotes are read as declared (#136); a workbook's sheets and
+  a slide's tables are tables, and a number shows as its format displays it (#135).
+- **New outputs and flags:** `ethos-parser elements`, one element view of a document (#137), with
+  captions and list items (#166), each table's rule (#165) and form fields (#163). `markdown` and
+  `html` take, on request, `--drop-hidden` (#139), `--infer-lists` (#138), `--drop-furniture`
+  (#134), `--unstyled` (#158) and `--keep-repeated-header` (#151); MCP and the SDKs do not offer
+  them.
+- **Speed:** on 12 threads, large documents read in about half the time with less memory, byte for
+  byte: `nist-sp-800-53r5` `extract` 4.0 → 1.8 s and 2.3 → 1.4 GiB peak RSS, `markdown --source` 5.7
+  → 3.5 s, measured against `67dae19`, not 0.65.0. On one thread `extract` takes a quarter to a
+  third longer than before this work, for about 500 MiB less peak memory. Small documents read in
+  the same time.
+- **Install:** `install.sh` installs a release in one line on macOS and Linux, and the Linux
+  binaries need glibc 2.35 or newer, where 0.65.0's needed 2.39.
+
+**What a 0.65.0 consumer sees.** Markdown and HTML bytes change under `markdown-blocks-v14` and
+`html-blocks-v14`, and default Markdown can now write `<u>`, `~~` and `☐`. The PDF profile moves
+eleven rule ids — those two, `declared-font-codes-v5`, `form-annotations-v3`, `gutter-columns-v5`,
+`line-units-v7`, `page-observations-v5`, `ruled-rects-v14`, `tagged-tables-v2`, `type-size-v8` and
+`whitespace-tracks-v16`. Every profile gains two fields, `drawn_box_rule` and `recognizer`: the PDF
+profile's `drawn-boxes-v1` and, without `--ocr`, `not_pinned`; the office profiles' `not_run` and
+`not_pinned`. The DOCX, XLSX and PPTX profiles also gain `table_detection.office` and move with
+their readers. `profile_sha256` moves, as it does every version: the PDF profile's is
+`sha256:98b53e6b…`.
+
+**The representation changes under the same schema version.** No schema version moves, and one
+artifact is new, `ethos.parser.elements.v0` 0.1.0. `extract` adds `strikeout`, `underline` and
+`read_beside` on runs, `drawn_boxes` and `turn` on pages, `header` on table cells, and `label` and
+`state` on form fields; three `text_finding` values, `tiny-text`, `hidden-layer` and
+`fill-matches-background`; the source media types `image/png` and `image/jpeg`; and new limitation
+codes, among them `scanned-page-not-recognized`, `tiny-text`, `hidden-layer-text`,
+`fill-matches-background-text`, `form-field-state-not-determinable` and four `office-*` codes. A
+validator holding 0.65.0's closed objects or enums rejects these records.
+
+**New coverage codes.** A consumer that checks them against a closed list must add the new ones: by
+default `tables-joined-across-pages-v1`, `repeated-table-header-not-projected-v1`,
+`drawn-boxes-written-v1` and, for a DOCX table used for layout, `layout-table-as-blocks-v1`; with a
+flag, `flagged-text-not-projected-v1`, `list-items-inferred-from-markers-v1`,
+`page-furniture-not-projected-v1` and `inline-styles-not-written-v1`; with an assist lane,
+`replaced-by-proposed-page-v1` and the `proposed-*` codes. Nothing is removed: every flag and
+subcommand of 0.65.0 is still there.
+
+**Benchmarks,** scored as each leaderboard is scored today and measured on `caf1b7c`, whose Markdown
+this release's matches byte for byte without `--ocr` on all 6,545 benchmark documents: ParseBench
+52.33, 55.77 with `--ocr`; ParseBench-2 56.07, 59.00 with `--ocr`; opendataloader-bench 0.837, up
+from 0.791 at 0.65.0, 0.006 of the rise from the adapter now asking for `--unstyled` (#158).
+ParseBench's leaderboard was re-scored by its own harness on 15–17 November 2026, so 0.65.0's 50.79
+came from a different scorer and is not set beside 52.33. Where each lane places is in
+[`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
 ### `serde_json` 1.0.154: an invalid-UTF-8 error points at the bad byte
 
@@ -1990,6 +2073,11 @@ Rule id `line-units-v7`; `profile_sha256` moves.
   Debian 12) rather than 0.65.0's 2.39, which came from two weak symbols. `ci/release-artifacts.sh`
   prints the highest `GLIBC_` version each Linux binary references and fails the release above
   2.35. GitHub supports that runner image until 2027-04-17.
+- **Dependencies and workflow pins move without moving output:** `clap` 4.6.6 → 4.6.7, and the
+  GitHub Actions the workflows pin by SHA — `actions/download-artifact`, `actions/setup-node`,
+  `actions/setup-python`, `actions/upload-artifact`, `dtolnay/rust-toolchain`, `Swatinem/rust-cache`
+  and `taiki-e/install-action` — each to its newer release. Every output hashes the same after the
+  `clap` bump on the 638 PDFs of the identity set.
 - **Every release archive carries `ethos-parser-ocr`** beside `ethos-parser`, where `--ocr` looks
   for it, and `NOTICE`, which now names the PP-OCRv5 models (Apache-2.0). The script builds the
   recognizer on its own pinned toolchain and adds one `extract --ocr` read of a committed scan to

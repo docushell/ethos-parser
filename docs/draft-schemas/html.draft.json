@@ -157,6 +157,7 @@
                   "whitespace-collapsed-v1",
                   "hyphenation-rejoin-dropped-v1",
                   "overprinted-run-dropped-v1",
+                  "flagged-text-not-projected-v1",
                   "page-furniture-not-projected-v1",
                   "repeated-table-header-not-projected-v1",
                   "null-characters-not-projected-v1",
@@ -370,9 +371,9 @@
       },
       "html": "<p>Hello Ethos</p>\n",
       "html_rule": "html-blocks-v14",
-      "parser_version": "0.65.0",
-      "profile_sha256": "sha256:130a7f6765217ec0ca86ac86e0595094a947df825e7b8c97beb27abccc492674",
-      "representation_sha256": "sha256:1de806b587c83aefaa836e1058e65e3fe0457abbf69e5d5f0105bedc83a12bdc",
+      "parser_version": "0.66.0",
+      "profile_sha256": "sha256:98b53e6bb334d00b264e3e3deba45e3c8968d0354e6165ff0af7dc155edaa010",
+      "representation_sha256": "sha256:691e381e54f0bb418c382c212372cdffad608ddbcb89ce7ffc90d7c3381acbb6",
       "schema_version": "1.0.0",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3"
     }

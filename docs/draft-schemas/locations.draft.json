@@ -228,10 +228,10 @@
           "synthesized": 0
         }
       ],
-      "parser_version": "0.65.0",
-      "profile_sha256": "sha256:130a7f6765217ec0ca86ac86e0595094a947df825e7b8c97beb27abccc492674",
+      "parser_version": "0.66.0",
+      "profile_sha256": "sha256:98b53e6bb334d00b264e3e3deba45e3c8968d0354e6165ff0af7dc155edaa010",
       "quote_scalars": 5,
-      "representation_sha256": "sha256:2e1d2eec3aa250d7aec3727a40c2e8a934b49e10de61d0be9053d0911c6c14fe",
+      "representation_sha256": "sha256:b7b59db4a5761294556076ec7b928991120ac2522ea596cbfc3f5f3f7ec38755",
       "schema_version": "0.1.0",
       "searched": {
         "blocks": 2,
