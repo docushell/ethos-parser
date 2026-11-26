@@ -226,12 +226,14 @@ sums() {
 
 # **No model file ships** (the owner, 2026-11-15). Staged directory $1 must hold exactly the files
 # named after it. An allowlist rather than a list of weight suffixes, which a `.bin` or the next
-# format would slip past.
+# format would slip past. A binary's `.exe` is not part of its name here: on Windows Git Bash finds
+# `ethos-parser` for `ethos-parser.exe`, so the names reach this function bare while the staged
+# files carry the suffix, and the 0.66.0 tag's Windows leg failed on exactly that.
 archive_holds_only() {
   local stage="$1" want got
   shift
-  want="$(printf '%s\n' "$@" | LC_ALL=C sort)"
-  got="$(cd "$stage" && LC_ALL=C ls -A)"
+  want="$(printf '%s\n' "$@" | sed 's/\.exe$//' | LC_ALL=C sort)"
+  got="$(cd "$stage" && LC_ALL=C ls -A | sed 's/\.exe$//' | LC_ALL=C sort)"
   [ "$got" = "$want" ] || fail "$(basename "$stage") does not hold exactly the release's files." \
     "No model file ships in a release, whatever its name. Expected:" "$want" "Found:" "$got"
 }
