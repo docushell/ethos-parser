@@ -160,7 +160,7 @@ jobs:
       # workflow runs rarely. The recognizer's and the assist binary's own compilers
       # (ocr/rust-toolchain.toml, assist/rust-toolchain.toml) are installed and held to their pins
       # by the script, which builds both.
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master branch, 2026-11-26
         with:
           toolchain: "1.88.0"
 
