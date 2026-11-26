@@ -6,7 +6,8 @@ license = "Apache-2.0"
 publish = false
 description = "The assist lane's own process: renders a PDF's pages with hayro for a model to read"
 
-# Exact versions: `render` was measured equal to Phase 4a's renderer on these (assist/README.md).
+# Exact versions: `render` was measured equal, on these, to the renderer of the 2026-11-14 run in
+# which the model read ParseBench's pages drawn by hayro (assist/README.md).
 [dependencies]
 hayro = "=0.7.1"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }

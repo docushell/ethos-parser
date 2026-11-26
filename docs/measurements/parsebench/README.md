@@ -1444,8 +1444,8 @@ them:
 
 Under `ETHOS_BENCH_OCR=engine` the adapter runs `extract --ocr` on every document, and the engine
 reads each page that shows no text and places one image, and each PNG or JPEG file, through
-`ethos-parser-ocr` (`docs/35-OCR-SCOPE.md`). On `0e4eade` plus Phase 1, against the same tree
-without the flag:
+`ethos-parser-ocr` (`docs/35-OCR-SCOPE.md`). On `0e4eade` plus that recognizer, against the same
+tree without the flag:
 
 | Dimension | Without `--ocr` | With `--ocr` | Pages up / down |
 | --- | ---: | ---: | ---: |
@@ -1460,8 +1460,9 @@ past its page's edge refusing `text_ocr__cramer` whole, and the fix let that pag
 aggregate does not:** `ground` refuses an image file by name (decision #16), so the adapter sends
 those pages no layout items, the evaluator reports "No layout data for page 0" and leaves them out
 of its average, which then reads 0.6415. A page that failed is a page that scored nothing, so the
-table divides by all 500. Phase 0's 55.88 read every textless page by rendering it; the
-difference is composite pages, pages that need a renderer, and the image files' layout boxes.
+table divides by all 500. The reference Python pipeline's 55.88 (`docs/35-OCR-SCOPE.md` §3) read
+every textless page by rendering it; the difference is composite pages, pages that need a renderer,
+and the image files' layout boxes.
 
 ### Image files grounded from `extract` (decision #124, 2026-11-12)
 
@@ -1629,8 +1630,8 @@ down) and formatting 0.4532 -> 0.5212. A titles merge — a line of the engine's
 model's level where its text matched one of the model's titles — added 0.4 to the overall for the
 most code, and cost content a little on 9 of 100 pages; the owner chose the lane without it. The
 whole model page appended to the engine's read charts 0.6385 against 0.6555 for its chart blocks
-alone. Before it, assist Phase 0 measured Qwen2.5-VL-7B's tables appended to the engine's chart
-pages: charts 0.1726 -> 0.3982, overall 58.45.
+alone. Before it, a first assist measurement scored Qwen2.5-VL-7B's tables appended to the engine's
+chart pages: charts 0.1726 -> 0.3982, overall 58.45.
 
 ## ethos-parser + assist, through the product (decision #147, 2026-11-16)
 
@@ -1645,7 +1646,7 @@ of an engine table, and write every insertion as one block quote: its label `> *
 numbers, not engine numbers.
 
 **The replies.** Decision #123's 1,578 pages, rendered again by hayro as `ethos-parser-assist` renders
-them and answered by the same model, revision and request (Phase 4a; 1 page, a JPEG 2000 image hayro
+them and answered by the same model, revision and request (a run begun 2026-11-14; 1 page, a JPEG 2000 image hayro
 cannot decode, has no answer). `assist_replies.py` writes one replies file per document, page 1 only,
 as #123 asked; `ethos-parser-assist render` drew all 1,577 pages byte for byte as the PNGs the model
 read. `render` prints no points, so `points` comes from the pixels and the dpi: at most 0.48 pt from

@@ -1128,7 +1128,7 @@ mod tests {
     use super::*;
     use crate::Span;
 
-    /// **`locate`'s two ceilings are these two ceilings** (D1 S1).
+    /// **`locate`'s two ceilings are these two ceilings** (decision #30's S1).
     ///
     /// `ethos_parser_core::locate` re-declares them rather than importing them, because this
     /// crate depends on core and `docs/04-ARCHITECTURE.md` §1 forbids the reverse edge. A

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! `ethos-parser locate` — the subcommand, its exit codes, and the bytes it prints
-//! (`docs/26-LOCATE-SCOPE.md` §6.1, D1 S2).
+//! (`docs/26-LOCATE-SCOPE.md` §6.1, S2).
 //!
 //! # What this file is for
 //!

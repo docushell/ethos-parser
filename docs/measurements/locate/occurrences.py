@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D1 S3 — how many occurrences a realistic quote has over `fixtures/gate`, and what a call costs.
+"""S3 — how many occurrences a realistic quote has over `fixtures/gate`, and what a call costs.
 
     python3 docs/measurements/locate/occurrences.py [WORKDIR]
 

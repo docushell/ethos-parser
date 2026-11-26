@@ -532,7 +532,7 @@ const CORE: &[&str] = &[
     "ProjectionOptions",
     "tables",
     "verifier",
-    // v2.3, D1 S1. `locate`'s query, its artifact, and the two ceilings it borrows from
+    // v2.3, decision #30's S1. `locate`'s query, its artifact, and the two ceilings it borrows from
     // `ethos.grounding.v1`. The ceilings are on the surface because a caller sizing a request has
     // to know them before it sends one, and the rule id because the answer depends on which rule
     // produced it — a normalised or folded rule is a `-v2`, never a flag on this one.

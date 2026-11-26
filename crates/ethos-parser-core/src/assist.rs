@@ -1492,7 +1492,7 @@ pub(crate) fn words(text: &str) -> std::collections::BTreeSet<String> {
 
 /// The values of the model's `text`, in order, each with what touches it (`value_at`). A LaTeX
 /// command, a backslash and the lower-case letters after it, is no part of a value: `\pm20V` holds
-/// `20V`, while a path's `\O365` keeps its value.
+/// `20V`, while a path's `\Q472` keeps its value.
 fn values(text: &str) -> Vec<Value<'_>> {
     value_spans(text)
         .into_iter()
@@ -4168,7 +4168,7 @@ mod tests {
     }
 
     /// **A LaTeX command in the model's text is no part of a value**: a backslash and the
-    /// lower-case letters after it, so `$\pm20V$` holds `20V`. A path's `\O365` keeps its value.
+    /// lower-case letters after it, so `$\pm20V$` holds `20V`. A path's `\Q472` keeps its value.
     #[test]
     fn a_latex_command_is_no_part_of_a_value() {
         let tokens = |s| values(s).iter().map(|v| v.token).collect::<Vec<_>>();
@@ -4176,7 +4176,7 @@ mod tests {
             tokens("$V_{GS}=\\pm20V$, $\\pm100$, 3\\times10^{6}"),
             ["20V", "100", "3", "10", "6"]
         );
-        assert_eq!(tokens("C:\\Users\\O365-[Sec]\\MSS194"), ["O365", "MSS194"]);
+        assert_eq!(tokens("D:\\Files\\Q472-[Lab]\\ZXR318"), ["Q472", "ZXR318"]);
         assert_eq!(
             line_against(
                 "Gate voltage \u{B1}20V rated",

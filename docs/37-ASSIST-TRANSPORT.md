@@ -33,13 +33,13 @@ those requests.
   - A run needs `curl` on `PATH`. Without it, every `ask` and `check` is refused by name,
     `curl-not-found`.
   - Each request starts a process. That costs milliseconds, against about 35 s a page from the
-    model (Phase 4a).
+    model (the 2026-11-14 run in which it read ParseBench's pages drawn by hayro).
   - Only long-standing options are used: `config`, `proto`, `globoff`, `noproxy`, `max-time`,
     `connect-timeout`, `max-filesize`, `write-out`, `header` and `data-binary`. The binary was
     tested with curl 8.7.1 on macOS.
   - **Unix only, for now.** The page reaches curl as `/dev/fd/2` (§3). A platform without
     `/dev/fd`, Windows among them, is refused `curl-not-run`, rather than given a file holding
-    the page. Windows is a question for the release step (D8).
+    the page. Windows is a question for the release step (decision #148).
 
 ## 3. How the binary runs `curl`
 
@@ -53,7 +53,7 @@ Every request runs `curl -q -K -`, and that argv never changes.
   - `noproxy`: `*` for a loopback server (below); for any other, `localhost,127.0.0.1,::1`, then
     the user's own `no_proxy` or `NO_PROXY` (the option replaces them, so they are carried over; a
     lone `*` stays `*`);
-  - `max-time = 1800` (Phase 4a's per-page limit) and `connect-timeout = 10`;
+  - `max-time = 1800` (that 2026-11-14 run's per-page limit) and `connect-timeout = 10`;
   - `max-filesize` at 64 MiB: a page's reply is tens of kilobytes. curl stops an announced
     length at it; an unannounced one only since curl 8.4. So the binary also stops reading past
     the cap and stops curl, whatever its version;

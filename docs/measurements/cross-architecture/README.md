@@ -1,4 +1,4 @@
-# M2 — Two instruction sets, one artifact
+# Two instruction sets, one artifact
 
 **Run 2026-09-11 against `c137339`** on an Apple M4 Pro. `aarch64-apple-darwin` built natively and
 `x86_64-apple-darwin` cross-built with the same pinned 1.88.0 toolchain, then **executed** through

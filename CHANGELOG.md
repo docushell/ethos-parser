@@ -343,12 +343,12 @@ with the wrong grid; twenty-eight mutations, each caught by a failing test.
 - The quick start runs on the reader's own document and says `--drop-hidden` and `--ocr` need
   0.66.0. The sample page stays as an optional try, with the Markdown it prints. The overlay
   picture is gone, and `docs/images/overlay.png` with it.
-- The benchmark numbers are re-measured on `0ee4b4c`, after decisions #160 to #168: ParseBench
-  52.18 for the engine and 55.17 with `--ocr`, ParseBench-2 55.90 and 58.19, opendataloader-bench
-  0.835 as before (0.8349, run again on `0ee4b4c`). ParseBench is shown beside the nine open-source
-  local parsers on its leaderboard, and as the count of its 148 hosted-service and AI-model rows
-  each lane scores above: 36 for the engine, 42 with `--ocr`, 80 with the assist model. Each
-  lane's place on the whole leaderboards stays in `docs/BENCHMARKS.md`.
+- The benchmark numbers are re-measured on `797eed8`, after decisions #160 to #175 (the assist
+  column on `0f6c8a3`): ParseBench 52.33 for the engine and 55.77 with `--ocr`, ParseBench-2 56.07
+  and 59.00, opendataloader-bench 0.837 (0.8373, 6th of 13). ParseBench is shown beside the nine
+  open-source local parsers on its leaderboard, and as the count of its 148 hosted-service and
+  AI-model rows each lane scores above: 36 for the engine, 43 with `--ocr`, 80 with the assist
+  model. Each lane's place on the whole leaderboards stays in `docs/BENCHMARKS.md`.
 
 ### A form's empty boxes are written `☐` beside their options (decision #168)
 
@@ -542,14 +542,16 @@ tenth ParseBench-2 document), at one thread and at twelve.
   `nist-sp-800-53r5` peaks about 500 MiB lower, and `extract` pays for the second walk with a
   quarter to a third more time there.
 - Measured again over `bbb66e8`, with this streaming, one inflate of a content stream up to 256 KiB,
-  a picture's text read by unit and a table's ids mapped once: Apple M4 Pro, a quiet machine, five
-  interleaved rounds, medians, 12 threads unless said. `nist-sp-800-53r5` `extract` 1,752 → 1,731 ms
-  and 1,434 → 1,421 MiB peak RSS; on one thread 5,367 → 6,815 ms and 1,899 → 1,363 MiB;
+  a picture's text read by unit and a table's ids mapped once: Apple M4 Pro, not a quiet machine
+  (one-minute load average 3.7 as the run began, 5.6 as it ended), five interleaved rounds,
+  medians, 12 threads unless said. `nist-sp-800-53r5` `extract` 1,752 → 1,731 ms and 1,434 →
+  1,421 MiB peak RSS; on one thread 5,367 → 6,815 ms and 1,899 → 1,363 MiB;
   `markdown --source` 3,446 → 3,011 ms and 1,738 → 1,597 MiB. `nist-sp-800-53Ar5` `extract` 2,923 →
   2,944 ms (2,168 → 2,172 MiB) and `nist-sp-800-37r2` 683 → 676 ms (556 → 547 MiB), within noise.
   opendataloader-bench's 200 (`markdown --unstyled --source`, one at a time): p50 32.0 → 32.2 ms,
   p95 43.8 → 39.9 ms, 1.2% fewer instructions in all, one document 6.6% more (its content stream
-  inflates just past the 256 KiB one-inflate cap). `docs/measurements/memory-ceiling/` §20.
+  inflates just past the 256 KiB one-inflate cap). The measurement below, on a quiet machine (load
+  2.4 to 3.2), supersedes these numbers. `docs/measurements/memory-ceiling/` §20.
 - Table planning looks for two tables in reading order that could join across a page before it maps
   pages, furniture, floors and pictures for the join, and does none of it where there are none: a
   document whose tables are all tagged skipped every join and still paid for the maps. `markdown`,
@@ -561,7 +563,8 @@ tenth ParseBench-2 document), at one thread and at twelve.
   On Linux, `--diagnostics`' resident bytes, read after the run, now count them.
 - The census counts the runs whose whitespace collapses without building each normalized string,
   and node ids are spelled with the canonical writer's digit loop rather than `format!`.
-- Measured with these over `bbb66e8`, the decisions of this release included, the same way:
+- Measured with these over `bbb66e8`, the decisions of this release included, the same way but on
+  a quiet machine (one-minute load average 3.2 as the run began, 2.4 as it ended):
   `nist-sp-800-53r5` `markdown --source` 3,489 → 2,278 ms (35% less) and 1,725 → 1,573 MiB;
   `extract` 1,751 → 1,553 ms and 1,443 → 1,421 MiB; on one thread 5,271 → 6,584 ms and
   1,897 → 1,354 MiB. `nist-sp-800-53Ar5` `extract` 2,883 → 2,588 ms (2,168 → 2,147 MiB) and
@@ -1243,7 +1246,7 @@ and so is every profile's hash.
   compared as written, but that a dash of any width between two letters or digits (U+2010 to
   U+2015, U+2212) reads as `-` on either side (the page's `99‐R98CR` held no `99-R98CR`), and that
   in the model's text a LaTeX command, a backslash and the lower-case letters after it, is no part
-  of a value (`\pm20V` read as `pm20V`; a path's `\O365` keeps its value). It is found where it occurs in the runs' text with whitespace removed,
+  of a value (`\pm20V` read as `pm20V`; a path's `\Q472` keeps its value). It is found where it occurs in the runs' text with whitespace removed,
   starting and ending outside the runs' own values, with the same sign (brackets read as a minus,
   an en dash too) and, where both show one, the same currency symbol and percent sign; brackets, a
   leading currency symbol and a percent sign count across a space or a gap the engine drew, a
@@ -1395,7 +1398,8 @@ subprocess, so no HTTP crate enters any lockfile ([`docs/37-ASSIST-TRANSPORT.md`
   `finish_reason: "length"`.
 - `docs/37-ASSIST-TRANSPORT.md` scopes the exception to the no-network rule to this binary's
   subprocess `curl`; both `deny.toml` files keep every network ban. `assist/README.md` gives the
-  setup: the Mac (MLX) steps Phase 4a ran, and Linux (vLLM) steps not yet run here.
+  setup: the Mac (MLX) steps of the 2026-11-14 run in which the model read ParseBench's pages
+  drawn by hayro, and Linux (vLLM) steps not yet run here.
 - Tested, not yet measured on a server: 34 tests against a fake server on 127.0.0.1 (request bytes, the key in neither argv nor curl's environment and refused for `http://` off loopback, proxy variables bypassed for loopback, `127.0.0.2` too, no redirect followed, globs off, a 64 MiB reply cap, every page error, resume, another model's name refused before resume, two runs identical); a fresh security review's findings are fixed. `ask` and `check` need `/dev/fd` (macOS, Linux); elsewhere they are refused `curl-not-run`.
 
 ### The assist lane's binary, `ethos-parser-assist`, renders pages (decision #143)
@@ -1416,8 +1420,8 @@ engine is unchanged**: no root crate, lockfile or output moves.
   `ci/gate.sh` gains an eleventh step, `ci/assist.sh` (fmt, clippy and the tests in `assist/`, on
   its pinned toolchain), and CI's `check` job runs it as well. `ci/forbidden-tokens.sh` scans
   `assist/` too.
-- Measured: page 1 of the 379 ParseBench PDFs Phase 4a sampled renders byte for byte as Phase 4a's
-  renderer drew it, which scored within half a point of Ghostscript's pages on every ParseBench dimension with the reference model (100-page samples); engine output is untouched.
+- Measured: page 1 of the 379 ParseBench PDFs sampled by the 2026-11-14 run in which the model read
+  pages drawn by hayro renders byte for byte as that run's renderer drew it, which scored within half a point of Ghostscript's pages on every ParseBench dimension with the reference model (100-page samples); engine output is untouched.
 
 ### A table the next page goes on with is one table (decision #142)
 

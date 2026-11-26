@@ -1,4 +1,4 @@
-# M1 — What bounds peak memory, and why the two figures in the tree do not
+# What bounds peak memory, and why the two figures in the tree do not
 
 **Run 2026-09-10 against `97fa562`** over the eight committed `fixtures/gate` documents, on macOS
 arm64 (48 GiB, 12 cores, no swap in use). Peak RSS is read from outside the process by
@@ -1203,8 +1203,10 @@ large documents only.
 ## 20. One inflate per content stream, ids mapped once, and a one-thread seal that streams
 
 **Run 2026-11-25.** A = `main` at `bbb66e8`; B = A with the changes below. Release builds on an
-Apple M4 Pro, a quiet machine, five interleaved rounds, medians, 12 threads unless said. Each change
-hashes the same as A on 638 PDFs, every command, at one thread and at twelve.
+Apple M4 Pro, five interleaved rounds, medians, 12 threads unless said. Not a quiet machine: the
+one-minute load average was 3.7 as the run began and 5.6 as it ended. Each change hashes the same
+as A on 638 PDFs, every command, at one thread and at twelve. **§21 supersedes these numbers**: it
+times A again, on a quiet machine (load 2.4 to 3.2), beside the finished tree.
 
 ### Why
 

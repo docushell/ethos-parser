@@ -64,9 +64,6 @@ publish = false
 [workspace.dependencies]
 # Dependencies are constrained by deny.toml: permissive licences only, no AGPL, no network.
 # Additions are reviewed against docs/04-ARCHITECTURE.md §5.
-#
-# M0 declares only what the oracle harness needs. `lopdf`, `ttf-parser`, `serde` and `clap`
-# arrive with the milestones that use them (M1-M3), not before.
 sha2 = "0.11"
 # 0.39.0: page-parallel extraction. MIT/Apache-2.0 through its whole tree, no network,
 # no unsafe API surface — reviewed against deny.toml's allowlist before addition.

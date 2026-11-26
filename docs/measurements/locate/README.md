@@ -1,6 +1,7 @@
-# D1 S1 — What a locations artifact costs at its ceiling, and the defect measuring it found
+# S1 — What a locations artifact costs at its ceiling, and the defect measuring it found
 
-**Run 2026-09-18 against the tree this commit lands** (local `main` at `1b5a9c0` plus D1 S1), on
+**Run 2026-09-18 against the tree this commit lands** (local `main` at `1b5a9c0` plus slice S1 of
+[`27-LOCATE-MILESTONES.md`](../../27-LOCATE-MILESTONES.md)), on
 macOS 26.6.2, Mac16,8 arm64 (48 GiB, 12 cores). The instrument is a test rather than a script,
 because the artifact it measures has no CLI subcommand yet — S2 is where one arrives:
 
@@ -98,7 +99,7 @@ named, and the wall time of a `locate` call on the largest of them. Those are S3
 
 ---
 
-# D1 S3 — What a quote finds over `fixtures/gate`, and what the call costs
+# S3 — What a quote finds over `fixtures/gate`, and what the call costs
 
 **Run 2026-09-18** on the same host, against the same tree, with the release binary. Instrument:
 [`occurrences.py`](occurrences.py). Raw readings, the quote each document was asked for included:

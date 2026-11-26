@@ -32,7 +32,7 @@ use std::process::{Command, Stdio};
 
 use crate::ask::KEY_VAR;
 
-/// The longest a request may take, connection and reply: Phase 4a's per-page limit.
+/// The longest a request may take, connection and reply: the 2026-11-14 hayro run's page limit.
 const MAX_SECONDS: u32 = 1800;
 /// The longest a connection may take to open.
 const CONNECT_SECONDS: u32 = 10;

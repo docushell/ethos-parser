@@ -107,8 +107,9 @@ That is the one exception to the engine's no-network rule, scoped to this binary
 
 ### Mac (MLX)
 
-These are Phase 4a's commands (2026-11-14), which were run on an M4 Pro, with one change:
-- **The change.** Phase 4a converted the model to an absolute path (`--mlx-path ~/lighton-mlx`)
+These are the commands of the 2026-11-14 run in which the model read ParseBench's pages drawn by
+hayro, run on an M4 Pro, with one change:
+- **The change.** That run converted the model to an absolute path (`--mlx-path ~/lighton-mlx`)
   and served that path. mlx-vlm then reports the path as the id, and every output would record it.
 - **Here,** the model is converted under `~` and served by a relative name, so the id holds no
   path. mlx-vlm 0.7.12's source returns the request's `model` as the reply's. Run on 2026-11-16
@@ -191,8 +192,9 @@ This is decision #123's Ghostscript rule, rendered with hayro:
 The `renderer` string names this build, hayro's version and the rule. A unit test ties it to
 `Cargo.toml` and `Cargo.lock`.
 
-**Measured** (2026-11-15, Apple M4 Pro): page 1 of the 379 ParseBench PDFs sampled in Phase 4a
-renders byte for byte the same as Phase 4a's renderer did, with the same `dpi width height` line.
+**Measured** (2026-11-15, Apple M4 Pro): page 1 of the 379 ParseBench PDFs sampled by the
+2026-11-14 hayro run (*Setup*, above) renders byte for byte the same as that run's renderer did,
+with the same `dpi width height` line.
 vello_cpu picks SIMD paths at run time, so pixels on other CPUs are unmeasured.
 
 ## Build and check

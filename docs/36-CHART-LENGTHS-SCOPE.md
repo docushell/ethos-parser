@@ -18,7 +18,7 @@ themselves.
   for a value read off a bar's length (`32-CHART-LABELS-SCOPE.md` §7); the printed values cap a
   perfect reading at 0.34.
 - **The charts are drawings.** 431 of the 568 chart pages draw their charts as paths (77% of the
-  rules); 67 hold them as images, which this scope leaves to assist's Phase 0.
+  rules); 67 hold them as images, which this scope leaves to the assist lane (decision #123).
 - **The answers allow for reading off a drawing.** 1,792 rules accept a value within 5%, 1,118
   within 10%, 301 within 20%: the annotators read them off the bars too.
 - **Gaps are not where the points are.** Only 22 failing rules sit on an empty cell of a table the
@@ -89,7 +89,7 @@ lowest number (a broken axis); numbers that grow by a factor rather than a step 
 ## 6. Not done
 
 Log axes, broken axes, a second axis for some of the series, charts drawn in 3-D, and charts held
-as images (assist's Phase 0 measures those).
+as images (the assist lane's first measurement, decision #123, takes those).
 
 ## 7. Measured, and parked (2026-11-11)
 
@@ -110,4 +110,4 @@ adapter's switch — and measured on ParseBench before anything was committed.
 
 So the value is not what stops these charts, and reading it adds nothing until their categories
 are found. The design above stands for the day it is resumed; the owner moved the rank path to
-assist's Phase 0.
+the assist lane's first measurement (decision #123).

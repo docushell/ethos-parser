@@ -1,9 +1,13 @@
-# T1 — What the unruled rule refuses, and whether it was right to
+# What the unruled rule refuses, and whether it was right to
 
 **Run 2026-09-10 against 0.54.0** over the 200 `opendataloader-bench` documents, with the
 benchmark's own `ground-truth/reference.json` as the label. The instrument is
 [`refusals.py`](refusals.py); it reads the engine's output and computes nothing the engine does
 not already disclose.
+
+This folder holds six studies, labelled in the order they ran: T1 is §1 to §4 with its follow-up
+T1b (§4b), and §4c to §4g are T2 to T6, each named in its heading. The 0.55.0 CHANGELOG cites
+them by these labels.
 
 **This document ends in a method failure, not a threshold.** The measurement ran, the numbers are
 real, and they cannot answer the question that was asked. §4 says what would.

@@ -15,7 +15,7 @@
 //! PP-OCRv5 mobile, detection then recognition (`docs/35-OCR-SCOPE.md`), on a page first stood
 //! upright as PP-LCNet_x1_0_doc_ori reads its orientation (decision #153).
 //!
-//! The steps around the two models follow PaddleOCR's reference pipeline, measured in Phase 0,
+//! The steps around the two models follow PaddleOCR's reference pipeline, as that scope measured,
 //! except where a step would call a platform maths library or depend on the thread count: the
 //! line crop is an affine bilinear warp (PaddleOCR: a perspective bicubic one), each line is read
 //! on its own (PaddleOCR: batches of six, which couples a line's result to its neighbours'), and

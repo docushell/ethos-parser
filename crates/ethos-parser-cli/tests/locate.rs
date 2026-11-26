@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! **`locate` over the documents this repository authored** (`docs/26-LOCATE-SCOPE.md` §9, D1 S1).
+//! **`locate` over the documents this repository authored** (`docs/26-LOCATE-SCOPE.md` §9, S1).
 //!
 //! The unit tests beside the query (`ethos-parser-core/src/locate.rs`) run over hand-built
 //! representations, which is right for the units and the refusals and cannot say anything about a

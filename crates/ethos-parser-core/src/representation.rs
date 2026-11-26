@@ -890,7 +890,7 @@ pub struct PdfObjectNumber {
 pub struct RecognizedLocator {
     /// The run's place on its page: the foot of its line under the word's left edge as the
     /// origin, and the word's width as the advance — the numbers a text layer written by a
-    /// recognizer states (Tesseract's, which Phase 0's measurements read). **Computed** from
+    /// recognizer states (Tesseract's, which `docs/35-OCR-SCOPE.md` §3 read). **Computed** from
     /// [`Self::pixels`] through the matrix the page painted the image with, never drawn.
     pub run: PdfLocator,
     /// The image XObject the run was read from. `null` for an image file, whose page is the image.
