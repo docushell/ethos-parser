@@ -97,7 +97,7 @@ jobs:
       # is here only to preinstall a toolchain and the rustfmt/clippy components. Naming 1.88.0
       # explicitly keeps the two in agreement instead of installing `stable` and relying on
       # rustup to quietly fetch 1.88.0 afterwards.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
           components: rustfmt, clippy
@@ -196,7 +196,7 @@ jobs:
       # Run HERE rather than as their own job: both locators refuse a binary whose `--version`
       # disagrees with the workspace, so the suites need a built engine, and `build` above has
       # just produced one. A separate job would rebuild the workspace to re-derive it.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
 
@@ -213,7 +213,7 @@ jobs:
       #   2. Its `arguments` input defaults to `--all-features`, and cargo-deny ORs that with
       #      the config, so deny.toml's `[graph] all-features = false` cannot switch it back
       #      off. The gate would silently check a graph the committed config does not describe.
-      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
@@ -260,7 +260,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.98.0"
       - name: The recognizer's fixtures, byte for byte
@@ -432,7 +432,7 @@ jobs:
 
       # The two grep criteria carry `rust: false`: they scan source text and need no compiler,
       # so they skip the toolchain and the cache entirely and finish in seconds.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         if: matrix.rust
         with:
           toolchain: "1.88.0"
@@ -514,7 +514,7 @@ jobs:
           path: ethos-oracle
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
 
@@ -583,7 +583,7 @@ jobs:
           path: ethos-oracle
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
 
@@ -651,7 +651,7 @@ jobs:
           path: ethos-oracle
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
 
@@ -761,7 +761,7 @@ jobs:
       # did not, so pinning the SHA alone would leave no toolchain named and the action
       # would fall back to `rust-toolchain.toml` — silently building this fuzz job on
       # stable 1.88, which `cargo-fuzz` cannot use. The input is therefore stated.
-      - uses: dtolnay/rust-toolchain@be39649afda95dbf70f87cce95f68b8d5797b296 # nightly branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: nightly
 
@@ -770,7 +770,7 @@ jobs:
           workspaces: ./fuzz
           shared-key: fuzz
 
-      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-fuzz
 
@@ -823,7 +823,7 @@ jobs:
       # visible as a red tick.
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-artifacts
           path: fuzz/artifacts/
@@ -855,7 +855,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
 
@@ -888,10 +888,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
-      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
@@ -1024,7 +1024,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Installed and asserted as `check` does, for the reasons given there.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
           components: rustfmt, clippy
@@ -1054,7 +1054,7 @@ jobs:
         run: python ci/artifact-bytes.py --without nist-sp-800-53Ar5 --without nist-sp-800-161r1 > "digests-${{ matrix.os }}.sha256"
 
       # `overwrite`, so re-running every job does not fail on the name the first attempt uploaded.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digests-${{ matrix.os }}
           path: digests-${{ matrix.os }}.sha256
@@ -1069,7 +1069,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digests-*
           path: digests
@@ -1144,7 +1144,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master branch, 2026-10-12
         with:
           toolchain: "1.88.0"
 
