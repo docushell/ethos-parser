@@ -32,6 +32,21 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### `serde_json` 1.0.154: an invalid-UTF-8 error points at the bad byte
+
+`serde_json` moves from 1.0.151 to 1.0.154. One change reaches what the engine writes: where a JSON
+string holds bytes that are not UTF-8, its `invalid unicode code point` error gives the column of
+the first bad byte, not of the string's closing quote. That text is the `message` of
+`grounding-check`'s `invalid_json` report, and of the engine's own error on such input, so for that
+input the column moves (49 to 46 on a 50-byte probe); the code, the path and the exit status do not.
+
+Nothing else moves. The 638 PDFs of the identity set, at one thread and at the default count (3,820
+rows each), the 80 office rows and the text of 6,545 documents are byte-identical to the parent
+commit's binary. Canonical JSON is written by the engine's own serializer, not `serde_json`'s.
+`serde_json` is not a crate the profile names, so no `profile_sha256` moves. The new `foldhash`
+0.2.0 in `Cargo.lock` comes only with `preserve_order`, which only the core crate's tests turn on,
+and even there `serde_json` keeps the standard library's hasher; it is not in the shipped binary.
+
 ### A drawn table whose border its rules close is read through its merged cells (decision #175)
 
 A rate filing's form, a rating worksheet or a course grid often draws a heading row across every
